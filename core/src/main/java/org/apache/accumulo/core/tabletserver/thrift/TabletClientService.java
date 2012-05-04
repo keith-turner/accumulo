@@ -42,6 +42,14 @@ import org.slf4j.LoggerFactory;
 
     public org.apache.accumulo.core.data.thrift.UpdateErrors closeUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID) throws NoSuchScanIDException, org.apache.thrift.TException;
 
+    public long startRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials) throws org.apache.accumulo.core.security.thrift.ThriftSecurityException, org.apache.thrift.TException;
+
+    public void setRackUpdateServer(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, String server) throws org.apache.thrift.TException;
+
+    public void applyRackUpdates(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, List<org.apache.accumulo.core.data.thrift.TMutation> mutations) throws org.apache.thrift.TException;
+
+    public void closeRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID) throws NoSuchScanIDException, org.apache.thrift.TException;
+
     public void update(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, org.apache.accumulo.core.data.thrift.TMutation mutation) throws org.apache.accumulo.core.security.thrift.ThriftSecurityException, NotServingTabletException, ConstraintViolationException, org.apache.thrift.TException;
 
     public List<org.apache.accumulo.core.data.thrift.TKeyExtent> bulkImport(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, long tid, Map<org.apache.accumulo.core.data.thrift.TKeyExtent,Map<String,org.apache.accumulo.core.data.thrift.MapFileInfo>> files, boolean setTime) throws org.apache.accumulo.core.security.thrift.ThriftSecurityException, org.apache.thrift.TException;
@@ -95,6 +103,14 @@ import org.slf4j.LoggerFactory;
     public void applyUpdates(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, List<org.apache.accumulo.core.data.thrift.TMutation> mutations, org.apache.thrift.async.AsyncMethodCallback<AsyncClient.applyUpdates_call> resultHandler) throws org.apache.thrift.TException;
 
     public void closeUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.thrift.async.AsyncMethodCallback<AsyncClient.closeUpdate_call> resultHandler) throws org.apache.thrift.TException;
+
+    public void startRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, org.apache.thrift.async.AsyncMethodCallback<AsyncClient.startRackUpdate_call> resultHandler) throws org.apache.thrift.TException;
+
+    public void setRackUpdateServer(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, String server, org.apache.thrift.async.AsyncMethodCallback<AsyncClient.setRackUpdateServer_call> resultHandler) throws org.apache.thrift.TException;
+
+    public void applyRackUpdates(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, List<org.apache.accumulo.core.data.thrift.TMutation> mutations, org.apache.thrift.async.AsyncMethodCallback<AsyncClient.applyRackUpdates_call> resultHandler) throws org.apache.thrift.TException;
+
+    public void closeRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.thrift.async.AsyncMethodCallback<AsyncClient.closeRackUpdate_call> resultHandler) throws org.apache.thrift.TException;
 
     public void update(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, org.apache.accumulo.core.data.thrift.TMutation mutation, org.apache.thrift.async.AsyncMethodCallback<AsyncClient.update_call> resultHandler) throws org.apache.thrift.TException;
 
@@ -487,6 +503,118 @@ import org.slf4j.LoggerFactory;
         throw result.nssi;
       }
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "closeUpdate failed: unknown result");
+    }
+
+    public long startRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials) throws org.apache.accumulo.core.security.thrift.ThriftSecurityException, org.apache.thrift.TException
+    {
+      send_startRackUpdate(tinfo, credentials);
+      return recv_startRackUpdate();
+    }
+
+    public void send_startRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials) throws org.apache.thrift.TException
+    {
+      oprot_.writeMessageBegin(new org.apache.thrift.protocol.TMessage("startRackUpdate", org.apache.thrift.protocol.TMessageType.CALL, ++seqid_));
+      startRackUpdate_args args = new startRackUpdate_args();
+      args.setTinfo(tinfo);
+      args.setCredentials(credentials);
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public long recv_startRackUpdate() throws org.apache.accumulo.core.security.thrift.ThriftSecurityException, org.apache.thrift.TException
+    {
+      org.apache.thrift.protocol.TMessage msg = iprot_.readMessageBegin();
+      if (msg.type == org.apache.thrift.protocol.TMessageType.EXCEPTION) {
+        org.apache.thrift.TApplicationException x = org.apache.thrift.TApplicationException.read(iprot_);
+        iprot_.readMessageEnd();
+        throw x;
+      }
+      if (msg.seqid != seqid_) {
+        throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.BAD_SEQUENCE_ID, "startRackUpdate failed: out of sequence response");
+      }
+      startRackUpdate_result result = new startRackUpdate_result();
+      result.read(iprot_);
+      iprot_.readMessageEnd();
+      if (result.isSetSuccess()) {
+        return result.success;
+      }
+      if (result.sec != null) {
+        throw result.sec;
+      }
+      throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "startRackUpdate failed: unknown result");
+    }
+
+    public void setRackUpdateServer(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, String server) throws org.apache.thrift.TException
+    {
+      send_setRackUpdateServer(tinfo, updateID, server);
+    }
+
+    public void send_setRackUpdateServer(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, String server) throws org.apache.thrift.TException
+    {
+      oprot_.writeMessageBegin(new org.apache.thrift.protocol.TMessage("setRackUpdateServer", org.apache.thrift.protocol.TMessageType.CALL, ++seqid_));
+      setRackUpdateServer_args args = new setRackUpdateServer_args();
+      args.setTinfo(tinfo);
+      args.setUpdateID(updateID);
+      args.setServer(server);
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public void applyRackUpdates(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, List<org.apache.accumulo.core.data.thrift.TMutation> mutations) throws org.apache.thrift.TException
+    {
+      send_applyRackUpdates(tinfo, updateID, keyExtent, mutations);
+    }
+
+    public void send_applyRackUpdates(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, List<org.apache.accumulo.core.data.thrift.TMutation> mutations) throws org.apache.thrift.TException
+    {
+      oprot_.writeMessageBegin(new org.apache.thrift.protocol.TMessage("applyRackUpdates", org.apache.thrift.protocol.TMessageType.CALL, ++seqid_));
+      applyRackUpdates_args args = new applyRackUpdates_args();
+      args.setTinfo(tinfo);
+      args.setUpdateID(updateID);
+      args.setKeyExtent(keyExtent);
+      args.setMutations(mutations);
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public void closeRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID) throws NoSuchScanIDException, org.apache.thrift.TException
+    {
+      send_closeRackUpdate(tinfo, updateID);
+      recv_closeRackUpdate();
+    }
+
+    public void send_closeRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID) throws org.apache.thrift.TException
+    {
+      oprot_.writeMessageBegin(new org.apache.thrift.protocol.TMessage("closeRackUpdate", org.apache.thrift.protocol.TMessageType.CALL, ++seqid_));
+      closeRackUpdate_args args = new closeRackUpdate_args();
+      args.setTinfo(tinfo);
+      args.setUpdateID(updateID);
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public void recv_closeRackUpdate() throws NoSuchScanIDException, org.apache.thrift.TException
+    {
+      org.apache.thrift.protocol.TMessage msg = iprot_.readMessageBegin();
+      if (msg.type == org.apache.thrift.protocol.TMessageType.EXCEPTION) {
+        org.apache.thrift.TApplicationException x = org.apache.thrift.TApplicationException.read(iprot_);
+        iprot_.readMessageEnd();
+        throw x;
+      }
+      if (msg.seqid != seqid_) {
+        throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.BAD_SEQUENCE_ID, "closeRackUpdate failed: out of sequence response");
+      }
+      closeRackUpdate_result result = new closeRackUpdate_result();
+      result.read(iprot_);
+      iprot_.readMessageEnd();
+      if (result.nssi != null) {
+        throw result.nssi;
+      }
+      return;
     }
 
     public void update(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, org.apache.accumulo.core.data.thrift.TMutation mutation) throws org.apache.accumulo.core.security.thrift.ThriftSecurityException, NotServingTabletException, ConstraintViolationException, org.apache.thrift.TException
@@ -1347,6 +1475,153 @@ import org.slf4j.LoggerFactory;
       }
     }
 
+    public void startRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, org.apache.thrift.async.AsyncMethodCallback<startRackUpdate_call> resultHandler) throws org.apache.thrift.TException {
+      checkReady();
+      startRackUpdate_call method_call = new startRackUpdate_call(tinfo, credentials, resultHandler, this, protocolFactory, transport);
+      this.currentMethod = method_call;
+      manager.call(method_call);
+    }
+
+    public static class startRackUpdate_call extends org.apache.thrift.async.TAsyncMethodCall {
+      private org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+      private org.apache.accumulo.core.security.thrift.AuthInfo credentials;
+      public startRackUpdate_call(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, org.apache.thrift.async.AsyncMethodCallback<startRackUpdate_call> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+        super(client, protocolFactory, transport, resultHandler, false);
+        this.tinfo = tinfo;
+        this.credentials = credentials;
+      }
+
+      public void write_args(org.apache.thrift.protocol.TProtocol prot) throws org.apache.thrift.TException {
+        prot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("startRackUpdate", org.apache.thrift.protocol.TMessageType.CALL, 0));
+        startRackUpdate_args args = new startRackUpdate_args();
+        args.setTinfo(tinfo);
+        args.setCredentials(credentials);
+        args.write(prot);
+        prot.writeMessageEnd();
+      }
+
+      public long getResult() throws org.apache.accumulo.core.security.thrift.ThriftSecurityException, org.apache.thrift.TException {
+        if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
+          throw new IllegalStateException("Method call not finished!");
+        }
+        org.apache.thrift.transport.TMemoryInputTransport memoryTransport = new org.apache.thrift.transport.TMemoryInputTransport(getFrameBuffer().array());
+        org.apache.thrift.protocol.TProtocol prot = client.getProtocolFactory().getProtocol(memoryTransport);
+        return (new Client(prot)).recv_startRackUpdate();
+      }
+    }
+
+    public void setRackUpdateServer(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, String server, org.apache.thrift.async.AsyncMethodCallback<setRackUpdateServer_call> resultHandler) throws org.apache.thrift.TException {
+      checkReady();
+      setRackUpdateServer_call method_call = new setRackUpdateServer_call(tinfo, updateID, server, resultHandler, this, protocolFactory, transport);
+      this.currentMethod = method_call;
+      manager.call(method_call);
+    }
+
+    public static class setRackUpdateServer_call extends org.apache.thrift.async.TAsyncMethodCall {
+      private org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+      private long updateID;
+      private String server;
+      public setRackUpdateServer_call(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, String server, org.apache.thrift.async.AsyncMethodCallback<setRackUpdateServer_call> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+        super(client, protocolFactory, transport, resultHandler, true);
+        this.tinfo = tinfo;
+        this.updateID = updateID;
+        this.server = server;
+      }
+
+      public void write_args(org.apache.thrift.protocol.TProtocol prot) throws org.apache.thrift.TException {
+        prot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("setRackUpdateServer", org.apache.thrift.protocol.TMessageType.CALL, 0));
+        setRackUpdateServer_args args = new setRackUpdateServer_args();
+        args.setTinfo(tinfo);
+        args.setUpdateID(updateID);
+        args.setServer(server);
+        args.write(prot);
+        prot.writeMessageEnd();
+      }
+
+      public void getResult() throws org.apache.thrift.TException {
+        if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
+          throw new IllegalStateException("Method call not finished!");
+        }
+        org.apache.thrift.transport.TMemoryInputTransport memoryTransport = new org.apache.thrift.transport.TMemoryInputTransport(getFrameBuffer().array());
+        org.apache.thrift.protocol.TProtocol prot = client.getProtocolFactory().getProtocol(memoryTransport);
+      }
+    }
+
+    public void applyRackUpdates(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, List<org.apache.accumulo.core.data.thrift.TMutation> mutations, org.apache.thrift.async.AsyncMethodCallback<applyRackUpdates_call> resultHandler) throws org.apache.thrift.TException {
+      checkReady();
+      applyRackUpdates_call method_call = new applyRackUpdates_call(tinfo, updateID, keyExtent, mutations, resultHandler, this, protocolFactory, transport);
+      this.currentMethod = method_call;
+      manager.call(method_call);
+    }
+
+    public static class applyRackUpdates_call extends org.apache.thrift.async.TAsyncMethodCall {
+      private org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+      private long updateID;
+      private org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent;
+      private List<org.apache.accumulo.core.data.thrift.TMutation> mutations;
+      public applyRackUpdates_call(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, List<org.apache.accumulo.core.data.thrift.TMutation> mutations, org.apache.thrift.async.AsyncMethodCallback<applyRackUpdates_call> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+        super(client, protocolFactory, transport, resultHandler, true);
+        this.tinfo = tinfo;
+        this.updateID = updateID;
+        this.keyExtent = keyExtent;
+        this.mutations = mutations;
+      }
+
+      public void write_args(org.apache.thrift.protocol.TProtocol prot) throws org.apache.thrift.TException {
+        prot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("applyRackUpdates", org.apache.thrift.protocol.TMessageType.CALL, 0));
+        applyRackUpdates_args args = new applyRackUpdates_args();
+        args.setTinfo(tinfo);
+        args.setUpdateID(updateID);
+        args.setKeyExtent(keyExtent);
+        args.setMutations(mutations);
+        args.write(prot);
+        prot.writeMessageEnd();
+      }
+
+      public void getResult() throws org.apache.thrift.TException {
+        if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
+          throw new IllegalStateException("Method call not finished!");
+        }
+        org.apache.thrift.transport.TMemoryInputTransport memoryTransport = new org.apache.thrift.transport.TMemoryInputTransport(getFrameBuffer().array());
+        org.apache.thrift.protocol.TProtocol prot = client.getProtocolFactory().getProtocol(memoryTransport);
+      }
+    }
+
+    public void closeRackUpdate(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.thrift.async.AsyncMethodCallback<closeRackUpdate_call> resultHandler) throws org.apache.thrift.TException {
+      checkReady();
+      closeRackUpdate_call method_call = new closeRackUpdate_call(tinfo, updateID, resultHandler, this, protocolFactory, transport);
+      this.currentMethod = method_call;
+      manager.call(method_call);
+    }
+
+    public static class closeRackUpdate_call extends org.apache.thrift.async.TAsyncMethodCall {
+      private org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+      private long updateID;
+      public closeRackUpdate_call(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, long updateID, org.apache.thrift.async.AsyncMethodCallback<closeRackUpdate_call> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+        super(client, protocolFactory, transport, resultHandler, false);
+        this.tinfo = tinfo;
+        this.updateID = updateID;
+      }
+
+      public void write_args(org.apache.thrift.protocol.TProtocol prot) throws org.apache.thrift.TException {
+        prot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("closeRackUpdate", org.apache.thrift.protocol.TMessageType.CALL, 0));
+        closeRackUpdate_args args = new closeRackUpdate_args();
+        args.setTinfo(tinfo);
+        args.setUpdateID(updateID);
+        args.write(prot);
+        prot.writeMessageEnd();
+      }
+
+      public void getResult() throws NoSuchScanIDException, org.apache.thrift.TException {
+        if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
+          throw new IllegalStateException("Method call not finished!");
+        }
+        org.apache.thrift.transport.TMemoryInputTransport memoryTransport = new org.apache.thrift.transport.TMemoryInputTransport(getFrameBuffer().array());
+        org.apache.thrift.protocol.TProtocol prot = client.getProtocolFactory().getProtocol(memoryTransport);
+        (new Client(prot)).recv_closeRackUpdate();
+      }
+    }
+
     public void update(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo, org.apache.accumulo.core.security.thrift.AuthInfo credentials, org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent, org.apache.accumulo.core.data.thrift.TMutation mutation, org.apache.thrift.async.AsyncMethodCallback<update_call> resultHandler) throws org.apache.thrift.TException {
       checkReady();
       update_call method_call = new update_call(tinfo, credentials, keyExtent, mutation, resultHandler, this, protocolFactory, transport);
@@ -2000,6 +2275,10 @@ import org.slf4j.LoggerFactory;
       processMap_.put("startUpdate", new startUpdate());
       processMap_.put("applyUpdates", new applyUpdates());
       processMap_.put("closeUpdate", new closeUpdate());
+      processMap_.put("startRackUpdate", new startRackUpdate());
+      processMap_.put("setRackUpdateServer", new setRackUpdateServer());
+      processMap_.put("applyRackUpdates", new applyRackUpdates());
+      processMap_.put("closeRackUpdate", new closeRackUpdate());
       processMap_.put("update", new update());
       processMap_.put("bulkImport", new bulkImport());
       processMap_.put("splitTablet", new splitTablet());
@@ -2348,6 +2627,125 @@ import org.slf4j.LoggerFactory;
           return;
         }
         oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("closeUpdate", org.apache.thrift.protocol.TMessageType.REPLY, seqid));
+        result.write(oprot);
+        oprot.writeMessageEnd();
+        oprot.getTransport().flush();
+      }
+
+    }
+
+    private class startRackUpdate implements ProcessFunction {
+      public void process(int seqid, org.apache.thrift.protocol.TProtocol iprot, org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException
+      {
+        startRackUpdate_args args = new startRackUpdate_args();
+        try {
+          args.read(iprot);
+        } catch (org.apache.thrift.protocol.TProtocolException e) {
+          iprot.readMessageEnd();
+          org.apache.thrift.TApplicationException x = new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.PROTOCOL_ERROR, e.getMessage());
+          oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("startRackUpdate", org.apache.thrift.protocol.TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        iprot.readMessageEnd();
+        startRackUpdate_result result = new startRackUpdate_result();
+        try {
+          result.success = iface_.startRackUpdate(args.tinfo, args.credentials);
+          result.setSuccessIsSet(true);
+        } catch (org.apache.accumulo.core.security.thrift.ThriftSecurityException sec) {
+          result.sec = sec;
+        } catch (Throwable th) {
+          LOGGER.error("Internal error processing startRackUpdate", th);
+          org.apache.thrift.TApplicationException x = new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.INTERNAL_ERROR, "Internal error processing startRackUpdate");
+          oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("startRackUpdate", org.apache.thrift.protocol.TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("startRackUpdate", org.apache.thrift.protocol.TMessageType.REPLY, seqid));
+        result.write(oprot);
+        oprot.writeMessageEnd();
+        oprot.getTransport().flush();
+      }
+
+    }
+
+    private class setRackUpdateServer implements ProcessFunction {
+      public void process(int seqid, org.apache.thrift.protocol.TProtocol iprot, org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException
+      {
+        setRackUpdateServer_args args = new setRackUpdateServer_args();
+        try {
+          args.read(iprot);
+        } catch (org.apache.thrift.protocol.TProtocolException e) {
+          iprot.readMessageEnd();
+          org.apache.thrift.TApplicationException x = new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.PROTOCOL_ERROR, e.getMessage());
+          oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("setRackUpdateServer", org.apache.thrift.protocol.TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        iprot.readMessageEnd();
+        iface_.setRackUpdateServer(args.tinfo, args.updateID, args.server);
+        return;
+      }
+    }
+
+    private class applyRackUpdates implements ProcessFunction {
+      public void process(int seqid, org.apache.thrift.protocol.TProtocol iprot, org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException
+      {
+        applyRackUpdates_args args = new applyRackUpdates_args();
+        try {
+          args.read(iprot);
+        } catch (org.apache.thrift.protocol.TProtocolException e) {
+          iprot.readMessageEnd();
+          org.apache.thrift.TApplicationException x = new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.PROTOCOL_ERROR, e.getMessage());
+          oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("applyRackUpdates", org.apache.thrift.protocol.TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        iprot.readMessageEnd();
+        iface_.applyRackUpdates(args.tinfo, args.updateID, args.keyExtent, args.mutations);
+        return;
+      }
+    }
+
+    private class closeRackUpdate implements ProcessFunction {
+      public void process(int seqid, org.apache.thrift.protocol.TProtocol iprot, org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException
+      {
+        closeRackUpdate_args args = new closeRackUpdate_args();
+        try {
+          args.read(iprot);
+        } catch (org.apache.thrift.protocol.TProtocolException e) {
+          iprot.readMessageEnd();
+          org.apache.thrift.TApplicationException x = new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.PROTOCOL_ERROR, e.getMessage());
+          oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("closeRackUpdate", org.apache.thrift.protocol.TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        iprot.readMessageEnd();
+        closeRackUpdate_result result = new closeRackUpdate_result();
+        try {
+          iface_.closeRackUpdate(args.tinfo, args.updateID);
+        } catch (NoSuchScanIDException nssi) {
+          result.nssi = nssi;
+        } catch (Throwable th) {
+          LOGGER.error("Internal error processing closeRackUpdate", th);
+          org.apache.thrift.TApplicationException x = new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.INTERNAL_ERROR, "Internal error processing closeRackUpdate");
+          oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("closeRackUpdate", org.apache.thrift.protocol.TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        oprot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("closeRackUpdate", org.apache.thrift.protocol.TMessageType.REPLY, seqid));
         result.write(oprot);
         oprot.writeMessageEnd();
         oprot.getTransport().flush();
@@ -11269,6 +11667,2543 @@ import org.slf4j.LoggerFactory;
 
   }
 
+  public static class startRackUpdate_args implements org.apache.thrift.TBase<startRackUpdate_args, startRackUpdate_args._Fields>, java.io.Serializable, Cloneable   {
+    private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("startRackUpdate_args");
+
+    private static final org.apache.thrift.protocol.TField TINFO_FIELD_DESC = new org.apache.thrift.protocol.TField("tinfo", org.apache.thrift.protocol.TType.STRUCT, (short)2);
+    private static final org.apache.thrift.protocol.TField CREDENTIALS_FIELD_DESC = new org.apache.thrift.protocol.TField("credentials", org.apache.thrift.protocol.TType.STRUCT, (short)1);
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+    public org.apache.accumulo.core.security.thrift.AuthInfo credentials;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements org.apache.thrift.TFieldIdEnum {
+      TINFO((short)2, "tinfo"),
+      CREDENTIALS((short)1, "credentials");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 2: // TINFO
+            return TINFO;
+          case 1: // CREDENTIALS
+            return CREDENTIALS;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.TINFO, new org.apache.thrift.meta_data.FieldMetaData("tinfo", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.cloudtrace.thrift.TInfo.class)));
+      tmpMap.put(_Fields.CREDENTIALS, new org.apache.thrift.meta_data.FieldMetaData("credentials", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.security.thrift.AuthInfo.class)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(startRackUpdate_args.class, metaDataMap);
+    }
+
+    public startRackUpdate_args() {
+    }
+
+    public startRackUpdate_args(
+      org.apache.accumulo.cloudtrace.thrift.TInfo tinfo,
+      org.apache.accumulo.core.security.thrift.AuthInfo credentials)
+    {
+      this();
+      this.tinfo = tinfo;
+      this.credentials = credentials;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public startRackUpdate_args(startRackUpdate_args other) {
+      if (other.isSetTinfo()) {
+        this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo(other.tinfo);
+      }
+      if (other.isSetCredentials()) {
+        this.credentials = new org.apache.accumulo.core.security.thrift.AuthInfo(other.credentials);
+      }
+    }
+
+    public startRackUpdate_args deepCopy() {
+      return new startRackUpdate_args(this);
+    }
+
+    @Override
+    public void clear() {
+      this.tinfo = null;
+      this.credentials = null;
+    }
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo getTinfo() {
+      return this.tinfo;
+    }
+
+    public startRackUpdate_args setTinfo(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo) {
+      this.tinfo = tinfo;
+      return this;
+    }
+
+    public void unsetTinfo() {
+      this.tinfo = null;
+    }
+
+    /** Returns true if field tinfo is set (has been assigned a value) and false otherwise */
+    public boolean isSetTinfo() {
+      return this.tinfo != null;
+    }
+
+    public void setTinfoIsSet(boolean value) {
+      if (!value) {
+        this.tinfo = null;
+      }
+    }
+
+    public org.apache.accumulo.core.security.thrift.AuthInfo getCredentials() {
+      return this.credentials;
+    }
+
+    public startRackUpdate_args setCredentials(org.apache.accumulo.core.security.thrift.AuthInfo credentials) {
+      this.credentials = credentials;
+      return this;
+    }
+
+    public void unsetCredentials() {
+      this.credentials = null;
+    }
+
+    /** Returns true if field credentials is set (has been assigned a value) and false otherwise */
+    public boolean isSetCredentials() {
+      return this.credentials != null;
+    }
+
+    public void setCredentialsIsSet(boolean value) {
+      if (!value) {
+        this.credentials = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case TINFO:
+        if (value == null) {
+          unsetTinfo();
+        } else {
+          setTinfo((org.apache.accumulo.cloudtrace.thrift.TInfo)value);
+        }
+        break;
+
+      case CREDENTIALS:
+        if (value == null) {
+          unsetCredentials();
+        } else {
+          setCredentials((org.apache.accumulo.core.security.thrift.AuthInfo)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case TINFO:
+        return getTinfo();
+
+      case CREDENTIALS:
+        return getCredentials();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case TINFO:
+        return isSetTinfo();
+      case CREDENTIALS:
+        return isSetCredentials();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof startRackUpdate_args)
+        return this.equals((startRackUpdate_args)that);
+      return false;
+    }
+
+    public boolean equals(startRackUpdate_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_tinfo = true && this.isSetTinfo();
+      boolean that_present_tinfo = true && that.isSetTinfo();
+      if (this_present_tinfo || that_present_tinfo) {
+        if (!(this_present_tinfo && that_present_tinfo))
+          return false;
+        if (!this.tinfo.equals(that.tinfo))
+          return false;
+      }
+
+      boolean this_present_credentials = true && this.isSetCredentials();
+      boolean that_present_credentials = true && that.isSetCredentials();
+      if (this_present_credentials || that_present_credentials) {
+        if (!(this_present_credentials && that_present_credentials))
+          return false;
+        if (!this.credentials.equals(that.credentials))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(startRackUpdate_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      startRackUpdate_args typedOther = (startRackUpdate_args)other;
+
+      lastComparison = Boolean.valueOf(isSetTinfo()).compareTo(typedOther.isSetTinfo());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetTinfo()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.tinfo, typedOther.tinfo);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetCredentials()).compareTo(typedOther.isSetCredentials());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetCredentials()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.credentials, typedOther.credentials);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+      org.apache.thrift.protocol.TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == org.apache.thrift.protocol.TType.STOP) { 
+          break;
+        }
+        switch (field.id) {
+          case 2: // TINFO
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo();
+              this.tinfo.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 1: // CREDENTIALS
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.credentials = new org.apache.accumulo.core.security.thrift.AuthInfo();
+              this.credentials.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      if (this.credentials != null) {
+        oprot.writeFieldBegin(CREDENTIALS_FIELD_DESC);
+        this.credentials.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      if (this.tinfo != null) {
+        oprot.writeFieldBegin(TINFO_FIELD_DESC);
+        this.tinfo.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("startRackUpdate_args(");
+      boolean first = true;
+
+      sb.append("tinfo:");
+      if (this.tinfo == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.tinfo);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("credentials:");
+      if (this.credentials == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.credentials);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws org.apache.thrift.TException {
+      // check for required fields
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+      try {
+        write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+      try {
+        read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+  }
+
+  public static class startRackUpdate_result implements org.apache.thrift.TBase<startRackUpdate_result, startRackUpdate_result._Fields>, java.io.Serializable, Cloneable   {
+    private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("startRackUpdate_result");
+
+    private static final org.apache.thrift.protocol.TField SUCCESS_FIELD_DESC = new org.apache.thrift.protocol.TField("success", org.apache.thrift.protocol.TType.I64, (short)0);
+    private static final org.apache.thrift.protocol.TField SEC_FIELD_DESC = new org.apache.thrift.protocol.TField("sec", org.apache.thrift.protocol.TType.STRUCT, (short)1);
+
+    public long success;
+    public org.apache.accumulo.core.security.thrift.ThriftSecurityException sec;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements org.apache.thrift.TFieldIdEnum {
+      SUCCESS((short)0, "success"),
+      SEC((short)1, "sec");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 0: // SUCCESS
+            return SUCCESS;
+          case 1: // SEC
+            return SEC;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+    private static final int __SUCCESS_ISSET_ID = 0;
+    private BitSet __isset_bit_vector = new BitSet(1);
+
+    public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.SUCCESS, new org.apache.thrift.meta_data.FieldMetaData("success", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64          , "UpdateID")));
+      tmpMap.put(_Fields.SEC, new org.apache.thrift.meta_data.FieldMetaData("sec", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRUCT)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(startRackUpdate_result.class, metaDataMap);
+    }
+
+    public startRackUpdate_result() {
+    }
+
+    public startRackUpdate_result(
+      long success,
+      org.apache.accumulo.core.security.thrift.ThriftSecurityException sec)
+    {
+      this();
+      this.success = success;
+      setSuccessIsSet(true);
+      this.sec = sec;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public startRackUpdate_result(startRackUpdate_result other) {
+      __isset_bit_vector.clear();
+      __isset_bit_vector.or(other.__isset_bit_vector);
+      this.success = other.success;
+      if (other.isSetSec()) {
+        this.sec = new org.apache.accumulo.core.security.thrift.ThriftSecurityException(other.sec);
+      }
+    }
+
+    public startRackUpdate_result deepCopy() {
+      return new startRackUpdate_result(this);
+    }
+
+    @Override
+    public void clear() {
+      setSuccessIsSet(false);
+      this.success = 0;
+      this.sec = null;
+    }
+
+    public long getSuccess() {
+      return this.success;
+    }
+
+    public startRackUpdate_result setSuccess(long success) {
+      this.success = success;
+      setSuccessIsSet(true);
+      return this;
+    }
+
+    public void unsetSuccess() {
+      __isset_bit_vector.clear(__SUCCESS_ISSET_ID);
+    }
+
+    /** Returns true if field success is set (has been assigned a value) and false otherwise */
+    public boolean isSetSuccess() {
+      return __isset_bit_vector.get(__SUCCESS_ISSET_ID);
+    }
+
+    public void setSuccessIsSet(boolean value) {
+      __isset_bit_vector.set(__SUCCESS_ISSET_ID, value);
+    }
+
+    public org.apache.accumulo.core.security.thrift.ThriftSecurityException getSec() {
+      return this.sec;
+    }
+
+    public startRackUpdate_result setSec(org.apache.accumulo.core.security.thrift.ThriftSecurityException sec) {
+      this.sec = sec;
+      return this;
+    }
+
+    public void unsetSec() {
+      this.sec = null;
+    }
+
+    /** Returns true if field sec is set (has been assigned a value) and false otherwise */
+    public boolean isSetSec() {
+      return this.sec != null;
+    }
+
+    public void setSecIsSet(boolean value) {
+      if (!value) {
+        this.sec = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SUCCESS:
+        if (value == null) {
+          unsetSuccess();
+        } else {
+          setSuccess((Long)value);
+        }
+        break;
+
+      case SEC:
+        if (value == null) {
+          unsetSec();
+        } else {
+          setSec((org.apache.accumulo.core.security.thrift.ThriftSecurityException)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SUCCESS:
+        return new Long(getSuccess());
+
+      case SEC:
+        return getSec();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case SUCCESS:
+        return isSetSuccess();
+      case SEC:
+        return isSetSec();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof startRackUpdate_result)
+        return this.equals((startRackUpdate_result)that);
+      return false;
+    }
+
+    public boolean equals(startRackUpdate_result that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_success = true;
+      boolean that_present_success = true;
+      if (this_present_success || that_present_success) {
+        if (!(this_present_success && that_present_success))
+          return false;
+        if (this.success != that.success)
+          return false;
+      }
+
+      boolean this_present_sec = true && this.isSetSec();
+      boolean that_present_sec = true && that.isSetSec();
+      if (this_present_sec || that_present_sec) {
+        if (!(this_present_sec && that_present_sec))
+          return false;
+        if (!this.sec.equals(that.sec))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(startRackUpdate_result other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      startRackUpdate_result typedOther = (startRackUpdate_result)other;
+
+      lastComparison = Boolean.valueOf(isSetSuccess()).compareTo(typedOther.isSetSuccess());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSuccess()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.success, typedOther.success);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetSec()).compareTo(typedOther.isSetSec());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSec()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.sec, typedOther.sec);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+      org.apache.thrift.protocol.TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == org.apache.thrift.protocol.TType.STOP) { 
+          break;
+        }
+        switch (field.id) {
+          case 0: // SUCCESS
+            if (field.type == org.apache.thrift.protocol.TType.I64) {
+              this.success = iprot.readI64();
+              setSuccessIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 1: // SEC
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.sec = new org.apache.accumulo.core.security.thrift.ThriftSecurityException();
+              this.sec.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
+      oprot.writeStructBegin(STRUCT_DESC);
+
+      if (this.isSetSuccess()) {
+        oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
+        oprot.writeI64(this.success);
+        oprot.writeFieldEnd();
+      } else if (this.isSetSec()) {
+        oprot.writeFieldBegin(SEC_FIELD_DESC);
+        this.sec.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("startRackUpdate_result(");
+      boolean first = true;
+
+      sb.append("success:");
+      sb.append(this.success);
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("sec:");
+      if (this.sec == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.sec);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws org.apache.thrift.TException {
+      // check for required fields
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+      try {
+        write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+      try {
+        read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+  }
+
+  public static class setRackUpdateServer_args implements org.apache.thrift.TBase<setRackUpdateServer_args, setRackUpdateServer_args._Fields>, java.io.Serializable, Cloneable   {
+    private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("setRackUpdateServer_args");
+
+    private static final org.apache.thrift.protocol.TField TINFO_FIELD_DESC = new org.apache.thrift.protocol.TField("tinfo", org.apache.thrift.protocol.TType.STRUCT, (short)1);
+    private static final org.apache.thrift.protocol.TField UPDATE_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("updateID", org.apache.thrift.protocol.TType.I64, (short)2);
+    private static final org.apache.thrift.protocol.TField SERVER_FIELD_DESC = new org.apache.thrift.protocol.TField("server", org.apache.thrift.protocol.TType.STRING, (short)3);
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+    public long updateID;
+    public String server;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements org.apache.thrift.TFieldIdEnum {
+      TINFO((short)1, "tinfo"),
+      UPDATE_ID((short)2, "updateID"),
+      SERVER((short)3, "server");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 1: // TINFO
+            return TINFO;
+          case 2: // UPDATE_ID
+            return UPDATE_ID;
+          case 3: // SERVER
+            return SERVER;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+    private static final int __UPDATEID_ISSET_ID = 0;
+    private BitSet __isset_bit_vector = new BitSet(1);
+
+    public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.TINFO, new org.apache.thrift.meta_data.FieldMetaData("tinfo", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.cloudtrace.thrift.TInfo.class)));
+      tmpMap.put(_Fields.UPDATE_ID, new org.apache.thrift.meta_data.FieldMetaData("updateID", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64          , "UpdateID")));
+      tmpMap.put(_Fields.SERVER, new org.apache.thrift.meta_data.FieldMetaData("server", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(setRackUpdateServer_args.class, metaDataMap);
+    }
+
+    public setRackUpdateServer_args() {
+    }
+
+    public setRackUpdateServer_args(
+      org.apache.accumulo.cloudtrace.thrift.TInfo tinfo,
+      long updateID,
+      String server)
+    {
+      this();
+      this.tinfo = tinfo;
+      this.updateID = updateID;
+      setUpdateIDIsSet(true);
+      this.server = server;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public setRackUpdateServer_args(setRackUpdateServer_args other) {
+      __isset_bit_vector.clear();
+      __isset_bit_vector.or(other.__isset_bit_vector);
+      if (other.isSetTinfo()) {
+        this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo(other.tinfo);
+      }
+      this.updateID = other.updateID;
+      if (other.isSetServer()) {
+        this.server = other.server;
+      }
+    }
+
+    public setRackUpdateServer_args deepCopy() {
+      return new setRackUpdateServer_args(this);
+    }
+
+    @Override
+    public void clear() {
+      this.tinfo = null;
+      setUpdateIDIsSet(false);
+      this.updateID = 0;
+      this.server = null;
+    }
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo getTinfo() {
+      return this.tinfo;
+    }
+
+    public setRackUpdateServer_args setTinfo(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo) {
+      this.tinfo = tinfo;
+      return this;
+    }
+
+    public void unsetTinfo() {
+      this.tinfo = null;
+    }
+
+    /** Returns true if field tinfo is set (has been assigned a value) and false otherwise */
+    public boolean isSetTinfo() {
+      return this.tinfo != null;
+    }
+
+    public void setTinfoIsSet(boolean value) {
+      if (!value) {
+        this.tinfo = null;
+      }
+    }
+
+    public long getUpdateID() {
+      return this.updateID;
+    }
+
+    public setRackUpdateServer_args setUpdateID(long updateID) {
+      this.updateID = updateID;
+      setUpdateIDIsSet(true);
+      return this;
+    }
+
+    public void unsetUpdateID() {
+      __isset_bit_vector.clear(__UPDATEID_ISSET_ID);
+    }
+
+    /** Returns true if field updateID is set (has been assigned a value) and false otherwise */
+    public boolean isSetUpdateID() {
+      return __isset_bit_vector.get(__UPDATEID_ISSET_ID);
+    }
+
+    public void setUpdateIDIsSet(boolean value) {
+      __isset_bit_vector.set(__UPDATEID_ISSET_ID, value);
+    }
+
+    public String getServer() {
+      return this.server;
+    }
+
+    public setRackUpdateServer_args setServer(String server) {
+      this.server = server;
+      return this;
+    }
+
+    public void unsetServer() {
+      this.server = null;
+    }
+
+    /** Returns true if field server is set (has been assigned a value) and false otherwise */
+    public boolean isSetServer() {
+      return this.server != null;
+    }
+
+    public void setServerIsSet(boolean value) {
+      if (!value) {
+        this.server = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case TINFO:
+        if (value == null) {
+          unsetTinfo();
+        } else {
+          setTinfo((org.apache.accumulo.cloudtrace.thrift.TInfo)value);
+        }
+        break;
+
+      case UPDATE_ID:
+        if (value == null) {
+          unsetUpdateID();
+        } else {
+          setUpdateID((Long)value);
+        }
+        break;
+
+      case SERVER:
+        if (value == null) {
+          unsetServer();
+        } else {
+          setServer((String)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case TINFO:
+        return getTinfo();
+
+      case UPDATE_ID:
+        return new Long(getUpdateID());
+
+      case SERVER:
+        return getServer();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case TINFO:
+        return isSetTinfo();
+      case UPDATE_ID:
+        return isSetUpdateID();
+      case SERVER:
+        return isSetServer();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof setRackUpdateServer_args)
+        return this.equals((setRackUpdateServer_args)that);
+      return false;
+    }
+
+    public boolean equals(setRackUpdateServer_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_tinfo = true && this.isSetTinfo();
+      boolean that_present_tinfo = true && that.isSetTinfo();
+      if (this_present_tinfo || that_present_tinfo) {
+        if (!(this_present_tinfo && that_present_tinfo))
+          return false;
+        if (!this.tinfo.equals(that.tinfo))
+          return false;
+      }
+
+      boolean this_present_updateID = true;
+      boolean that_present_updateID = true;
+      if (this_present_updateID || that_present_updateID) {
+        if (!(this_present_updateID && that_present_updateID))
+          return false;
+        if (this.updateID != that.updateID)
+          return false;
+      }
+
+      boolean this_present_server = true && this.isSetServer();
+      boolean that_present_server = true && that.isSetServer();
+      if (this_present_server || that_present_server) {
+        if (!(this_present_server && that_present_server))
+          return false;
+        if (!this.server.equals(that.server))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(setRackUpdateServer_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      setRackUpdateServer_args typedOther = (setRackUpdateServer_args)other;
+
+      lastComparison = Boolean.valueOf(isSetTinfo()).compareTo(typedOther.isSetTinfo());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetTinfo()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.tinfo, typedOther.tinfo);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetUpdateID()).compareTo(typedOther.isSetUpdateID());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetUpdateID()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.updateID, typedOther.updateID);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetServer()).compareTo(typedOther.isSetServer());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetServer()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.server, typedOther.server);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+      org.apache.thrift.protocol.TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == org.apache.thrift.protocol.TType.STOP) { 
+          break;
+        }
+        switch (field.id) {
+          case 1: // TINFO
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo();
+              this.tinfo.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 2: // UPDATE_ID
+            if (field.type == org.apache.thrift.protocol.TType.I64) {
+              this.updateID = iprot.readI64();
+              setUpdateIDIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 3: // SERVER
+            if (field.type == org.apache.thrift.protocol.TType.STRING) {
+              this.server = iprot.readString();
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      if (this.tinfo != null) {
+        oprot.writeFieldBegin(TINFO_FIELD_DESC);
+        this.tinfo.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldBegin(UPDATE_ID_FIELD_DESC);
+      oprot.writeI64(this.updateID);
+      oprot.writeFieldEnd();
+      if (this.server != null) {
+        oprot.writeFieldBegin(SERVER_FIELD_DESC);
+        oprot.writeString(this.server);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("setRackUpdateServer_args(");
+      boolean first = true;
+
+      sb.append("tinfo:");
+      if (this.tinfo == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.tinfo);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("updateID:");
+      sb.append(this.updateID);
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("server:");
+      if (this.server == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.server);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws org.apache.thrift.TException {
+      // check for required fields
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+      try {
+        write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+      try {
+        // it doesn't seem like you should have to do this, but java serialization is wacky, and doesn't call the default constructor.
+        __isset_bit_vector = new BitSet(1);
+        read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+  }
+
+  public static class applyRackUpdates_args implements org.apache.thrift.TBase<applyRackUpdates_args, applyRackUpdates_args._Fields>, java.io.Serializable, Cloneable   {
+    private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("applyRackUpdates_args");
+
+    private static final org.apache.thrift.protocol.TField TINFO_FIELD_DESC = new org.apache.thrift.protocol.TField("tinfo", org.apache.thrift.protocol.TType.STRUCT, (short)1);
+    private static final org.apache.thrift.protocol.TField UPDATE_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("updateID", org.apache.thrift.protocol.TType.I64, (short)2);
+    private static final org.apache.thrift.protocol.TField KEY_EXTENT_FIELD_DESC = new org.apache.thrift.protocol.TField("keyExtent", org.apache.thrift.protocol.TType.STRUCT, (short)3);
+    private static final org.apache.thrift.protocol.TField MUTATIONS_FIELD_DESC = new org.apache.thrift.protocol.TField("mutations", org.apache.thrift.protocol.TType.LIST, (short)4);
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+    public long updateID;
+    public org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent;
+    public List<org.apache.accumulo.core.data.thrift.TMutation> mutations;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements org.apache.thrift.TFieldIdEnum {
+      TINFO((short)1, "tinfo"),
+      UPDATE_ID((short)2, "updateID"),
+      KEY_EXTENT((short)3, "keyExtent"),
+      MUTATIONS((short)4, "mutations");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 1: // TINFO
+            return TINFO;
+          case 2: // UPDATE_ID
+            return UPDATE_ID;
+          case 3: // KEY_EXTENT
+            return KEY_EXTENT;
+          case 4: // MUTATIONS
+            return MUTATIONS;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+    private static final int __UPDATEID_ISSET_ID = 0;
+    private BitSet __isset_bit_vector = new BitSet(1);
+
+    public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.TINFO, new org.apache.thrift.meta_data.FieldMetaData("tinfo", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.cloudtrace.thrift.TInfo.class)));
+      tmpMap.put(_Fields.UPDATE_ID, new org.apache.thrift.meta_data.FieldMetaData("updateID", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64          , "UpdateID")));
+      tmpMap.put(_Fields.KEY_EXTENT, new org.apache.thrift.meta_data.FieldMetaData("keyExtent", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.data.thrift.TKeyExtent.class)));
+      tmpMap.put(_Fields.MUTATIONS, new org.apache.thrift.meta_data.FieldMetaData("mutations", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.ListMetaData(org.apache.thrift.protocol.TType.LIST, 
+              new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.data.thrift.TMutation.class))));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(applyRackUpdates_args.class, metaDataMap);
+    }
+
+    public applyRackUpdates_args() {
+    }
+
+    public applyRackUpdates_args(
+      org.apache.accumulo.cloudtrace.thrift.TInfo tinfo,
+      long updateID,
+      org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent,
+      List<org.apache.accumulo.core.data.thrift.TMutation> mutations)
+    {
+      this();
+      this.tinfo = tinfo;
+      this.updateID = updateID;
+      setUpdateIDIsSet(true);
+      this.keyExtent = keyExtent;
+      this.mutations = mutations;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public applyRackUpdates_args(applyRackUpdates_args other) {
+      __isset_bit_vector.clear();
+      __isset_bit_vector.or(other.__isset_bit_vector);
+      if (other.isSetTinfo()) {
+        this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo(other.tinfo);
+      }
+      this.updateID = other.updateID;
+      if (other.isSetKeyExtent()) {
+        this.keyExtent = new org.apache.accumulo.core.data.thrift.TKeyExtent(other.keyExtent);
+      }
+      if (other.isSetMutations()) {
+        List<org.apache.accumulo.core.data.thrift.TMutation> __this__mutations = new ArrayList<org.apache.accumulo.core.data.thrift.TMutation>();
+        for (org.apache.accumulo.core.data.thrift.TMutation other_element : other.mutations) {
+          __this__mutations.add(new org.apache.accumulo.core.data.thrift.TMutation(other_element));
+        }
+        this.mutations = __this__mutations;
+      }
+    }
+
+    public applyRackUpdates_args deepCopy() {
+      return new applyRackUpdates_args(this);
+    }
+
+    @Override
+    public void clear() {
+      this.tinfo = null;
+      setUpdateIDIsSet(false);
+      this.updateID = 0;
+      this.keyExtent = null;
+      this.mutations = null;
+    }
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo getTinfo() {
+      return this.tinfo;
+    }
+
+    public applyRackUpdates_args setTinfo(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo) {
+      this.tinfo = tinfo;
+      return this;
+    }
+
+    public void unsetTinfo() {
+      this.tinfo = null;
+    }
+
+    /** Returns true if field tinfo is set (has been assigned a value) and false otherwise */
+    public boolean isSetTinfo() {
+      return this.tinfo != null;
+    }
+
+    public void setTinfoIsSet(boolean value) {
+      if (!value) {
+        this.tinfo = null;
+      }
+    }
+
+    public long getUpdateID() {
+      return this.updateID;
+    }
+
+    public applyRackUpdates_args setUpdateID(long updateID) {
+      this.updateID = updateID;
+      setUpdateIDIsSet(true);
+      return this;
+    }
+
+    public void unsetUpdateID() {
+      __isset_bit_vector.clear(__UPDATEID_ISSET_ID);
+    }
+
+    /** Returns true if field updateID is set (has been assigned a value) and false otherwise */
+    public boolean isSetUpdateID() {
+      return __isset_bit_vector.get(__UPDATEID_ISSET_ID);
+    }
+
+    public void setUpdateIDIsSet(boolean value) {
+      __isset_bit_vector.set(__UPDATEID_ISSET_ID, value);
+    }
+
+    public org.apache.accumulo.core.data.thrift.TKeyExtent getKeyExtent() {
+      return this.keyExtent;
+    }
+
+    public applyRackUpdates_args setKeyExtent(org.apache.accumulo.core.data.thrift.TKeyExtent keyExtent) {
+      this.keyExtent = keyExtent;
+      return this;
+    }
+
+    public void unsetKeyExtent() {
+      this.keyExtent = null;
+    }
+
+    /** Returns true if field keyExtent is set (has been assigned a value) and false otherwise */
+    public boolean isSetKeyExtent() {
+      return this.keyExtent != null;
+    }
+
+    public void setKeyExtentIsSet(boolean value) {
+      if (!value) {
+        this.keyExtent = null;
+      }
+    }
+
+    public int getMutationsSize() {
+      return (this.mutations == null) ? 0 : this.mutations.size();
+    }
+
+    public java.util.Iterator<org.apache.accumulo.core.data.thrift.TMutation> getMutationsIterator() {
+      return (this.mutations == null) ? null : this.mutations.iterator();
+    }
+
+    public void addToMutations(org.apache.accumulo.core.data.thrift.TMutation elem) {
+      if (this.mutations == null) {
+        this.mutations = new ArrayList<org.apache.accumulo.core.data.thrift.TMutation>();
+      }
+      this.mutations.add(elem);
+    }
+
+    public List<org.apache.accumulo.core.data.thrift.TMutation> getMutations() {
+      return this.mutations;
+    }
+
+    public applyRackUpdates_args setMutations(List<org.apache.accumulo.core.data.thrift.TMutation> mutations) {
+      this.mutations = mutations;
+      return this;
+    }
+
+    public void unsetMutations() {
+      this.mutations = null;
+    }
+
+    /** Returns true if field mutations is set (has been assigned a value) and false otherwise */
+    public boolean isSetMutations() {
+      return this.mutations != null;
+    }
+
+    public void setMutationsIsSet(boolean value) {
+      if (!value) {
+        this.mutations = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case TINFO:
+        if (value == null) {
+          unsetTinfo();
+        } else {
+          setTinfo((org.apache.accumulo.cloudtrace.thrift.TInfo)value);
+        }
+        break;
+
+      case UPDATE_ID:
+        if (value == null) {
+          unsetUpdateID();
+        } else {
+          setUpdateID((Long)value);
+        }
+        break;
+
+      case KEY_EXTENT:
+        if (value == null) {
+          unsetKeyExtent();
+        } else {
+          setKeyExtent((org.apache.accumulo.core.data.thrift.TKeyExtent)value);
+        }
+        break;
+
+      case MUTATIONS:
+        if (value == null) {
+          unsetMutations();
+        } else {
+          setMutations((List<org.apache.accumulo.core.data.thrift.TMutation>)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case TINFO:
+        return getTinfo();
+
+      case UPDATE_ID:
+        return new Long(getUpdateID());
+
+      case KEY_EXTENT:
+        return getKeyExtent();
+
+      case MUTATIONS:
+        return getMutations();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case TINFO:
+        return isSetTinfo();
+      case UPDATE_ID:
+        return isSetUpdateID();
+      case KEY_EXTENT:
+        return isSetKeyExtent();
+      case MUTATIONS:
+        return isSetMutations();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof applyRackUpdates_args)
+        return this.equals((applyRackUpdates_args)that);
+      return false;
+    }
+
+    public boolean equals(applyRackUpdates_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_tinfo = true && this.isSetTinfo();
+      boolean that_present_tinfo = true && that.isSetTinfo();
+      if (this_present_tinfo || that_present_tinfo) {
+        if (!(this_present_tinfo && that_present_tinfo))
+          return false;
+        if (!this.tinfo.equals(that.tinfo))
+          return false;
+      }
+
+      boolean this_present_updateID = true;
+      boolean that_present_updateID = true;
+      if (this_present_updateID || that_present_updateID) {
+        if (!(this_present_updateID && that_present_updateID))
+          return false;
+        if (this.updateID != that.updateID)
+          return false;
+      }
+
+      boolean this_present_keyExtent = true && this.isSetKeyExtent();
+      boolean that_present_keyExtent = true && that.isSetKeyExtent();
+      if (this_present_keyExtent || that_present_keyExtent) {
+        if (!(this_present_keyExtent && that_present_keyExtent))
+          return false;
+        if (!this.keyExtent.equals(that.keyExtent))
+          return false;
+      }
+
+      boolean this_present_mutations = true && this.isSetMutations();
+      boolean that_present_mutations = true && that.isSetMutations();
+      if (this_present_mutations || that_present_mutations) {
+        if (!(this_present_mutations && that_present_mutations))
+          return false;
+        if (!this.mutations.equals(that.mutations))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(applyRackUpdates_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      applyRackUpdates_args typedOther = (applyRackUpdates_args)other;
+
+      lastComparison = Boolean.valueOf(isSetTinfo()).compareTo(typedOther.isSetTinfo());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetTinfo()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.tinfo, typedOther.tinfo);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetUpdateID()).compareTo(typedOther.isSetUpdateID());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetUpdateID()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.updateID, typedOther.updateID);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetKeyExtent()).compareTo(typedOther.isSetKeyExtent());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetKeyExtent()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.keyExtent, typedOther.keyExtent);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetMutations()).compareTo(typedOther.isSetMutations());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetMutations()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.mutations, typedOther.mutations);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+      org.apache.thrift.protocol.TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == org.apache.thrift.protocol.TType.STOP) { 
+          break;
+        }
+        switch (field.id) {
+          case 1: // TINFO
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo();
+              this.tinfo.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 2: // UPDATE_ID
+            if (field.type == org.apache.thrift.protocol.TType.I64) {
+              this.updateID = iprot.readI64();
+              setUpdateIDIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 3: // KEY_EXTENT
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.keyExtent = new org.apache.accumulo.core.data.thrift.TKeyExtent();
+              this.keyExtent.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 4: // MUTATIONS
+            if (field.type == org.apache.thrift.protocol.TType.LIST) {
+              {
+                org.apache.thrift.protocol.TList _list83 = iprot.readListBegin();
+                this.mutations = new ArrayList<org.apache.accumulo.core.data.thrift.TMutation>(_list83.size);
+                for (int _i84 = 0; _i84 < _list83.size; ++_i84)
+                {
+                  org.apache.accumulo.core.data.thrift.TMutation _elem85;
+                  _elem85 = new org.apache.accumulo.core.data.thrift.TMutation();
+                  _elem85.read(iprot);
+                  this.mutations.add(_elem85);
+                }
+                iprot.readListEnd();
+              }
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      if (this.tinfo != null) {
+        oprot.writeFieldBegin(TINFO_FIELD_DESC);
+        this.tinfo.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldBegin(UPDATE_ID_FIELD_DESC);
+      oprot.writeI64(this.updateID);
+      oprot.writeFieldEnd();
+      if (this.keyExtent != null) {
+        oprot.writeFieldBegin(KEY_EXTENT_FIELD_DESC);
+        this.keyExtent.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      if (this.mutations != null) {
+        oprot.writeFieldBegin(MUTATIONS_FIELD_DESC);
+        {
+          oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, this.mutations.size()));
+          for (org.apache.accumulo.core.data.thrift.TMutation _iter86 : this.mutations)
+          {
+            _iter86.write(oprot);
+          }
+          oprot.writeListEnd();
+        }
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("applyRackUpdates_args(");
+      boolean first = true;
+
+      sb.append("tinfo:");
+      if (this.tinfo == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.tinfo);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("updateID:");
+      sb.append(this.updateID);
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("keyExtent:");
+      if (this.keyExtent == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.keyExtent);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("mutations:");
+      if (this.mutations == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.mutations);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws org.apache.thrift.TException {
+      // check for required fields
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+      try {
+        write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+      try {
+        // it doesn't seem like you should have to do this, but java serialization is wacky, and doesn't call the default constructor.
+        __isset_bit_vector = new BitSet(1);
+        read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+  }
+
+  public static class closeRackUpdate_args implements org.apache.thrift.TBase<closeRackUpdate_args, closeRackUpdate_args._Fields>, java.io.Serializable, Cloneable   {
+    private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("closeRackUpdate_args");
+
+    private static final org.apache.thrift.protocol.TField TINFO_FIELD_DESC = new org.apache.thrift.protocol.TField("tinfo", org.apache.thrift.protocol.TType.STRUCT, (short)2);
+    private static final org.apache.thrift.protocol.TField UPDATE_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("updateID", org.apache.thrift.protocol.TType.I64, (short)1);
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo tinfo;
+    public long updateID;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements org.apache.thrift.TFieldIdEnum {
+      TINFO((short)2, "tinfo"),
+      UPDATE_ID((short)1, "updateID");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 2: // TINFO
+            return TINFO;
+          case 1: // UPDATE_ID
+            return UPDATE_ID;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+    private static final int __UPDATEID_ISSET_ID = 0;
+    private BitSet __isset_bit_vector = new BitSet(1);
+
+    public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.TINFO, new org.apache.thrift.meta_data.FieldMetaData("tinfo", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.cloudtrace.thrift.TInfo.class)));
+      tmpMap.put(_Fields.UPDATE_ID, new org.apache.thrift.meta_data.FieldMetaData("updateID", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64          , "UpdateID")));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(closeRackUpdate_args.class, metaDataMap);
+    }
+
+    public closeRackUpdate_args() {
+    }
+
+    public closeRackUpdate_args(
+      org.apache.accumulo.cloudtrace.thrift.TInfo tinfo,
+      long updateID)
+    {
+      this();
+      this.tinfo = tinfo;
+      this.updateID = updateID;
+      setUpdateIDIsSet(true);
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public closeRackUpdate_args(closeRackUpdate_args other) {
+      __isset_bit_vector.clear();
+      __isset_bit_vector.or(other.__isset_bit_vector);
+      if (other.isSetTinfo()) {
+        this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo(other.tinfo);
+      }
+      this.updateID = other.updateID;
+    }
+
+    public closeRackUpdate_args deepCopy() {
+      return new closeRackUpdate_args(this);
+    }
+
+    @Override
+    public void clear() {
+      this.tinfo = null;
+      setUpdateIDIsSet(false);
+      this.updateID = 0;
+    }
+
+    public org.apache.accumulo.cloudtrace.thrift.TInfo getTinfo() {
+      return this.tinfo;
+    }
+
+    public closeRackUpdate_args setTinfo(org.apache.accumulo.cloudtrace.thrift.TInfo tinfo) {
+      this.tinfo = tinfo;
+      return this;
+    }
+
+    public void unsetTinfo() {
+      this.tinfo = null;
+    }
+
+    /** Returns true if field tinfo is set (has been assigned a value) and false otherwise */
+    public boolean isSetTinfo() {
+      return this.tinfo != null;
+    }
+
+    public void setTinfoIsSet(boolean value) {
+      if (!value) {
+        this.tinfo = null;
+      }
+    }
+
+    public long getUpdateID() {
+      return this.updateID;
+    }
+
+    public closeRackUpdate_args setUpdateID(long updateID) {
+      this.updateID = updateID;
+      setUpdateIDIsSet(true);
+      return this;
+    }
+
+    public void unsetUpdateID() {
+      __isset_bit_vector.clear(__UPDATEID_ISSET_ID);
+    }
+
+    /** Returns true if field updateID is set (has been assigned a value) and false otherwise */
+    public boolean isSetUpdateID() {
+      return __isset_bit_vector.get(__UPDATEID_ISSET_ID);
+    }
+
+    public void setUpdateIDIsSet(boolean value) {
+      __isset_bit_vector.set(__UPDATEID_ISSET_ID, value);
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case TINFO:
+        if (value == null) {
+          unsetTinfo();
+        } else {
+          setTinfo((org.apache.accumulo.cloudtrace.thrift.TInfo)value);
+        }
+        break;
+
+      case UPDATE_ID:
+        if (value == null) {
+          unsetUpdateID();
+        } else {
+          setUpdateID((Long)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case TINFO:
+        return getTinfo();
+
+      case UPDATE_ID:
+        return new Long(getUpdateID());
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case TINFO:
+        return isSetTinfo();
+      case UPDATE_ID:
+        return isSetUpdateID();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof closeRackUpdate_args)
+        return this.equals((closeRackUpdate_args)that);
+      return false;
+    }
+
+    public boolean equals(closeRackUpdate_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_tinfo = true && this.isSetTinfo();
+      boolean that_present_tinfo = true && that.isSetTinfo();
+      if (this_present_tinfo || that_present_tinfo) {
+        if (!(this_present_tinfo && that_present_tinfo))
+          return false;
+        if (!this.tinfo.equals(that.tinfo))
+          return false;
+      }
+
+      boolean this_present_updateID = true;
+      boolean that_present_updateID = true;
+      if (this_present_updateID || that_present_updateID) {
+        if (!(this_present_updateID && that_present_updateID))
+          return false;
+        if (this.updateID != that.updateID)
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(closeRackUpdate_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      closeRackUpdate_args typedOther = (closeRackUpdate_args)other;
+
+      lastComparison = Boolean.valueOf(isSetTinfo()).compareTo(typedOther.isSetTinfo());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetTinfo()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.tinfo, typedOther.tinfo);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetUpdateID()).compareTo(typedOther.isSetUpdateID());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetUpdateID()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.updateID, typedOther.updateID);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+      org.apache.thrift.protocol.TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == org.apache.thrift.protocol.TType.STOP) { 
+          break;
+        }
+        switch (field.id) {
+          case 2: // TINFO
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.tinfo = new org.apache.accumulo.cloudtrace.thrift.TInfo();
+              this.tinfo.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 1: // UPDATE_ID
+            if (field.type == org.apache.thrift.protocol.TType.I64) {
+              this.updateID = iprot.readI64();
+              setUpdateIDIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      oprot.writeFieldBegin(UPDATE_ID_FIELD_DESC);
+      oprot.writeI64(this.updateID);
+      oprot.writeFieldEnd();
+      if (this.tinfo != null) {
+        oprot.writeFieldBegin(TINFO_FIELD_DESC);
+        this.tinfo.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("closeRackUpdate_args(");
+      boolean first = true;
+
+      sb.append("tinfo:");
+      if (this.tinfo == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.tinfo);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("updateID:");
+      sb.append(this.updateID);
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws org.apache.thrift.TException {
+      // check for required fields
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+      try {
+        write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+      try {
+        // it doesn't seem like you should have to do this, but java serialization is wacky, and doesn't call the default constructor.
+        __isset_bit_vector = new BitSet(1);
+        read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+  }
+
+  public static class closeRackUpdate_result implements org.apache.thrift.TBase<closeRackUpdate_result, closeRackUpdate_result._Fields>, java.io.Serializable, Cloneable   {
+    private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("closeRackUpdate_result");
+
+    private static final org.apache.thrift.protocol.TField NSSI_FIELD_DESC = new org.apache.thrift.protocol.TField("nssi", org.apache.thrift.protocol.TType.STRUCT, (short)1);
+
+    public NoSuchScanIDException nssi;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements org.apache.thrift.TFieldIdEnum {
+      NSSI((short)1, "nssi");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 1: // NSSI
+            return NSSI;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.NSSI, new org.apache.thrift.meta_data.FieldMetaData("nssi", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRUCT)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(closeRackUpdate_result.class, metaDataMap);
+    }
+
+    public closeRackUpdate_result() {
+    }
+
+    public closeRackUpdate_result(
+      NoSuchScanIDException nssi)
+    {
+      this();
+      this.nssi = nssi;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public closeRackUpdate_result(closeRackUpdate_result other) {
+      if (other.isSetNssi()) {
+        this.nssi = new NoSuchScanIDException(other.nssi);
+      }
+    }
+
+    public closeRackUpdate_result deepCopy() {
+      return new closeRackUpdate_result(this);
+    }
+
+    @Override
+    public void clear() {
+      this.nssi = null;
+    }
+
+    public NoSuchScanIDException getNssi() {
+      return this.nssi;
+    }
+
+    public closeRackUpdate_result setNssi(NoSuchScanIDException nssi) {
+      this.nssi = nssi;
+      return this;
+    }
+
+    public void unsetNssi() {
+      this.nssi = null;
+    }
+
+    /** Returns true if field nssi is set (has been assigned a value) and false otherwise */
+    public boolean isSetNssi() {
+      return this.nssi != null;
+    }
+
+    public void setNssiIsSet(boolean value) {
+      if (!value) {
+        this.nssi = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case NSSI:
+        if (value == null) {
+          unsetNssi();
+        } else {
+          setNssi((NoSuchScanIDException)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case NSSI:
+        return getNssi();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case NSSI:
+        return isSetNssi();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof closeRackUpdate_result)
+        return this.equals((closeRackUpdate_result)that);
+      return false;
+    }
+
+    public boolean equals(closeRackUpdate_result that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_nssi = true && this.isSetNssi();
+      boolean that_present_nssi = true && that.isSetNssi();
+      if (this_present_nssi || that_present_nssi) {
+        if (!(this_present_nssi && that_present_nssi))
+          return false;
+        if (!this.nssi.equals(that.nssi))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(closeRackUpdate_result other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      closeRackUpdate_result typedOther = (closeRackUpdate_result)other;
+
+      lastComparison = Boolean.valueOf(isSetNssi()).compareTo(typedOther.isSetNssi());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetNssi()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.nssi, typedOther.nssi);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+      org.apache.thrift.protocol.TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == org.apache.thrift.protocol.TType.STOP) { 
+          break;
+        }
+        switch (field.id) {
+          case 1: // NSSI
+            if (field.type == org.apache.thrift.protocol.TType.STRUCT) {
+              this.nssi = new NoSuchScanIDException();
+              this.nssi.read(iprot);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
+      oprot.writeStructBegin(STRUCT_DESC);
+
+      if (this.isSetNssi()) {
+        oprot.writeFieldBegin(NSSI_FIELD_DESC);
+        this.nssi.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("closeRackUpdate_result(");
+      boolean first = true;
+
+      sb.append("nssi:");
+      if (this.nssi == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.nssi);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws org.apache.thrift.TException {
+      // check for required fields
+    }
+
+    private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+      try {
+        write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+      try {
+        read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+      } catch (org.apache.thrift.TException te) {
+        throw new java.io.IOException(te);
+      }
+    }
+
+  }
+
   public static class update_args implements org.apache.thrift.TBase<update_args, update_args._Fields>, java.io.Serializable, Cloneable   {
     private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("update_args");
 
@@ -12857,29 +15792,29 @@ import org.slf4j.LoggerFactory;
           case 2: // FILES
             if (field.type == org.apache.thrift.protocol.TType.MAP) {
               {
-                org.apache.thrift.protocol.TMap _map83 = iprot.readMapBegin();
-                this.files = new HashMap<org.apache.accumulo.core.data.thrift.TKeyExtent,Map<String,org.apache.accumulo.core.data.thrift.MapFileInfo>>(2*_map83.size);
-                for (int _i84 = 0; _i84 < _map83.size; ++_i84)
+                org.apache.thrift.protocol.TMap _map87 = iprot.readMapBegin();
+                this.files = new HashMap<org.apache.accumulo.core.data.thrift.TKeyExtent,Map<String,org.apache.accumulo.core.data.thrift.MapFileInfo>>(2*_map87.size);
+                for (int _i88 = 0; _i88 < _map87.size; ++_i88)
                 {
-                  org.apache.accumulo.core.data.thrift.TKeyExtent _key85;
-                  Map<String,org.apache.accumulo.core.data.thrift.MapFileInfo> _val86;
-                  _key85 = new org.apache.accumulo.core.data.thrift.TKeyExtent();
-                  _key85.read(iprot);
+                  org.apache.accumulo.core.data.thrift.TKeyExtent _key89;
+                  Map<String,org.apache.accumulo.core.data.thrift.MapFileInfo> _val90;
+                  _key89 = new org.apache.accumulo.core.data.thrift.TKeyExtent();
+                  _key89.read(iprot);
                   {
-                    org.apache.thrift.protocol.TMap _map87 = iprot.readMapBegin();
-                    _val86 = new HashMap<String,org.apache.accumulo.core.data.thrift.MapFileInfo>(2*_map87.size);
-                    for (int _i88 = 0; _i88 < _map87.size; ++_i88)
+                    org.apache.thrift.protocol.TMap _map91 = iprot.readMapBegin();
+                    _val90 = new HashMap<String,org.apache.accumulo.core.data.thrift.MapFileInfo>(2*_map91.size);
+                    for (int _i92 = 0; _i92 < _map91.size; ++_i92)
                     {
-                      String _key89;
-                      org.apache.accumulo.core.data.thrift.MapFileInfo _val90;
-                      _key89 = iprot.readString();
-                      _val90 = new org.apache.accumulo.core.data.thrift.MapFileInfo();
-                      _val90.read(iprot);
-                      _val86.put(_key89, _val90);
+                      String _key93;
+                      org.apache.accumulo.core.data.thrift.MapFileInfo _val94;
+                      _key93 = iprot.readString();
+                      _val94 = new org.apache.accumulo.core.data.thrift.MapFileInfo();
+                      _val94.read(iprot);
+                      _val90.put(_key93, _val94);
                     }
                     iprot.readMapEnd();
                   }
-                  this.files.put(_key85, _val86);
+                  this.files.put(_key89, _val90);
                 }
                 iprot.readMapEnd();
               }
@@ -12919,15 +15854,15 @@ import org.slf4j.LoggerFactory;
         oprot.writeFieldBegin(FILES_FIELD_DESC);
         {
           oprot.writeMapBegin(new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRUCT, org.apache.thrift.protocol.TType.MAP, this.files.size()));
-          for (Map.Entry<org.apache.accumulo.core.data.thrift.TKeyExtent, Map<String,org.apache.accumulo.core.data.thrift.MapFileInfo>> _iter91 : this.files.entrySet())
+          for (Map.Entry<org.apache.accumulo.core.data.thrift.TKeyExtent, Map<String,org.apache.accumulo.core.data.thrift.MapFileInfo>> _iter95 : this.files.entrySet())
           {
-            _iter91.getKey().write(oprot);
+            _iter95.getKey().write(oprot);
             {
-              oprot.writeMapBegin(new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRING, org.apache.thrift.protocol.TType.STRUCT, _iter91.getValue().size()));
-              for (Map.Entry<String, org.apache.accumulo.core.data.thrift.MapFileInfo> _iter92 : _iter91.getValue().entrySet())
+              oprot.writeMapBegin(new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRING, org.apache.thrift.protocol.TType.STRUCT, _iter95.getValue().size()));
+              for (Map.Entry<String, org.apache.accumulo.core.data.thrift.MapFileInfo> _iter96 : _iter95.getValue().entrySet())
               {
-                oprot.writeString(_iter92.getKey());
-                _iter92.getValue().write(oprot);
+                oprot.writeString(_iter96.getKey());
+                _iter96.getValue().write(oprot);
               }
               oprot.writeMapEnd();
             }
@@ -13335,14 +16270,14 @@ import org.slf4j.LoggerFactory;
           case 0: // SUCCESS
             if (field.type == org.apache.thrift.protocol.TType.LIST) {
               {
-                org.apache.thrift.protocol.TList _list93 = iprot.readListBegin();
-                this.success = new ArrayList<org.apache.accumulo.core.data.thrift.TKeyExtent>(_list93.size);
-                for (int _i94 = 0; _i94 < _list93.size; ++_i94)
+                org.apache.thrift.protocol.TList _list97 = iprot.readListBegin();
+                this.success = new ArrayList<org.apache.accumulo.core.data.thrift.TKeyExtent>(_list97.size);
+                for (int _i98 = 0; _i98 < _list97.size; ++_i98)
                 {
-                  org.apache.accumulo.core.data.thrift.TKeyExtent _elem95;
-                  _elem95 = new org.apache.accumulo.core.data.thrift.TKeyExtent();
-                  _elem95.read(iprot);
-                  this.success.add(_elem95);
+                  org.apache.accumulo.core.data.thrift.TKeyExtent _elem99;
+                  _elem99 = new org.apache.accumulo.core.data.thrift.TKeyExtent();
+                  _elem99.read(iprot);
+                  this.success.add(_elem99);
                 }
                 iprot.readListEnd();
               }
@@ -13376,9 +16311,9 @@ import org.slf4j.LoggerFactory;
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, this.success.size()));
-          for (org.apache.accumulo.core.data.thrift.TKeyExtent _iter96 : this.success)
+          for (org.apache.accumulo.core.data.thrift.TKeyExtent _iter100 : this.success)
           {
-            _iter96.write(oprot);
+            _iter100.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -18696,13 +21631,13 @@ import org.slf4j.LoggerFactory;
           case 2: // LOGGERS
             if (field.type == org.apache.thrift.protocol.TType.SET) {
               {
-                org.apache.thrift.protocol.TSet _set97 = iprot.readSetBegin();
-                this.loggers = new HashSet<String>(2*_set97.size);
-                for (int _i98 = 0; _i98 < _set97.size; ++_i98)
+                org.apache.thrift.protocol.TSet _set101 = iprot.readSetBegin();
+                this.loggers = new HashSet<String>(2*_set101.size);
+                for (int _i102 = 0; _i102 < _set101.size; ++_i102)
                 {
-                  String _elem99;
-                  _elem99 = iprot.readString();
-                  this.loggers.add(_elem99);
+                  String _elem103;
+                  _elem103 = iprot.readString();
+                  this.loggers.add(_elem103);
                 }
                 iprot.readSetEnd();
               }
@@ -18734,9 +21669,9 @@ import org.slf4j.LoggerFactory;
         oprot.writeFieldBegin(LOGGERS_FIELD_DESC);
         {
           oprot.writeSetBegin(new org.apache.thrift.protocol.TSet(org.apache.thrift.protocol.TType.STRING, this.loggers.size()));
-          for (String _iter100 : this.loggers)
+          for (String _iter104 : this.loggers)
           {
-            oprot.writeString(_iter100);
+            oprot.writeString(_iter104);
           }
           oprot.writeSetEnd();
         }
@@ -20376,14 +23311,14 @@ import org.slf4j.LoggerFactory;
           case 0: // SUCCESS
             if (field.type == org.apache.thrift.protocol.TType.LIST) {
               {
-                org.apache.thrift.protocol.TList _list101 = iprot.readListBegin();
-                this.success = new ArrayList<TabletStats>(_list101.size);
-                for (int _i102 = 0; _i102 < _list101.size; ++_i102)
+                org.apache.thrift.protocol.TList _list105 = iprot.readListBegin();
+                this.success = new ArrayList<TabletStats>(_list105.size);
+                for (int _i106 = 0; _i106 < _list105.size; ++_i106)
                 {
-                  TabletStats _elem103;
-                  _elem103 = new TabletStats();
-                  _elem103.read(iprot);
-                  this.success.add(_elem103);
+                  TabletStats _elem107;
+                  _elem107 = new TabletStats();
+                  _elem107.read(iprot);
+                  this.success.add(_elem107);
                 }
                 iprot.readListEnd();
               }
@@ -20417,9 +23352,9 @@ import org.slf4j.LoggerFactory;
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, this.success.size()));
-          for (TabletStats _iter104 : this.success)
+          for (TabletStats _iter108 : this.success)
           {
-            _iter104.write(oprot);
+            _iter108.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -23212,14 +26147,14 @@ import org.slf4j.LoggerFactory;
           case 0: // SUCCESS
             if (field.type == org.apache.thrift.protocol.TType.LIST) {
               {
-                org.apache.thrift.protocol.TList _list105 = iprot.readListBegin();
-                this.success = new ArrayList<ActiveScan>(_list105.size);
-                for (int _i106 = 0; _i106 < _list105.size; ++_i106)
+                org.apache.thrift.protocol.TList _list109 = iprot.readListBegin();
+                this.success = new ArrayList<ActiveScan>(_list109.size);
+                for (int _i110 = 0; _i110 < _list109.size; ++_i110)
                 {
-                  ActiveScan _elem107;
-                  _elem107 = new ActiveScan();
-                  _elem107.read(iprot);
-                  this.success.add(_elem107);
+                  ActiveScan _elem111;
+                  _elem111 = new ActiveScan();
+                  _elem111.read(iprot);
+                  this.success.add(_elem111);
                 }
                 iprot.readListEnd();
               }
@@ -23253,9 +26188,9 @@ import org.slf4j.LoggerFactory;
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, this.success.size()));
-          for (ActiveScan _iter108 : this.success)
+          for (ActiveScan _iter112 : this.success)
           {
-            _iter108.write(oprot);
+            _iter112.write(oprot);
           }
           oprot.writeListEnd();
         }

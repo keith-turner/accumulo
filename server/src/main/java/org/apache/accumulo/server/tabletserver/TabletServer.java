@@ -49,6 +49,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.TimeUnit;
@@ -702,6 +703,16 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
     TservConstraintEnv cenv = null;
   }
   
+  private static class RackUpdateSession extends Session {
+    List<FutureTask<UpdateErrors>> relayTasks = new ArrayList<FutureTask<UpdateErrors>>();
+    AuthInfo credentials;
+    RackRelayTask currentTask;
+    
+    RackUpdateSession(AuthInfo credentials) {
+      this.credentials = credentials;
+    }
+  }
+
   private static class ScanSession extends Session {
     public KeyExtent extent;
     public HashSet<Column> columnSet;
@@ -2028,6 +2039,56 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
             return;
           }
         tablet.compactAll(compactionId);
+      }
+      
+    }
+    
+    @Override
+    public long startRackUpdate(TInfo tinfo, AuthInfo credentials) throws ThriftSecurityException, TException {
+      return sessionManager.createSession(new RackUpdateSession(credentials), false);
+    }
+    
+    @Override
+    public void setRackUpdateServer(TInfo tinfo, long updateID, String server) throws TException {
+      RackUpdateSession rus = (RackUpdateSession) sessionManager.getSession(updateID);
+      if (rus.currentTask != null) {
+        rus.currentTask.close();
+      }
+      
+      rus.currentTask = new RackRelayTask(server, rus.credentials);
+      FutureTask<UpdateErrors> relayTask = new FutureTask<UpdateErrors>(rus.currentTask);
+      // TODO use thread pool?
+      new Thread(relayTask).start();
+      rus.relayTasks.add(relayTask);
+
+    }
+    
+    @Override
+    public void applyRackUpdates(TInfo tinfo, long updateID, TKeyExtent keyExtent, List<TMutation> mutations) throws TException {
+      RackUpdateSession rus = (RackUpdateSession) sessionManager.getSession(updateID);
+      rus.currentTask.addMutations(keyExtent, mutations);
+    }
+    
+    @Override
+    public void closeRackUpdate(TInfo tinfo, long updateID) throws NoSuchScanIDException, TException {
+      RackUpdateSession rus = (RackUpdateSession) sessionManager.getSession(updateID);
+      
+      if (rus == null) {
+        // TODO
+      }
+      
+      rus.currentTask.close();
+      
+      for (FutureTask<UpdateErrors> task : rus.relayTasks) {
+        try {
+          task.get();
+        } catch (InterruptedException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        } catch (ExecutionException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        }
       }
       
     }

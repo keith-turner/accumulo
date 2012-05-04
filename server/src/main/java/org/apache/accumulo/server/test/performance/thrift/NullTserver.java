@@ -47,6 +47,7 @@ import org.apache.accumulo.core.master.thrift.TabletServerStatus;
 import org.apache.accumulo.core.security.thrift.AuthInfo;
 import org.apache.accumulo.core.security.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.tabletserver.thrift.ActiveScan;
+import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
 import org.apache.accumulo.core.util.UtilWaitThread;
@@ -186,6 +187,30 @@ public class NullTserver {
     
     @Override
     public void flush(TInfo tinfo, AuthInfo credentials, String lock, String tableId, ByteBuffer startRow, ByteBuffer endRow) throws TException {
+      
+    }
+    
+    @Override
+    public long startRackUpdate(TInfo tinfo, AuthInfo credentials) throws ThriftSecurityException, TException {
+      // TODO Auto-generated method stub
+      return 0;
+    }
+    
+    @Override
+    public void setRackUpdateServer(TInfo tinfo, long updateID, String server) throws TException {
+      // TODO Auto-generated method stub
+      
+    }
+    
+    @Override
+    public void applyRackUpdates(TInfo tinfo, long updateID, TKeyExtent keyExtent, List<TMutation> mutations) throws TException {
+      // TODO Auto-generated method stub
+      
+    }
+    
+    @Override
+    public void closeRackUpdate(TInfo tinfo, long updateID) throws NoSuchScanIDException, TException {
+      // TODO Auto-generated method stub
       
     }
   }

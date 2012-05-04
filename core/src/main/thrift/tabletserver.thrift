@@ -119,6 +119,12 @@ service TabletClientService extends client.ClientService {
   oneway void applyUpdates(1:cloudtrace.TInfo tinfo, 2:data.UpdateID updateID, 3:data.TKeyExtent keyExtent, 4:list<data.TMutation> mutations),
   data.UpdateErrors closeUpdate(2:cloudtrace.TInfo tinfo, 1:data.UpdateID updateID) throws (1:NoSuchScanIDException nssi),
   
+  //the following calls support writing to a rack
+  data.UpdateID startRackUpdate(2:cloudtrace.TInfo tinfo, 1:security.AuthInfo credentials) throws (1:security.ThriftSecurityException sec),
+  oneway void setRackUpdateServer(1:cloudtrace.TInfo tinfo, 2:data.UpdateID updateID, 3:string server),
+  oneway void applyRackUpdates(1:cloudtrace.TInfo tinfo, 2:data.UpdateID updateID, 3:data.TKeyExtent keyExtent, 4:list<data.TMutation> mutations),
+  void closeRackUpdate(2:cloudtrace.TInfo tinfo, 1:data.UpdateID updateID) throws (1:NoSuchScanIDException nssi),
+  
   //the following call supports making a single update to a tablet
   void update(4:cloudtrace.TInfo tinfo, 1:security.AuthInfo credentials, 2:data.TKeyExtent keyExtent, 3:data.TMutation mutation)
     throws (1:security.ThriftSecurityException sec, 
