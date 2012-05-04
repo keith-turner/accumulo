@@ -17,6 +17,7 @@
 package org.apache.accumulo.core.client.impl;
 
 import org.apache.accumulo.core.client.BatchWriter;
+import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.data.Mutation;
@@ -28,12 +29,18 @@ public class BatchWriterImpl implements BatchWriter {
   private String table;
   private TabletServerBatchWriter bw;
   
+  public BatchWriterImpl(Instance instance, AuthInfo credentials, String table, BatchWriterConfig config) {
+    ArgumentChecker.notNull(instance, credentials, table);
+    this.table = table;
+    this.bw = new TabletServerBatchWriter(instance, credentials, config);
+  }
+  
   public BatchWriterImpl(Instance instance, AuthInfo credentials, String table, long maxMemory, long maxLatency, int maxWriteThreads) {
     ArgumentChecker.notNull(instance, credentials, table);
     this.table = table;
     this.bw = new TabletServerBatchWriter(instance, credentials, maxMemory, maxLatency, maxWriteThreads);
   }
-  
+
   @Override
   public void addMutation(Mutation m) throws MutationsRejectedException {
     ArgumentChecker.notNull(m);

@@ -125,6 +125,10 @@ public class Connector {
     return impl.createBatchWriter(tableName, maxMemory, maxLatency, maxWriteThreads);
   }
   
+  public BatchWriter createBatchWriter(String tableName, BatchWriterConfig config) throws TableNotFoundException {
+    return impl.createBatchWriter(tableName, config);
+  }
+
   /**
    * Factory method to create a Multi-Table BatchWriter connected to Accumulo. Multi-table batch writers can queue data for multiple tables, which is good for
    * ingesting data into multiple tables from the same source

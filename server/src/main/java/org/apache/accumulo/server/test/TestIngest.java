@@ -25,6 +25,7 @@ import org.apache.accumulo.cloudtrace.instrument.Trace;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
+import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.MutationsRejectedException;
@@ -59,6 +60,7 @@ import org.apache.commons.cli.Parser;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.net.ScriptBasedMapping;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
@@ -132,6 +134,7 @@ public class TestIngest {
     String columnFamily = "colf";
     
     boolean trace = false;
+    boolean rack;
   }
   
   public static Options getOptions() {
@@ -148,6 +151,7 @@ public class TestIngest {
     opts.addOption(new Option("password", "password", true, "password"));
     opts.addOption(new Option("trace", "trace", false, "turn on distributed tracing"));
     opts.addOption(new Option("rFile", "rFile", true, "relative-key file"));
+    opts.addOption(new Option("rack", "rack", false, "use rack writer"));
     return opts;
   }
   
@@ -197,6 +201,8 @@ public class TestIngest {
     }
     ia.useTsbw = cl.hasOption("tsbw");
     
+    ia.rack = cl.hasOption("rack");
+
     username = cl.getOptionValue("username", "root");
     passwd = cl.getOptionValue("password", "secret");
     
@@ -288,7 +294,13 @@ public class TestIngest {
         writer.startDefaultLocalityGroup();
       } else {
         Connector connector = instance.getConnector(rootCredentials.user, rootCredentials.password);
-        bw = connector.createBatchWriter("test_ingest", 20000000l, 60000l, 10);
+        BatchWriterConfig config = new BatchWriterConfig();
+        config.setMaxMemory(20000000l);
+        config.setMaxLatency(60000l);
+        config.setMaxWriteThreads(10);
+        if (ingestArgs.rack)
+          config.setMapping(new ScriptBasedMapping());
+        bw = connector.createBatchWriter("test_ingest", config);
       }
       
       Authenticator authenticator = ZKAuthenticator.getInstance();

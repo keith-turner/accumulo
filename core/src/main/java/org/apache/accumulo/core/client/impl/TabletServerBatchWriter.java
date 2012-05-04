@@ -41,6 +41,7 @@ import org.apache.accumulo.cloudtrace.instrument.Trace;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
+import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.TableDeletedException;
@@ -63,6 +64,7 @@ import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.util.ThriftUtil;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.net.CachedDNSToSwitchMapping;
 import org.apache.hadoop.net.DNSToSwitchMapping;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TApplicationException;
@@ -141,6 +143,10 @@ public class TabletServerBatchWriter {
   
   private Throwable lastUnknownError = null;
   
+  public TabletServerBatchWriter(Instance instance, AuthInfo credentials, BatchWriterConfig config) {
+    this(instance, credentials, config.getMaxMemory(), config.getMaxLatency(), config.getMaxWriteThreads(), config.getMapping());
+  }
+  
   public TabletServerBatchWriter(Instance instance, AuthInfo credentials, long maxMemory, long maxLatency, int numSendThreads) {
     this(instance, credentials, maxMemory, maxLatency, numSendThreads, null);
   }
@@ -164,7 +170,7 @@ public class TabletServerBatchWriter {
     if (mapping == null)
       writer = new MutationWriter(new TabletServerMutationBinner(), numSendThreads);
     else
-      writer = new MutationWriter(new RackMutationBinner(mapping), numSendThreads);
+      writer = new MutationWriter(new RackMutationBinner(new CachedDNSToSwitchMapping(mapping)), numSendThreads);
 
     failedMutations = new FailedMutations();
     
@@ -183,7 +189,7 @@ public class TabletServerBatchWriter {
       }, 0, this.maxLatency / 4);
     }
   }
-  
+
   private synchronized void startProcessing() {
     if (mutations.getMemoryUsed() == 0)
       return;

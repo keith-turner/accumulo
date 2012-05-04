@@ -23,6 +23,7 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchDeleter;
 import org.apache.accumulo.core.client.BatchScanner;
 import org.apache.accumulo.core.client.BatchWriter;
+import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.MultiTableBatchWriter;
@@ -110,6 +111,12 @@ public class ConnectorImpl extends Connector {
   public BatchWriter createBatchWriter(String tableName, long maxMemory, long maxLatency, int maxWriteThreads) throws TableNotFoundException {
     ArgumentChecker.notNull(tableName);
     return new BatchWriterImpl(instance, credentials, getTableId(tableName), maxMemory, maxLatency, maxWriteThreads);
+  }
+  
+  @Override
+  public BatchWriter createBatchWriter(String tableName, BatchWriterConfig bwconfig) throws TableNotFoundException {
+    ArgumentChecker.notNull(tableName);
+    return new BatchWriterImpl(instance, credentials, getTableId(tableName), bwconfig);
   }
   
   @Override
