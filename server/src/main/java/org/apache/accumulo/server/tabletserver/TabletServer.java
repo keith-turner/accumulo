@@ -711,6 +711,15 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
     RackUpdateSession(AuthInfo credentials) {
       this.credentials = credentials;
     }
+    
+    @Override
+    public void cleanup() {
+      for (FutureTask<UpdateErrors> relayTask : relayTasks) {
+        // TODO this may not be sufficient to wack the thread, some code just eats/ignores interrupted exceptions... probably need to also set a volatile
+        // cancled boolean that is checked periodically
+        relayTask.cancel(true);
+      }
+    }
   }
 
   private static class ScanSession extends Session {

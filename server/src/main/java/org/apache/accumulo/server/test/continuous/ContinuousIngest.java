@@ -29,6 +29,7 @@ import org.apache.accumulo.cloudtrace.instrument.Tracer;
 import org.apache.accumulo.cloudtrace.instrument.receivers.ZooSpanClient;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.BatchWriter;
+import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.MutationsRejectedException;
@@ -38,6 +39,7 @@ import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.zookeeper.ZooUtil;
 import org.apache.accumulo.server.test.FastFormat;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.net.ScriptBasedMapping;
 import org.apache.log4j.FileAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -46,6 +48,7 @@ import org.apache.log4j.PatternLayout;
 
 public class ContinuousIngest {
   
+  private static boolean rackWriter = false;
   private static String debugLog = null;
   private static final byte[] EMPTY_BYTES = new byte[0];
   
@@ -55,6 +58,8 @@ public class ContinuousIngest {
     for (int i = 0; i < args.length; i++) {
       if (args[i].equals("--debug")) {
         debugLog = args[++i];
+      } else if (args[i].equals("--rack")) {
+        rackWriter = true;
       } else {
         al.add(args[i]);
       }
@@ -109,7 +114,14 @@ public class ContinuousIngest {
     String path = ZooUtil.getRoot(instance) + Constants.ZTRACERS;
     Tracer.getInstance().addReceiver(new ZooSpanClient(zooKeepers, path, localhost, "cingest", 1000));
     
-    BatchWriter bw = conn.createBatchWriter(table, maxMemory, maxLatency, maxWriteThreads);
+    BatchWriterConfig bwc = new BatchWriterConfig();
+    bwc.setMaxLatency(maxLatency);
+    bwc.setMaxMemory(maxMemory);
+    bwc.setMaxWriteThreads(maxWriteThreads);
+    if (rackWriter) {
+      bwc.setMapping(new ScriptBasedMapping());
+    }
+    BatchWriter bw = conn.createBatchWriter(table, bwc);
     bw = Trace.wrapAll(bw, new CountSampler(1024));
     
     Random r = new Random();
