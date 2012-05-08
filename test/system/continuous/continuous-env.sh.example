@@ -53,8 +53,8 @@ MAX_LATENCY=600000
 #the number of threads each ingester will use to write data
 NUM_THREADS=4
 
-#set to on to use rack aware batch writer
-RACK_WRITER=off
+#set to location of hadoop topology script to use rack aware batch writer
+RACK_SCRIPT=""
 
 #the amount of time (in millis) to sleep between each query
 SLEEP_TIME=10

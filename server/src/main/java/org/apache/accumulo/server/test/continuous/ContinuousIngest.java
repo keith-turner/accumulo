@@ -38,6 +38,7 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.zookeeper.ZooUtil;
 import org.apache.accumulo.server.test.FastFormat;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.net.ScriptBasedMapping;
 import org.apache.log4j.FileAppender;
@@ -48,7 +49,7 @@ import org.apache.log4j.PatternLayout;
 
 public class ContinuousIngest {
   
-  private static boolean rackWriter = false;
+  private static String rackScript = null;
   private static String debugLog = null;
   private static final byte[] EMPTY_BYTES = new byte[0];
   
@@ -59,7 +60,8 @@ public class ContinuousIngest {
       if (args[i].equals("--debug")) {
         debugLog = args[++i];
       } else if (args[i].equals("--rack")) {
-        rackWriter = true;
+        rackScript = args[++i];
+        ;
       } else {
         al.add(args[i]);
       }
@@ -76,7 +78,7 @@ public class ContinuousIngest {
       throw new IllegalArgumentException(
           "usage : "
               + ContinuousIngest.class.getName()
-              + " [--debug <debug log>] <instance name> <zookeepers> <user> <pass> <table> <min> <max> <max colf> <max colq> <max mem> <max latency> <max threads> <enable checksum>");
+              + " [--debug <debug log>] [--rack <script>] <instance name> <zookeepers> <user> <pass> <table> <min> <max> <max colf> <max colq> <max mem> <max latency> <max threads> <enable checksum>");
     }
     
     if (debugLog != null) {
@@ -118,8 +120,10 @@ public class ContinuousIngest {
     bwc.setMaxLatency(maxLatency);
     bwc.setMaxMemory(maxMemory);
     bwc.setMaxWriteThreads(maxWriteThreads);
-    if (rackWriter) {
-      bwc.setMapping(new ScriptBasedMapping());
+    if (rackScript != null) {
+      Configuration conf = new Configuration();
+      conf.set("topology.script.file.name", rackScript);
+      bwc.setMapping(new ScriptBasedMapping(conf));
     }
     BatchWriter bw = conn.createBatchWriter(table, bwc);
     bw = Trace.wrapAll(bw, new CountSampler(1024));

@@ -26,8 +26,8 @@ fi
 
 RACK_OPT="";
 
-if [ "$RACK_WRITER" = "on" ] ; then
-	RACK_OPT="--rack";
+if [ -n "$RACK_SCRIPT" ] ; then
+	RACK_OPT="--rack $RACK_SCRIPT";
 fi
 
 
