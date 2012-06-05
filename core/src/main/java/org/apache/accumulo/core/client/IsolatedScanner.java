@@ -209,6 +209,7 @@ public class IsolatedScanner extends ScannerOptions implements Scanner {
   private Scanner scanner;
   private Range range;
   private int timeOut;
+  private int batchSize;
   private RowBufferFactory bufferFactory;
   
   public IsolatedScanner(Scanner scanner) {
@@ -217,15 +218,15 @@ public class IsolatedScanner extends ScannerOptions implements Scanner {
   
   public IsolatedScanner(Scanner scanner, RowBufferFactory bufferFactory) {
     this.scanner = scanner;
-    setRange(scanner.getRange());
-    setBatchSize(scanner.getBatchSize());
-    setTimeOut(scanner.getTimeOut());
+    this.range = scanner.getRange();
+    this.timeOut = scanner.getTimeOut();
+    this.batchSize = scanner.getBatchSize();
     this.bufferFactory = bufferFactory;
   }
   
   @Override
   public Iterator<Entry<Key,Value>> iterator() {
-    return new RowBufferingIterator(scanner, this, range, timeOut, getBatchSize(), bufferFactory);
+    return new RowBufferingIterator(scanner, this, range, timeOut, batchSize, bufferFactory);
   }
   
   @Override
@@ -247,6 +248,16 @@ public class IsolatedScanner extends ScannerOptions implements Scanner {
   @Override
   public Range getRange() {
     return range;
+  }
+  
+  @Override
+  public void setBatchSize(int size) {
+    this.batchSize = size;
+  }
+  
+  @Override
+  public int getBatchSize() {
+    return batchSize;
   }
   
   @Override

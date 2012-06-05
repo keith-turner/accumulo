@@ -62,6 +62,7 @@ import org.apache.accumulo.core.tabletserver.thrift.ConstraintViolationException
 import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
 import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
+import org.apache.accumulo.core.util.NamingThreadFactory;
 import org.apache.accumulo.core.util.ThriftUtil;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.net.CachedDNSToSwitchMapping;
@@ -971,7 +972,7 @@ public class TabletServerBatchWriter {
       serversMutations = new HashMap<String,DeliverableMutations>();
 
       queued = new HashSet<String>();
-      sendThreadPool = Executors.newFixedThreadPool(numSendThreads);
+      sendThreadPool = Executors.newFixedThreadPool(numSendThreads, new NamingThreadFactory(this.getClass().getName()));
       this.mutationBinner = mutationBinner;
     }
     
