@@ -38,6 +38,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.accumulo.cloudtrace.instrument.Span;
 import org.apache.accumulo.cloudtrace.instrument.Trace;
+import org.apache.accumulo.cloudtrace.instrument.Tracer;
+import org.apache.accumulo.cloudtrace.thrift.TInfo;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
@@ -629,6 +631,8 @@ public class TabletServerBatchWriter {
         return new MutationSet();
       }
       
+      TInfo tinfo = Tracer.traceInfo();
+
       try {
         TabletClientService.Iface client = ThriftUtil.getTServerClient(location, instance.getConfiguration());
         try {
@@ -638,7 +642,7 @@ public class TabletServerBatchWriter {
             Entry<KeyExtent,List<Mutation>> entry = tabMuts.entrySet().iterator().next();
             
             try {
-              client.update(null, credentials, entry.getKey().toThrift(), entry.getValue().get(0).toThrift());
+              client.update(tinfo, credentials, entry.getKey().toThrift(), entry.getValue().get(0).toThrift());
             } catch (NotServingTabletException e) {
               allFailures.addAll(entry.getKey().getTableId().toString(), entry.getValue());
               TabletLocator.getInstance(instance, credentials, new Text(entry.getKey().getTableId())).invalidateCache(entry.getKey());
@@ -647,7 +651,7 @@ public class TabletServerBatchWriter {
             }
           } else {
             
-            long usid = client.startUpdate(null, credentials);
+            long usid = client.startUpdate(tinfo, credentials);
             
             List<TMutation> updates = new ArrayList<TMutation>();
             for (Entry<KeyExtent,List<Mutation>> entry : tabMuts.entrySet()) {
@@ -660,13 +664,13 @@ public class TabletServerBatchWriter {
                   size += mutation.numBytes();
                 }
                 
-                client.applyUpdates(null, usid, entry.getKey().toThrift(), updates);
+                client.applyUpdates(tinfo, usid, entry.getKey().toThrift(), updates);
                 updates.clear();
                 size = 0;
               }
             }
             
-            UpdateErrors updateErrors = client.closeUpdate(null, usid);
+            UpdateErrors updateErrors = client.closeUpdate(tinfo, usid);
             Map<KeyExtent,Long> failures = Translator.translate(updateErrors.failedExtents, Translator.TKET);
             updatedConstraintViolations(Translator.translate(updateErrors.violationSummaries, Translator.TCVST));
             updateAuthorizationFailures(Translator.translate(updateErrors.authorizationFailures, Translator.TKET));
@@ -757,16 +761,18 @@ public class TabletServerBatchWriter {
         return new MutationSet();
       }
       
+      TInfo tinfo = Tracer.traceInfo();
+
       try {
         TabletClientService.Iface client = ThriftUtil.getTServerClient(location, instance.getConfiguration());
         try {
           MutationSet allFailures = new MutationSet();
           
-          long rupid = client.startRackUpdate(null, credentials);
+          long rupid = client.startRackUpdate(tinfo, credentials);
           
           for (Entry<String,TabletServerMutations> entry : mutations.entrySet()) {
             
-            client.setRackUpdateServer(null, rupid, entry.getKey());
+            client.setRackUpdateServer(tinfo, rupid, entry.getKey());
 
             List<TMutation> updates = new ArrayList<TMutation>();
             for (Entry<KeyExtent,List<Mutation>> entry2 : entry.getValue().getMutations().entrySet()) {
@@ -779,14 +785,14 @@ public class TabletServerBatchWriter {
                   size += mutation.numBytes();
                 }
                 
-                client.applyRackUpdates(null, rupid, entry2.getKey().toThrift(), updates);
+                client.applyRackUpdates(tinfo, rupid, entry2.getKey().toThrift(), updates);
                 updates.clear();
                 size = 0;
               }
             }
           }
           
-          client.closeRackUpdate(null, rupid);
+          client.closeRackUpdate(tinfo, rupid);
           
           return allFailures;
         } finally {
@@ -1109,8 +1115,6 @@ public class TabletServerBatchWriter {
         }
       }
     }
-    
-    
   }
   
   // END code for sending mutations to tablet servers using background threads
