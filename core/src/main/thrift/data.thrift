@@ -142,6 +142,12 @@ struct TConditionalMutation {
 	3:i64 id;
 }
 
+struct TConditionalSession {
+	1:i64 sessionId;
+	2:string tserverLock;
+        3:i64 ttl;
+}
+
 typedef map<TKeyExtent,list<TConditionalMutation>> CMBatch
 
 typedef map<TKeyExtent,list<TMutation>> UpdateBatch

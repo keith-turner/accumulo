@@ -94,6 +94,7 @@ import org.apache.accumulo.core.data.thrift.TCMStatus;
 import org.apache.accumulo.core.data.thrift.TColumn;
 import org.apache.accumulo.core.data.thrift.TCondition;
 import org.apache.accumulo.core.data.thrift.TConditionalMutation;
+import org.apache.accumulo.core.data.thrift.TConditionalSession;
 import org.apache.accumulo.core.data.thrift.TKey;
 import org.apache.accumulo.core.data.thrift.TKeyExtent;
 import org.apache.accumulo.core.data.thrift.TKeyValue;
@@ -344,12 +345,13 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
     
     SecureRandom random;
     Map<Long,Session> sessions;
+    long maxIdle;
     
     SessionManager(AccumuloConfiguration conf) {
       random = new SecureRandom();
       sessions = new HashMap<Long,Session>();
       
-      final long maxIdle = conf.getTimeInMillis(Property.TSERV_SESSION_MAXIDLE);
+      maxIdle = conf.getTimeInMillis(Property.TSERV_SESSION_MAXIDLE);
       
       Runnable r = new Runnable() {
         @Override
@@ -377,6 +379,10 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
       return sid;
     }
     
+    long getMaxIdleTime() {
+      return maxIdle;
+    }
+
     /**
      * while a session is reserved, it cannot be canceled or removed
      * 
@@ -1781,7 +1787,6 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
         
         IterConfig ic = compressedIters.decompress(tc.iterators);
 
-        //TODO use one iterator per tablet, push checks into tablet?
         Scanner scanner = tablet.createScanner(range, 1, emptyCols, cs.auths, ic.ssiList, ic.ssio, false, cs.interruptFlag);
         
         try {
@@ -1821,8 +1826,6 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
       Set<Entry<KeyExtent,List<ServerConditionalMutation>>> es = updates.entrySet();
       
       Map<CommitSession,List<Mutation>> sendables = new HashMap<CommitSession,List<Mutation>>();
-
-      // TODO stats
 
       boolean sessionCanceled = sess.interruptFlag.get();
 
@@ -1906,7 +1909,8 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
     }
     
     @Override
-    public long startConditionalUpdate(TInfo tinfo, TCredentials credentials, List<ByteBuffer> authorizations, String tableID) throws ThriftSecurityException, TException {
+    public TConditionalSession startConditionalUpdate(TInfo tinfo, TCredentials credentials, List<ByteBuffer> authorizations, String tableID)
+        throws ThriftSecurityException, TException {
       
       Authorizations userauths = null;
       if (!security.canConditionallyUpdate(credentials, tableID, authorizations))
@@ -1923,13 +1927,13 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
       cs.tableId = tableID;
       cs.interruptFlag = new AtomicBoolean();
       
-      return sessionManager.createSession(cs, false);
+      long sid = sessionManager.createSession(cs, false);
+      return new TConditionalSession(sid, lockID, sessionManager.getMaxIdleTime());
     }
 
     @Override
     public List<TCMResult> conditionalUpdate(TInfo tinfo, long sessID, Map<TKeyExtent,List<TConditionalMutation>> mutations, List<String> symbols)
         throws NoSuchScanIDException, TException {
-      // TODO sessions, should show up in list scans
       
       ConditionalSession cs = (ConditionalSession) sessionManager.reserveSession(sessID);
       
@@ -1978,6 +1982,11 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
         sessionManager.removeSession(sessID, true);
     }
 
+    @Override
+    public void closeConditionalUpdate(TInfo tinfo, long sessID) throws TException {
+      sessionManager.removeSession(sessID, false);
+    }
+    
     @Override
     public void splitTablet(TInfo tinfo, TCredentials credentials, TKeyExtent tkeyExtent, ByteBuffer splitPoint) throws NotServingTabletException,
         ThriftSecurityException {
@@ -2874,6 +2883,8 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
   
   private DistributedWorkQueue bulkFailedCopyQ;
   
+  private String lockID;
+  
   private static final String METRICS_PREFIX = "tserver";
   
   private static ObjectName OBJECT_NAME = null;
@@ -2995,6 +3006,7 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
         
         if (tabletServerLock.tryLock(lw, lockContent)) {
           log.debug("Obtained tablet server lock " + tabletServerLock.getLockPath());
+          lockID = tabletServerLock.getLockID().serialize(ZooUtil.getRoot(instance) + Constants.ZTSERVERS + "/");
           return;
         }
         log.info("Waiting for tablet server lock");
@@ -3025,7 +3037,7 @@ public class TabletServer extends AbstractMetricsImpl implements org.apache.accu
     }
     clientAddress = new InetSocketAddress(clientAddress.getAddress(), clientPort);
     announceExistence();
-    
+
     ThreadPoolExecutor distWorkQThreadPool = new SimpleThreadPool(getSystemConfiguration().getCount(Property.TSERV_WORKQ_THREADS), "distributed work queue");
     
     bulkFailedCopyQ = new DistributedWorkQueue(ZooUtil.getRoot(instance) + Constants.ZBULK_FAILED_COPYQ);

@@ -45,6 +45,15 @@ public interface ConditionalWriter {
       this.server = server;
     }
 
+    /**
+     * If this method throws an exception, then its possible the mutation is still being actively processed. Therefore if code chooses to continue after seeing
+     * an exception it should take this into consideration.
+     * 
+     * @return status of a conditional mutation
+     * @throws AccumuloException
+     * @throws AccumuloSecurityException
+     */
+
     public Status getStatus() throws AccumuloException, AccumuloSecurityException {
       if (status == null) {
         if (exception instanceof AccumuloException)
@@ -60,6 +69,10 @@ public interface ConditionalWriter {
       return status;
     }
     
+    /**
+     * 
+     * @return A copy of the mutation previously submitted by a user. The mutation will reference the same data, but the object may be different.
+     */
     public ConditionalMutation getMutation() {
       return mutation;
     }
@@ -87,7 +100,8 @@ public interface ConditionalWriter {
      */
     VIOLATED,
     /**
-     * error occurred after mutation was sent to server, its unknown if the mutation was written
+     * error occurred after mutation was sent to server, its unknown if the mutation was written. Although the status of the mutation is unknown, Accumulo
+     * guarantees the mutation will not be written at a later point in time.
      */
     UNKNOWN,
     /**
@@ -97,9 +111,28 @@ public interface ConditionalWriter {
 
   }
 
+  /**
+   * This method returns one result for each mutation passed to it. This method is thread safe. Multiple threads can safely use a single conditional writer.
+   * Sharing a conditional writer between multiple threads may result in batching of request to tablet servers.
+   * 
+   * @param mutations
+   * @return Result for each mutation submitted. The mutations may still be processing in the background when this method returns, if so the iterator will
+   *         block.
+   */
   public abstract Iterator<Result> write(Iterator<ConditionalMutation> mutations);
   
+  /**
+   * This method has the same thread safety guarantees as @link {@link #write(Iterator)}
+   * 
+   * 
+   * @param mutation
+   * @return Result for the submitted mutation
+   */
+
   public abstract Result write(ConditionalMutation mutation);
 
+  /**
+   * release any resources (like threads pools) used by conditional writer
+   */
   public void close();
 }

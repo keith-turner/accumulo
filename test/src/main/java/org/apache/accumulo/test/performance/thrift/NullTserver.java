@@ -43,6 +43,7 @@ import org.apache.accumulo.core.data.thrift.ScanResult;
 import org.apache.accumulo.core.data.thrift.TCMResult;
 import org.apache.accumulo.core.data.thrift.TColumn;
 import org.apache.accumulo.core.data.thrift.TConditionalMutation;
+import org.apache.accumulo.core.data.thrift.TConditionalSession;
 import org.apache.accumulo.core.data.thrift.TConstraintViolationSummary;
 import org.apache.accumulo.core.data.thrift.TKeyExtent;
 import org.apache.accumulo.core.data.thrift.TMutation;
@@ -205,9 +206,10 @@ public class NullTserver {
     }
 
     @Override
-    public long startConditionalUpdate(TInfo tinfo, TCredentials credentials, List<ByteBuffer> authorizations, String tableID) throws ThriftSecurityException,
+    public TConditionalSession startConditionalUpdate(TInfo tinfo, TCredentials credentials, List<ByteBuffer> authorizations, String tableID)
+        throws ThriftSecurityException,
         TException {
-      return 0;
+      return null;
     }
 
     @Override
@@ -217,9 +219,10 @@ public class NullTserver {
     }
 
     @Override
-    public void invalidateConditionalUpdate(TInfo tinfo, long sessID) throws TException {
-      
-    }
+    public void invalidateConditionalUpdate(TInfo tinfo, long sessID) throws TException {}
+    
+    @Override
+    public void closeConditionalUpdate(TInfo tinfo, long sessID) throws TException {}
   }
   
   static class Opts extends Help {

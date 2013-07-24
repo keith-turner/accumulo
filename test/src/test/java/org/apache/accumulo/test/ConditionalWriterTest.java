@@ -1088,7 +1088,7 @@ public class ConditionalWriterTest {
     Assert.assertEquals(cw.write(cm1).getStatus(), Status.ACCEPTED);
     
     IteratorSetting is = new IteratorSetting(5, SlowIterator.class);
-    SlowIterator.setSeekSleepTime(is, 4000);
+    SlowIterator.setSeekSleepTime(is, 1500);
     
     ConditionalMutation cm2 = new ConditionalMutation("r1", new Condition("tx", "seq").setValue("1").setIterators(is));
     cm2.put("tx", "seq", "2");
@@ -1231,6 +1231,6 @@ public class ConditionalWriterTest {
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     cluster.stop();
-    folder.delete();
+    // folder.delete();
   }
 }
