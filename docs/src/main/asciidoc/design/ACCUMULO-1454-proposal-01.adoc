@@ -1,0 +1,139 @@
+= Tablet Manipulation Primitives
+
+Some Accumulo administrative task could benefit from fine grained control over
+tablet loading/unloading.   Calls could be added to the Accumulo API, Proxy
+API, and Accumulo shell to facilitate.  These API calls would support the
+following use cases.
+
+This document outlines a possible solution for
+https://issues.apache.org/jira/browse/ACCUMULO-1454[ACCUMULO-1454]
+
+== Use Cases
+
+=== Configuration Requiring Restart
+
+A configuration change is needed for Accumulo and/or Java that requires all
+processes to be restarted.  This needs to be done while minimizing down time.
+One possible way to achieve this is the following :
+
+ . Disable tablet balancing
+ . Start new tablet servers on each node.  These tablet servers would have new
+   config and run on a different port.
+ . On each node, migrate tablets locally between old and new tablet server
+   processes.
+ . Kill all old tablet server processes.
+ . Enable tablet balancing.
+
+In order to execute this use case, script would be needed in addition to the
+primitives discussed in this document.   
+ 
+=== Corrupt Tablet Metadata
+
+A tablet points to a missing or corrupt rfile.  Would like to edit the tablets
+metadata in the metadata table.  If this is done while the tablet is online,
+Accumulo will be unhappy.  
+
+ . Disable tablet assignment
+ . Unload broken tablet
+ . Update its entries in the metadata table
+ . Enable tablet assignment
+
+This is not a great use case, because there is another work around for the
+same problem.  Copying an empty rfile over the missing or corrupt rfile is a
+common work around.
+
+== API Additions
+
+=== Java API
+
+[source,java]
+----
+public interface InstanceOperations{
+
+  /**
+   * Disables automatic assignment of unassigned tablets.
+   */
+  void disableAssignment();
+
+  /**
+   * Enables automatic assignment of unassigned tablets.
+   */
+  void enableAssignment();
+
+  /**
+   * Checks if automatic assignment of unassigned tablets is enabled.
+   */
+  boolean isAssignmentEnabled();
+
+
+  /** 
+   * Disable Accumulo's balancing functionality. This call will block until
+   * balancing is disabled and all inprogress migrations are complete.
+   */
+  void disableBalancing();
+
+  /**
+   * Enable Accumulo's balancing functionality.
+   */
+  void enableBalancing();
+
+  /**
+   * Checks if automatic balancing of tablets is enabled.
+   */
+  boolean isBalancingEnabled();
+
+  /**
+   * Return the list of tablets currently hosted on a tablet server.
+   */
+   Iterable<KeyExtent> getTablets(String tabletServer); // <1> <2>
+
+  /**
+   * Given a row in a table, return the tablet that contains it.
+   */
+  KeyExtent resolveTablet(String table, Text row);
+
+  /**
+   * Unloads a set of tablets.   If  assignment is disabled, then the tablet will
+   * not be reloaded automatically. 
+   */
+
+  void unloadTablets(Iterable<KeyExtent> tablets) // <1>
+
+  /**
+   * Load a set of tablets on a tablet server. This function will fail unless
+   * balancing is disabled.  If a tablet is currently loaded on another tablet
+   * server, it will be unloaded.
+   */
+   void loadTablets(Iterable<KeyExtent> tablets, String tserver); // <1>
+}
+----
+
+<1> KeyExtent has been largely used internally and has a lot of warts.  It
+currently has a very minimal presence in API.  Should a new class be created
+for the API to represent tablets?  
+
+<2> Should we create a new class to represent tservers in API?  Tserver has an
+IP addr, port, and instance id.
+
+=== Shell Commands
+
+....
+balancing enable|disable|status
+assignment enable|disable|status
+migrate <src tserver>  <dest tserver>
+loadTablets <row>{,<row>}  <tserver> // <1>
+unloadTablets <row>{,<row>} // <1>
+....
+
+<1> Any row in a tablet can be passed.  Given a row, the command will find the
+corresponding tablet to load or unload.
+
+=== Proxy
+
+TODO define proxy API after Java API settles
+
+== Monitor
+
+Accidently leaving balancing or assignment disable could negatively impact
+system stability.  The Accumulo monitor page should prominently show when
+either is disabled.
