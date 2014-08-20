@@ -1,12 +1,13 @@
-= Tablet Manipulation Primitives
+= Accumulo Rolling Restart
 
-Some Accumulo administrative task could benefit from fine grained control over
-tablet loading/unloading.   Calls could be added to the Accumulo API, Proxy
-API, and Accumulo shell to facilitate.  These API calls would support the
-following use cases.
-
-This document outlines a possible solution for
+In some situations an Accumulo admin will need to restart all Accumulo
+processes in a cluster.  It would be nice if Accumulo supported a rolling
+restart of its processes that minimized downtime of tablets.  This document
+outlines a possible solution for
 https://issues.apache.org/jira/browse/ACCUMULO-1454[ACCUMULO-1454]
+
+Attempting a rolling restart with current versions of Accumulo causes a lot
+unessecary tablet movement and loss of tablet locality.
 
 == Use Cases
 
@@ -16,31 +17,56 @@ A configuration change is needed for Accumulo and/or Java that requires all
 processes to be restarted.  This needs to be done while minimizing down time.
 One possible way to achieve this is the following :
 
- . Disable tablet balancing
- . Start new tablet servers on each node.  These tablet servers would have new
-   config and run on a different port.
- . On each node, migrate tablets locally between old and new tablet server
-   processes.
- . Kill all old tablet server processes.
- . Enable tablet balancing.
+ . Make config change across cluster
+ . On each worker node, do the following
+ .. Disable tablet assignment
+ .. Run stop-here.sh
+ .. Run start-here.sh
+ .. Enable tablet assignment
+ .. Wait till all tablets are assigned
 
-In order to execute this use case, script would be needed in addition to the
-primitives discussed in this document.   
- 
-=== Corrupt Tablet Metadata
+The Accumulo master assigns and balances tablets.  Assignment is done when an
+tablet is not assigned to any tserver.  Balancing of tablets moves tablets
+around and is only performed when all tablets are assigned.  Assignment is
+disabled temporarily so that tablets are not assigned elsewhere for the brief
+period that a tserver on a node is down.  When assignment is reenabled,
+tablets will likely be assigned back to the same node.
 
-A tablet points to a missing or corrupt rfile.  Would like to edit the tablets
-metadata in the metadata table.  If this is done while the tablet is online,
-Accumulo will be unhappy.  
+Will this approach work well in the case where a user is running multiple
+tablet servers per node?
 
- . Disable tablet assignment
- . Unload broken tablet
- . Update its entries in the metadata table
- . Enable tablet assignment
+=== Rolling upgrade
 
-This is not a great use case, because there is another work around for the
-same problem.  Copying an empty rfile over the missing or corrupt rfile is a
-common work around.
+An upgrade from 1.7.0 to 1.7.1 is needed.  Would like to do this upgrade while
+Accumulo is running inorder to minimize down time.  One possible way to achieve
+this is the following :
+
+ . Make config change across cluster
+ . On each worker node, do the following
+ .. Disable tablet assignment
+ .. Run stop-here.sh in 1.7.0 directory
+ .. Run start-here.sh in 1.7.1 directory
+ .. Enable tablet assignment
+ .. Wait till all tablets are assigned
+
+Rolling upgrades are possible after https://issues.apache.org/jira/browse/ACCUMULO-751[ACCUMULO-751] 
+
+== Behavioral change
+
+In order to minimize the time any tablet is unavailable for read, stop-here.sh
+could be modified to decommission a tablet server in the following way.
+
+ . Hold all writes to the tablet server (except for metadata and root)
+ . Start flushing each tablet.
+ . Unload all tablets
+ . Halt
+
+While step 2 is running, all hosted tablets will be available for read.  Step 3
+should be really quick as tablets will have no data to flush.  For bonus points
+step 3 could be made super fast by batch writing tablet updates that occurr
+during closing a tablet.   Alternatively, unloading tablets could be done in
+parallel.  This would allow metadata updates to be committed to WAL in groups.
+The faster step 3 goes, the less time tablets are unavailable for read.
 
 == API Additions
 
@@ -50,83 +76,49 @@ common work around.
 ----
 public interface InstanceOperations{
 
-  /**
-   * Disables automatic assignment of unassigned tablets.
+  /** 
+   * Disable tablet assignment. 
    */
-  void disableAssignment();
+  void disableAssignments();
 
   /**
-   * Enables automatic assignment of unassigned tablets.
+   * Enable tablet assighment.
    */
-  void enableAssignment();
+  void enableAssignments();
 
   /**
-   * Checks if automatic assignment of unassigned tablets is enabled.
+   * Checks if automatic assignment of tablets is enabled.
    */
   boolean isAssignmentEnabled();
 
-
-  /** 
-   * Disable Accumulo's balancing functionality. This call will block until
-   * balancing is disabled and all inprogress migrations are complete.
-   */
-  void disableBalancing();
-
   /**
-   * Enable Accumulo's balancing functionality.
-   */
-  void enableBalancing();
-
-  /**
-   * Checks if automatic balancing of tablets is enabled.
-   */
-  boolean isBalancingEnabled();
-
-  /**
-   * Return the list of tablets currently hosted on a tablet server.
-   */
-   Iterable<KeyExtent> getTablets(String tabletServer); // <1> <2>
-
-  /**
-   * Given a row in a table, return the tablet that contains it.
-   */
-  KeyExtent resolveTablet(String table, Text row);
-
-  /**
-   * Unloads a set of tablets.   If  assignment is disabled, then the tablet will
-   * not be reloaded automatically. 
+   * Decomissions a tablet server.  The tablet server will flush all data and
+   * then kill itself.  While flushing data, a tablet server will stop
+   * accepting writes and still accept reads. 
    */
 
-  void unloadTablets(Iterable<KeyExtent> tablets) // <1>
+   public void decomission(String tabletServer); // <1>
 
-  /**
-   * Load a set of tablets on a tablet server. This function will fail unless
-   * balancing is disabled.  If a tablet is currently loaded on another tablet
-   * server, it will be unloaded.
-   */
-   void loadTablets(Iterable<KeyExtent> tablets, String tserver); // <1>
+   /**
+    * Waits for all tablets to be assigned.
+    */
+   public void waitForAssignments();
+
 }
 ----
 
-<1> KeyExtent has been largely used internally and has a lot of warts.  It
-currently has a very minimal presence in API.  Should a new class be created
-for the API to represent tablets?  
-
-<2> Should we create a new class to represent tservers in API?  Tserver has an
-IP addr, port, and instance id.
+<1> Uncertain if this should be in API.  From the command line a user can run
+`accumulo admin stop <tserver>`, but AFAIK this has no analouge in the Java
+API.  So contemplating adding this method.
 
 === Shell Commands
 
 ....
-balancing enable|disable|status
-assignment enable|disable|status
-migrate <src tserver>  <dest tserver>
-loadTablets <row>{,<row>}  <tserver> // <1>
-unloadTablets <row>{,<row>} // <1>
+assignments enable|disable|status|wait
+decomission <tserver>  // <1>
 ....
 
-<1> Any row in a tablet can be passed.  Given a row, the command will find the
-corresponding tablet to load or unload.
+<1> Would only add this, if it were added to API.
 
 === Proxy
 
@@ -134,6 +126,6 @@ TODO define proxy API after Java API settles
 
 == Monitor
 
-Accidently leaving balancing or assignment disable could negatively impact
-system stability.  The Accumulo monitor page should prominently show when
-either is disabled.
+Accidently leaving assignment disabled could negatively impact system
+stability.  The Accumulo monitor page should prominently show when its is
+disabled.
