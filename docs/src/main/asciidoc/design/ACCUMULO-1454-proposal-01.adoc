@@ -118,7 +118,7 @@ API.  So contemplating adding this method.
 
 ....
 assignments enable|disable|status|wait
-decomission <tserver>  // <1>
+decomission <tserver>{,<tserver>}  // <1>
 ....
 
 <1> Would only add this, if it were added to API.
