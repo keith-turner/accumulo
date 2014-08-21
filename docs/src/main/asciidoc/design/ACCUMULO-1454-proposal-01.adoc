@@ -19,10 +19,10 @@ One possible way to achieve this is the following :
 
  . Make config change across cluster
  . On each worker node, do the following
- .. Disable tablet assignment
+ .. Disable tablet assignment across cluster
  .. Run stop-here.sh
  .. Run start-here.sh
- .. Enable tablet assignment
+ .. Enable tablet assignment across cluster
  .. Wait till all tablets are assigned
 
 The Accumulo master assigns and balances tablets.  Assignment is done when an
@@ -43,10 +43,10 @@ this is the following :
 
  . Make config change across cluster
  . On each worker node, do the following
- .. Disable tablet assignment
+ .. Disable tablet assignment across cluster
  .. Run stop-here.sh in 1.7.0 directory
  .. Run start-here.sh in 1.7.1 directory
- .. Enable tablet assignment
+ .. Enable tablet assignment across cluster
  .. Wait till all tablets are assigned
 
 Rolling upgrades are possible after https://issues.apache.org/jira/browse/ACCUMULO-751[ACCUMULO-751] 
@@ -77,12 +77,14 @@ The faster step 3 goes, the less time tablets are unavailable for read.
 public interface InstanceOperations{
 
   /** 
-   * Disable tablet assignment. 
+   * Disable tablet assignment.  If tablet assignment is already disabled, then
+   * this call is a noop.
    */
   void disableAssignments();
 
   /**
-   * Enable tablet assighment.
+   * Enable tablet assighment.  If tablet assignment is already enabled, then
+   * this call is a noop.
    */
   void enableAssignments();
 
@@ -92,15 +94,16 @@ public interface InstanceOperations{
   boolean isAssignmentEnabled();
 
   /**
-   * Decomissions a tablet server.  The tablet server will flush all data and
-   * then kill itself.  While flushing data, a tablet server will stop
+   * Decomissions a set of tablet servers.  The tablet server will flush all
+   * data and then kill itself.  While flushing data, a tablet server will stop
    * accepting writes and still accept reads. 
    */
 
-   public void decomission(String tabletServer); // <1>
+   public void decomission(Set<String> tabletServers); // <1>
 
    /**
-    * Waits for all tablets to be assigned.
+    * Waits for all tablets to be assigned.  If assignments are disabled, this
+    * method will throw an exception.
     */
    public void waitForAssignments();
 
@@ -123,6 +126,30 @@ decomission <tserver>  // <1>
 === Proxy
 
 TODO define proxy API after Java API settles
+
+== Testing
+
+The following test should be performed to validate this feature.
+
+ * Rolling restart of idle system.
+ * Rolling restart while tablets are compacting. 
+ * Rolling restart while full table scans are running.
+ * Rolling restart while lots of small scans are running, timing the latency of
+   small scans.
+ * Rolling restart w/ multiple tablet servers per node.
+ * Rolling restart when lots of tablets last location is not the current
+   tserver.
+ * Ensure that rolling restart can be done w/o using stop-here.sh and
+   start-here.sh scripts.  Downstream packagers may have other methods for
+   starting and stoppping tservers.
+
+Each test should be timed and compared to the idle restart time.   The amount
+of tablet movement should be monitored during test.
+
+== Documentation
+
+Its not expected that a rolling restart would work in the case where a user
+changes the instance secret.  This needs to be documented.
 
 == Monitor
 
