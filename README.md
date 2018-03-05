@@ -41,7 +41,7 @@ Apache Accumulo publishes the following resources with each release:
 * [Accumulo Examples][examples] - Documented example code for using Accumulo
 * [Javadocs][javadocs] - Accumulo API documentation
 
-More resources can be found on the [project website][accumulo].
+More resources can be found on the [project website][accumulo]
 
 Building
 --------
