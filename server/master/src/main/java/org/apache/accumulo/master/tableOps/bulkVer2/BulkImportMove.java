@@ -19,6 +19,7 @@ package org.apache.accumulo.master.tableOps.bulkVer2;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -120,10 +121,16 @@ class BulkImportMove extends MasterRepo {
     while (!workers.awaitTermination(1000L, TimeUnit.MILLISECONDS)) {}
 
     for (Future<Boolean> future : results) {
-      if (!future.get()) {
+      try {
+        if (!future.get()) {
+          throw new AcceptableThriftTableOperationException(bulkInfo.tableId.canonicalID(), null,
+              TableOperation.BULK_IMPORT, TableOperationExceptionType.OTHER,
+              "Failed to move files from " + bulkInfo.sourceDir);
+        }
+      } catch (ExecutionException ee) {
         throw new AcceptableThriftTableOperationException(bulkInfo.tableId.canonicalID(), null,
             TableOperation.BULK_IMPORT, TableOperationExceptionType.OTHER,
-            "Failed to move files from " + bulkInfo.sourceDir);
+            ee.getCause().getMessage());
       }
     }
   }
