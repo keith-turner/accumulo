@@ -23,7 +23,6 @@ import org.apache.accumulo.core.client.admin.TimeType;
 import org.apache.accumulo.core.clientImpl.Table;
 import org.apache.accumulo.core.data.ArrayByteSequence;
 import org.apache.accumulo.core.data.Key;
-import org.apache.accumulo.core.data.PartialKey;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.schema.Section;
 import org.apache.accumulo.core.util.ColumnFQ;
@@ -36,6 +35,8 @@ public class MetadataSchema {
 
   public static final String RESERVED_PREFIX = "~";
 
+  private static final Text EMPTY = new Text();
+
   /**
    * Used for storing information about tablets
    */
@@ -47,8 +48,13 @@ public class MetadataSchema {
     }
 
     public static Range getRange(Table.ID tableId) {
-      return new Range(new Key(tableId.canonicalID() + ';'), true,
-          new Key(tableId.canonicalID() + '<').followingKey(PartialKey.ROW), false);
+      return getRange(tableId, null, true, null);
+    }
+
+    public static Range getRange(Table.ID tableId, Text startRow, boolean inclusive, Text endRow) {
+      if (startRow == null)
+        return new Range(getRow(tableId, EMPTY), true, getRow(tableId, endRow), true);
+      return new Range(getRow(tableId, startRow), inclusive, getRow(tableId, endRow), true);
     }
 
     public static Text getRow(Table.ID tableId, Text endRow) {

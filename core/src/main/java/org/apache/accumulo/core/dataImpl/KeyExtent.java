@@ -495,13 +495,7 @@ public class KeyExtent implements WritableComparable<KeyExtent> {
   }
 
   public Range toMetadataRange() {
-    Text metadataPrevRow = new Text(getTableId().getUtf8());
-    metadataPrevRow.append(new byte[] {';'}, 0, 1);
-    if (getPrevEndRow() != null) {
-      metadataPrevRow.append(getPrevEndRow().getBytes(), 0, getPrevEndRow().getLength());
-    }
-
-    return new Range(metadataPrevRow, getPrevEndRow() == null, getMetadataEntry(), true);
+    return TabletsSection.getRange(getTableId(), getPrevEndRow(), false, getEndRow());
   }
 
   public static SortedSet<KeyExtent> findChildren(KeyExtent ke, SortedSet<KeyExtent> tablets) {
@@ -634,10 +628,6 @@ public class KeyExtent implements WritableComparable<KeyExtent> {
       result.add(ke);
     }
     return result;
-  }
-
-  public static Text getMetadataEntry(KeyExtent extent) {
-    return TabletsSection.getRow(extent.getTableId(), extent.getEndRow());
   }
 
   public TKeyExtent toThrift() {
