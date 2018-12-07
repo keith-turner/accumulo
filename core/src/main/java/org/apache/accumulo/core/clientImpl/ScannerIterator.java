@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -32,6 +33,7 @@ import org.apache.accumulo.core.client.SampleNotPresentException;
 import org.apache.accumulo.core.client.TableDeletedException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.TableOfflineException;
+import org.apache.accumulo.core.clientImpl.ThriftScanner.ActiveScan;
 import org.apache.accumulo.core.clientImpl.ThriftScanner.ScanState;
 import org.apache.accumulo.core.clientImpl.ThriftScanner.ScanTimedOutException;
 import org.apache.accumulo.core.data.Key;
@@ -64,6 +66,9 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   private long batchCount = 0;
   private long readaheadThreshold;
 
+  private ActiveScan activeScan = null;
+  private Set<ActiveScan> activeScans;
+
   private static final List<KeyValue> EMPTY_LIST = Collections.emptyList();
 
   private static ThreadPoolExecutor readaheadPool = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 3L,
@@ -77,6 +82,9 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
 
       try {
         while (true) {
+          if (activeScan != null)
+            activeScans.remove(activeScan);
+
           List<KeyValue> currentBatch = ThriftScanner.scan(scanState.context, scanState, timeOut);
 
           if (currentBatch == null) {
@@ -86,6 +94,11 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
 
           if (currentBatch.size() == 0)
             continue;
+
+          if (scanState.isolated && scanState.scanID != null) {
+            activeScan = new ActiveScan(scanState);
+            activeScans.add(activeScan);
+          }
 
           synchQ.add(currentBatch);
           return;
@@ -108,11 +121,13 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
 
   ScannerIterator(ClientContext context, Table.ID tableId, Authorizations authorizations,
       Range range, int size, long timeOut, ScannerOptions options, boolean isolated,
-      long readaheadThreshold) {
+      long readaheadThreshold, Set<ActiveScan> activeScans) {
     this.timeOut = timeOut;
     this.readaheadThreshold = readaheadThreshold;
 
     this.options = new ScannerOptions(options);
+
+    this.activeScans = activeScans;
 
     synchQ = new ArrayBlockingQueue<>(1);
 
@@ -171,6 +186,7 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
       if (currentBatch.size() == 0) {
         currentBatch = null;
         finished = true;
+        // TODO shutdown thread pool AND/OR remove from set of iterators
         return false;
       }
       iter = currentBatch.iterator();
@@ -201,5 +217,4 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   public void remove() {
     throw new UnsupportedOperationException("remove is not supported in Scanner");
   }
-
 }

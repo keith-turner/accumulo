@@ -18,12 +18,16 @@ package org.apache.accumulo.core.clientImpl;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.clientImpl.ThriftScanner.ActiveScan;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
@@ -55,6 +59,16 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
   private boolean isolated = false;
   private long readaheadThreshold = Constants.SCANNER_DEFAULT_READAHEAD_THRESHOLD;
 
+  boolean closed = false;
+  // TODO could replace this with active iterators.. iterator could have close method that shutsdown
+  // thread pool and closes scan
+  private Set<ActiveScan> activeScans = Collections.synchronizedSet(new HashSet<>());
+
+  private synchronized void ensureOpen() {
+    if (closed)
+      throw new IllegalArgumentException("Scanner is closed");
+  }
+
   public ScannerImpl(ClientContext context, Table.ID tableId, Authorizations authorizations) {
     checkArgument(context != null, "context is null");
     checkArgument(tableId != null, "tableId is null");
@@ -69,17 +83,20 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
 
   @Override
   public synchronized void setRange(Range range) {
+    ensureOpen();
     checkArgument(range != null, "range is null");
     this.range = range;
   }
 
   @Override
   public synchronized Range getRange() {
+    ensureOpen();
     return range;
   }
 
   @Override
   public synchronized void setBatchSize(int size) {
+    ensureOpen();
     if (size > 0)
       this.size = size;
     else
@@ -88,32 +105,38 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
 
   @Override
   public synchronized int getBatchSize() {
+    ensureOpen();
     return size;
   }
 
   @Override
   public synchronized Iterator<Entry<Key,Value>> iterator() {
+    ensureOpen();
     return new ScannerIterator(context, tableId, authorizations, range, size,
-        getTimeout(TimeUnit.SECONDS), this, isolated, readaheadThreshold);
+        getTimeout(TimeUnit.SECONDS), this, isolated, readaheadThreshold, activeScans);
   }
 
   @Override
   public Authorizations getAuthorizations() {
+    ensureOpen();
     return authorizations;
   }
 
   @Override
   public synchronized void enableIsolation() {
+    ensureOpen();
     this.isolated = true;
   }
 
   @Override
   public synchronized void disableIsolation() {
+    ensureOpen();
     this.isolated = false;
   }
 
   @Override
   public synchronized void setReadaheadThreshold(long batches) {
+    ensureOpen();
     if (0 > batches) {
       throw new IllegalArgumentException(
           "Number of batches before read-ahead must be non-negative");
@@ -124,6 +147,17 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
 
   @Override
   public synchronized long getReadaheadThreshold() {
+    ensureOpen();
     return readaheadThreshold;
+  }
+
+  @Override
+  public synchronized void close() {
+    if (!closed) {
+      // TODO thread pools in iterators..
+      ThriftScanner.close(context, activeScans);
+    }
+
+    closed = true;
   }
 }
