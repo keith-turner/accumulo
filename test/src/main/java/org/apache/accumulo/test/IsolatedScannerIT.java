@@ -30,7 +30,7 @@ import org.apache.accumulo.harness.AccumuloClusterHarness;
 import org.apache.accumulo.test.functional.ReadWriteIT;
 import org.junit.Test;
 
-public class IsolatedScannerIT  extends AccumuloClusterHarness {
+public class IsolatedScannerIT extends AccumuloClusterHarness {
 
   static final int ROWS = 1000;
   static final int COLS = 1000;
@@ -47,14 +47,18 @@ public class IsolatedScannerIT  extends AccumuloClusterHarness {
 
       client.tableOperations().flush(tableName, null, null, true);
 
-      //TODO test same case for regular scanner???
-      for(int i = 0; i < 300; i++) {
-        try(IsolatedScanner scanner = new IsolatedScanner(client.createScanner(tableName, Authorizations.EMPTY))) {
+      // TODO test same case for regular scanner???
+      for (int i = 0; i < 300; i++) {
+        try (IsolatedScanner scanner = new IsolatedScanner(
+            client.createScanner(tableName, Authorizations.EMPTY))) {
           scanner.setRange(new Range());
-          int count = 0;
-          for (Entry<Key,Value> entry : scanner) {
-            if(count++ > 10) {
-              break;
+
+          for (int j = 0; j < i % 7 + 1; j++) {
+            int count = 0;
+            for (Entry<Key,Value> entry : scanner) {
+              if (count++ > 10) {
+                break;
+              }
             }
           }
         }
@@ -62,7 +66,8 @@ public class IsolatedScannerIT  extends AccumuloClusterHarness {
 
       List<String> tservers = client.instanceOperations().getTabletServers();
       for (String tserver : tservers) {
-        System.out.println(tserver + " " + client.instanceOperations().getActiveScans(tserver).size());
+        System.out
+            .println(tserver + " " + client.instanceOperations().getActiveScans(tserver).size());
       }
     }
   }

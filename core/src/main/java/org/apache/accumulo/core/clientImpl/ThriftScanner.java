@@ -219,38 +219,6 @@ public class ThriftScanner {
     }
   }
 
-  static class ActiveScan {
-    final String location;
-    final long scanId;
-
-    ActiveScan(ScanState scanState) {
-      this.location = scanState.prevLoc.tablet_location;
-      this.scanId = scanState.scanID;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (o instanceof ActiveScan) {
-        ActiveScan oas = (ActiveScan) o;
-        return scanId == oas.scanId && location.equals(location); // TODO equals on location may be
-                                                                  // more expensive than needed...
-      }
-
-      return false;
-    }
-
-    @Override
-    public int hashCode() {
-      // scan ids are random 64bit numbers so should be a good hash by itself
-      return Long.hashCode(scanId);
-    }
-
-    @Override
-    public String toString() {
-      return location + " " + scanId;
-    }
-  }
-
   public static class ScanTimedOutException extends IOException {
 
     private static final long serialVersionUID = 1L;
@@ -590,25 +558,23 @@ public class ThriftScanner {
     }
   }
 
-  public static void close(ClientContext context, Set<ActiveScan> activeScans) {
-    TInfo tinfo = Tracer.traceInfo();
+  static void close(ScanState scanState) {
+    if (!scanState.finished && scanState.scanID != null && scanState.prevLoc != null) {
+      TInfo tinfo = Tracer.traceInfo();
 
-    for (ActiveScan activeScan : activeScans) {
-      log.info("Closing active scan " + activeScan);
-      HostAndPort parsedLocation = HostAndPort.fromString(activeScan.location);
+      log.info("Closing active scan " + scanState.prevLoc + " " + scanState.scanID);
+      HostAndPort parsedLocation = HostAndPort.fromString(scanState.prevLoc.tablet_location);
       TabletClientService.Client client = null;
       try {
-        client = ThriftUtil.getTServerClient(parsedLocation, context);
-        client.closeScan(tinfo, activeScan.scanId);
+        client = ThriftUtil.getTServerClient(parsedLocation, scanState.context);
+        client.closeScan(tinfo, scanState.scanID);
       } catch (TException e) {
         // ignore this is a best effort
-        log.debug("Failed to close active scan " + activeScan, e);
+        log.debug("Failed to close active scan " + scanState.prevLoc + " " + scanState.scanID, e);
       } finally {
         if (client != null)
           ThriftUtil.returnClient(client);
       }
-
     }
-
   }
 }

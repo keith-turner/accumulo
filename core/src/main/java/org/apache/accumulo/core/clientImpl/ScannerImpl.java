@@ -27,7 +27,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Scanner;
-import org.apache.accumulo.core.clientImpl.ThriftScanner.ActiveScan;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
@@ -60,9 +59,8 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
   private long readaheadThreshold = Constants.SCANNER_DEFAULT_READAHEAD_THRESHOLD;
 
   boolean closed = false;
-  // TODO could replace this with active iterators.. iterator could have close method that shutsdown
-  // thread pool and closes scan
-  private Set<ActiveScan> activeScans = Collections.synchronizedSet(new HashSet<>());
+
+  private Set<ScannerIterator> iters = Collections.synchronizedSet(new HashSet<>());
 
   private synchronized void ensureOpen() {
     if (closed)
@@ -112,8 +110,28 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
   @Override
   public synchronized Iterator<Entry<Key,Value>> iterator() {
     ensureOpen();
-    return new ScannerIterator(context, tableId, authorizations, range, size,
-        getTimeout(TimeUnit.SECONDS), this, isolated, readaheadThreshold, activeScans);
+    ScannerIterator iter = new ScannerIterator(context, tableId, authorizations, range, size,
+        getTimeout(TimeUnit.SECONDS), this, isolated, readaheadThreshold);
+
+    iters.add(iter);
+
+    return new Iterator<Entry<Key,Value>>() {
+
+      @Override
+      public boolean hasNext() {
+        boolean hn = iter.hasNext();
+        if (!hn) {
+          iter.close();
+          iters.remove(iter);
+        }
+        return hn;
+      }
+
+      @Override
+      public Entry<Key,Value> next() {
+        return iter.next();
+      }
+    };
   }
 
   @Override
@@ -154,8 +172,8 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
   @Override
   public synchronized void close() {
     if (!closed) {
-      // TODO thread pools in iterators..
-      ThriftScanner.close(context, activeScans);
+      iters.forEach(ScannerIterator::close);
+      iters.clear();
     }
 
     closed = true;
