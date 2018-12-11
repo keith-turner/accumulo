@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -63,6 +64,8 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   private boolean readaheadInProgress = false;
   private long batchCount = 0;
   private long readaheadThreshold;
+
+  private Set<ScannerIterator> activeIters;
 
   private static final List<KeyValue> EMPTY_LIST = Collections.emptyList();
 
@@ -108,13 +111,15 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
 
   ScannerIterator(ClientContext context, Table.ID tableId, Authorizations authorizations,
       Range range, int size, long timeOut, ScannerOptions options, boolean isolated,
-      long readaheadThreshold) {
+      long readaheadThreshold, Set<ScannerIterator> activeIters) {
     this.timeOut = timeOut;
     this.readaheadThreshold = readaheadThreshold;
 
     this.options = new ScannerOptions(options);
 
     synchQ = new ArrayBlockingQueue<>(1);
+
+    this.activeIters = activeIters;
 
     if (this.options.fetchedColumns.size() > 0) {
       range = range.bound(this.options.fetchedColumns.first(), this.options.fetchedColumns.last());
@@ -138,6 +143,12 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
     readaheadPool.execute(new Reader());
   }
 
+  private void markFinished() {
+    finished = true;
+    activeIters.remove(this);
+    readaheadPool.shutdownNow();
+  }
+
   @Override
   @SuppressWarnings("unchecked")
   public boolean hasNext() {
@@ -159,7 +170,7 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
       Object obj = synchQ.take();
 
       if (obj instanceof Exception) {
-        finished = true;
+        markFinished();
         if (obj instanceof RuntimeException)
           throw (RuntimeException) obj;
         else
@@ -170,8 +181,7 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
 
       if (currentBatch.size() == 0) {
         currentBatch = null;
-        finished = true;
-        // TODO shutdown thread pool AND/OR remove from set of iterators
+        markFinished();
         return false;
       }
       iter = currentBatch.iterator();
@@ -204,8 +214,11 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   }
 
   void close() {
-    readaheadPool.shutdownNow();
-    // TODO concurrency
-    ThriftScanner.close(scanState);
+    if(readaheadInProgress) {
+
+    } else {
+      ThriftScanner.close(scanState);
+      readaheadPool.shutdownNow();
+    }
   }
 }

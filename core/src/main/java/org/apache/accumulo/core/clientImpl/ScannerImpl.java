@@ -111,27 +111,11 @@ public class ScannerImpl extends ScannerOptions implements Scanner {
   public synchronized Iterator<Entry<Key,Value>> iterator() {
     ensureOpen();
     ScannerIterator iter = new ScannerIterator(context, tableId, authorizations, range, size,
-        getTimeout(TimeUnit.SECONDS), this, isolated, readaheadThreshold);
+        getTimeout(TimeUnit.SECONDS), this, isolated, readaheadThreshold, iters);
 
     iters.add(iter);
 
-    return new Iterator<Entry<Key,Value>>() {
-
-      @Override
-      public boolean hasNext() {
-        boolean hn = iter.hasNext();
-        if (!hn) {
-          iter.close();
-          iters.remove(iter);
-        }
-        return hn;
-      }
-
-      @Override
-      public Entry<Key,Value> next() {
-        return iter.next();
-      }
-    };
+    return iter;
   }
 
   @Override
