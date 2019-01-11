@@ -57,7 +57,7 @@ public class CredentialsIT extends AccumuloClusterHarness {
 
   @Before
   public void createLocalUser() throws AccumuloException, AccumuloSecurityException {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       ClusterUser user = getUser(0);
       username = user.getPrincipal();
       saslEnabled = saslEnabled();
@@ -81,7 +81,7 @@ public class CredentialsIT extends AccumuloClusterHarness {
       UserGroupInformation.loginUserFromKeytab(root.getPrincipal(),
           root.getKeytab().getAbsolutePath());
     }
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       client.securityOperations().dropLocalUser(username);
     }
   }
@@ -94,7 +94,7 @@ public class CredentialsIT extends AccumuloClusterHarness {
     assertTrue(token.isDestroyed());
     try (AccumuloClient ignored = Accumulo.newClient().from(getClientInfo().getProperties())
         .as("non_existent_user", token).build()) {
-      fail();
+      fail("should ignore " + ignored);
     } catch (IllegalArgumentException e) {
       assertEquals(e.getMessage(), "AuthenticationToken has been destroyed");
     }
@@ -102,7 +102,7 @@ public class CredentialsIT extends AccumuloClusterHarness {
 
   @Test
   public void testDestroyTokenBeforeRPC() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       AuthenticationToken token = getUser(0).getToken();
       try (
           AccumuloClient userAccumuloClient = Accumulo.newClient().from(client.properties())

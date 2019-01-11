@@ -124,7 +124,7 @@ public class SampleIT extends AccumuloClusterHarness {
   @Test
   public void testBasic() throws Exception {
 
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       String clone = tableName + "_clone";
 
@@ -216,8 +216,8 @@ public class SampleIT extends AccumuloClusterHarness {
     client.tableOperations().clone(tableName, clone, false, em, es);
     client.tableOperations().offline(clone, true);
     Table.ID cloneID = Table.ID.of(client.tableOperations().tableIdMap().get(clone));
-    ClientContext context = new ClientContext(client);
-    OfflineScanner oScanner = new OfflineScanner(context, cloneID, Authorizations.EMPTY);
+    OfflineScanner oScanner = new OfflineScanner((ClientContext) client, cloneID,
+        Authorizations.EMPTY);
     if (sc != null) {
       oScanner.setSamplerConfiguration(sc);
     }
@@ -308,7 +308,7 @@ public class SampleIT extends AccumuloClusterHarness {
 
   @Test
   public void testIterator() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       String clone = tableName + "_clone";
 
@@ -421,7 +421,7 @@ public class SampleIT extends AccumuloClusterHarness {
   @Test
   public void testSampleNotPresent() throws Exception {
 
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       String clone = tableName + "_clone";
 

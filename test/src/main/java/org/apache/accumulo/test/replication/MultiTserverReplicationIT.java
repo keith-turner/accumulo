@@ -28,6 +28,7 @@ import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.replication.ReplicationConstants;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.util.HostAndPort;
@@ -47,14 +48,16 @@ public class MultiTserverReplicationIT extends ConfigurableMacBase {
 
   @Override
   public void configure(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
+    // set the name to kick off the replication services
+    cfg.setProperty(Property.REPLICATION_NAME.getKey(), "test");
     cfg.setNumTservers(2);
   }
 
   @Test
   public void tserverReplicationServicePortsAreAdvertised() throws Exception {
     // Wait for the cluster to be up
-    AccumuloClient client = getClient();
-    ClientContext context = getClientContext();
+    AccumuloClient client = createClient();
+    ClientContext context = (ClientContext) client;
 
     // Wait for a tserver to come up to fulfill this request
     client.tableOperations().create("foo");
@@ -90,8 +93,8 @@ public class MultiTserverReplicationIT extends ConfigurableMacBase {
   @Test
   public void masterReplicationServicePortsAreAdvertised() throws Exception {
     // Wait for the cluster to be up
-    AccumuloClient client = getClient();
-    ClientContext context = getClientContext();
+    AccumuloClient client = createClient();
+    ClientContext context = (ClientContext) client;
 
     // Wait for a tserver to come up to fulfill this request
     client.tableOperations().create("foo");

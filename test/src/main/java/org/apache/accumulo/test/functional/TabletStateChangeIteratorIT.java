@@ -34,12 +34,12 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchDeleter;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableExistsException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.clientImpl.Table;
 import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.data.Key;
@@ -81,7 +81,7 @@ public class TabletStateChangeIteratorIT extends AccumuloClusterHarness {
   public void test() throws AccumuloException, AccumuloSecurityException, TableExistsException,
       TableNotFoundException {
 
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
 
       String[] tables = getUniqueNames(4);
       final String t1 = tables[0];
@@ -256,7 +256,7 @@ public class TabletStateChangeIteratorIT extends AccumuloClusterHarness {
 
     @Override
     public Set<Table.ID> onlineTables() {
-      ClientContext context = getClientContext();
+      ClientContext context = (ClientContext) client;
       Set<Table.ID> onlineTables = Tables.getIdToNameMap(context).keySet();
       return Sets.filter(onlineTables,
           tableId -> Tables.getTableState(context, tableId) == TableState.ONLINE);

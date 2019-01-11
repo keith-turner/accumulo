@@ -35,12 +35,12 @@ import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableExistsException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.clientImpl.Table;
 import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.conf.Property;
@@ -80,8 +80,8 @@ public class TableChangeStateIT extends AccumuloClusterHarness {
 
   @Before
   public void setup() {
-    accumuloClient = getAccumuloClient();
-    context = new ClientContext(accumuloClient);
+    accumuloClient = createAccumuloClient();
+    context = (ClientContext) accumuloClient;
   }
 
   @After

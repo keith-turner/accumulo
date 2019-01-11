@@ -86,18 +86,18 @@ public class KerberosRenewalIT extends AccumuloITBase {
         TICKET_LIFETIME);
     kdc.start();
     krbEnabledForITs = System.getProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION);
-    if (null == krbEnabledForITs || !Boolean.parseBoolean(krbEnabledForITs)) {
+    if (krbEnabledForITs == null || !Boolean.parseBoolean(krbEnabledForITs)) {
       System.setProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION, "true");
     }
     rootUser = kdc.getRootUser();
   }
 
   @AfterClass
-  public static void stopKdc() throws Exception {
-    if (null != kdc) {
+  public static void stopKdc() {
+    if (kdc != null) {
       kdc.stop();
     }
-    if (null != krbEnabledForITs) {
+    if (krbEnabledForITs != null) {
       System.setProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION, krbEnabledForITs);
     }
   }
@@ -136,7 +136,7 @@ public class KerberosRenewalIT extends AccumuloITBase {
 
   @After
   public void stopMac() throws Exception {
-    if (null != mac) {
+    if (mac != null) {
       mac.stop();
     }
   }
@@ -155,7 +155,7 @@ public class KerberosRenewalIT extends AccumuloITBase {
         rootUser.getKeytab().getAbsolutePath());
     log.info("Logged in as {}", rootUser.getPrincipal());
 
-    AccumuloClient client = mac.getAccumuloClient(rootUser.getPrincipal(), new KerberosToken());
+    AccumuloClient client = mac.createAccumuloClient(rootUser.getPrincipal(), new KerberosToken());
     log.info("Created client as {}", rootUser.getPrincipal());
     assertEquals(rootUser.getPrincipal(), client.whoami());
 

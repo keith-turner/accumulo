@@ -26,15 +26,11 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.clientImpl.ReplicationOperationsImpl;
 import org.apache.accumulo.core.clientImpl.Table;
-import org.apache.accumulo.core.clientImpl.thrift.ThriftTableOperationException;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
@@ -66,10 +62,12 @@ public class ReplicationOperationsImplIT extends ConfigurableMacBase {
   private static final Logger log = LoggerFactory.getLogger(ReplicationOperationsImplIT.class);
 
   private AccumuloClient client;
+  private ServerContext serverContext;
 
   @Before
   public void configureInstance() throws Exception {
-    client = getClient();
+    client = createClient();
+    serverContext = getServerContext();
     ReplicationTable.setOnline(client);
     client.securityOperations().grantTablePermission(client.whoami(), MetadataTable.NAME,
         TablePermission.WRITE);
@@ -82,17 +80,14 @@ public class ReplicationOperationsImplIT extends ConfigurableMacBase {
   /**
    * Spoof out the Master so we can call the implementation without starting a full instance.
    */
-  private ReplicationOperationsImpl getReplicationOperations() throws Exception {
+  private ReplicationOperationsImpl getReplicationOperations() {
     Master master = EasyMock.createMock(Master.class);
-    ServerContext serverContext = EasyMock.createMock(ServerContext.class);
-    EasyMock.expect(master.getClient()).andReturn(client).anyTimes();
     EasyMock.expect(master.getContext()).andReturn(serverContext).anyTimes();
     EasyMock.replay(master);
 
     final MasterClientServiceHandler mcsh = new MasterClientServiceHandler(master) {
       @Override
-      protected Table.ID getTableId(ClientContext context, String tableName)
-          throws ThriftTableOperationException {
+      protected Table.ID getTableId(ClientContext context, String tableName) {
         try {
           return Table.ID.of(client.tableOperations().tableIdMap().get(tableName));
         } catch (Exception e) {
@@ -101,12 +96,11 @@ public class ReplicationOperationsImplIT extends ConfigurableMacBase {
       }
     };
 
-    ClientContext context = getClientContext();
+    ClientContext context = (ClientContext) client;
     return new ReplicationOperationsImpl(context) {
       @Override
       protected boolean getMasterDrain(final TInfo tinfo, final TCredentials rpcCreds,
-          final String tableName, final Set<String> wals)
-          throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+          final String tableName, final Set<String> wals) {
         try {
           return mcsh.drainReplicationTable(tinfo, rpcCreds, tableName, wals);
         } catch (TException e) {
@@ -152,17 +146,14 @@ public class ReplicationOperationsImplIT extends ConfigurableMacBase {
     final AtomicBoolean done = new AtomicBoolean(false);
     final AtomicBoolean exception = new AtomicBoolean(false);
     final ReplicationOperationsImpl roi = getReplicationOperations();
-    Thread t = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        try {
-          roi.drain("foo");
-        } catch (Exception e) {
-          log.error("Got error", e);
-          exception.set(true);
-        }
-        done.set(true);
+    Thread t = new Thread(() -> {
+      try {
+        roi.drain("foo");
+      } catch (Exception e) {
+        log.error("Got error", e);
+        exception.set(true);
       }
+      done.set(true);
     });
 
     t.start();
@@ -253,17 +244,14 @@ public class ReplicationOperationsImplIT extends ConfigurableMacBase {
 
     final ReplicationOperationsImpl roi = getReplicationOperations();
 
-    Thread t = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        try {
-          roi.drain("foo");
-        } catch (Exception e) {
-          log.error("Got error", e);
-          exception.set(true);
-        }
-        done.set(true);
+    Thread t = new Thread(() -> {
+      try {
+        roi.drain("foo");
+      } catch (Exception e) {
+        log.error("Got error", e);
+        exception.set(true);
       }
+      done.set(true);
     });
 
     t.start();
@@ -332,17 +320,14 @@ public class ReplicationOperationsImplIT extends ConfigurableMacBase {
     final AtomicBoolean done = new AtomicBoolean(false);
     final AtomicBoolean exception = new AtomicBoolean(false);
     final ReplicationOperationsImpl roi = getReplicationOperations();
-    Thread t = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        try {
-          roi.drain("foo");
-        } catch (Exception e) {
-          log.error("Got error", e);
-          exception.set(true);
-        }
-        done.set(true);
+    Thread t = new Thread(() -> {
+      try {
+        roi.drain("foo");
+      } catch (Exception e) {
+        log.error("Got error", e);
+        exception.set(true);
       }
+      done.set(true);
     });
 
     t.start();
@@ -410,17 +395,14 @@ public class ReplicationOperationsImplIT extends ConfigurableMacBase {
     final AtomicBoolean done = new AtomicBoolean(false);
     final AtomicBoolean exception = new AtomicBoolean(false);
     final ReplicationOperationsImpl roi = getReplicationOperations();
-    Thread t = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        try {
-          roi.drain("foo");
-        } catch (Exception e) {
-          log.error("Got error", e);
-          exception.set(true);
-        }
-        done.set(true);
+    Thread t = new Thread(() -> {
+      try {
+        roi.drain("foo");
+      } catch (Exception e) {
+        log.error("Got error", e);
+        exception.set(true);
       }
+      done.set(true);
     });
 
     t.start();

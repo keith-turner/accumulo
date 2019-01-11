@@ -17,13 +17,11 @@
 package org.apache.accumulo.tserver.tablet;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
-import org.apache.accumulo.core.util.LocalityGroupUtil.LocalityGroupConfigurationError;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.tserver.InMemoryMap;
 import org.apache.accumulo.tserver.InMemoryMap.MemoryIterator;
@@ -33,7 +31,7 @@ import org.slf4j.LoggerFactory;
 class TabletMemory implements Closeable {
   private static final Logger log = LoggerFactory.getLogger(TabletMemory.class);
 
-  private final TabletCommitter tablet;
+  private final Tablet tablet;
   private InMemoryMap memTable;
   private InMemoryMap otherMemTable;
   private InMemoryMap deletingMemTable;
@@ -44,11 +42,8 @@ class TabletMemory implements Closeable {
   TabletMemory(Tablet tablet) {
     this.tablet = tablet;
     this.context = tablet.getContext();
-    try {
-      memTable = new InMemoryMap(tablet.getTableConfiguration(), context);
-    } catch (LocalityGroupConfigurationError e) {
-      throw new RuntimeException(e);
-    }
+    memTable = new InMemoryMap(tablet.getTableConfiguration(), context,
+        tablet.getExtent().getTableId());
     commitSession = new CommitSession(tablet, nextSeq, memTable);
     nextSeq += 2;
   }
@@ -74,11 +69,8 @@ class TabletMemory implements Closeable {
     }
 
     otherMemTable = memTable;
-    try {
-      memTable = new InMemoryMap(tablet.getTableConfiguration(), context);
-    } catch (LocalityGroupConfigurationError e) {
-      throw new RuntimeException(e);
-    }
+    memTable = new InMemoryMap(tablet.getTableConfiguration(), context,
+        tablet.getExtent().getTableId());
 
     CommitSession oldCommitSession = commitSession;
     commitSession = new CommitSession(tablet, nextSeq, memTable);
@@ -147,8 +139,8 @@ class TabletMemory implements Closeable {
     }
   }
 
-  public void mutate(CommitSession cm, List<Mutation> mutations) {
-    cm.mutate(mutations);
+  public void mutate(CommitSession cm, List<Mutation> mutations, int count) {
+    cm.mutate(mutations, count);
   }
 
   public void updateMemoryUsageStats() {
@@ -185,16 +177,8 @@ class TabletMemory implements Closeable {
     return commitSession;
   }
 
-  public ServerContext getContext() {
-    return context;
-  }
-
   @Override
-  public void close() throws IOException {
+  public void close() {
     commitSession = null;
-  }
-
-  public boolean isClosed() {
-    return commitSession == null;
   }
 }

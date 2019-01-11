@@ -47,7 +47,6 @@ import org.apache.accumulo.core.client.ConditionalWriter;
 import org.apache.accumulo.core.client.ConditionalWriterConfig;
 import org.apache.accumulo.core.client.Durability;
 import org.apache.accumulo.core.client.TableDeletedException;
-import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.TableOfflineException;
 import org.apache.accumulo.core.client.TimedOutException;
 import org.apache.accumulo.core.clientImpl.TabletLocator.TabletServerMutations;
@@ -274,7 +273,7 @@ class ConditionalWriterImpl implements ConditionalWriter {
           else
             toe = new TimedOutException("Conditional mutation timed out");
 
-          qcm.queueResult(new Result(toe, qcm, (null == server ? null : server.toString())));
+          qcm.queueResult(new Result(toe, qcm, (server == null ? null : server.toString())));
         } else {
           mutations2.add(qcm);
         }
@@ -626,12 +625,12 @@ class ConditionalWriterImpl implements ConditionalWriter {
       queueException(location, cmidToCm, ase);
     } catch (TTransportException e) {
       locator.invalidateCache(context, location.toString());
-      invalidateSession(location, mutations, cmidToCm, sessionId);
+      invalidateSession(location, cmidToCm, sessionId);
     } catch (TApplicationException tae) {
       queueException(location, cmidToCm, new AccumuloServerException(location.toString(), tae));
     } catch (TException e) {
       locator.invalidateCache(context, location.toString());
-      invalidateSession(location, mutations, cmidToCm, sessionId);
+      invalidateSession(location, cmidToCm, sessionId);
     } catch (Exception e) {
       queueException(location, cmidToCm, e);
     } finally {
@@ -653,8 +652,8 @@ class ConditionalWriterImpl implements ConditionalWriter {
       cmk.cm.queueResult(new Result(e, cmk.cm, location.toString()));
   }
 
-  private void invalidateSession(HostAndPort location, TabletServerMutations<QCMutation> mutations,
-      Map<Long,CMK> cmidToCm, SessionID sessionId) {
+  private void invalidateSession(HostAndPort location, Map<Long,CMK> cmidToCm,
+      SessionID sessionId) {
     if (sessionId == null) {
       queueRetry(cmidToCm, location);
     } else {
@@ -678,7 +677,7 @@ class ConditionalWriterImpl implements ConditionalWriter {
    * to finish... unless this exceeds timeout.
    */
   private void invalidateSession(SessionID sessionId, HostAndPort location)
-      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+      throws AccumuloException {
 
     long sleepTime = 50;
 

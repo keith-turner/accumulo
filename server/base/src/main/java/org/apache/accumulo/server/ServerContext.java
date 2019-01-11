@@ -23,19 +23,14 @@ import java.util.Objects;
 import java.util.Properties;
 
 import org.apache.accumulo.core.Constants;
-import org.apache.accumulo.core.client.Accumulo;
-import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.ClientInfo;
-import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
-import org.apache.accumulo.core.clientImpl.AccumuloClientImpl;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.conf.SiteConfiguration;
 import org.apache.accumulo.core.crypto.CryptoServiceFactory;
 import org.apache.accumulo.core.crypto.CryptoServiceFactory.ClassloaderType;
 import org.apache.accumulo.core.rpc.SslConnectionParams;
-import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
 import org.apache.accumulo.core.trace.DistributedTrace;
 import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
@@ -84,7 +79,7 @@ public class ServerContext extends ClientContext {
     this(siteConfig, ClientInfo.from(clientProps));
   }
 
-  public ServerContext(SiteConfiguration siteConfig, ClientInfo info) {
+  private ServerContext(SiteConfiguration siteConfig, ClientInfo info) {
     this(new ServerInfo(siteConfig, info.getInstanceName(), info.getZooKeepers(),
         info.getZooKeepersSessionTimeOut()));
   }
@@ -106,7 +101,7 @@ public class ServerContext extends ClientContext {
     MetricsSystemHelper.configure(applicationClassName);
     DistributedTrace.enable(hostname, applicationName,
         getServerConfFactory().getSystemConfiguration());
-    if (null != getSaslParams()) {
+    if (getSaslParams() != null) {
       // Server-side "client" check to make sure we're logged in as a user we expect to be
       enforceKerberosLogin();
     }
@@ -126,16 +121,6 @@ public class ServerContext extends ClientContext {
 
   public void teardownServer() {
     DistributedTrace.disable();
-  }
-
-  public String getApplicationName() {
-    Objects.requireNonNull(applicationName);
-    return applicationName;
-  }
-
-  public String getApplicationClassName() {
-    Objects.requireNonNull(applicationClassName);
-    return applicationName;
   }
 
   public String getHostname() {
@@ -237,18 +222,6 @@ public class ServerContext extends ClientContext {
 
   public AuthenticationTokenSecretManager getSecretManager() {
     return secretManager;
-  }
-
-  @Override
-  public synchronized AccumuloClient getClient() {
-    if (client == null) {
-      client = new AccumuloClientImpl(SingletonReservation.noop(), this);
-    }
-    return client;
-  }
-
-  public AccumuloClient getClient(String principal, AuthenticationToken token) {
-    return Accumulo.newClient().from(info.getProperties()).as(principal, token).build();
   }
 
   public synchronized TableManager getTableManager() {

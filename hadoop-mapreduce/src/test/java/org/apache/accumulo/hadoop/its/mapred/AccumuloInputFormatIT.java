@@ -125,12 +125,11 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
       InputFormatBuilder.InputFormatOptions<JobConf> opts = AccumuloInputFormat.configure()
           .clientProperties(getClientInfo().getProperties()).table(table)
           .auths(Authorizations.EMPTY);
-      if (batchScan)
-        opts.batchScan();
+
       if (sample) {
         opts.samplerConfiguration(SAMPLER_CONFIG);
       }
-      opts.store(job);
+      opts.batchScan(batchScan).store(job);
 
       job.setMapperClass(TestMapper.class);
       job.setMapOutputKeyClass(Key.class);
@@ -154,7 +153,7 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
   @Test
   public void testMap() throws Exception {
     String table = getUniqueNames(1)[0];
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(table);
       BatchWriter bw = c.createBatchWriter(table, new BatchWriterConfig());
       for (int i = 0; i < 100; i++) {
@@ -180,7 +179,7 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
   public void testSample() throws Exception {
     final String TEST_TABLE_3 = getUniqueNames(1)[0];
 
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(TEST_TABLE_3,
           new NewTableConfiguration().enableSampling(SAMPLER_CONFIG));
       BatchWriter bw = c.createBatchWriter(TEST_TABLE_3, new BatchWriterConfig());
@@ -216,11 +215,12 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
     Collection<IteratorSetting.Column> fetchColumns = Collections
         .singleton(new IteratorSetting.Column(new Text("foo"), new Text("bar")));
 
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       accumuloClient.tableOperations().create(table);
 
       AccumuloInputFormat.configure().clientProperties(getClientInfo().getProperties()).table(table)
-          .auths(auths).fetchColumns(fetchColumns).scanIsolation().localIterators().store(job);
+          .auths(auths).fetchColumns(fetchColumns).scanIsolation(true).localIterators(true)
+          .store(job);
 
       AccumuloInputFormat aif = new AccumuloInputFormat();
 

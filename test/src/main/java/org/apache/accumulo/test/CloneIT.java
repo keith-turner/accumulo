@@ -46,7 +46,7 @@ public class CloneIT extends AccumuloClusterHarness {
 
   @Test
   public void testNoFiles() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
 
@@ -75,7 +75,7 @@ public class CloneIT extends AccumuloClusterHarness {
 
   @Test
   public void testFilesChange() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
 
@@ -133,7 +133,7 @@ public class CloneIT extends AccumuloClusterHarness {
   // test split where files of children are the same
   @Test
   public void testSplit1() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
 
@@ -177,7 +177,7 @@ public class CloneIT extends AccumuloClusterHarness {
   // test split where files of children differ... like majc and split occurred
   @Test
   public void testSplit2() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
 
@@ -225,8 +225,7 @@ public class CloneIT extends AccumuloClusterHarness {
     }
   }
 
-  private static Mutation deleteTablet(String tid, String endRow, String prevRow, String dir,
-      String file) throws Exception {
+  private static Mutation deleteTablet(String tid, String endRow, String prevRow, String file) {
     KeyExtent ke = new KeyExtent(Table.ID.of(tid), endRow == null ? null : new Text(endRow),
         prevRow == null ? null : new Text(prevRow));
     Mutation mut = new Mutation(ke.getMetadataEntry());
@@ -239,7 +238,7 @@ public class CloneIT extends AccumuloClusterHarness {
   }
 
   private static Mutation createTablet(String tid, String endRow, String prevRow, String dir,
-      String file) throws Exception {
+      String file) {
     KeyExtent ke = new KeyExtent(Table.ID.of(tid), endRow == null ? null : new Text(endRow),
         prevRow == null ? null : new Text(prevRow));
     Mutation mut = ke.getPrevRowUpdateMutation();
@@ -255,7 +254,7 @@ public class CloneIT extends AccumuloClusterHarness {
   // test two tablets splitting into four
   @Test
   public void testSplit3() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
 
@@ -304,7 +303,7 @@ public class CloneIT extends AccumuloClusterHarness {
   // test cloned marker
   @Test
   public void testClonedMarker() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
 
@@ -318,8 +317,8 @@ public class CloneIT extends AccumuloClusterHarness {
         MetadataTableUtil.initializeClone(tableName, Table.ID.of("0"), Table.ID.of("1"), client,
             bw2);
 
-        bw1.addMutation(deleteTablet("0", "m", null, "/d1", "/d1/file1"));
-        bw1.addMutation(deleteTablet("0", null, "m", "/d2", "/d2/file2"));
+        bw1.addMutation(deleteTablet("0", "m", null, "/d1/file1"));
+        bw1.addMutation(deleteTablet("0", null, "m", "/d2/file2"));
 
         bw1.flush();
 
@@ -335,7 +334,7 @@ public class CloneIT extends AccumuloClusterHarness {
 
         assertEquals(1, rc);
 
-        bw1.addMutation(deleteTablet("0", "m", "f", "/d3", "/d1/file1"));
+        bw1.addMutation(deleteTablet("0", "m", "f", "/d1/file1"));
 
         bw1.flush();
 
@@ -371,7 +370,7 @@ public class CloneIT extends AccumuloClusterHarness {
   // test two tablets splitting into four
   @Test
   public void testMerge() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
 
@@ -385,7 +384,7 @@ public class CloneIT extends AccumuloClusterHarness {
         MetadataTableUtil.initializeClone(tableName, Table.ID.of("0"), Table.ID.of("1"), client,
             bw2);
 
-        bw1.addMutation(deleteTablet("0", "m", null, "/d1", "/d1/file1"));
+        bw1.addMutation(deleteTablet("0", "m", null, "/d1/file1"));
         Mutation mut = createTablet("0", null, null, "/d2", "/d2/file2");
         mut.put(DataFileColumnFamily.NAME.toString(), "/d1/file1",
             new DataFileValue(10, 200).encodeAsString());

@@ -38,6 +38,7 @@ public class KeyShortenerTest {
   private void testKeys(Key prev, Key current, Key expected) {
     Key sk = KeyShortener.shorten(prev, current);
     assertBetween(prev, sk, current);
+    assertEquals(expected, sk);
   }
 
   /**
@@ -105,8 +106,7 @@ public class KeyShortenerTest {
     byte[] ff1 = Bytes.concat(apendFF("mop"), "b".getBytes());
     byte[] ff2 = Bytes.concat(apendFF("mop"), FF, "b".getBytes());
 
-    byte[] eff1 = Bytes.concat(apendFF("mop"), FF, FF);
-    byte[] eff2 = Bytes.concat(apendFF("mop"), FF, FF, FF);
+    String eff1 = "moq";
 
     testKeys(newKey(ff1, "f89222", "q90232e", 34), new Key("mor56", "f89222", "q90232e"),
         newKey(eff1, E, E, 0));
@@ -116,11 +116,11 @@ public class KeyShortenerTest {
         newKey("r1", "f1", eff1, 0));
 
     testKeys(newKey(ff2, "f89222", "q90232e", 34), new Key("mor56", "f89222", "q90232e"),
-        newKey(eff2, E, E, 0));
+        newKey(eff1, E, E, 0));
     testKeys(newKey("r1", ff2, "q90232e", 34), new Key("r1", "mor56", "q90232e"),
-        newKey("r1", eff2, E, 0));
+        newKey("r1", eff1, E, 0));
     testKeys(newKey("r1", "f1", ff2, 34), new Key("r1", "f1", "mor56"),
-        newKey("r1", "f1", eff2, 0));
+        newKey("r1", "f1", eff1, 0));
 
   }
 

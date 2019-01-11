@@ -20,7 +20,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -32,6 +31,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.apache.accumulo.core.clientImpl.Table;
+import org.apache.accumulo.core.clientImpl.Table.ID;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.crypto.CryptoServiceFactory;
@@ -91,7 +92,7 @@ public class InMemoryMapIT {
       new File(System.getProperty("user.dir") + "/target"));
 
   @BeforeClass
-  public static void ensureNativeLibrary() throws FileNotFoundException {
+  public static void ensureNativeLibrary() {
     File nativeMapLocation = NativeMapIT.nativeMapLocation();
     System.setProperty("accumulo.native.lib.path", nativeMapLocation.getAbsolutePath());
     if (!NativeMap.isLoaded()) {
@@ -119,7 +120,7 @@ public class InMemoryMapIT {
   }
 
   @Test
-  public void testOneMutationManyKeys() throws IOException {
+  public void testOneMutationManyKeys() {
     Mutation m = new Mutation("a");
     for (int i = 1; i < 6; i++) {
       m.put(new Text("2cf" + i), new Text("2cq" + i), new Value(Integer.toString(i).getBytes()));
@@ -244,15 +245,18 @@ public class InMemoryMapIT {
       localityGroupNativeConfig.put(Property.TSERV_MEMDUMP_DIR.getKey(),
           tempFolder.newFolder().getAbsolutePath());
 
-      defaultMap = new InMemoryMap(new ConfigurationCopy(defaultMapConfig), getServerContext());
-      nativeMapWrapper = new InMemoryMap(new ConfigurationCopy(nativeMapConfig),
-          getServerContext());
+      ID testId = Table.ID.of("TEST");
+
+      defaultMap = new InMemoryMap(new ConfigurationCopy(defaultMapConfig), getServerContext(),
+          testId);
+      nativeMapWrapper = new InMemoryMap(new ConfigurationCopy(nativeMapConfig), getServerContext(),
+          testId);
       localityGroupMap = new InMemoryMap(
           updateConfigurationForLocalityGroups(new ConfigurationCopy(localityGroupConfig)),
-          getServerContext());
+          getServerContext(), testId);
       localityGroupMapWithNative = new InMemoryMap(
           updateConfigurationForLocalityGroups(new ConfigurationCopy(localityGroupNativeConfig)),
-          getServerContext());
+          getServerContext(), testId);
     } catch (Exception e) {
       log.error("Error getting new InMemoryMap ", e);
       fail(e.getMessage());
@@ -267,10 +271,13 @@ public class InMemoryMapIT {
     assertEquals("Not a LocalityGroupMap with native", InMemoryMap.TYPE_LOCALITY_GROUP_MAP_NATIVE,
         localityGroupMapWithNative.getMapType());
 
-    defaultMap.mutate(mutations);
-    nativeMapWrapper.mutate(mutations);
-    localityGroupMap.mutate(mutations);
-    localityGroupMapWithNative.mutate(mutations);
+    int count = 0;
+    for (Mutation m : mutations)
+      count += m.size();
+    defaultMap.mutate(mutations, count);
+    nativeMapWrapper.mutate(mutations, count);
+    localityGroupMap.mutate(mutations, count);
+    localityGroupMapWithNative.mutate(mutations, count);
 
     // let's use the transitive property to assert all four are equivalent
     assertMutatesEquivalent(mutations, defaultMap, nativeMapWrapper);

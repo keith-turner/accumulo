@@ -23,12 +23,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
@@ -39,6 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.core.client.SampleNotPresentException;
 import org.apache.accumulo.core.client.sample.Sampler;
+import org.apache.accumulo.core.clientImpl.Table;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.Property;
@@ -66,7 +65,6 @@ import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.sample.impl.SamplerFactory;
 import org.apache.accumulo.core.util.CachedConfiguration;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
-import org.apache.accumulo.core.util.LocalityGroupUtil.LocalityGroupConfigurationError;
 import org.apache.accumulo.core.util.LocalityGroupUtil.Partitioner;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.PreAllocatedArray;
@@ -132,13 +130,12 @@ public class InMemoryMap {
     return pair.getSecond();
   }
 
-  public InMemoryMap(AccumuloConfiguration config, ServerContext serverContext)
-      throws LocalityGroupConfigurationError {
+  public InMemoryMap(AccumuloConfiguration config, ServerContext serverContext, Table.ID tableId) {
 
     boolean useNativeMap = config.getBoolean(Property.TSERV_NATIVEMAP_ENABLED);
 
     this.memDumpDir = config.get(Property.TSERV_MEMDUMP_DIR);
-    this.lggroups = LocalityGroupUtil.getLocalityGroups(config);
+    this.lggroups = LocalityGroupUtil.getLocalityGroupsIgnoringErrors(config, tableId);
 
     this.config = config;
     this.context = serverContext;
@@ -186,9 +183,6 @@ public class InMemoryMap {
   }
 
   private interface SimpleMap {
-    Value get(Key key);
-
-    Iterator<Entry<Key,Value>> iterator(Key startKey);
 
     int size();
 
@@ -209,16 +203,6 @@ public class InMemoryMap {
     public SampleMap(SimpleMap map, SimpleMap sampleMap) {
       this.map = map;
       this.sample = sampleMap;
-    }
-
-    @Override
-    public Value get(Key key) {
-      return map.get(key);
-    }
-
-    @Override
-    public Iterator<Entry<Key,Value>> iterator(Key startKey) {
-      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -327,16 +311,6 @@ public class InMemoryMap {
     }
 
     @Override
-    public Value get(Key key) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Iterator<Entry<Key,Value>> iterator(Key startKey) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
     public int size() {
       int sum = 0;
       for (SimpleMap map : maps)
@@ -415,18 +389,6 @@ public class InMemoryMap {
     }
 
     @Override
-    public Value get(Key key) {
-      return map.get(key);
-    }
-
-    @Override
-    public Iterator<Entry<Key,Value>> iterator(Key startKey) {
-      Key lk = new Key(startKey);
-      SortedMap<Key,Value> tm = map.tailMap(lk);
-      return tm.entrySet().iterator();
-    }
-
-    @Override
     public int size() {
       return size.get();
     }
@@ -482,16 +444,6 @@ public class InMemoryMap {
     }
 
     @Override
-    public Value get(Key key) {
-      return nativeMap.get(key);
-    }
-
-    @Override
-    public Iterator<Entry<Key,Value>> iterator(Key startKey) {
-      return nativeMap.iterator(startKey);
-    }
-
-    @Override
     public int size() {
       return nativeMap.size();
     }
@@ -528,11 +480,7 @@ public class InMemoryMap {
    * Applies changes to a row in the InMemoryMap
    *
    */
-  public void mutate(List<Mutation> mutations) {
-    int numKVs = 0;
-    for (Mutation mutation : mutations)
-      numKVs += mutation.size();
-
+  public void mutate(List<Mutation> mutations, int numKVs) {
     // Can not update mutationCount while writes that started before
     // are in progress, this would cause partial mutations to be seen.
     // Also, can not continue until mutation count is updated, because
@@ -560,10 +508,6 @@ public class InMemoryMap {
       return 0;
 
     return map.getMemoryUsed();
-  }
-
-  Iterator<Map.Entry<Key,Value>> iterator(Key startKey) {
-    return map.iterator(startKey);
   }
 
   public synchronized long getNumEntries() {
@@ -890,9 +834,5 @@ public class InMemoryMap {
           MemValue.encode(iter.getTopValue(), ((MemKey) iter.getTopKey()).getKVCount()));
       iter.next();
     }
-  }
-
-  public ServerContext getContext() {
-    return context;
   }
 }

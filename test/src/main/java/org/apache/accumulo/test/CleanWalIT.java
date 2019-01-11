@@ -68,7 +68,7 @@ public class CleanWalIT extends AccumuloClusterHarness {
 
   @Before
   public void offlineTraceTable() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String traceTable = client.instanceOperations().getSystemConfiguration()
           .get(Property.TRACE_TABLE.getKey());
       if (client.tableOperations().exists(traceTable)) {
@@ -79,8 +79,8 @@ public class CleanWalIT extends AccumuloClusterHarness {
 
   @After
   public void onlineTraceTable() throws Exception {
-    if (null != cluster) {
-      try (AccumuloClient client = getAccumuloClient()) {
+    if (cluster != null) {
+      try (AccumuloClient client = createAccumuloClient()) {
         String traceTable = client.instanceOperations().getSystemConfiguration()
             .get(Property.TRACE_TABLE.getKey());
         if (client.tableOperations().exists(traceTable)) {
@@ -93,7 +93,7 @@ public class CleanWalIT extends AccumuloClusterHarness {
   // test for ACCUMULO-1830
   @Test
   public void test() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
       BatchWriter bw = client.createBatchWriter(tableName, new BatchWriterConfig());
@@ -112,7 +112,7 @@ public class CleanWalIT extends AccumuloClusterHarness {
       assertEquals(1, count(tableName, client));
       for (String table : new String[] {MetadataTable.NAME, RootTable.NAME}) {
         log.debug("Checking logs for {}", table);
-        assertEquals("Found logs for " + table, 0, countLogs(table, client));
+        assertEquals("Found logs for " + table, 0, countLogs(client));
       }
 
       bw = client.createBatchWriter(tableName, new BatchWriterConfig());
@@ -134,7 +134,7 @@ public class CleanWalIT extends AccumuloClusterHarness {
     }
   }
 
-  private int countLogs(String tableName, AccumuloClient client) throws TableNotFoundException {
+  private int countLogs(AccumuloClient client) throws TableNotFoundException {
     int count = 0;
     try (Scanner scanner = client.createScanner(MetadataTable.NAME, Authorizations.EMPTY)) {
       scanner.fetchColumnFamily(MetadataSchema.TabletsSection.LogColumnFamily.NAME);

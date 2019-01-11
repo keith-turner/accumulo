@@ -68,7 +68,7 @@ class CopyFailed extends MasterRepo {
   }
 
   @Override
-  public long isReady(long tid, Master master) throws Exception {
+  public long isReady(long tid, Master master) {
     Set<TServerInstance> finished = new HashSet<>();
     Set<TServerInstance> running = master.onlineTabletServers();
     for (TServerInstance server : running) {
@@ -114,7 +114,7 @@ class CopyFailed extends MasterRepo {
      */
 
     // determine which failed files were loaded
-    AccumuloClient client = master.getClient();
+    AccumuloClient client = master.getContext();
     try (Scanner mscanner = new IsolatedScanner(
         client.createScanner(MetadataTable.NAME, Authorizations.EMPTY))) {
       mscanner.setRange(new KeyExtent(tableId, null, null).toMetadataRange());

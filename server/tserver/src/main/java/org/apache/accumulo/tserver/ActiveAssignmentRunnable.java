@@ -24,9 +24,6 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- */
 public class ActiveAssignmentRunnable implements Runnable {
   private static final Logger log = LoggerFactory.getLogger(ActiveAssignmentRunnable.class);
 
@@ -73,7 +70,7 @@ public class ActiveAssignmentRunnable implements Runnable {
 
   public Exception getException() {
     final Exception e = new Exception("Assignment of " + extent);
-    if (null != executingThread) {
+    if (executingThread != null) {
       e.setStackTrace(executingThread.getStackTrace());
     }
     return e;

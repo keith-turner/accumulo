@@ -84,10 +84,7 @@ public class ReplicationTableUtil {
   static synchronized Writer getWriter(ClientContext context) {
     Writer replicationTable = writers.get(context.getCredentials());
     if (replicationTable == null) {
-      AccumuloClient client = context.getClient();
-
-      configureMetadataTable(client, MetadataTable.NAME);
-
+      configureMetadataTable(context, MetadataTable.NAME);
       replicationTable = new Writer(context, MetadataTable.ID);
       writers.put(context.getCredentials(), replicationTable);
     }
@@ -155,7 +152,7 @@ public class ReplicationTableUtil {
   /**
    * Write the given Mutation to the replication table.
    */
-  static void update(ClientContext context, Mutation m, KeyExtent extent) {
+  static void update(ClientContext context, Mutation m) {
     Writer t = getWriter(context);
     while (true) {
       try {
@@ -182,7 +179,7 @@ public class ReplicationTableUtil {
     // ACCUMULO-1294
 
     Value v = ProtobufUtil.toValue(stat);
-    update(context, createUpdateMutation(new Path(file), v, extent), extent);
+    update(context, createUpdateMutation(new Path(file), v, extent));
   }
 
   static Mutation createUpdateMutation(Path file, Value v, KeyExtent extent) {

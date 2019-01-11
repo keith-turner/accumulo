@@ -16,7 +16,6 @@
  */
 package org.apache.accumulo.core.clientImpl;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -34,8 +33,8 @@ import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.BulkImport.KeyExtentCache;
 import org.apache.accumulo.core.clientImpl.Table.ID;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.metadata.schema.MetadataScanner;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.hadoop.io.Text;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -85,13 +84,13 @@ class ConcurrentKeyExtentCache implements KeyExtentCache {
   @VisibleForTesting
   protected Stream<KeyExtent> lookupExtents(Text row)
       throws TableNotFoundException, AccumuloException, AccumuloSecurityException {
-    return MetadataScanner.builder().from(ctx).scanMetadataTable().overRange(tableId, row, null)
-        .checkConsistency().fetchPrev().build().stream().limit(100).map(TabletMetadata::getExtent);
+    return TabletsMetadata.builder().forTable(tableId).overlapping(row, null).checkConsistency()
+        .fetchPrev().build(ctx).stream().limit(100).map(TabletMetadata::getExtent);
   }
 
   @Override
   public KeyExtent lookup(Text row)
-      throws IOException, AccumuloException, AccumuloSecurityException, TableNotFoundException {
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     while (true) {
       KeyExtent ke = getFromCache(row);
       if (ke != null)

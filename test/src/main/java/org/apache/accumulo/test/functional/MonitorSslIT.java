@@ -23,7 +23,6 @@ import java.net.URL;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Map;
 
@@ -35,6 +34,8 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.apache.accumulo.core.client.AccumuloClient;
+import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.util.MonitorUtil;
 import org.apache.accumulo.minicluster.ServerType;
@@ -63,12 +64,10 @@ public class MonitorSslIT extends ConfigurableMacBase {
       justification = "trust manager is okay for testing")
   private static class TestTrustManager implements X509TrustManager {
     @Override
-    public void checkClientTrusted(X509Certificate[] arg0, String arg1)
-        throws CertificateException {}
+    public void checkClientTrusted(X509Certificate[] arg0, String arg1) {}
 
     @Override
-    public void checkServerTrusted(X509Certificate[] arg0, String arg1)
-        throws CertificateException {}
+    public void checkServerTrusted(X509Certificate[] arg0, String arg1) {}
 
     @Override
     public X509Certificate[] getAcceptedIssuers() {
@@ -126,15 +125,17 @@ public class MonitorSslIT extends ConfigurableMacBase {
     log.debug("Starting Monitor");
     cluster.getClusterControl().startAllServers(ServerType.MONITOR);
     String monitorLocation = null;
-    while (null == monitorLocation) {
-      try {
-        monitorLocation = MonitorUtil.getLocation(getClientContext());
-      } catch (Exception e) {
-        // ignored
-      }
-      if (null == monitorLocation) {
-        log.debug("Could not fetch monitor HTTP address from zookeeper");
-        Thread.sleep(2000);
+    try (AccumuloClient client = createClient()) {
+      while (monitorLocation == null) {
+        try {
+          monitorLocation = MonitorUtil.getLocation((ClientContext) client);
+        } catch (Exception e) {
+          // ignored
+        }
+        if (monitorLocation == null) {
+          log.debug("Could not fetch monitor HTTP address from zookeeper");
+          Thread.sleep(2000);
+        }
       }
     }
     URL url = new URL("https://" + monitorLocation);

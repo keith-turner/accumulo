@@ -27,11 +27,11 @@ import java.util.Properties;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.ConditionalWriterConfig;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.admin.TableOperations;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
@@ -62,7 +62,7 @@ public class AccumuloClientIT extends AccumuloClusterHarness {
   @SuppressWarnings("deprecation")
   @Test
   public void testGetConnectorFromAccumuloClient() throws Exception {
-    AccumuloClient client = getAccumuloClient();
+    AccumuloClient client = createAccumuloClient();
     org.apache.accumulo.core.client.Connector c = org.apache.accumulo.core.client.Connector
         .from(client);
     assertEquals(client.whoami(), c.whoami());
@@ -75,7 +75,7 @@ public class AccumuloClientIT extends AccumuloClusterHarness {
 
   @Test
   public void testAccumuloClientBuilder() throws Exception {
-    AccumuloClient c = getAccumuloClient();
+    AccumuloClient c = createAccumuloClient();
     String instanceName = getClientInfo().getInstanceName();
     String zookeepers = getClientInfo().getZooKeepers();
     final String user = "testuser";

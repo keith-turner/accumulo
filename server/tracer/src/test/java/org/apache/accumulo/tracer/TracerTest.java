@@ -38,11 +38,9 @@ import org.apache.accumulo.core.trace.wrappers.TraceWrap;
 import org.apache.accumulo.tracer.thrift.TestService;
 import org.apache.accumulo.tracer.thrift.TestService.Iface;
 import org.apache.accumulo.tracer.thrift.TestService.Processor;
-import org.apache.htrace.HTraceConfiguration;
 import org.apache.htrace.Sampler;
 import org.apache.htrace.SpanReceiver;
 import org.apache.htrace.wrappers.TraceProxy;
-import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.server.TServer;
 import org.apache.thrift.server.TThreadPoolServer;
@@ -86,8 +84,6 @@ public class TracerTest {
 
     public TestReceiver() {}
 
-    public TestReceiver(HTraceConfiguration conf) {}
-
     @Override
     public void receiveSpan(org.apache.htrace.Span s) {
       long traceId = s.getTraceId();
@@ -99,7 +95,7 @@ public class TracerTest {
     }
 
     @Override
-    public void close() throws IOException {}
+    public void close() {}
   }
 
   @Test
@@ -149,7 +145,7 @@ public class TracerTest {
 
   static class Service implements TestService.Iface {
     @Override
-    public boolean checkTrace(TInfo t, String message) throws TException {
+    public boolean checkTrace(TInfo t, String message) {
       Span trace = Trace.start(message);
       try {
         return Trace.isTracing();

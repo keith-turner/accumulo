@@ -44,7 +44,7 @@ public class SslIT extends ConfigurableMacBase {
 
   @Test
   public void binary() throws AccumuloException, AccumuloSecurityException, Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
       BinaryIT.runTest(client, tableName);
@@ -53,31 +53,34 @@ public class SslIT extends ConfigurableMacBase {
 
   @Test
   public void concurrency() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       ConcurrencyIT.runTest(client, getUniqueNames(1)[0]);
     }
   }
 
   @Test
   public void adminStop() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       ShutdownIT.runAdminStopTest(client, getCluster());
     }
   }
 
   @Test
   public void bulk() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       BulkIT.runTest(client, getClientInfo(), cluster.getFileSystem(),
           new Path(getCluster().getConfig().getDir().getAbsolutePath(), "tmp"),
           getUniqueNames(1)[0], this.getClass().getName(), testName.getMethodName(), true);
     }
   }
 
+  @SuppressWarnings("deprecation")
   @Test
   public void mapReduce() throws Exception {
-    try (AccumuloClient client = getClient()) {
-      MapReduceIT.runTest(client, getCluster());
+    try (AccumuloClient client = createClient()) {
+      // testing old mapreduce code from core jar; the new mapreduce module should have its own test
+      // case which checks functionality with ssl enabled
+      org.apache.accumulo.test.mapreduce.MapReduceIT.runTest(client, getCluster());
     }
   }
 

@@ -17,11 +17,9 @@
 package org.apache.accumulo.tserver;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -350,7 +348,7 @@ public class NativeMap implements Iterable<Map.Entry<Key,Value>> {
           source.delete();
           source = new NMIterator(ret.getKey());
           fill();
-          if (0 < end && nextEntries.get(0).getKey().equals(ret.getKey())) {
+          if (end > 0 && nextEntries.get(0).getKey().equals(ret.getKey())) {
             index++;
             if (index == end) {
               fill();
@@ -529,11 +527,6 @@ public class NativeMap implements Iterable<Map.Entry<Key,Value>> {
     return mutationCount;
   }
 
-  @VisibleForTesting
-  public void mutate(Mutation mutation, int mutationCount) {
-    mutate(Collections.singletonList(mutation), mutationCount);
-  }
-
   void mutate(List<Mutation> mutations, int mutationCount) {
     Iterator<Mutation> iter = mutations.iterator();
 
@@ -708,7 +701,7 @@ public class NativeMap implements Iterable<Map.Entry<Key,Value>> {
     }
 
     @Override
-    public void next() throws IOException {
+    public void next() {
 
       if (entry == null)
         throw new IllegalStateException();
@@ -729,8 +722,7 @@ public class NativeMap implements Iterable<Map.Entry<Key,Value>> {
     }
 
     @Override
-    public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive)
-        throws IOException {
+    public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive) {
 
       if (interruptFlag != null && interruptFlag.get())
         throw new IterationInterruptedException();
@@ -760,7 +752,7 @@ public class NativeMap implements Iterable<Map.Entry<Key,Value>> {
 
     @Override
     public void init(SortedKeyValueIterator<Key,Value> source, Map<String,String> options,
-        IteratorEnvironment env) throws IOException {
+        IteratorEnvironment env) {
       throw new UnsupportedOperationException();
     }
 

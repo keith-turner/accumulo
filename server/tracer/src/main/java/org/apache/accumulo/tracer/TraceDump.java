@@ -82,18 +82,19 @@ public class TraceDump {
     PrintStream out = System.out;
     long endTime = System.currentTimeMillis();
     long startTime = endTime - opts.length;
-    AccumuloClient client = opts.getClient();
-    Scanner scanner = client.createScanner(opts.getTableName(), opts.auths);
-    scanner.setBatchSize(scanOpts.scanBatchSize);
-    Range range = new Range(new Text("start:" + Long.toHexString(startTime)),
-        new Text("start:" + Long.toHexString(endTime)));
-    scanner.setRange(range);
-    out.println("Trace            Day/Time                 (ms)  Start");
-    for (Entry<Key,Value> entry : scanner) {
-      RemoteSpan span = TraceFormatter.getRemoteSpan(entry);
-      out.println(String.format("%016x %s %5d %s", span.traceId,
-          TraceFormatter.formatDate(new Date(span.getStart())), span.stop - span.start,
-          span.description));
+    try (AccumuloClient client = opts.createClient()) {
+      Scanner scanner = client.createScanner(opts.getTableName(), opts.auths);
+      scanner.setBatchSize(scanOpts.scanBatchSize);
+      Range range = new Range(new Text("start:" + Long.toHexString(startTime)),
+          new Text("start:" + Long.toHexString(endTime)));
+      scanner.setRange(range);
+      out.println("Trace            Day/Time                 (ms)  Start");
+      for (Entry<Key,Value> entry : scanner) {
+        RemoteSpan span = TraceFormatter.getRemoteSpan(entry);
+        out.println(String.format("%016x %s %5d %s", span.traceId,
+            TraceFormatter.formatDate(new Date(span.getStart())), span.stop - span.start,
+            span.description));
+      }
     }
     return 0;
   }
@@ -104,20 +105,15 @@ public class TraceDump {
 
   private static int dumpTrace(Opts opts, ScannerOpts scanOpts) throws Exception {
     final PrintStream out = System.out;
-    AccumuloClient client = opts.getClient();
-
     int count = 0;
-    for (String traceId : opts.traceIds) {
-      Scanner scanner = client.createScanner(opts.getTableName(), opts.auths);
-      scanner.setBatchSize(scanOpts.scanBatchSize);
-      Range range = new Range(new Text(traceId.toString()));
-      scanner.setRange(range);
-      count = printTrace(scanner, new Printer() {
-        @Override
-        public void print(String line) {
-          out.println(line);
-        }
-      });
+    try (AccumuloClient client = opts.createClient()) {
+      for (String traceId : opts.traceIds) {
+        Scanner scanner = client.createScanner(opts.getTableName(), opts.auths);
+        scanner.setBatchSize(scanOpts.scanBatchSize);
+        Range range = new Range(new Text(traceId));
+        scanner.setRange(range);
+        count = printTrace(scanner, out::println);
+      }
     }
     return count > 0 ? 0 : 1;
   }
@@ -133,7 +129,7 @@ public class TraceDump {
       if (span.parentId == Span.ROOT_SPAN_ID)
         count++;
     }
-    if (Long.MAX_VALUE == start) {
+    if (start == Long.MAX_VALUE) {
       out.print("Did not find any traces!");
       return 0;
     }
@@ -143,8 +139,7 @@ public class TraceDump {
     final long finalStart = start;
     Set<Long> visited = tree.visit(new SpanTreeVisitor() {
       @Override
-      public void visit(int level, RemoteSpan parent, RemoteSpan node,
-          Collection<RemoteSpan> children) {
+      public void visit(int level, RemoteSpan node) {
         String fmt = "%5d+%-5d %" + (level * 2 + 1) + "s%s@%s %s";
         out.print(String.format(fmt, node.stop - node.start, node.start - finalStart, "", node.svc,
             node.sender, node.description));

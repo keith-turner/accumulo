@@ -29,13 +29,12 @@ import org.apache.accumulo.cluster.ClusterUser;
 import org.apache.accumulo.cluster.ClusterUsers;
 import org.apache.accumulo.cluster.standalone.StandaloneAccumuloCluster;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.admin.SecurityOperations;
 import org.apache.accumulo.core.client.admin.TableOperations;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.KerberosToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
-import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.security.TablePermission;
 import org.apache.accumulo.harness.conf.AccumuloClusterConfiguration;
@@ -67,7 +66,7 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
   private static final Logger log = LoggerFactory.getLogger(AccumuloClusterHarness.class);
   private static final String TRUE = Boolean.toString(true);
 
-  public static enum ClusterType {
+  public enum ClusterType {
     MINI, STANDALONE;
 
     public boolean isDynamic() {
@@ -83,11 +82,11 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
   protected static TestingKdc krb;
 
   @BeforeClass
-  public static void setUp() throws Exception {
+  public static void setUpHarness() throws Exception {
     clusterConf = AccumuloClusterPropertyConfiguration.get();
     type = clusterConf.getClusterType();
 
-    if (ClusterType.MINI == type
+    if (type == ClusterType.MINI
         && TRUE.equals(System.getProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION))) {
       krb = new TestingKdc();
       krb.start();
@@ -98,8 +97,8 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
   }
 
   @AfterClass
-  public static void tearDownKdc() throws Exception {
-    if (null != krb) {
+  public static void tearDownHarness() {
+    if (krb != null) {
       krb.stop();
     }
   }
@@ -124,7 +123,7 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
         // core-site.xml
         cluster = miniClusterHarness.create(this, getAdminToken(), krb);
         // Login as the "root" user
-        if (null != krb) {
+        if (krb != null) {
           ClusterUser rootUser = krb.getRootUser();
           // Log in the 'client' user
           UserGroupInformation.loginUserFromKeytab(rootUser.getPrincipal(),
@@ -172,7 +171,7 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
 
     switch (type) {
       case MINI:
-        if (null != krb) {
+        if (krb != null) {
           final String traceTable = Property.TRACE_TABLE.getDefaultValue();
           final ClusterUser systemUser = krb.getAccumuloServerUser(), rootUser = krb.getRootUser();
 
@@ -184,26 +183,27 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
           // permissions to)
           UserGroupInformation.loginUserFromKeytab(systemUser.getPrincipal(),
               systemUser.getKeytab().getAbsolutePath());
-          AccumuloClient client = cluster.getAccumuloClient(systemUser.getPrincipal(),
+          AccumuloClient c = cluster.createAccumuloClient(systemUser.getPrincipal(),
               new KerberosToken());
+          c.close();
 
           // Then, log back in as the "root" user and do the grant
           UserGroupInformation.loginUserFromKeytab(rootUser.getPrincipal(),
               rootUser.getKeytab().getAbsolutePath());
-          client = getAccumuloClient();
 
-          // Create the trace table
-          client.tableOperations().create(traceTable);
+          try (AccumuloClient client = createAccumuloClient()) {
+            // Create the trace table
+            client.tableOperations().create(traceTable);
 
-          // Trace user (which is the same kerberos principal as the system user, but using a normal
-          // KerberosToken) needs
-          // to have the ability to read, write and alter the trace table
-          client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
-              TablePermission.READ);
-          client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
-              TablePermission.WRITE);
-          client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
-              TablePermission.ALTER_TABLE);
+            // Trace user (which is the same kerberos principal as the system user, but using a
+            // normal KerberosToken) needs to be able to read, write and alter the trace table
+            client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
+                TablePermission.READ);
+            client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
+                TablePermission.WRITE);
+            client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
+                TablePermission.ALTER_TABLE);
+          }
         }
         break;
       default:
@@ -213,29 +213,33 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
 
   public void cleanupTables() throws Exception {
     final String tablePrefix = this.getClass().getSimpleName() + "_";
-    final TableOperations tops = getAccumuloClient().tableOperations();
-    for (String table : tops.list()) {
-      if (table.startsWith(tablePrefix)) {
-        log.debug("Removing table {}", table);
-        tops.delete(table);
+    try (AccumuloClient client = createAccumuloClient()) {
+      final TableOperations tops = client.tableOperations();
+      for (String table : tops.list()) {
+        if (table.startsWith(tablePrefix)) {
+          log.debug("Removing table {}", table);
+          tops.delete(table);
+        }
       }
     }
   }
 
   public void cleanupUsers() throws Exception {
     final String userPrefix = this.getClass().getSimpleName();
-    final SecurityOperations secOps = getAccumuloClient().securityOperations();
-    for (String user : secOps.listLocalUsers()) {
-      if (user.startsWith(userPrefix)) {
-        log.info("Dropping local user {}", user);
-        secOps.dropLocalUser(user);
+    try (AccumuloClient client = createAccumuloClient()) {
+      final SecurityOperations secOps = client.securityOperations();
+      for (String user : secOps.listLocalUsers()) {
+        if (user.startsWith(userPrefix)) {
+          log.info("Dropping local user {}", user);
+          secOps.dropLocalUser(user);
+        }
       }
     }
   }
 
   @After
   public void teardownCluster() throws Exception {
-    if (null != cluster) {
+    if (cluster != null) {
       if (type.isDynamic()) {
         cluster.stop();
       } else {
@@ -277,11 +281,6 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
     return ClientInfo.from(getCluster().getClientProperties());
   }
 
-  public static ClientContext getClientContext() {
-    checkState(initialized);
-    return new ClientContext(getClientInfo());
-  }
-
   public static ServerContext getServerContext() {
     return getCluster().getServerContext();
   }
@@ -302,7 +301,7 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
   public ClusterUser getAdminUser() {
     switch (type) {
       case MINI:
-        if (null == krb) {
+        if (krb == null) {
           PasswordToken passwordToken = (PasswordToken) getAdminToken();
           return new ClusterUser(getAdminPrincipal(),
               new String(passwordToken.getPassword(), UTF_8));
@@ -320,7 +319,7 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
   public ClusterUser getUser(int offset) {
     switch (type) {
       case MINI:
-        if (null != krb) {
+        if (krb != null) {
           // Defer to the TestingKdc when kerberos is on so we can get the keytab instead of a
           // password
           return krb.getClientPrincipal(offset);
@@ -348,16 +347,16 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
     return clusterConf;
   }
 
-  public AccumuloClient getAccumuloClient() {
+  public AccumuloClient createAccumuloClient() {
+    checkState(initialized);
     try {
       String princ = getAdminPrincipal();
       AuthenticationToken token = getAdminToken();
       log.debug("Creating client as {} with {}", princ, token);
-      return cluster.getAccumuloClient(princ, token);
+      return cluster.createAccumuloClient(princ, token);
     } catch (Exception e) {
       log.error("Could not connect to Accumulo", e);
       fail("Could not connect to Accumulo: " + e.getMessage());
-
       throw new RuntimeException("Could not connect to Accumulo", e);
     }
   }
@@ -382,7 +381,7 @@ public abstract class AccumuloClusterHarness extends AccumuloITBase
    *
    * @return A directory which can be expected to exist on the Cluster's FileSystem
    */
-  public Path getUsableDir() throws IllegalArgumentException, IOException {
+  public Path getUsableDir() throws IllegalArgumentException {
     return cluster.getTemporaryPath();
   }
 }

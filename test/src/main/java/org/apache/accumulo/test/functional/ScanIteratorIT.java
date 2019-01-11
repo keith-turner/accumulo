@@ -27,8 +27,6 @@ import java.util.Map.Entry;
 
 import org.apache.accumulo.cluster.ClusterUser;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchScanner;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
@@ -68,7 +66,7 @@ public class ScanIteratorIT extends AccumuloClusterHarness {
 
   @Before
   public void setup() throws Exception {
-    accumuloClient = getAccumuloClient();
+    accumuloClient = createAccumuloClient();
     tableName = getUniqueNames(1)[0];
 
     accumuloClient.tableOperations().create(tableName);
@@ -95,7 +93,7 @@ public class ScanIteratorIT extends AccumuloClusterHarness {
 
   @After
   public void tearDown() throws Exception {
-    if (null != user) {
+    if (user != null) {
       if (saslEnabled) {
         ClusterUser rootUser = getAdminUser();
         UserGroupInformation.loginUserFromKeytab(rootUser.getPrincipal(),
@@ -110,7 +108,7 @@ public class ScanIteratorIT extends AccumuloClusterHarness {
   @Test
   public void run() throws Exception {
     String tableName = getUniqueNames(1)[0];
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
 
       BatchWriter bw = c.createBatchWriter(tableName, new BatchWriterConfig());
 
@@ -189,7 +187,7 @@ public class ScanIteratorIT extends AccumuloClusterHarness {
     }
   }
 
-  private void setupIter(ScannerBase scanner) throws Exception {
+  private void setupIter(ScannerBase scanner) {
     IteratorSetting dropMod = new IteratorSetting(50, "dropMod",
         "org.apache.accumulo.test.functional.DropModIter");
     dropMod.addOption("mod", "2");
@@ -212,8 +210,7 @@ public class ScanIteratorIT extends AccumuloClusterHarness {
     runTest(Authorizations.EMPTY, true);
   }
 
-  private void runTest(ScannerBase scanner, Authorizations auths, boolean shouldFail)
-      throws AccumuloSecurityException, AccumuloException, TableNotFoundException {
+  private void runTest(ScannerBase scanner, boolean shouldFail) {
     int count = 0;
     for (Map.Entry<Key,Value> entry : scanner) {
       assertEquals(shouldFail ? AuthsIterator.FAIL : AuthsIterator.SUCCESS,
@@ -226,7 +223,7 @@ public class ScanIteratorIT extends AccumuloClusterHarness {
 
   private void runTest(Authorizations auths, boolean shouldFail) throws Exception {
     ClusterUser clusterUser = getUser(0);
-    AccumuloClient userC = getCluster().getAccumuloClient(clusterUser.getPrincipal(),
+    AccumuloClient userC = getCluster().createAccumuloClient(clusterUser.getPrincipal(),
         clusterUser.getToken());
     writeTestMutation(userC);
 
@@ -239,8 +236,8 @@ public class ScanIteratorIT extends AccumuloClusterHarness {
       batchScanner.setRanges(Collections.singleton(new Range("1")));
       batchScanner.addScanIterator(setting);
 
-      runTest(scanner, auths, shouldFail);
-      runTest(batchScanner, auths, shouldFail);
+      runTest(scanner, shouldFail);
+      runTest(batchScanner, shouldFail);
     }
   }
 

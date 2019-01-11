@@ -103,7 +103,7 @@ public class Metrics2ReplicationMetrics implements Metrics, MetricsSource {
   }
 
   @Override
-  public void register() throws Exception {
+  public void register() {
     system.register(NAME, DESCRIPTION, this);
   }
 
@@ -130,7 +130,7 @@ public class Metrics2ReplicationMetrics implements Metrics, MetricsSource {
     for (ReplicationTarget configuredTarget : allConfiguredTargets) {
       Long numFiles = targetCounts.get(configuredTarget);
 
-      if (null != numFiles) {
+      if (numFiles != null) {
         filesPending += numFiles;
       }
     }

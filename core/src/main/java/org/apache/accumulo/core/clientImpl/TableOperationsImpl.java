@@ -37,7 +37,6 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -62,11 +61,9 @@ import java.util.zip.ZipInputStream;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.IsolatedScanner;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.NamespaceExistsException;
 import org.apache.accumulo.core.client.NamespaceNotFoundException;
-import org.apache.accumulo.core.client.RowIterator;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableDeletedException;
 import org.apache.accumulo.core.client.TableExistsException;
@@ -93,10 +90,8 @@ import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.constraints.Constraint;
 import org.apache.accumulo.core.data.ByteSequence;
-import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TabletId;
-import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.TabletIdImpl;
 import org.apache.accumulo.core.dataImpl.thrift.TRowRange;
@@ -112,7 +107,10 @@ import org.apache.accumulo.core.master.thrift.MasterClientService;
 import org.apache.accumulo.core.metadata.MetadataServicer;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.RootTable;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
+import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.security.Authorizations;
@@ -124,6 +122,7 @@ import org.apache.accumulo.core.trace.Tracer;
 import org.apache.accumulo.core.util.CachedConfiguration;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
+import org.apache.accumulo.core.util.LocalityGroupUtil.LocalityGroupConfigurationError;
 import org.apache.accumulo.core.util.MapCounter;
 import org.apache.accumulo.core.util.NamingThreadFactory;
 import org.apache.accumulo.core.util.OpTimer;
@@ -569,7 +568,7 @@ public class TableOperationsImpl extends TableOperationsHelper {
         } catch (NotServingTabletException e) {
           // Do not silently spin when we repeatedly fail to get the location for a tablet
           locationFailures++;
-          if (5 == locationFailures || 0 == locationFailures % 50) {
+          if (locationFailures == 5 || locationFailures % 50 == 0) {
             log.warn("Having difficulty locating hosting tabletserver for split {} on table {}."
                 + " Seen {} failures.", split, tableName, locationFailures);
           }
@@ -933,11 +932,19 @@ public class TableOperationsImpl extends TableOperationsHelper {
     checkArgument(property != null, "property is null");
     checkArgument(value != null, "value is null");
     try {
-      MasterClient.executeTable(context, client -> client.setTableProperty(Tracer.traceInfo(),
-          context.rpcCreds(), tableName, property, value));
+      setPropertyNoChecks(tableName, property, value);
+
+      checkLocalityGroups(tableName, property);
     } catch (TableNotFoundException e) {
       throw new AccumuloException(e);
     }
+  }
+
+  private void setPropertyNoChecks(final String tableName, final String property,
+      final String value)
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+    MasterClient.executeTable(context, client -> client.setTableProperty(Tracer.traceInfo(),
+        context.rpcCreds(), tableName, property, value));
   }
 
   @Override
@@ -946,10 +953,34 @@ public class TableOperationsImpl extends TableOperationsHelper {
     checkArgument(tableName != null, "tableName is null");
     checkArgument(property != null, "property is null");
     try {
-      MasterClient.executeTable(context, client -> client.removeTableProperty(Tracer.traceInfo(),
-          context.rpcCreds(), tableName, property));
+      removePropertyNoChecks(tableName, property);
+
+      checkLocalityGroups(tableName, property);
     } catch (TableNotFoundException e) {
       throw new AccumuloException(e);
+    }
+  }
+
+  private void removePropertyNoChecks(final String tableName, final String property)
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+    MasterClient.executeTable(context, client -> client.removeTableProperty(Tracer.traceInfo(),
+        context.rpcCreds(), tableName, property));
+  }
+
+  void checkLocalityGroups(String tableName, String propChanged)
+      throws AccumuloException, TableNotFoundException {
+    if (LocalityGroupUtil.isLocalityGroupProperty(propChanged)) {
+      Iterable<Entry<String,String>> allProps = getProperties(tableName);
+      try {
+        LocalityGroupUtil.checkLocalityGroups(allProps);
+      } catch (LocalityGroupConfigurationError | RuntimeException e) {
+        LoggerFactory.getLogger(this.getClass()).warn("Changing '" + propChanged + "' for table '"
+            + tableName
+            + "' resulted in bad locality group config.  This may be a transient situation since "
+            + "the config spreads over multiple properties.  Setting properties in a different "
+            + "order may help.  Even though this warning was displayed, the property was updated. "
+            + "Please check your config to ensure consistency.", e);
+      }
     }
   }
 
@@ -987,11 +1018,11 @@ public class TableOperationsImpl extends TableOperationsHelper {
     for (Entry<String,Set<Text>> entry : groups.entrySet()) {
       Set<Text> colFams = entry.getValue();
       String value = LocalityGroupUtil.encodeColumnFamilies(colFams);
-      setProperty(tableName, Property.TABLE_LOCALITY_GROUP_PREFIX + entry.getKey(), value);
+      setPropertyNoChecks(tableName, Property.TABLE_LOCALITY_GROUP_PREFIX + entry.getKey(), value);
     }
 
     try {
-      setProperty(tableName, Property.TABLE_LOCALITY_GROUPS.getKey(),
+      setPropertyNoChecks(tableName, Property.TABLE_LOCALITY_GROUPS.getKey(),
           Joiner.on(",").join(groups.keySet()));
     } catch (AccumuloException e) {
       if (e.getCause() instanceof TableNotFoundException)
@@ -1010,7 +1041,7 @@ public class TableOperationsImpl extends TableOperationsHelper {
         String group = parts[parts.length - 1];
 
         if (!groups.containsKey(group)) {
-          removeProperty(tableName, property);
+          removePropertyNoChecks(tableName, property);
         }
       }
     }
@@ -1104,7 +1135,7 @@ public class TableOperationsImpl extends TableOperationsHelper {
   private Path checkPath(String dir, String kind, String type)
       throws IOException, AccumuloException, AccumuloSecurityException {
     Path ret;
-    Map<String,String> props = context.getClient().instanceOperations().getSystemConfiguration();
+    Map<String,String> props = context.instanceOperations().getSystemConfiguration();
     AccumuloConfiguration conf = new ConfigurationCopy(props);
 
     FileSystem fs = VolumeConfiguration.getVolume(dir, CachedConfiguration.getInstance(), conf)
@@ -1165,7 +1196,7 @@ public class TableOperationsImpl extends TableOperationsHelper {
   }
 
   private void waitForTableStateTransition(Table.ID tableId, TableState expectedState)
-      throws AccumuloException, TableNotFoundException, AccumuloSecurityException {
+      throws AccumuloException, TableNotFoundException {
 
     Text startRow = null;
     Text lastRow = null;
@@ -1191,13 +1222,8 @@ public class TableOperationsImpl extends TableOperationsHelper {
       else
         range = new Range(startRow, lastRow);
 
-      String metaTable = MetadataTable.NAME;
-      if (tableId.equals(MetadataTable.ID))
-        metaTable = RootTable.NAME;
-
-      Scanner scanner = createMetadataScanner(metaTable, range);
-
-      RowIterator rowIter = new RowIterator(scanner);
+      TabletsMetadata tablets = TabletsMetadata.builder().scanMetadataTable().overRange(range)
+          .fetchLocation().fetchPrev().build(context);
 
       KeyExtent lastExtent = null;
 
@@ -1207,51 +1233,34 @@ public class TableOperationsImpl extends TableOperationsHelper {
       Text continueRow = null;
       MapCounter<String> serverCounts = new MapCounter<>();
 
-      while (rowIter.hasNext()) {
-        Iterator<Entry<Key,Value>> row = rowIter.next();
-
+      for (TabletMetadata tablet : tablets) {
         total++;
 
-        KeyExtent extent = null;
-        String future = null;
-        String current = null;
+        Location loc = tablet.getLocation();
 
-        while (row.hasNext()) {
-          Entry<Key,Value> entry = row.next();
-          Key key = entry.getKey();
-
-          if (key.getColumnFamily().equals(TabletsSection.FutureLocationColumnFamily.NAME))
-            future = entry.getValue().toString();
-
-          if (key.getColumnFamily().equals(TabletsSection.CurrentLocationColumnFamily.NAME))
-            current = entry.getValue().toString();
-
-          if (TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.hasColumns(key))
-            extent = new KeyExtent(key.getRow(), entry.getValue());
-        }
-
-        if ((expectedState == TableState.ONLINE && current == null)
-            || (expectedState == TableState.OFFLINE && (future != null || current != null))) {
+        if ((expectedState == TableState.ONLINE
+            && (loc == null || loc.getType() == LocationType.FUTURE))
+            || (expectedState == TableState.OFFLINE && loc != null)) {
           if (continueRow == null)
-            continueRow = extent.getMetadataEntry();
+            continueRow = tablet.getExtent().getMetadataEntry();
           waitFor++;
-          lastRow = extent.getMetadataEntry();
+          lastRow = tablet.getExtent().getMetadataEntry();
 
-          if (current != null)
-            serverCounts.increment(current, 1);
-          if (future != null)
-            serverCounts.increment(future, 1);
+          if (loc != null) {
+            serverCounts.increment(loc.getId(), 1);
+          }
         }
 
-        if (!extent.getTableId().equals(tableId)) {
-          throw new AccumuloException("Saw unexpected table Id " + tableId + " " + extent);
+        if (!tablet.getExtent().getTableId().equals(tableId)) {
+          throw new AccumuloException(
+              "Saw unexpected table Id " + tableId + " " + tablet.getExtent());
         }
 
-        if (lastExtent != null && !extent.isPreviousExtent(lastExtent)) {
+        if (lastExtent != null && !tablet.getExtent().isPreviousExtent(lastExtent)) {
           holes++;
         }
 
-        lastExtent = extent;
+        lastExtent = tablet.getExtent();
       }
 
       if (continueRow != null) {
@@ -1281,20 +1290,6 @@ public class TableOperationsImpl extends TableOperationsHelper {
       }
 
     }
-  }
-
-  /**
-   * Create an IsolatedScanner over the given table, fetching the columns necessary to determine
-   * when a table has transitioned to online or offline.
-   */
-  protected IsolatedScanner createMetadataScanner(String metaTable, Range range)
-      throws TableNotFoundException, AccumuloException, AccumuloSecurityException {
-    Scanner scanner = context.getClient().createScanner(metaTable, Authorizations.EMPTY);
-    TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
-    scanner.fetchColumnFamily(TabletsSection.FutureLocationColumnFamily.NAME);
-    scanner.fetchColumnFamily(TabletsSection.CurrentLocationColumnFamily.NAME);
-    scanner.setRange(range);
-    return new IsolatedScanner(scanner);
   }
 
   @Override
@@ -1381,11 +1376,10 @@ public class TableOperationsImpl extends TableOperationsHelper {
 
   @Override
   public Text getMaxRow(String tableName, Authorizations auths, Text startRow,
-      boolean startInclusive, Text endRow, boolean endInclusive)
-      throws TableNotFoundException, AccumuloException, AccumuloSecurityException {
+      boolean startInclusive, Text endRow, boolean endInclusive) throws TableNotFoundException {
     checkArgument(tableName != null, "tableName is null");
     checkArgument(auths != null, "auths is null");
-    Scanner scanner = context.getClient().createScanner(tableName, auths);
+    Scanner scanner = context.createScanner(tableName, auths);
     return FindMax.findMax(scanner, startRow, startInclusive, endRow, endInclusive);
   }
 
@@ -1901,7 +1895,7 @@ public class TableOperationsImpl extends TableOperationsHelper {
 
   @Override
   public List<SummarizerConfiguration> listSummarizers(String tableName)
-      throws AccumuloException, TableNotFoundException, AccumuloSecurityException {
+      throws AccumuloException, TableNotFoundException {
     return new ArrayList<>(SummarizerConfiguration.fromTableProperties(getProperties(tableName)));
   }
 

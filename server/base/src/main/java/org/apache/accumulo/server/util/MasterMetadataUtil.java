@@ -19,7 +19,6 @@ package org.apache.accumulo.server.util;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -99,8 +98,7 @@ public class MasterMetadataUtil {
   }
 
   public static KeyExtent fixSplit(ServerContext context, Text metadataEntry,
-      SortedMap<ColumnFQ,Value> columns, TServerInstance tserver, ZooLock lock)
-      throws AccumuloException, IOException {
+      SortedMap<ColumnFQ,Value> columns, ZooLock lock) throws AccumuloException {
     log.info("Incomplete split {} attempting to fix", metadataEntry);
 
     Value oper = columns.get(TabletsSection.TabletColumnFamily.OLD_PREV_ROW_COLUMN);
@@ -127,27 +125,16 @@ public class MasterMetadataUtil {
           "Metadata entry does not have time (" + metadataEntry + ")");
     }
 
-    Value flushID = columns.get(TabletsSection.ServerColumnFamily.FLUSH_COLUMN);
-    long initFlushID = -1;
-    if (flushID != null)
-      initFlushID = Long.parseLong(flushID.toString());
-
-    Value compactID = columns.get(TabletsSection.ServerColumnFamily.COMPACT_COLUMN);
-    long initCompactID = -1;
-    if (compactID != null)
-      initCompactID = Long.parseLong(compactID.toString());
-
     Text metadataPrevEndRow = KeyExtent.decodePrevEndRow(prevEndRowIBW);
 
     Table.ID tableId = (new KeyExtent(metadataEntry, (Text) null)).getTableId();
 
-    return fixSplit(context, tableId, metadataEntry, metadataPrevEndRow, oper, splitRatio, tserver,
-        time.toString(), initFlushID, initCompactID, lock);
+    return fixSplit(context, tableId, metadataEntry, metadataPrevEndRow, oper, splitRatio, lock);
   }
 
   private static KeyExtent fixSplit(ServerContext context, Table.ID tableId, Text metadataEntry,
-      Text metadataPrevEndRow, Value oper, double splitRatio, TServerInstance tserver, String time,
-      long initFlushID, long initCompactID, ZooLock lock) throws AccumuloException, IOException {
+      Text metadataPrevEndRow, Value oper, double splitRatio, ZooLock lock)
+      throws AccumuloException {
     if (metadataPrevEndRow == null)
       // something is wrong, this should not happen... if a tablet is split, it will always have a
       // prev end row....
@@ -212,8 +199,7 @@ public class MasterMetadataUtil {
 
   public static void replaceDatafiles(ServerContext context, KeyExtent extent,
       Set<FileRef> datafilesToDelete, Set<FileRef> scanFiles, FileRef path, Long compactionId,
-      DataFileValue size, String address, TServerInstance lastLocation, ZooLock zooLock)
-      throws IOException {
+      DataFileValue size, String address, TServerInstance lastLocation, ZooLock zooLock) {
     replaceDatafiles(context, extent, datafilesToDelete, scanFiles, path, compactionId, size,
         address, lastLocation, zooLock, true);
   }
@@ -221,7 +207,7 @@ public class MasterMetadataUtil {
   public static void replaceDatafiles(ServerContext context, KeyExtent extent,
       Set<FileRef> datafilesToDelete, Set<FileRef> scanFiles, FileRef path, Long compactionId,
       DataFileValue size, String address, TServerInstance lastLocation, ZooLock zooLock,
-      boolean insertDeleteFlags) throws IOException {
+      boolean insertDeleteFlags) {
 
     if (insertDeleteFlags) {
       // add delete flags for those paths before the data file reference is removed
@@ -267,8 +253,7 @@ public class MasterMetadataUtil {
       long flushId) {
     if (extent.isRootTablet()) {
       if (unusedWalLogs != null) {
-        updateRootTabletDataFile(context, extent, path, mergeFile, dfv, time, filesInUseByScans,
-            address, zooLock, unusedWalLogs, lastLocation, flushId);
+        updateRootTabletDataFile(context, unusedWalLogs);
       }
       return;
     }
@@ -280,10 +265,7 @@ public class MasterMetadataUtil {
   /**
    * Update the data file for the root tablet
    */
-  private static void updateRootTabletDataFile(ServerContext context, KeyExtent extent,
-      FileRef path, FileRef mergeFile, DataFileValue dfv, String time,
-      Set<FileRef> filesInUseByScans, String address, ZooLock zooLock, Set<String> unusedWalLogs,
-      TServerInstance lastLocation, long flushId) {
+  private static void updateRootTabletDataFile(ServerContext context, Set<String> unusedWalLogs) {
     IZooReaderWriter zk = context.getZooReaderWriter();
     String root = MetadataTableUtil.getZookeeperLogLocation(context);
     for (String entry : unusedWalLogs) {

@@ -27,12 +27,12 @@ import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.MultiTableBatchWriter;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.TableExistsException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.security.SecurityErrorCode;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.data.ColumnUpdate;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.TabletId;
@@ -88,21 +88,8 @@ public class AccumuloOutputFormatImpl {
    *
    * @since 2.0.0
    */
-  protected static ClientInfo getClientInfo(JobContext context) {
+  public static ClientInfo getClientInfo(JobContext context) {
     return OutputConfigurator.getClientInfo(CLASS, context.getConfiguration());
-  }
-
-  /**
-   * Set Accumulo client properties file used to connect to Accumulo
-   *
-   * @param job
-   *          Hadoop job to be configured
-   * @param clientPropsFile
-   *          URL to Accumulo client properties file
-   * @since 2.0.0
-   */
-  protected static void setClientPropertiesFile(Job job, String clientPropsFile) {
-    OutputConfigurator.setClientPropertiesFile(CLASS, job.getConfiguration(), clientPropsFile);
   }
 
   /**
@@ -348,6 +335,8 @@ public class AccumuloOutputFormatImpl {
           log.error("Constraint violations : " + e.getConstraintViolationSummaries().size());
         }
         throw new IOException(e);
+      } finally {
+        client.close();
       }
     }
   }

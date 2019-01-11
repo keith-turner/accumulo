@@ -48,7 +48,7 @@ import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.file.blockfile.cache.impl.BlockCacheConfiguration;
 import org.apache.accumulo.core.file.blockfile.cache.impl.BlockCacheManagerFactory;
-import org.apache.accumulo.core.file.blockfile.impl.CachableBlockFile;
+import org.apache.accumulo.core.file.blockfile.impl.CachableBlockFile.CachableBuilder;
 import org.apache.accumulo.core.file.rfile.RFile;
 import org.apache.accumulo.core.file.rfile.RFile.Reader;
 import org.apache.accumulo.core.iterators.IteratorAdapter;
@@ -184,7 +184,7 @@ class RFileScanner extends ScannerOptions implements Scanner {
     }
 
     this.opts = opts;
-    if (null != opts.tableConfig && opts.tableConfig.size() > 0) {
+    if (opts.tableConfig != null && opts.tableConfig.size() > 0) {
       ConfigurationCopy tableCC = new ConfigurationCopy(DefaultConfiguration.getInstance());
       opts.tableConfig.forEach(tableCC::set);
       this.tableConf = tableCC;
@@ -212,10 +212,10 @@ class RFileScanner extends ScannerOptions implements Scanner {
         throw new RuntimeException(e);
       }
     }
-    if (null == indexCache) {
+    if (indexCache == null) {
       this.indexCache = new NoopCache();
     }
-    if (null == this.dataCache) {
+    if (this.dataCache == null) {
       this.dataCache = new NoopCache();
     }
     this.cryptoService = CryptoServiceFactory.newInstance(tableConf, ClassloaderType.JAVA);
@@ -339,9 +339,10 @@ class RFileScanner extends ScannerOptions implements Scanner {
       for (int i = 0; i < sources.length; i++) {
         // TODO may have been a bug with multiple files and caching in older version...
         FSDataInputStream inputStream = (FSDataInputStream) sources[i].getInputStream();
-        readers.add(new RFile.Reader(
-            new CachableBlockFile.Reader("source-" + i, inputStream, sources[i].getLength(),
-                opts.in.getConf(), dataCache, indexCache, tableConf, cryptoService)));
+        CachableBuilder cb = new CachableBuilder().cacheId("source-" + i).input(inputStream)
+            .length(sources[i].getLength()).conf(opts.in.getConf()).data(dataCache)
+            .index(indexCache).cryptoService(cryptoService);
+        readers.add(new RFile.Reader(cb));
       }
 
       if (getSamplerConfiguration() != null) {
@@ -397,7 +398,7 @@ class RFileScanner extends ScannerOptions implements Scanner {
       throw new RuntimeException(e);
     }
     try {
-      if (null != this.blockCacheManager) {
+      if (this.blockCacheManager != null) {
         this.blockCacheManager.stop();
       }
     } catch (Exception e1) {

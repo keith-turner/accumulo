@@ -16,16 +16,14 @@
  */
 package org.apache.accumulo.hadoop.mapreduce;
 
-import static org.apache.accumulo.hadoopImpl.mapreduce.AbstractInputFormat.getClientInfo;
-
 import java.io.IOException;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.hadoopImpl.mapreduce.AccumuloOutputFormatImpl;
 import org.apache.accumulo.hadoopImpl.mapreduce.OutputFormatBuilderImpl;
@@ -57,13 +55,10 @@ public class AccumuloOutputFormat extends OutputFormat<Text,Mutation> {
 
   @Override
   public void checkOutputSpecs(JobContext job) throws IOException {
-    try {
-      // if the instance isn't configured, it will complain here
-      ClientInfo clientInfo = getClientInfo(job);
-      String principal = clientInfo.getPrincipal();
-      AuthenticationToken token = clientInfo.getAuthenticationToken();
-      AccumuloClient c = Accumulo.newClient().from(clientInfo.getProperties()).build();
-
+    ClientInfo clientInfo = AccumuloOutputFormatImpl.getClientInfo(job);
+    String principal = clientInfo.getPrincipal();
+    AuthenticationToken token = clientInfo.getAuthenticationToken();
+    try (AccumuloClient c = Accumulo.newClient().from(clientInfo.getProperties()).build()) {
       if (!c.securityOperations().authenticateUser(principal, token))
         throw new IOException("Unable to authenticate user");
     } catch (AccumuloException | AccumuloSecurityException e) {

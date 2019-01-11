@@ -102,17 +102,17 @@ public class NamespacesIT extends AccumuloClusterHarness {
   }
 
   @Before
-  public void setupConnectorAndNamespace() throws Exception {
-    Assume.assumeTrue(ClusterType.MINI == getClusterType());
+  public void setupConnectorAndNamespace() {
+    Assume.assumeTrue(getClusterType() == ClusterType.MINI);
 
     // prepare a unique namespace and get a new root client for each test
-    c = getAccumuloClient();
+    c = createAccumuloClient();
     namespace = "ns_" + getUniqueNames(1)[0];
   }
 
   @After
   public void swingMjölnir() throws Exception {
-    if (null == c) {
+    if (c == null) {
       return;
     }
     // clean up any added tables, namespaces, and users, after each test
@@ -133,7 +133,7 @@ public class NamespacesIT extends AccumuloClusterHarness {
   }
 
   @Test
-  public void checkReservedNamespaces() throws Exception {
+  public void checkReservedNamespaces() {
     assertEquals(c.namespaceOperations().defaultNamespace(), Namespace.DEFAULT);
     assertEquals(c.namespaceOperations().systemNamespace(), Namespace.ACCUMULO);
   }
@@ -518,12 +518,12 @@ public class NamespacesIT extends AccumuloClusterHarness {
     Integer namespaceNum = null;
     for (int i = 0; i < 5; i++) {
       namespaceNum = c.namespaceOperations().listConstraints(namespace).get(constraintClassName);
-      if (null == namespaceNum) {
+      if (namespaceNum == null) {
         Thread.sleep(500);
         continue;
       }
       Integer tableNum = c.tableOperations().listConstraints(t1).get(constraintClassName);
-      if (null == tableNum) {
+      if (tableNum == null) {
         Thread.sleep(500);
         continue;
       }
@@ -663,7 +663,7 @@ public class NamespacesIT extends AccumuloClusterHarness {
     ClusterUser user1 = getUser(0), user2 = getUser(1), root = getAdminUser();
     String u1 = user1.getPrincipal();
     String u2 = user2.getPrincipal();
-    PasswordToken pass = (null != user1.getPassword() ? new PasswordToken(user1.getPassword())
+    PasswordToken pass = (user1.getPassword() != null ? new PasswordToken(user1.getPassword())
         : null);
 
     String n1 = namespace;

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.accumulo.test.mapred;
 
 import static org.junit.Assert.assertEquals;
@@ -24,16 +23,13 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.File;
-import java.io.IOException;
 
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.mapred.AccumuloFileOutputFormat;
-import org.apache.accumulo.core.client.mapred.AccumuloInputFormat;
 import org.apache.accumulo.core.client.sample.RowSampler;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
-import org.apache.accumulo.core.clientImpl.mapreduce.lib.ConfiguratorBase;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.crypto.CryptoServiceFactory;
 import org.apache.accumulo.core.data.Key;
@@ -62,6 +58,10 @@ import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * This tests deprecated mapreduce code in core jar
+ */
+@Deprecated
 public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
   private static final Logger log = LoggerFactory.getLogger(AccumuloFileOutputFormatIT.class);
   private static final int JOB_VISIBILITY_CACHE_SIZE = 3000;
@@ -82,7 +82,7 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
 
   @Test
   public void testEmptyWrite() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(EMPTY_TABLE);
       handleWriteTests(false);
     }
@@ -90,7 +90,7 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
 
   @Test
   public void testRealWrite() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(TEST_TABLE);
       BatchWriter bw = c.createBatchWriter(TEST_TABLE, new BatchWriterConfig());
       Mutation m = new Mutation("Key");
@@ -103,12 +103,10 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
 
   private static class MRTester extends Configured implements Tool {
     private static class BadKeyMapper implements Mapper<Key,Value,Key,Value> {
-
       int index = 0;
 
       @Override
-      public void map(Key key, Value value, OutputCollector<Key,Value> output, Reporter reporter)
-          throws IOException {
+      public void map(Key key, Value value, OutputCollector<Key,Value> output, Reporter reporter) {
         try {
           try {
             output.collect(key, value);
@@ -128,7 +126,7 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
       public void configure(JobConf job) {}
 
       @Override
-      public void close() throws IOException {
+      public void close() {
         try {
           assertEquals(2, index);
         } catch (AssertionError e) {
@@ -150,19 +148,26 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
 
       JobConf job = new JobConf(getConf());
       job.setJarByClass(this.getClass());
-      ConfiguratorBase.setVisibilityCacheSize(job, JOB_VISIBILITY_CACHE_SIZE);
+      org.apache.accumulo.core.clientImpl.mapreduce.lib.OutputConfigurator
+          .setVisibilityCacheSize(job, JOB_VISIBILITY_CACHE_SIZE);
 
-      job.setInputFormat(AccumuloInputFormat.class);
+      job.setInputFormat(org.apache.accumulo.core.client.mapred.AccumuloInputFormat.class);
 
-      AccumuloInputFormat.setClientInfo(job, getClientInfo());
-      AccumuloInputFormat.setInputTableName(job, table);
-      AccumuloFileOutputFormat.setOutputPath(job, new Path(args[1]));
-      AccumuloFileOutputFormat.setSampler(job, SAMPLER_CONFIG);
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setInputTableName(job, table);
+      org.apache.accumulo.core.client.mapred.AccumuloFileOutputFormat.setOutputPath(job,
+          new Path(args[1]));
+      org.apache.accumulo.core.client.mapred.AccumuloFileOutputFormat.setSampler(job,
+          SAMPLER_CONFIG);
 
       job.setMapperClass(BAD_TABLE.equals(table) ? BadKeyMapper.class : IdentityMapper.class);
       job.setMapOutputKeyClass(Key.class);
       job.setMapOutputValueClass(Value.class);
-      job.setOutputFormat(AccumuloFileOutputFormat.class);
+      job.setOutputFormat(org.apache.accumulo.core.client.mapred.AccumuloFileOutputFormat.class);
 
       job.setNumReduceTasks(0);
 
@@ -207,7 +212,7 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
 
   @Test
   public void writeBadVisibility() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(BAD_TABLE);
       BatchWriter bw = c.createBatchWriter(BAD_TABLE, new BatchWriterConfig());
       Mutation m = new Mutation("r1");

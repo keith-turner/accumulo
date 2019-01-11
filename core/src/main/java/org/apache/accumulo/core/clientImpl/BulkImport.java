@@ -106,8 +106,8 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
   }
 
   @Override
-  public ImportMappingOptions tableTime() {
-    this.setTime = true;
+  public ImportMappingOptions tableTime(boolean value) {
+    this.setTime = value;
     return this;
   }
 
@@ -117,7 +117,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
     Table.ID tableId = Tables.getTableId(context, tableName);
 
-    Map<String,String> props = context.getClient().instanceOperations().getSystemConfiguration();
+    Map<String,String> props = context.instanceOperations().getSystemConfiguration();
     AccumuloConfiguration conf = new ConfigurationCopy(props);
 
     FileSystem fs = VolumeConfiguration.getVolume(dir, CachedConfiguration.getInstance(), conf)
@@ -261,11 +261,11 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
   public interface KeyExtentCache {
     KeyExtent lookup(Text row)
-        throws IOException, AccumuloException, AccumuloSecurityException, TableNotFoundException;
+        throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
   }
 
-  public static List<KeyExtent> findOverlappingTablets(ClientContext context,
-      KeyExtentCache extentCache, FileSKVIterator reader)
+  public static List<KeyExtent> findOverlappingTablets(KeyExtentCache extentCache,
+      FileSKVIterator reader)
       throws IOException, AccumuloException, AccumuloSecurityException, TableNotFoundException {
 
     Text startRow = null;
@@ -311,7 +311,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
         .forFile(file.toString(), fs, fs.getConf(), cs)
         .withTableConfiguration(context.getConfiguration()).withFileLenCache(fileLenCache)
         .seekToBeginning().build()) {
-      return findOverlappingTablets(context, extentCache, reader);
+      return findOverlappingTablets(extentCache, reader);
     }
   }
 
@@ -396,7 +396,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
   private Set<KeyExtent> mapDesitnationsToExtents(Table.ID tableId, KeyExtentCache kec,
       List<Destination> destinations)
-      throws IOException, AccumuloException, AccumuloSecurityException, TableNotFoundException {
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     Set<KeyExtent> extents = new HashSet<>();
 
     for (Destination dest : destinations) {

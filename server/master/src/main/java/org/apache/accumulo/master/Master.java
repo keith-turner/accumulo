@@ -20,6 +20,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.io.IOException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,11 +40,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.Namespace;
@@ -77,7 +77,6 @@ import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.NamespacePermission;
 import org.apache.accumulo.core.security.TablePermission;
 import org.apache.accumulo.core.tabletserver.thrift.TUnloadTabletGoal;
-import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.trace.wrappers.TraceWrap;
 import org.apache.accumulo.core.util.Daemon;
 import org.apache.accumulo.core.util.Pair;
@@ -335,7 +334,7 @@ public class Master
       // This Master hasn't started Fate yet, so any outstanding transactions must be from before
       // the upgrade.
       // Change to Guava's Verify once we use Guava 17.
-      if (null != fate) {
+      if (fate != null) {
         throw new IllegalStateException("Access to Fate should not have been"
             + " initialized prior to the Master transitioning to active. Please"
             + " save all logs and file a bug.");
@@ -459,9 +458,10 @@ public class Master
         for (String user : zoo.getChildren(users)) {
           zoo.putPersistentData(users + "/" + user + "/Namespaces", new byte[0],
               NodeExistsPolicy.SKIP);
-          perm.grantNamespacePermission(user, Namespace.ID.ACCUMULO, NamespacePermission.READ);
+          perm.grantNamespacePermission(user, Namespace.ID.ACCUMULO.canonicalID(),
+              NamespacePermission.READ);
         }
-        perm.grantNamespacePermission("root", Namespace.ID.ACCUMULO,
+        perm.grantNamespacePermission("root", Namespace.ID.ACCUMULO.canonicalID(),
             NamespacePermission.ALTER_TABLE);
 
         // add the currlog location for root tablet current logs
@@ -503,7 +503,7 @@ public class Master
               + " Accumulo's metadata table if we've already upgraded ZooKeeper."
               + " Please save all logs and file a bug.");
         }
-        if (null != fate) {
+        if (fate != null) {
           throw new IllegalStateException("Access to Fate should not have been"
               + " initialized prior to the Master finishing upgrades. Please save"
               + " all logs and file a bug.");
@@ -644,10 +644,6 @@ public class Master
     return context.getTableManager();
   }
 
-  public AccumuloClient getClient() throws AccumuloSecurityException, AccumuloException {
-    return context.getClient();
-  }
-
   public Master(ServerContext context) throws IOException {
     this.context = context;
     this.serverConfig = context.getServerConfFactory();
@@ -744,7 +740,7 @@ public class Master
   }
 
   public void setMergeState(MergeInfo info, MergeState state)
-      throws IOException, KeeperException, InterruptedException {
+      throws KeeperException, InterruptedException {
     synchronized (mergeLock) {
       String path = getZooKeeperRoot() + Constants.ZTABLES + "/" + info.getExtent().getTableId()
           + "/merge";
@@ -767,8 +763,7 @@ public class Master
     nextEvent.event("Merge state of %s set to %s", info.getExtent(), state);
   }
 
-  public void clearMergeState(Table.ID tableId)
-      throws IOException, KeeperException, InterruptedException {
+  public void clearMergeState(Table.ID tableId) throws KeeperException, InterruptedException {
     synchronized (mergeLock) {
       String path = getZooKeeperRoot() + Constants.ZTABLES + "/" + tableId + "/merge";
       context.getZooReaderWriter().recursiveDelete(path, NodeMissingPolicy.SKIP);
@@ -934,7 +929,7 @@ public class Master
         if (!migrations.isEmpty()) {
           try {
             cleanupOfflineMigrations();
-            cleanupNonexistentMigrations(context.getClient());
+            cleanupNonexistentMigrations(context);
           } catch (Exception ex) {
             log.error("Error cleaning up migrations", ex);
           }
@@ -949,7 +944,7 @@ public class Master
      * the metadata table and remove any migrating tablets that no longer exist.
      */
     private void cleanupNonexistentMigrations(final AccumuloClient accumuloClient)
-        throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+        throws TableNotFoundException {
       Scanner scanner = accumuloClient.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
       TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
       Set<KeyExtent> found = new HashSet<>();
@@ -970,7 +965,7 @@ public class Master
       TableManager manager = context.getTableManager();
       for (Table.ID tableId : Tables.getIdToNameMap(context).keySet()) {
         TableState state = manager.getTableState(tableId);
-        if (TableState.OFFLINE == state) {
+        if (state == TableState.OFFLINE) {
           clearMigrations(tableId);
         }
       }
@@ -1089,8 +1084,7 @@ public class Master
       }
     }
 
-    private long updateStatus()
-        throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+    private long updateStatus() {
       Set<TServerInstance> currentServers = tserverSet.getCurrentServers();
       tserverStatus = gatherTableInformation(currentServers);
       checkForHeldServer(tserverStatus);
@@ -1257,7 +1251,7 @@ public class Master
     Iface haProxy = HighlyAvailableServiceWrapper.service(clientHandler, this);
     Iface rpcProxy = TraceWrap.service(haProxy);
     final Processor<Iface> processor;
-    if (ThriftServerType.SASL == context.getThriftServerType()) {
+    if (context.getThriftServerType() == ThriftServerType.SASL) {
       Iface tcredsProxy = TCredentialsUpdatingWrapper.service(rpcProxy, clientHandler.getClass(),
           getConfiguration());
       processor = new Processor<>(tcredsProxy);
@@ -1269,22 +1263,6 @@ public class Master
         Property.MASTER_THREADCHECK, Property.GENERAL_MAX_MESSAGE_SIZE);
     clientService = sa.server;
     log.info("Started Master client service at {}", sa.address);
-
-    // Start the replication coordinator which assigns tservers to service replication requests
-    MasterReplicationCoordinator impl = new MasterReplicationCoordinator(this);
-    ReplicationCoordinator.Iface haReplicationProxy = HighlyAvailableServiceWrapper.service(impl,
-        this);
-    // @formatter:off
-    ReplicationCoordinator.Processor<ReplicationCoordinator.Iface> replicationCoordinatorProcessor =
-      new ReplicationCoordinator.Processor<>(TraceWrap.service(haReplicationProxy));
-    // @formatter:on
-    ServerAddress replAddress = TServerUtils.startServer(context, hostname,
-        Property.MASTER_REPLICATION_COORDINATOR_PORT, replicationCoordinatorProcessor,
-        "Master Replication Coordinator", "Replication Coordinator", null,
-        Property.MASTER_REPLICATION_COORDINATOR_MINTHREADS,
-        Property.MASTER_REPLICATION_COORDINATOR_THREADCHECK, Property.GENERAL_MAX_MESSAGE_SIZE);
-
-    log.info("Started replication coordinator service at " + replAddress.address);
 
     // block until we can obtain the ZK lock for the master
     getMasterLock(zroot + Constants.ZMASTER_LOCK);
@@ -1375,7 +1353,7 @@ public class Master
 
     // Make sure that we have a secret key (either a new one or an old one from ZK) before we start
     // the master client service.
-    if (null != authenticationTokenKeyManager && null != keyDistributor) {
+    if (authenticationTokenKeyManager != null && keyDistributor != null) {
       log.info("Starting delegation-token key manager");
       keyDistributor.initialize();
       authenticationTokenKeyManager.start();
@@ -1400,32 +1378,20 @@ public class Master
       sleepUninterruptibly(100, TimeUnit.MILLISECONDS);
     }
 
-    // Start the daemon to scan the replication table and make units of work
-    replicationWorkDriver = new ReplicationDriver(this);
-    replicationWorkDriver.start();
-
-    // Start the daemon to assign work to tservers to replicate to our peers
-    try {
-      replicationWorkAssigner = new WorkDriver(this);
-    } catch (AccumuloException | AccumuloSecurityException e) {
-      log.error("Caught exception trying to initialize replication WorkDriver", e);
-      throw new RuntimeException(e);
-    }
-    replicationWorkAssigner.start();
-
-    // Advertise that port we used so peers don't have to be told what it is
-    context.getZooReaderWriter().putPersistentData(
-        getZooKeeperRoot() + Constants.ZMASTER_REPLICATION_COORDINATOR_ADDR,
-        replAddress.address.toString().getBytes(UTF_8), NodeExistsPolicy.OVERWRITE);
-
-    // Register replication metrics
-    MasterMetricsFactory factory = new MasterMetricsFactory(getConfiguration(), this);
-    Metrics replicationMetrics = factory.createReplicationMetrics();
-    try {
-      replicationMetrics.register();
-    } catch (Exception e) {
-      log.error("Failed to register replication metrics", e);
-    }
+    // if the replication name is ever set, then start replication services
+    final AtomicReference<TServer> replServer = new AtomicReference<>();
+    SimpleTimer.getInstance(getConfiguration()).schedule(() -> {
+      try {
+        if (replServer.get() == null) {
+          if (!getConfiguration().get(Property.REPLICATION_NAME).isEmpty()) {
+            log.info(Property.REPLICATION_NAME.getKey() + " was set, starting repl services.");
+            replServer.set(setupReplication());
+          }
+        }
+      } catch (UnknownHostException | KeeperException | InterruptedException e) {
+        log.error("Error occurred starting replication services. ", e);
+      }
+    }, 0, 5000);
 
     // The master is fully initialized. Clients are allowed to connect now.
     masterInitialized.set(true);
@@ -1441,9 +1407,12 @@ public class Master
 
     final long deadline = System.currentTimeMillis() + MAX_CLEANUP_WAIT_TIME;
     statusThread.join(remaining(deadline));
-    replicationWorkAssigner.join(remaining(deadline));
-    replicationWorkDriver.join(remaining(deadline));
-    replAddress.server.stop();
+    if (replicationWorkAssigner != null)
+      replicationWorkAssigner.join(remaining(deadline));
+    if (replicationWorkDriver != null)
+      replicationWorkDriver.join(remaining(deadline));
+    TServerUtils.stopTServer(replServer.get());
+
     // Signal that we want it to stop, and wait for it to do so.
     if (authenticationTokenKeyManager != null) {
       authenticationTokenKeyManager.gracefulStop();
@@ -1456,6 +1425,47 @@ public class Master
       watcher.join(remaining(deadline));
     }
     log.info("exiting");
+  }
+
+  private TServer setupReplication()
+      throws UnknownHostException, KeeperException, InterruptedException {
+    // Start the replication coordinator which assigns tservers to service replication requests
+    MasterReplicationCoordinator impl = new MasterReplicationCoordinator(this);
+    ReplicationCoordinator.Iface haReplicationProxy = HighlyAvailableServiceWrapper.service(impl,
+        this);
+    // @formatter:off
+    ReplicationCoordinator.Processor<ReplicationCoordinator.Iface> replicationCoordinatorProcessor =
+            new ReplicationCoordinator.Processor<>(TraceWrap.service(haReplicationProxy));
+    // @formatter:on
+    ServerAddress replAddress = TServerUtils.startServer(context, hostname,
+        Property.MASTER_REPLICATION_COORDINATOR_PORT, replicationCoordinatorProcessor,
+        "Master Replication Coordinator", "Replication Coordinator", null,
+        Property.MASTER_REPLICATION_COORDINATOR_MINTHREADS,
+        Property.MASTER_REPLICATION_COORDINATOR_THREADCHECK, Property.GENERAL_MAX_MESSAGE_SIZE);
+
+    log.info("Started replication coordinator service at " + replAddress.address);
+    // Start the daemon to scan the replication table and make units of work
+    replicationWorkDriver = new ReplicationDriver(this);
+    replicationWorkDriver.start();
+
+    // Start the daemon to assign work to tservers to replicate to our peers
+    replicationWorkAssigner = new WorkDriver(this);
+    replicationWorkAssigner.start();
+
+    // Advertise that port we used so peers don't have to be told what it is
+    context.getZooReaderWriter().putPersistentData(
+        getZooKeeperRoot() + Constants.ZMASTER_REPLICATION_COORDINATOR_ADDR,
+        replAddress.address.toString().getBytes(UTF_8), NodeExistsPolicy.OVERWRITE);
+
+    // Register replication metrics
+    MasterMetricsFactory factory = new MasterMetricsFactory(getConfiguration(), this);
+    Metrics replicationMetrics = factory.createReplicationMetrics();
+    try {
+      replicationMetrics.register();
+    } catch (Exception e) {
+      log.error("Failed to register replication metrics", e);
+    }
+    return replAddress.server;
   }
 
   private long remaining(long deadline) {
@@ -1651,13 +1661,13 @@ public class Master
   @Override
   public void stateChanged(Table.ID tableId, TableState state) {
     nextEvent.event("Table state in zookeeper changed for %s to %s", tableId, state);
-    if (TableState.OFFLINE == state) {
+    if (state == TableState.OFFLINE) {
       clearMigrations(tableId);
     }
   }
 
   @Override
-  public void initialize(Map<Table.ID,TableState> tableIdToStateMap) {}
+  public void initialize() {}
 
   @Override
   public void sessionExpired() {}
@@ -1731,7 +1741,7 @@ public class Master
   }
 
   @SuppressFBWarnings(value = "UW_UNCOND_WAIT", justification = "TODO needs triage")
-  public void waitForBalance(TInfo tinfo) {
+  public void waitForBalance() {
     synchronized (balancedNotifier) {
       long eventCounter;
       do {

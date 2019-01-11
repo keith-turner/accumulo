@@ -37,8 +37,6 @@ import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.cli.BatchWriterOpts;
 import org.apache.accumulo.core.cli.ScannerOpts;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Scanner;
@@ -95,8 +93,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
     hadoopCoreSite.set("fs.file.impl", RawLocalFileSystem.class.getName());
   }
 
-  private void killMacGc() throws ProcessNotFoundException, InterruptedException, KeeperException,
-      AccumuloSecurityException, AccumuloException {
+  private void killMacGc() throws ProcessNotFoundException, InterruptedException, KeeperException {
     // kill gc started by MAC
     getCluster().killProcess(ServerType.GARBAGE_COLLECTOR,
         getCluster().getProcesses().get(ServerType.GARBAGE_COLLECTOR).iterator().next());
@@ -115,7 +112,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
   @Test
   public void gcTest() throws Exception {
     killMacGc();
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       c.tableOperations().create("test_ingest");
       c.tableOperations().setProperty("test_ingest", Property.TABLE_SPLIT_THRESHOLD.getKey(), "5K");
       TestIngest.Opts opts = new TestIngest.Opts();
@@ -149,7 +146,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
     killMacGc();
 
     log.info("Filling metadata table with bogus delete flags");
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       addEntries(c, new BatchWriterOpts());
       cluster.getConfig().setDefaultMemory(10, MemoryUnit.MEGABYTE);
       Process gc = cluster.exec(SimpleGarbageCollector.class);
@@ -173,7 +170,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
   public void dontGCRootLog() throws Exception {
     killMacGc();
     // dirty metadata
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       String table = getUniqueNames(1)[0];
       c.tableOperations().create(table);
       // let gc run for a bit
@@ -203,7 +200,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
   @Test
   public void testInvalidDelete() throws Exception {
     killMacGc();
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       String table = getUniqueNames(1)[0];
       c.tableOperations().create(table);
 
@@ -256,7 +253,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
   @Test
   public void testProperPortAdvertisement() throws Exception {
 
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
 
       ZooReaderWriter zk = new ZooReaderWriter(cluster.getZooKeepers(), 30000, OUR_SECRET);
       String path = ZooUtil.getRoot(client.getInstanceID()) + Constants.ZGC_LOCK;

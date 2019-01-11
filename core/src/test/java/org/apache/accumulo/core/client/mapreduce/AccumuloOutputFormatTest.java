@@ -27,6 +27,10 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.junit.Test;
 
+/**
+ * @deprecated since 2.0.0
+ */
+@Deprecated
 public class AccumuloOutputFormatTest {
 
   @Test
@@ -49,7 +53,7 @@ public class AccumuloOutputFormatTest {
 
     AccumuloOutputFormat myAOF = new AccumuloOutputFormat() {
       @Override
-      public void checkOutputSpecs(JobContext job) throws IOException {
+      public void checkOutputSpecs(JobContext job) {
         BatchWriterConfig bwOpts = getBatchWriterOptions(job);
 
         // passive check

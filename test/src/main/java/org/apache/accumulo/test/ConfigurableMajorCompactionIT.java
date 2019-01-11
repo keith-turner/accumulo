@@ -19,7 +19,6 @@ package org.apache.accumulo.test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -61,12 +60,12 @@ public class ConfigurableMajorCompactionIT extends ConfigurableMacBase {
   public static class TestCompactionStrategy extends CompactionStrategy {
 
     @Override
-    public boolean shouldCompact(MajorCompactionRequest request) throws IOException {
+    public boolean shouldCompact(MajorCompactionRequest request) {
       return request.getFiles().size() == 5;
     }
 
     @Override
-    public CompactionPlan getCompactionPlan(MajorCompactionRequest request) throws IOException {
+    public CompactionPlan getCompactionPlan(MajorCompactionRequest request) {
       CompactionPlan plan = new CompactionPlan();
       plan.inputFiles.addAll(request.getFiles().keySet());
       plan.writeParameters = new WriteParameters();
@@ -81,7 +80,7 @@ public class ConfigurableMajorCompactionIT extends ConfigurableMacBase {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
       client.tableOperations().setProperty(tableName, Property.TABLE_COMPACTION_STRATEGY.getKey(),

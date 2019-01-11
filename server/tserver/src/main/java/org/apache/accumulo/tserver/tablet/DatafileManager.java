@@ -344,7 +344,7 @@ class DatafileManager {
   }
 
   void bringMinorCompactionOnline(FileRef tmpDatafile, FileRef newDatafile, FileRef absMergeFile,
-      DataFileValue dfv, CommitSession commitSession, long flushId) throws IOException {
+      DataFileValue dfv, CommitSession commitSession, long flushId) {
 
     IZooReaderWriter zoo = tablet.getContext().getZooReaderWriter();
     if (tablet.getExtent().isRootTablet()) {
@@ -409,7 +409,7 @@ class DatafileManager {
       logFileOnly = new HashSet<>();
       for (String unusedWalLog : unusedWalLogs) {
         int index = unusedWalLog.indexOf('/');
-        if (-1 == index) {
+        if (index == -1) {
           log.warn("Could not find host component to strip from DFSLogger representation of WAL");
         } else {
           unusedWalLog = unusedWalLog.substring(index + 1);
@@ -457,8 +457,7 @@ class DatafileManager {
         // is because the new one will reference the logs used by current memory...
 
         tablet.getTabletServer().minorCompactionFinished(
-            tablet.getTabletMemory().getCommitSession(), newDatafile.toString(),
-            commitSession.getWALogSeq() + 2);
+            tablet.getTabletMemory().getCommitSession(), commitSession.getWALogSeq() + 2);
         break;
       } catch (IOException e) {
         log.error("Failed to write to write-ahead log " + e.getMessage() + " will retry", e);

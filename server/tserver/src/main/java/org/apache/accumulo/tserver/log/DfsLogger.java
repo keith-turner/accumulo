@@ -17,10 +17,12 @@
 package org.apache.accumulo.tserver.log;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Collections.singletonList;
 import static org.apache.accumulo.tserver.logger.LogEvents.COMPACTION_FINISH;
 import static org.apache.accumulo.tserver.logger.LogEvents.COMPACTION_START;
 import static org.apache.accumulo.tserver.logger.LogEvents.DEFINE_TABLET;
 import static org.apache.accumulo.tserver.logger.LogEvents.MANY_MUTATIONS;
+import static org.apache.accumulo.tserver.logger.LogEvents.MUTATION;
 import static org.apache.accumulo.tserver.logger.LogEvents.OPEN;
 
 import java.io.DataInputStream;
@@ -31,7 +33,7 @@ import java.lang.reflect.Method;
 import java.nio.channels.ClosedChannelException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -48,7 +50,6 @@ import org.apache.accumulo.core.crypto.streams.NoFlushOutputStream;
 import org.apache.accumulo.core.cryptoImpl.CryptoEnvironmentImpl;
 import org.apache.accumulo.core.cryptoImpl.NoCryptoService;
 import org.apache.accumulo.core.data.Mutation;
-import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.crypto.CryptoEnvironment;
 import org.apache.accumulo.core.spi.crypto.CryptoEnvironment.Scope;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
@@ -65,6 +66,7 @@ import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.tserver.TabletMutations;
 import org.apache.accumulo.tserver.logger.LogFileKey;
 import org.apache.accumulo.tserver.logger.LogFileValue;
+import org.apache.accumulo.tserver.tablet.CommitSession;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.Path;
@@ -74,6 +76,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 
 /**
  * Wrap a connection to a logger.
@@ -129,16 +132,8 @@ public class DfsLogger implements Comparable<DfsLogger> {
       return originalInput;
     }
 
-    public void setOriginalInput(FSDataInputStream originalInput) {
-      this.originalInput = originalInput;
-    }
-
     public DataInputStream getDecryptingInputStream() {
       return decryptingInputStream;
-    }
-
-    public void setDecryptingInputStream(DataInputStream decryptingInputStream) {
-      this.decryptingInputStream = decryptingInputStream;
     }
   }
 
@@ -296,7 +291,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
     }
 
     @Override
-    public void await() throws IOException {
+    public void await() {
       return;
     }
   }
@@ -333,6 +328,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
   private AtomicLong syncCounter;
   private AtomicLong flushCounter;
   private final long slowFlushMillis;
+  private long writes = 0;
 
   private DfsLogger(ServerContext context, ServerResources conf) {
     this.context = context;
@@ -342,7 +338,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
   }
 
   public DfsLogger(ServerContext context, ServerResources conf, AtomicLong syncCounter,
-      AtomicLong flushCounter) throws IOException {
+      AtomicLong flushCounter) {
     this(context, conf);
     this.syncCounter = syncCounter;
     this.flushCounter = flushCounter;
@@ -354,8 +350,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
    * @param meta
    *          the cq for the "log" entry in +r/!0
    */
-  public DfsLogger(ServerContext context, ServerResources conf, String filename, String meta)
-      throws IOException {
+  public DfsLogger(ServerContext context, ServerResources conf, String filename, String meta) {
     this(context, conf);
     this.logPath = filename;
     metaReference = meta;
@@ -442,14 +437,23 @@ public class DfsLogger implements Comparable<DfsLogger> {
       byte[] cryptoParams = encrypter.getDecryptionParameters();
       CryptoUtils.writeParams(cryptoParams, logFile);
 
-      encryptingLogFile = new DataOutputStream(
-          encrypter.encryptStream(new NoFlushOutputStream(logFile)));
+      /**
+       * Always wrap the WAL in a NoFlushOutputStream to prevent extra flushing to HDFS. The
+       * {@link #write(LogFileKey, LogFileValue)} method will flush crypto data or do nothing when
+       * crypto is not enabled.
+       **/
+      OutputStream encryptedStream = encrypter.encryptStream(new NoFlushOutputStream(logFile));
+      if (encryptedStream instanceof NoFlushOutputStream) {
+        encryptingLogFile = (NoFlushOutputStream) encryptedStream;
+      } else {
+        encryptingLogFile = new DataOutputStream(encryptedStream);
+      }
 
       LogFileKey key = new LogFileKey();
       key.event = OPEN;
       key.tserverSession = filename;
       key.filename = filename;
-      op = logFileData(Collections.singletonList(new Pair<>(key, EMPTY)), Durability.SYNC);
+      op = logKeyData(key, Durability.SYNC);
     } catch (Exception ex) {
       if (logFile != null)
         logFile.close();
@@ -484,7 +488,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
    * get the cq needed to reference this logger's entry in +r/!0
    */
   public String getMeta() {
-    if (null == metaReference) {
+    if (metaReference == null) {
       throw new IllegalStateException("logger doesn't have meta reference. " + this);
     }
     return metaReference;
@@ -536,54 +540,45 @@ public class DfsLogger implements Comparable<DfsLogger> {
       }
   }
 
-  public synchronized void defineTablet(long seq, int tid, KeyExtent tablet) throws IOException {
+  public synchronized long getWrites() {
+    Preconditions.checkState(writes >= 0);
+    return writes;
+  }
+
+  public LoggerOperation defineTablet(CommitSession cs) throws IOException {
     // write this log to the METADATA table
     final LogFileKey key = new LogFileKey();
     key.event = DEFINE_TABLET;
-    key.seq = seq;
-    key.tabletId = tid;
-    key.tablet = tablet;
-    try {
-      write(key, EMPTY);
-    } catch (ClosedChannelException ex) {
-      throw new LogClosedException();
-    } catch (IllegalArgumentException e) {
-      log.error("Signature of sync method changed. Accumulo is likely"
-          + " incompatible with this version of Hadoop.");
-      throw new RuntimeException(e);
-    }
+    key.seq = cs.getWALogSeq();
+    key.tabletId = cs.getLogId();
+    key.tablet = cs.getExtent();
+    return logKeyData(key, Durability.LOG);
   }
 
   private synchronized void write(LogFileKey key, LogFileValue value) throws IOException {
     key.write(encryptingLogFile);
     value.write(encryptingLogFile);
     encryptingLogFile.flush();
+    writes++;
   }
 
-  public LoggerOperation log(long seq, int tid, Mutation mutation, Durability durability)
-      throws IOException {
-    return logManyTablets(Collections.singletonList(
-        new TabletMutations(tid, seq, Collections.singletonList(mutation), durability)));
+  private LoggerOperation logKeyData(LogFileKey key, Durability d) throws IOException {
+    return logFileData(singletonList(new Pair<>(key, EMPTY)), d);
   }
 
   private LoggerOperation logFileData(List<Pair<LogFileKey,LogFileValue>> keys,
       Durability durability) throws IOException {
     DfsLogger.LogWork work = new DfsLogger.LogWork(new CountDownLatch(1), durability);
-    synchronized (DfsLogger.this) {
-      try {
-        for (Pair<LogFileKey,LogFileValue> pair : keys) {
-          write(pair.getFirst(), pair.getSecond());
-        }
-      } catch (ClosedChannelException ex) {
-        throw new LogClosedException();
-      } catch (Exception e) {
-        log.error("Failed to write log entries", e);
-        work.exception = e;
+    try {
+      for (Pair<LogFileKey,LogFileValue> pair : keys) {
+        write(pair.getFirst(), pair.getSecond());
       }
+    } catch (ClosedChannelException ex) {
+      throw new LogClosedException();
+    } catch (Exception e) {
+      log.error("Failed to write log entries", e);
+      work.exception = e;
     }
-
-    if (durability == Durability.LOG)
-      return NO_WAIT_LOGGER_OP;
 
     synchronized (closeLock) {
       // use a different lock for close check so that adding to work queue does not need
@@ -591,13 +586,17 @@ public class DfsLogger implements Comparable<DfsLogger> {
 
       if (closed)
         throw new LogClosedException();
+
+      if (durability == Durability.LOG)
+        return NO_WAIT_LOGGER_OP;
+
       workQueue.add(work);
     }
 
     return new LoggerOperation(work);
   }
 
-  public LoggerOperation logManyTablets(List<TabletMutations> mutations) throws IOException {
+  public LoggerOperation logManyTablets(Collection<TabletMutations> mutations) throws IOException {
     Durability durability = Durability.NONE;
     List<Pair<LogFileKey,LogFileValue>> data = new ArrayList<>();
     for (TabletMutations tabletMutations : mutations) {
@@ -608,30 +607,39 @@ public class DfsLogger implements Comparable<DfsLogger> {
       LogFileValue value = new LogFileValue();
       value.mutations = tabletMutations.getMutations();
       data.add(new Pair<>(key, value));
-      if (tabletMutations.getDurability().ordinal() > durability.ordinal()) {
-        durability = tabletMutations.getDurability();
-      }
+      durability = maxDurability(tabletMutations.getDurability(), durability);
     }
-    return logFileData(data, chooseDurabilityForGroupCommit(mutations));
+    return logFileData(data, durability);
   }
 
-  static Durability chooseDurabilityForGroupCommit(List<TabletMutations> mutations) {
-    Durability result = Durability.NONE;
-    for (TabletMutations tabletMutations : mutations) {
-      if (tabletMutations.getDurability().ordinal() > result.ordinal()) {
-        result = tabletMutations.getDurability();
-      }
-    }
-    return result;
+  public LoggerOperation log(CommitSession cs, Mutation m, Durability d) throws IOException {
+    LogFileKey key = new LogFileKey();
+    key.event = MUTATION;
+    key.seq = cs.getWALogSeq();
+    key.tabletId = cs.getLogId();
+    LogFileValue value = new LogFileValue();
+    value.mutations = singletonList(m);
+    return logFileData(singletonList(new Pair<>(key, value)), d);
   }
 
-  public LoggerOperation minorCompactionFinished(long seq, int tid, String fqfn,
-      Durability durability) throws IOException {
+  /**
+   * Return the Durability with the highest precedence
+   */
+  static Durability maxDurability(Durability dur1, Durability dur2) {
+    if (dur1.ordinal() > dur2.ordinal()) {
+      return dur1;
+    } else {
+      return dur2;
+    }
+  }
+
+  public LoggerOperation minorCompactionFinished(long seq, int tid, Durability durability)
+      throws IOException {
     LogFileKey key = new LogFileKey();
     key.event = COMPACTION_FINISH;
     key.seq = seq;
     key.tabletId = tid;
-    return logFileData(Collections.singletonList(new Pair<>(key, EMPTY)), durability);
+    return logKeyData(key, durability);
   }
 
   public LoggerOperation minorCompactionStarted(long seq, int tid, String fqfn,
@@ -641,7 +649,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
     key.seq = seq;
     key.tabletId = tid;
     key.filename = fqfn;
-    return logFileData(Collections.singletonList(new Pair<>(key, EMPTY)), durability);
+    return logKeyData(key, durability);
   }
 
   public String getLogger() {
@@ -664,7 +672,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
    * @return non-null array of DatanodeInfo
    */
   DatanodeInfo[] getPipeLine() {
-    if (null != logFile) {
+    if (logFile != null) {
       OutputStream os = logFile.getWrappedStream();
       if (os instanceof DFSOutputStream) {
         return ((DFSOutputStream) os).getPipeline();

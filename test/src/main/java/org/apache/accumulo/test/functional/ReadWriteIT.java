@@ -28,7 +28,6 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URL;
 import java.security.SecureRandom;
-import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -65,7 +64,6 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchScanner;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
@@ -73,6 +71,8 @@ import org.apache.accumulo.core.client.admin.TableOperations;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.KerberosToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
@@ -126,9 +126,12 @@ public class ReadWriteIT extends AccumuloClusterHarness {
   }
 
   @Test(expected = RuntimeException.class)
-  public void invalidInstanceName() throws Exception {
-    Accumulo.newClient().to("fake_instance_name", cluster.getZooKeepers())
-        .as(getAdminPrincipal(), getAdminToken()).build();
+  public void invalidInstanceName() {
+    try (AccumuloClient client = Accumulo.newClient()
+        .to("fake_instance_name", cluster.getZooKeepers()).as(getAdminPrincipal(), getAdminToken())
+        .build()) {
+      client.instanceOperations().getTabletServers();
+    }
   }
 
   @SuppressFBWarnings(value = {"PATH_TRAVERSAL_IN", "URLCONNECTION_SSRF_FD"},
@@ -139,14 +142,14 @@ public class ReadWriteIT extends AccumuloClusterHarness {
     // Shutdown cleanly.
     log.debug("Starting Monitor");
     cluster.getClusterControl().startAllServers(ServerType.MONITOR);
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       ingest(accumuloClient, getClientInfo(), ROWS, COLS, 50, 0, tableName);
       verify(accumuloClient, getClientInfo(), ROWS, COLS, 50, 0, tableName);
       String monitorLocation = null;
-      while (null == monitorLocation) {
-        monitorLocation = MonitorUtil.getLocation(getClientContext());
-        if (null == monitorLocation) {
+      while (monitorLocation == null) {
+        monitorLocation = MonitorUtil.getLocation((ClientContext) accumuloClient);
+        if (monitorLocation == null) {
           log.debug("Could not fetch monitor HTTP address from zookeeper");
           Thread.sleep(2000);
         }
@@ -160,7 +163,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
           Configuration conf = new Configuration(false);
           conf.addResource(new Path(accumuloProps.toURI()));
           String monitorSslKeystore = conf.get(Property.MONITOR_SSL_KEYSTORE.getKey());
-          if (null != monitorSslKeystore) {
+          if (monitorSslKeystore != null) {
             log.info("Using HTTPS since monitor ssl keystore configuration was observed in {}",
                 accumuloProps);
             scheme = "https://";
@@ -190,11 +193,11 @@ public class ReadWriteIT extends AccumuloClusterHarness {
       do {
         masterLockData = ZooLock.getLockData(zcache,
             ZooUtil.getRoot(accumuloClient.getInstanceID()) + Constants.ZMASTER_LOCK, null);
-        if (null != masterLockData) {
+        if (masterLockData != null) {
           log.info("Master lock is still held");
           Thread.sleep(1000);
         }
-      } while (null != masterLockData);
+      } while (masterLockData != null);
 
       control.stopAllServers(ServerType.GARBAGE_COLLECTOR);
       control.stopAllServers(ServerType.MONITOR);
@@ -323,7 +326,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
   @Test
   public void largeTest() throws Exception {
     // write a few large values
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       String table = getUniqueNames(1)[0];
       ingest(accumuloClient, getClientInfo(), 2, 1, 500000, 0, table);
       verify(accumuloClient, getClientInfo(), 2, 1, 500000, 0, table);
@@ -333,7 +336,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
   @Test
   public void interleaved() throws Exception {
     // read and write concurrently
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       final String tableName = getUniqueNames(1)[0];
       interleaveTest(accumuloClient, tableName);
     }
@@ -378,7 +381,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
   @Test
   public void localityGroupPerf() throws Exception {
     // verify that locality groups can make look-ups faster
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       final String tableName = getUniqueNames(1)[0];
       accumuloClient.tableOperations().create(tableName);
       accumuloClient.tableOperations().setProperty(tableName, "table.group.g1", "colf");
@@ -411,7 +414,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
    */
   @Test
   public void sunnyLG() throws Exception {
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       final String tableName = getUniqueNames(1)[0];
       accumuloClient.tableOperations().create(tableName);
       Map<String,Set<Text>> groups = new TreeMap<>();
@@ -428,7 +431,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
   @Test
   public void sunnyLGUsingNewTableConfiguration() throws Exception {
     // create a locality group, write to it and ensure it exists in the RFiles that result
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       final String tableName = getUniqueNames(1)[0];
       NewTableConfiguration ntc = new NewTableConfiguration();
       Map<String,Set<Text>> groups = new HashMap<>();
@@ -462,7 +465,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
           args.add(entry.getKey().getColumnQualifier().toString());
           args.add("--props");
           args.add(getCluster().getAccumuloPropertiesPath());
-          if (ClusterType.STANDALONE == getClusterType() && saslEnabled()) {
+          if (getClusterType() == ClusterType.STANDALONE && saslEnabled()) {
             args.add("--config");
             StandaloneAccumuloCluster sac = (StandaloneAccumuloCluster) cluster;
             String hadoopConfDir = sac.getHadoopConfDir();
@@ -486,7 +489,7 @@ public class ReadWriteIT extends AccumuloClusterHarness {
   @Test
   public void localityGroupChange() throws Exception {
     // Make changes to locality groups and ensure nothing is lost
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       String table = getUniqueNames(1)[0];
       TableOperations to = accumuloClient.tableOperations();
       to.create(table);
@@ -534,12 +537,10 @@ public class ReadWriteIT extends AccumuloClusterHarness {
       justification = "trust manager is okay for testing")
   private static class TestTrustManager implements X509TrustManager {
     @Override
-    public void checkClientTrusted(X509Certificate[] arg0, String arg1)
-        throws CertificateException {}
+    public void checkClientTrusted(X509Certificate[] arg0, String arg1) {}
 
     @Override
-    public void checkServerTrusted(X509Certificate[] arg0, String arg1)
-        throws CertificateException {}
+    public void checkServerTrusted(X509Certificate[] arg0, String arg1) {}
 
     @Override
     public X509Certificate[] getAcceptedIssuers() {

@@ -23,8 +23,6 @@ import java.util.Base64;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.NamespaceNotFoundException;
 import org.apache.accumulo.core.client.TableNotFoundException;
-import org.apache.accumulo.core.clientImpl.Namespace;
-import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.security.NamespacePermission;
 import org.apache.accumulo.core.security.SystemPermission;
 import org.apache.accumulo.core.security.TablePermission;
@@ -55,49 +53,46 @@ public class KerberosPermissionHandler implements PermissionHandler {
 
   @Override
   public void initializeSecurity(TCredentials credentials, String rootuser)
-      throws AccumuloSecurityException, ThriftSecurityException {
+      throws AccumuloSecurityException {
     zkPermissionHandler.initializeSecurity(credentials,
         Base64.getEncoder().encodeToString(rootuser.getBytes(UTF_8)));
   }
 
   @Override
-  public boolean hasSystemPermission(String user, SystemPermission permission)
-      throws AccumuloSecurityException {
+  public boolean hasSystemPermission(String user, SystemPermission permission) {
     return zkPermissionHandler
         .hasSystemPermission(Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), permission);
   }
 
   @Override
-  public boolean hasCachedSystemPermission(String user, SystemPermission permission)
-      throws AccumuloSecurityException {
+  public boolean hasCachedSystemPermission(String user, SystemPermission permission) {
     return zkPermissionHandler.hasCachedSystemPermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), permission);
   }
 
   @Override
   public boolean hasTablePermission(String user, String table, TablePermission permission)
-      throws AccumuloSecurityException, TableNotFoundException {
+      throws TableNotFoundException {
     return zkPermissionHandler.hasTablePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), table, permission);
   }
 
   @Override
-  public boolean hasCachedTablePermission(String user, String table, TablePermission permission)
-      throws AccumuloSecurityException, TableNotFoundException {
+  public boolean hasCachedTablePermission(String user, String table, TablePermission permission) {
     return zkPermissionHandler.hasCachedTablePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), table, permission);
   }
 
   @Override
-  public boolean hasNamespacePermission(String user, Namespace.ID namespace,
-      NamespacePermission permission) throws AccumuloSecurityException, NamespaceNotFoundException {
+  public boolean hasNamespacePermission(String user, String namespace,
+      NamespacePermission permission) throws NamespaceNotFoundException {
     return zkPermissionHandler.hasNamespacePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), namespace, permission);
   }
 
   @Override
-  public boolean hasCachedNamespacePermission(String user, Namespace.ID namespace,
-      NamespacePermission permission) throws AccumuloSecurityException, NamespaceNotFoundException {
+  public boolean hasCachedNamespacePermission(String user, String namespace,
+      NamespacePermission permission) {
     return zkPermissionHandler.hasCachedNamespacePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), namespace, permission);
   }
@@ -118,52 +113,45 @@ public class KerberosPermissionHandler implements PermissionHandler {
 
   @Override
   public void grantTablePermission(String user, String table, TablePermission permission)
-      throws AccumuloSecurityException, TableNotFoundException {
+      throws AccumuloSecurityException {
     zkPermissionHandler.grantTablePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), table, permission);
   }
 
   @Override
   public void revokeTablePermission(String user, String table, TablePermission permission)
-      throws AccumuloSecurityException, TableNotFoundException {
+      throws AccumuloSecurityException {
     zkPermissionHandler.revokeTablePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), table, permission);
   }
 
   @Override
-  public void grantNamespacePermission(String user, Namespace.ID namespace,
-      NamespacePermission permission) throws AccumuloSecurityException, NamespaceNotFoundException {
+  public void grantNamespacePermission(String user, String namespace,
+      NamespacePermission permission) throws AccumuloSecurityException {
     zkPermissionHandler.grantNamespacePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), namespace, permission);
   }
 
   @Override
-  public void revokeNamespacePermission(String user, Namespace.ID namespace,
-      NamespacePermission permission) throws AccumuloSecurityException, NamespaceNotFoundException {
+  public void revokeNamespacePermission(String user, String namespace,
+      NamespacePermission permission) throws AccumuloSecurityException {
     zkPermissionHandler.revokeNamespacePermission(
         Base64.getEncoder().encodeToString(user.getBytes(UTF_8)), namespace, permission);
   }
 
   @Override
-  public void cleanTablePermissions(String table)
-      throws AccumuloSecurityException, TableNotFoundException {
+  public void cleanTablePermissions(String table) throws AccumuloSecurityException {
     zkPermissionHandler.cleanTablePermissions(table);
   }
 
   @Override
-  public void cleanNamespacePermissions(Namespace.ID namespace)
-      throws AccumuloSecurityException, NamespaceNotFoundException {
+  public void cleanNamespacePermissions(String namespace) throws AccumuloSecurityException {
     zkPermissionHandler.cleanNamespacePermissions(namespace);
   }
 
   @Override
   public void initUser(String user) throws AccumuloSecurityException {
     zkPermissionHandler.initUser(Base64.getEncoder().encodeToString(user.getBytes(UTF_8)));
-  }
-
-  @Override
-  public void initTable(String table) throws AccumuloSecurityException {
-    zkPermissionHandler.initTable(table);
   }
 
   @Override

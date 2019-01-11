@@ -126,12 +126,6 @@ public class UserImpersonation {
       allUsers = allHosts = false;
     }
 
-    public UsersWithHosts(Set<String> users, Set<String> hosts) {
-      this();
-      this.users = users;
-      this.hosts = hosts;
-    }
-
     public Set<String> getUsers() {
       if (allUsers) {
         return ALWAYS_TRUE;
@@ -204,7 +198,7 @@ public class UserImpersonation {
       final String hostConfig = hostConfigs[i];
 
       final String[] splitUserConfig = StringUtils.split(userConfig, ':');
-      if (2 != splitUserConfig.length) {
+      if (splitUserConfig.length != 2) {
         throw new IllegalArgumentException(
             "Expect a single colon-separated pair, but found '" + userConfig + "'");
       }

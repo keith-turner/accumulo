@@ -22,9 +22,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.IteratorSetting;
-import org.apache.accumulo.core.clientImpl.mapreduce.lib.InputConfigurator;
+import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.security.Authorizations;
@@ -42,13 +41,18 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
  * The user must specify the following via static configurator methods:
  *
  * <ul>
- * <li>{@link AccumuloMultiTableInputFormat#setClientInfo(Job, ClientInfo)}
+ * <li>{@link AccumuloMultiTableInputFormat#setConnectorInfo(Job, String, AuthenticationToken)}
+ * <li>{@link AccumuloMultiTableInputFormat#setConnectorInfo(Job, String, String)}
  * <li>{@link AccumuloMultiTableInputFormat#setScanAuthorizations(Job, Authorizations)}
  * <li>{@link AccumuloMultiTableInputFormat#setInputTableConfigs(Job, Map)}
  * </ul>
  *
  * Other static methods are optional.
+ *
+ * @deprecated since 2.0.0; Use org.apache.accumulo.hadoop.mapreduce instead from the
+ *             accumulo-hadoop-mapreduce.jar
  */
+@Deprecated
 public class AccumuloMultiTableInputFormat extends AbstractInputFormat<Key,Value> {
 
   /**
@@ -62,7 +66,8 @@ public class AccumuloMultiTableInputFormat extends AbstractInputFormat<Key,Value
    */
   public static void setInputTableConfigs(Job job, Map<String,InputTableConfig> configs) {
     requireNonNull(configs);
-    InputConfigurator.setInputTableConfigs(CLASS, job.getConfiguration(), configs);
+    org.apache.accumulo.core.clientImpl.mapreduce.lib.InputConfigurator.setInputTableConfigs(CLASS,
+        job.getConfiguration(), configs);
   }
 
   @Override

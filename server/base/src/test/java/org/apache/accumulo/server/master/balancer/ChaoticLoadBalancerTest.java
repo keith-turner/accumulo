@@ -29,7 +29,6 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 
 import org.apache.accumulo.core.clientImpl.Table;
-import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.master.thrift.TableInfo;
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
@@ -38,7 +37,6 @@ import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.server.master.state.TServerInstance;
 import org.apache.accumulo.server.master.state.TabletMigration;
 import org.apache.hadoop.io.Text;
-import org.apache.thrift.TException;
 import org.junit.Test;
 
 public class ChaoticLoadBalancerTest {
@@ -46,7 +44,7 @@ public class ChaoticLoadBalancerTest {
   class FakeTServer {
     List<KeyExtent> extents = new ArrayList<>();
 
-    TabletServerStatus getStatus(TServerInstance server) {
+    TabletServerStatus getStatus() {
       TabletServerStatus result = new TabletServerStatus();
       result.tableMap = new HashMap<>();
       for (KeyExtent extent : extents) {
@@ -68,8 +66,7 @@ public class ChaoticLoadBalancerTest {
   class TestChaoticLoadBalancer extends ChaoticLoadBalancer {
 
     @Override
-    public List<TabletStats> getOnlineTabletsForTable(TServerInstance tserver, Table.ID table)
-        throws ThriftSecurityException, TException {
+    public List<TabletStats> getOnlineTabletsForTable(TServerInstance tserver, Table.ID table) {
       List<TabletStats> result = new ArrayList<>();
       for (KeyExtent extent : servers.get(tserver).extents) {
         if (extent.getTableId().equals(table)) {
@@ -107,7 +104,7 @@ public class ChaoticLoadBalancerTest {
 
     SortedMap<TServerInstance,TabletServerStatus> current = new TreeMap<>();
     for (Entry<TServerInstance,FakeTServer> entry : servers.entrySet()) {
-      current.put(entry.getKey(), entry.getValue().getStatus(entry.getKey()));
+      current.put(entry.getKey(), entry.getValue().getStatus());
     }
 
     Map<KeyExtent,TServerInstance> assignments = new HashMap<>();
@@ -120,7 +117,7 @@ public class ChaoticLoadBalancerTest {
       Map<TServerInstance,FakeTServer> servers) {
     SortedMap<TServerInstance,TabletServerStatus> result = new TreeMap<>();
     for (Entry<TServerInstance,FakeTServer> entry : servers.entrySet()) {
-      result.put(entry.getKey(), entry.getValue().getStatus(entry.getKey()));
+      result.put(entry.getKey(), entry.getValue().getStatus());
     }
     return result;
   }

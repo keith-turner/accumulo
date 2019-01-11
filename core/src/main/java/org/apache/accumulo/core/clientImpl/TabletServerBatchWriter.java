@@ -183,7 +183,7 @@ public class TabletServerBatchWriter {
       }
     }
 
-    void errorOccured(Exception e) {
+    void errorOccured() {
       wroteNothing();
     }
 
@@ -226,12 +226,7 @@ public class TabletServerBatchWriter {
     if (mutations.getMemoryUsed() == 0)
       return;
     lastProcessingStartTime = System.currentTimeMillis();
-    try {
-      writer.queueMutations(mutations);
-    } catch (InterruptedException e) {
-      log.warn("Mutations rejected from binning thread, retrying...");
-      failedMutations.add(mutations);
-    }
+    writer.queueMutations(mutations);
     mutations = new MutationSet();
   }
 
@@ -568,8 +563,8 @@ public class TabletServerBatchWriter {
         af.put(new TabletIdImpl(entry.getKey()), codes);
       }
 
-      throw new MutationsRejectedException(context.getProperties(), cvsList, af, serverSideErrors,
-          unknownErrors, lastUnknownError);
+      throw new MutationsRejectedException(context, cvsList, af, serverSideErrors, unknownErrors,
+          lastUnknownError);
     }
   }
 
@@ -580,7 +575,7 @@ public class TabletServerBatchWriter {
   /**
    * Add mutations that previously failed back into the mix
    */
-  private synchronized void addFailedMutations(MutationSet failedMutations) throws Exception {
+  private synchronized void addFailedMutations(MutationSet failedMutations) {
     mutations.addAll(failedMutations);
     if (mutations.getMemoryUsed() >= maxMem / 2 || closed || flushing) {
       startProcessing();
@@ -612,7 +607,7 @@ public class TabletServerBatchWriter {
       init().addAll(failures);
     }
 
-    synchronized void add(String location, TabletServerMutations<Mutation> tsm) {
+    synchronized void add(TabletServerMutations<Mutation> tsm) {
       init();
       for (Entry<KeyExtent,List<Mutation>> entry : tsm.getMutations().entrySet()) {
         recentFailures.addAll(entry.getKey().getTableId(), entry.getValue());
@@ -723,11 +718,11 @@ public class TabletServerBatchWriter {
 
     }
 
-    void queueMutations(final MutationSet mutationsToSend) throws InterruptedException {
-      if (null == mutationsToSend)
+    void queueMutations(final MutationSet mutationsToSend) {
+      if (mutationsToSend == null)
         return;
       binningThreadPool.execute(Trace.wrap(() -> {
-        if (null != mutationsToSend) {
+        if (mutationsToSend != null) {
           try {
             log.trace("{} - binning {} mutations", Thread.currentThread().getName(),
                 mutationsToSend.size());
@@ -898,7 +893,7 @@ public class TabletServerBatchWriter {
           for (Table.ID table : tables)
             getLocator(table).invalidateCache(context, location);
 
-          failedMutations.add(location, tsm);
+          failedMutations.add(tsm);
         } finally {
           Thread.currentThread().setName(oldName);
         }
@@ -1000,7 +995,7 @@ public class TabletServerBatchWriter {
           ThriftUtil.returnClient((TServiceClient) client);
         }
       } catch (TTransportException e) {
-        timeoutTracker.errorOccured(e);
+        timeoutTracker.errorOccured();
         throw new IOException(e);
       } catch (TApplicationException tae) {
         updateServerErrors(location, tae);

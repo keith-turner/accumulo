@@ -17,29 +17,29 @@
 
 package org.apache.accumulo.core.clientImpl.mapreduce;
 
-import java.io.IOException;
 import java.math.BigInteger;
 
-import org.apache.accumulo.core.client.mapreduce.InputTableConfig;
-import org.apache.accumulo.core.client.mapreduce.RangeInputSplit;
 import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Range;
 import org.apache.hadoop.io.Text;
 import org.apache.log4j.Level;
 
+/**
+ * @deprecated since 2.0.0
+ */
+@Deprecated
 public class SplitUtils {
 
   /**
    * Central place to set common split configuration not handled by split constructors. The
    * intention is to make it harder to miss optional setters in future refactor.
    */
-  public static void updateSplit(RangeInputSplit split, InputTableConfig tableConfig,
-      Level logLevel) {
+  public static void updateSplit(org.apache.accumulo.core.client.mapreduce.RangeInputSplit split,
+      org.apache.accumulo.core.client.mapreduce.InputTableConfig tableConfig, Level logLevel) {
     split.setFetchedColumns(tableConfig.getFetchedColumns());
     split.setIterators(tableConfig.getIterators());
     split.setLogLevel(logLevel);
     split.setSamplerConfiguration(tableConfig.getSamplerConfiguration());
-    split.setExecutionHints(tableConfig.getExecutionHints());
   }
 
   public static float getProgress(ByteSequence start, ByteSequence end, ByteSequence position) {
@@ -51,7 +51,7 @@ public class SplitUtils {
         / endBI.subtract(startBI).doubleValue());
   }
 
-  public static long getRangeLength(Range range) throws IOException {
+  public static long getRangeLength(Range range) {
     Text startRow = range.isInfiniteStartKey() ? new Text(new byte[] {Byte.MIN_VALUE})
         : range.getStartKey().getRow();
     Text stopRow = range.isInfiniteStopKey() ? new Text(new byte[] {Byte.MAX_VALUE})

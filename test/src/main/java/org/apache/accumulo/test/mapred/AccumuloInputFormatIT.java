@@ -20,7 +20,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 
@@ -28,10 +27,9 @@ import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
-import org.apache.accumulo.core.client.mapred.AccumuloInputFormat;
-import org.apache.accumulo.core.client.mapred.RangeInputSplit;
 import org.apache.accumulo.core.client.sample.RowSampler;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
@@ -54,6 +52,10 @@ import org.apache.log4j.Level;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+/**
+ * This tests deprecated mapreduce code in core jar
+ */
+@Deprecated
 public class AccumuloInputFormatIT extends AccumuloClusterHarness {
 
   @BeforeClass
@@ -72,8 +74,7 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
       int count = 0;
 
       @Override
-      public void map(Key k, Value v, OutputCollector<Key,Value> output, Reporter reporter)
-          throws IOException {
+      public void map(Key k, Value v, OutputCollector<Key,Value> output, Reporter reporter) {
         try {
           if (key != null)
             assertEquals(key.getRow().toString(), new String(v.get()));
@@ -91,7 +92,7 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
       public void configure(JobConf job) {}
 
       @Override
-      public void close() throws IOException {
+      public void close() {
         try {
           assertEquals(100, count);
         } catch (AssertionError e) {
@@ -121,13 +122,18 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
       JobConf job = new JobConf(getConf());
       job.setJarByClass(this.getClass());
 
-      job.setInputFormat(AccumuloInputFormat.class);
+      job.setInputFormat(org.apache.accumulo.core.client.mapred.AccumuloInputFormat.class);
 
-      AccumuloInputFormat.setClientInfo(job, getClientInfo());
-      AccumuloInputFormat.setInputTableName(job, table);
-      AccumuloInputFormat.setBatchScan(job, batchScan);
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setInputTableName(job, table);
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setBatchScan(job, batchScan);
       if (sample) {
-        AccumuloInputFormat.setSamplerConfiguration(job, SAMPLER_CONFIG);
+        org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setSamplerConfiguration(job,
+            SAMPLER_CONFIG);
       }
 
       job.setMapperClass(TestMapper.class);
@@ -152,7 +158,7 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
   @Test
   public void testMap() throws Exception {
     String table = getUniqueNames(1)[0];
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(table);
       BatchWriter bw = c.createBatchWriter(table, new BatchWriterConfig());
       for (int i = 0; i < 100; i++) {
@@ -178,7 +184,7 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
   public void testSample() throws Exception {
     final String TEST_TABLE_3 = getUniqueNames(1)[0];
 
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(TEST_TABLE_3,
           new NewTableConfiguration().enableSampling(SAMPLER_CONFIG));
       BatchWriter bw = c.createBatchWriter(TEST_TABLE_3, new BatchWriterConfig());
@@ -216,18 +222,22 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
     boolean isolated = true, localIters = true;
     Level level = Level.WARN;
 
-    try (AccumuloClient accumuloClient = getAccumuloClient()) {
+    try (AccumuloClient accumuloClient = createAccumuloClient()) {
       accumuloClient.tableOperations().create(table);
 
-      AccumuloInputFormat.setClientInfo(job, getClientInfo());
-      AccumuloInputFormat.setInputTableName(job, table);
-      AccumuloInputFormat.setScanAuthorizations(job, auths);
-      AccumuloInputFormat.setScanIsolation(job, isolated);
-      AccumuloInputFormat.setLocalIterators(job, localIters);
-      AccumuloInputFormat.fetchColumns(job, fetchColumns);
-      AccumuloInputFormat.setLogLevel(job, level);
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setInputTableName(job, table);
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setScanAuthorizations(job, auths);
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setScanIsolation(job, isolated);
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setLocalIterators(job, localIters);
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.fetchColumns(job, fetchColumns);
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setLogLevel(job, level);
 
-      AccumuloInputFormat aif = new AccumuloInputFormat();
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat aif = new org.apache.accumulo.core.client.mapred.AccumuloInputFormat();
 
       InputSplit[] splits = aif.getSplits(job, 1);
 
@@ -235,9 +245,9 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
 
       InputSplit split = splits[0];
 
-      assertEquals(RangeInputSplit.class, split.getClass());
+      assertEquals(org.apache.accumulo.core.client.mapred.RangeInputSplit.class, split.getClass());
 
-      RangeInputSplit risplit = (RangeInputSplit) split;
+      org.apache.accumulo.core.client.mapred.RangeInputSplit risplit = (org.apache.accumulo.core.client.mapred.RangeInputSplit) split;
 
       assertEquals(table, risplit.getTableName());
       assertEquals(isolated, risplit.isIsolatedScan());

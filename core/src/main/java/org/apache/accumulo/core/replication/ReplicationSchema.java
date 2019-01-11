@@ -61,10 +61,6 @@ public class ReplicationSchema {
       _getFile(k, buff);
     }
 
-    public static ReplicationTarget getTarget(Key k) {
-      return getTarget(k, new Text());
-    }
-
     public static ReplicationTarget getTarget(Key k, Text buff) {
       checkArgument(BYTE_SEQ_NAME.equals(k.getColumnFamilyData()),
           "Given replication work key with incorrect colfam");
@@ -160,19 +156,6 @@ public class ReplicationSchema {
     private static final ULongLexicoder longEncoder = new ULongLexicoder();
 
     /**
-     * Extract the table ID from the given key (inefficiently if called repeatedly)
-     *
-     * @param k
-     *          OrderSection Key
-     * @return source table id
-     */
-    public static String getTableId(Key k) {
-      Text buff = new Text();
-      getTableId(k, buff);
-      return buff.toString();
-    }
-
-    /**
      * Extract the table ID from the given key
      *
      * @param k
@@ -251,13 +234,13 @@ public class ReplicationSchema {
       // find the last offset
       while (true) {
         int nextOffset = buff.find(ROW_SEPARATOR.toString(), offset + 1);
-        if (-1 == nextOffset) {
+        if (nextOffset == -1) {
           break;
         }
         offset = nextOffset;
       }
 
-      if (-1 == offset) {
+      if (offset == -1) {
         throw new IllegalArgumentException(
             "Row does not contain expected separator for OrderSection");
       }
@@ -278,13 +261,13 @@ public class ReplicationSchema {
       // find the last offset
       while (true) {
         int nextOffset = buff.find(ROW_SEPARATOR.toString(), offset + 1);
-        if (-1 == nextOffset) {
+        if (nextOffset == -1) {
           break;
         }
         offset = nextOffset;
       }
 
-      if (-1 == offset) {
+      if (offset == -1) {
         throw new IllegalArgumentException(
             "Row does not contain expected separator for OrderSection");
       }

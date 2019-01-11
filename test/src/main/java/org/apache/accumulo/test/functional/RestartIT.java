@@ -34,10 +34,10 @@ import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.cli.BatchWriterOpts;
 import org.apache.accumulo.core.cli.ScannerOpts;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.KerberosToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.metadata.MetadataTable;
@@ -86,13 +86,13 @@ public class RestartIT extends AccumuloClusterHarness {
   private ExecutorService svc;
 
   @Before
-  public void setup() throws Exception {
+  public void setup() {
     svc = Executors.newFixedThreadPool(1);
   }
 
   @After
   public void teardown() throws Exception {
-    if (null == svc) {
+    if (svc == null) {
       return;
     }
 
@@ -107,7 +107,7 @@ public class RestartIT extends AccumuloClusterHarness {
 
   @Test
   public void restartMaster() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       final String tableName = getUniqueNames(1)[0];
       OPTS.setTableName(tableName);
       VOPTS.setTableName(tableName);
@@ -149,7 +149,7 @@ public class RestartIT extends AccumuloClusterHarness {
 
   @Test
   public void restartMasterRecovery() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       c.tableOperations().create(tableName);
       OPTS.setTableName(tableName);
@@ -174,11 +174,11 @@ public class RestartIT extends AccumuloClusterHarness {
       do {
         masterLockData = ZooLock.getLockData(zcache,
             ZooUtil.getRoot(c.getInstanceID()) + Constants.ZMASTER_LOCK, null);
-        if (null != masterLockData) {
+        if (masterLockData != null) {
           log.info("Master lock is still held");
           Thread.sleep(1000);
         }
-      } while (null != masterLockData);
+      } while (masterLockData != null);
 
       cluster.start();
       sleepUninterruptibly(5, TimeUnit.MILLISECONDS);
@@ -188,11 +188,11 @@ public class RestartIT extends AccumuloClusterHarness {
       do {
         masterLockData = ZooLock.getLockData(zcache,
             ZooUtil.getRoot(c.getInstanceID()) + Constants.ZMASTER_LOCK, null);
-        if (null != masterLockData) {
+        if (masterLockData != null) {
           log.info("Master lock is still held");
           Thread.sleep(1000);
         }
-      } while (null != masterLockData);
+      } while (masterLockData != null);
       cluster.start();
       VerifyIngest.verifyIngest(c, VOPTS, SOPTS);
     }
@@ -200,7 +200,7 @@ public class RestartIT extends AccumuloClusterHarness {
 
   @Test
   public void restartMasterSplit() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       final String tableName = getUniqueNames(1)[0];
       final AuthenticationToken token = getAdminToken();
       final ClusterControl control = getCluster().getClusterControl();
@@ -243,11 +243,11 @@ public class RestartIT extends AccumuloClusterHarness {
       do {
         masterLockData = ZooLock.getLockData(zcache,
             ZooUtil.getRoot(c.getInstanceID()) + Constants.ZMASTER_LOCK, null);
-        if (null != masterLockData) {
+        if (masterLockData != null) {
           log.info("Master lock is still held");
           Thread.sleep(1000);
         }
-      } while (null != masterLockData);
+      } while (masterLockData != null);
 
       cluster.start();
       assertEquals(0, ret.get().intValue());
@@ -257,7 +257,7 @@ public class RestartIT extends AccumuloClusterHarness {
 
   @Test
   public void killedTabletServer() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       c.tableOperations().create(tableName);
       OPTS.setTableName(tableName);
@@ -274,7 +274,7 @@ public class RestartIT extends AccumuloClusterHarness {
 
   @Test
   public void killedTabletServer2() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       final String[] names = getUniqueNames(2);
       final String tableName = names[0];
       final ClusterControl control = getCluster().getClusterControl();
@@ -290,7 +290,7 @@ public class RestartIT extends AccumuloClusterHarness {
 
   @Test
   public void killedTabletServerDuringShutdown() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       c.tableOperations().create(tableName);
       OPTS.setTableName(tableName);
@@ -307,7 +307,7 @@ public class RestartIT extends AccumuloClusterHarness {
 
   @Test
   public void shutdownDuringCompactingSplitting() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       VOPTS.setTableName(tableName);
       OPTS.setClientProperties(getClientProperties());

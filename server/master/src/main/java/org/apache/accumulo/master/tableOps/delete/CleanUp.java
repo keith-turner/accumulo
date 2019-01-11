@@ -50,7 +50,6 @@ import org.apache.accumulo.server.master.state.TabletState;
 import org.apache.accumulo.server.problems.ProblemReports;
 import org.apache.accumulo.server.security.AuditedSecurityOperation;
 import org.apache.accumulo.server.util.MetadataTableUtil;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,7 +91,7 @@ class CleanUp extends MasterRepo {
 
     boolean done = true;
     Range tableRange = new KeyExtent(tableId, null, null).toMetadataRange();
-    Scanner scanner = master.getClient().createScanner(MetadataTable.NAME, Authorizations.EMPTY);
+    Scanner scanner = master.getContext().createScanner(MetadataTable.NAME, Authorizations.EMPTY);
     MetaDataTableScanner.configureScanner(scanner, master);
     scanner.setRange(tableRange);
 
@@ -117,7 +116,7 @@ class CleanUp extends MasterRepo {
   }
 
   @Override
-  public Repo<Master> call(long tid, Master master) throws Exception {
+  public Repo<Master> call(long tid, Master master) {
 
     master.clearMigrations(tableId);
 
@@ -125,7 +124,7 @@ class CleanUp extends MasterRepo {
 
     try {
       // look for other tables that references this table's files
-      AccumuloClient client = master.getClient();
+      AccumuloClient client = master.getContext();
       try (BatchScanner bs = client.createBatchScanner(MetadataTable.NAME, Authorizations.EMPTY,
           8)) {
         Range allTables = MetadataSchema.TabletsSection.getRange();
@@ -214,33 +213,8 @@ class CleanUp extends MasterRepo {
     return null;
   }
 
-  protected void merge(VolumeManager fs, Path src, Path dest) throws IOException {
-    for (FileStatus child : fs.listStatus(src)) {
-      final String childName = child.getPath().getName();
-      final Path childInSrc = new Path(src, childName), childInDest = new Path(dest, childName);
-
-      if (child.isFile()) {
-        if (fs.exists(childInDest)) {
-          log.warn("File already exists in archive, ignoring. " + childInDest);
-        } else {
-          fs.rename(childInSrc, childInDest);
-        }
-      } else if (child.isDirectory()) {
-        if (fs.exists(childInDest)) {
-          // Recurse
-          merge(fs, childInSrc, childInDest);
-        } else {
-          fs.rename(childInSrc, childInDest);
-        }
-      } else {
-        // Symlinks shouldn't exist in table directories..
-        log.warn("Ignoring archiving of non file/directory: " + child);
-      }
-    }
-  }
-
   @Override
-  public void undo(long tid, Master environment) throws Exception {
+  public void undo(long tid, Master environment) {
     // nothing to do
   }
 

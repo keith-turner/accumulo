@@ -41,7 +41,6 @@ import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchScanner;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.ClientSideIteratorScanner;
 import org.apache.accumulo.core.client.IsolatedScanner;
 import org.apache.accumulo.core.client.IteratorSetting;
@@ -351,7 +350,7 @@ public class InputConfigurator extends ConfiguratorBase {
       Collection<String> serialized) {
     Set<IteratorSetting.Column> columns = new HashSet<>();
 
-    if (null == serialized) {
+    if (serialized == null) {
       return columns;
     }
 
@@ -711,9 +710,9 @@ public class InputConfigurator extends ConfiguratorBase {
    */
   public static TabletLocator getTabletLocator(Class<?> implementingClass, Configuration conf,
       Table.ID tableId) {
-    ClientInfo info = getClientInfo(implementingClass, conf);
-    ClientContext context = new ClientContext(info);
-    return TabletLocator.getLocator(context, tableId);
+    try (AccumuloClient client = createClient(implementingClass, conf)) {
+      return TabletLocator.getLocator((ClientContext) client, tableId);
+    }
   }
 
   /**
@@ -781,7 +780,7 @@ public class InputConfigurator extends ConfiguratorBase {
       InputTableConfig queryConfig = new InputTableConfig();
       List<IteratorSetting> itrs = getIterators(implementingClass, conf);
       if (itrs != null)
-        queryConfig.setIterators(itrs);
+        itrs.forEach(itr -> queryConfig.addIterator(itr));
       Set<IteratorSetting.Column> columns = getFetchedColumns(implementingClass, conf);
       if (columns != null)
         queryConfig.fetchColumns(columns);
@@ -831,7 +830,7 @@ public class InputConfigurator extends ConfiguratorBase {
 
       Range metadataRange = new Range(new KeyExtent(tableId, startRow, null).getMetadataEntry(),
           true, null, false);
-      Scanner scanner = context.getClient().createScanner(MetadataTable.NAME, Authorizations.EMPTY);
+      Scanner scanner = context.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
       MetadataSchema.TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
       scanner.fetchColumnFamily(MetadataSchema.TabletsSection.LastLocationColumnFamily.NAME);
       scanner.fetchColumnFamily(MetadataSchema.TabletsSection.CurrentLocationColumnFamily.NAME);

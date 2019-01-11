@@ -25,8 +25,8 @@ import java.util.UUID;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
@@ -78,7 +78,7 @@ public class UnusedWALIT extends ConfigurableMacBase {
     String[] tableNames = getUniqueNames(2);
     String bigTable = tableNames[0];
     String lilTable = tableNames[1];
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       c.tableOperations().create(bigTable);
       c.tableOperations().create(lilTable);
 

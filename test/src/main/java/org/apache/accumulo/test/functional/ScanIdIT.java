@@ -109,7 +109,7 @@ public class ScanIdIT extends AccumuloClusterHarness {
   public void testScanId() throws Exception {
 
     final String tableName = getUniqueNames(1)[0];
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       client.tableOperations().create(tableName);
 
       addSplits(client, tableName);
@@ -182,7 +182,7 @@ public class ScanIdIT extends AccumuloClusterHarness {
       }
 
       assertTrue("Expected at least " + NUM_SCANNERS + " scanIds, but saw " + scanIds.size(),
-          NUM_SCANNERS <= scanIds.size());
+          scanIds.size() >= NUM_SCANNERS);
 
     }
   }

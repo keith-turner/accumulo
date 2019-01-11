@@ -22,7 +22,6 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 
 import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.ClientContext;
@@ -61,10 +60,9 @@ abstract class TableMetadataServicer extends MetadataServicer {
 
   @Override
   public void getTabletLocations(SortedMap<KeyExtent,String> tablets)
-      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+      throws AccumuloException, TableNotFoundException {
 
-    Scanner scanner = context.getClient().createScanner(getServicingTableName(),
-        Authorizations.EMPTY);
+    Scanner scanner = context.createScanner(getServicingTableName(), Authorizations.EMPTY);
 
     TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
     scanner.fetchColumnFamily(TabletsSection.CurrentLocationColumnFamily.NAME);

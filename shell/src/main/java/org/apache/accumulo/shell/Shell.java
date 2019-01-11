@@ -48,13 +48,13 @@ import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.NamespaceNotFoundException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.accumulo.core.conf.Property;
@@ -199,6 +199,7 @@ public class Shell extends ShellOptions implements KeywordExecutable {
   protected int exitCode = 0;
   private String tableName;
   private AccumuloClient accumuloClient;
+  private Properties clientProperties = new Properties();
   private ClientContext context;
   protected ConsoleReader reader;
   private final Class<? extends Formatter> defaultFormatterClass = DefaultFormatter.class;
@@ -290,8 +291,8 @@ public class Shell extends ShellOptions implements KeywordExecutable {
     authTimeout = TimeUnit.MINUTES.toNanos(options.getAuthTimeout());
     disableAuthTimeout = options.isAuthTimeoutDisabled();
 
-    Properties properties = options.getClientProperties();
-    if (ClientProperty.SASL_ENABLED.getBoolean(properties)) {
+    clientProperties = options.getClientProperties();
+    if (ClientProperty.SASL_ENABLED.getBoolean(clientProperties)) {
       log.debug("SASL is enabled, disabling authorization timeout");
       disableAuthTimeout = true;
     }
@@ -300,12 +301,11 @@ public class Shell extends ShellOptions implements KeywordExecutable {
     this.setTableName("");
 
     if (accumuloClient == null) {
-      Properties props = options.getClientProperties();
-      if (ClientProperty.INSTANCE_ZOOKEEPERS.isEmpty(props)) {
+      if (ClientProperty.INSTANCE_ZOOKEEPERS.isEmpty(clientProperties)) {
         throw new IllegalArgumentException("ZooKeepers must be set using -z or -zh on command line"
             + " or in accumulo-client.properties");
       }
-      if (ClientProperty.INSTANCE_NAME.isEmpty(props)) {
+      if (ClientProperty.INSTANCE_NAME.isEmpty(clientProperties)) {
         throw new IllegalArgumentException("Instance name must be set using -z or -zi on command "
             + "line or in accumulo-client.properties");
       }
@@ -319,9 +319,9 @@ public class Shell extends ShellOptions implements KeywordExecutable {
       }
       String password = options.getPassword();
       AuthenticationToken token = null;
-      if (password == null && props.containsKey(ClientProperty.AUTH_TOKEN.getKey())
-          && principal.equals(ClientProperty.AUTH_PRINCIPAL.getValue(props))) {
-        token = ClientProperty.getAuthenticationToken(props);
+      if (password == null && clientProperties.containsKey(ClientProperty.AUTH_TOKEN.getKey())
+          && principal.equals(ClientProperty.AUTH_PRINCIPAL.getValue(clientProperties))) {
+        token = ClientProperty.getAuthenticationToken(clientProperties);
       }
       if (token == null) {
         Runtime.getRuntime()
@@ -338,10 +338,11 @@ public class Shell extends ShellOptions implements KeywordExecutable {
         }
       }
       try {
-        DistributedTrace.enable(InetAddress.getLocalHost().getHostName(), "shell", properties);
+        DistributedTrace.enable(InetAddress.getLocalHost().getHostName(), "shell",
+            clientProperties);
         this.setTableName("");
-        accumuloClient = Accumulo.newClient().from(props).as(principal, token).build();
-        context = new ClientContext(accumuloClient);
+        accumuloClient = Accumulo.newClient().from(clientProperties).as(principal, token).build();
+        context = (ClientContext) accumuloClient;
       } catch (Exception e) {
         printException(e);
         exitCode = 1;
@@ -609,6 +610,9 @@ public class Shell extends ShellOptions implements KeywordExecutable {
   public void shutdown() {
     if (reader != null) {
       reader.shutdown();
+    }
+    if (accumuloClient != null) {
+      accumuloClient.close();
     }
   }
 
@@ -1169,10 +1173,12 @@ public class Shell extends ShellOptions implements KeywordExecutable {
 
   public void updateUser(String principal, AuthenticationToken token)
       throws AccumuloException, AccumuloSecurityException {
-    accumuloClient = Accumulo.newClient().from(accumuloClient.properties()).as(principal, token)
-        .build();
+    if (accumuloClient != null) {
+      accumuloClient.close();
+    }
+    accumuloClient = Accumulo.newClient().from(clientProperties).as(principal, token).build();
     accumuloClient.securityOperations().authenticateUser(principal, token);
-    context = new ClientContext(accumuloClient);
+    context = (ClientContext) accumuloClient;
   }
 
   public ClientContext getContext() {
@@ -1198,7 +1204,7 @@ public class Shell extends ShellOptions implements KeywordExecutable {
   public Class<? extends Formatter> getFormatter(String tableName) {
     Class<? extends Formatter> formatter = FormatterCommand.getCurrentFormatter(tableName, this);
 
-    if (null == formatter) {
+    if (formatter == null) {
       logError("Could not load the specified formatter. Using the DefaultFormatter");
       return this.defaultFormatterClass;
     } else {

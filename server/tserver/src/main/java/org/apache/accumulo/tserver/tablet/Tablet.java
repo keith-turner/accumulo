@@ -163,11 +163,9 @@ import com.google.common.collect.ImmutableSet.Builder;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
- *
  * Provide access to a single row range in a living TabletServer.
- *
  */
-public class Tablet implements TabletCommitter {
+public class Tablet {
   private static final Logger log = LoggerFactory.getLogger(Tablet.class);
 
   private final TabletServer tabletServer;
@@ -261,7 +259,6 @@ public class Tablet implements TabletCommitter {
 
   private final int logId;
 
-  @Override
   public int getLogId() {
     return logId;
   }
@@ -341,7 +338,7 @@ public class Tablet implements TabletCommitter {
     this.logId = tabletServer.createLogId();
 
     TableConfiguration tblConf = tabletServer.getTableConfiguration(extent);
-    if (null == tblConf) {
+    if (tblConf == null) {
       Tables.clearCache(tabletServer.getContext());
       tblConf = tabletServer.getTableConfiguration(extent);
       requireNonNull(tblConf, "Could not get table configuration for " + extent.getTableId());
@@ -432,8 +429,8 @@ public class Tablet implements TabletCommitter {
         for (FileRef ref : datafiles.keySet())
           absPaths.add(ref.path().toString());
 
-        tabletServer.recover(this.getTabletServer().getFileSystem(), extent, tableConfiguration,
-            logEntries, absPaths, new MutationReceiver() {
+        tabletServer.recover(this.getTabletServer().getFileSystem(), extent, logEntries, absPaths,
+            new MutationReceiver() {
               @Override
               public void receive(Mutation m) {
                 // LogReader.printMutation(m);
@@ -445,7 +442,7 @@ public class Tablet implements TabletCommitter {
                     maxTime.set(Math.max(maxTime.get(), columnUpdate.getTimestamp()));
                   }
                 }
-                getTabletMemory().mutate(commitSession, Collections.singletonList(m));
+                getTabletMemory().mutate(commitSession, Collections.singletonList(m), 1);
                 entriesUsedOnTablet.incrementAndGet();
               }
             });
@@ -895,9 +892,9 @@ public class Tablet implements TabletCommitter {
     return new Scanner(this, range, opts);
   }
 
-  DataFileValue minorCompact(VolumeManager fs, InMemoryMap memTable, FileRef tmpDatafile,
-      FileRef newDatafile, FileRef mergeFile, boolean hasQueueTime, long queued,
-      CommitSession commitSession, long flushId, MinorCompactionReason mincReason) {
+  DataFileValue minorCompact(InMemoryMap memTable, FileRef tmpDatafile, FileRef newDatafile,
+      FileRef mergeFile, boolean hasQueueTime, long queued, CommitSession commitSession,
+      long flushId, MinorCompactionReason mincReason) {
     boolean failed = false;
     long start = System.currentTimeMillis();
     timer.incrementStatusMinor();
@@ -953,7 +950,7 @@ public class Tablet implements TabletCommitter {
         if (minCMetrics.isEnabled())
           minCMetrics.add(TabletServerMinCMetrics.QUEUE, (start - queued));
       } else
-        timer.updateTime(Operation.MINOR, start, count, failed);
+        timer.updateTime(Operation.MINOR, start, failed);
     }
   }
 
@@ -1256,8 +1253,7 @@ public class Tablet implements TabletCommitter {
     return finishPreparingMutations(time);
   }
 
-  @Override
-  public synchronized void abortCommit(CommitSession commitSession, List<Mutation> value) {
+  public synchronized void abortCommit(CommitSession commitSession) {
     if (writesInProgress <= 0) {
       throw new IllegalStateException("waitingForLogs <= 0 " + writesInProgress);
     }
@@ -1272,7 +1268,6 @@ public class Tablet implements TabletCommitter {
       this.notifyAll();
   }
 
-  @Override
   public void commit(CommitSession commitSession, List<Mutation> mutations) {
 
     int totalCount = 0;
@@ -1284,7 +1279,7 @@ public class Tablet implements TabletCommitter {
       totalBytes += mutation.numBytes();
     }
 
-    getTabletMemory().mutate(commitSession, mutations);
+    getTabletMemory().mutate(commitSession, mutations, totalCount);
 
     synchronized (this) {
       if (writesInProgress < 1) {
@@ -1648,7 +1643,7 @@ public class Tablet implements TabletCommitter {
 
       // We expect to get a midPoint for this set of files. If we don't get one, we have a problem.
       final Key mid = keys.get(.5);
-      if (null == mid) {
+      if (mid == null) {
         throw new IllegalStateException("Could not determine midpoint for files");
       }
 
@@ -1745,7 +1740,7 @@ public class Tablet implements TabletCommitter {
   }
 
   List<FileRef> findChopFiles(KeyExtent extent, Map<FileRef,Pair<Key,Key>> firstAndLastKeys,
-      Collection<FileRef> allFiles) throws IOException {
+      Collection<FileRef> allFiles) {
     List<FileRef> result = new ArrayList<>();
     if (firstAndLastKeys == null) {
       result.addAll(allFiles);
@@ -2176,7 +2171,6 @@ public class Tablet implements TabletCommitter {
     return majCStats;
   }
 
-  @Override
   public KeyExtent getExtent() {
     return extent;
   }
@@ -2487,6 +2481,38 @@ public class Tablet implements TabletCommitter {
     candidates.removeAll(referencedLogs);
   }
 
+  public void checkIfMinorCompactionNeededForLogs(List<DfsLogger> closedLogs) {
+
+    // grab this outside of tablet lock.
+    int maxLogs = tableConfiguration.getCount(Property.TABLE_MINC_LOGS_MAX);
+
+    String reason = null;
+    synchronized (this) {
+      if (currentLogs.size() >= maxLogs) {
+        reason = "referenced " + currentLogs.size() + " write ahead logs";
+      } else if (maxLogs < closedLogs.size()) {
+        // If many tablets reference a single WAL, but each tablet references a different WAL then
+        // this could result in the tablet server referencing many WALs. For recovery that would
+        // mean each tablet had to process lots of WAL. This check looks for a single use of an
+        // older WAL and compacts if one is found. The following check assumes the most recent WALs
+        // are at the end of the list and ignores these.
+        List<DfsLogger> oldClosed = closedLogs.subList(0, closedLogs.size() - maxLogs);
+        for (DfsLogger closedLog : oldClosed) {
+          if (currentLogs.contains(closedLog)) {
+            reason = "referenced at least one old write ahead log " + closedLog.getFileName();
+            break;
+          }
+        }
+      }
+    }
+
+    if (reason != null) {
+      // initiate and log outside of tablet lock
+      initiateMinorCompaction(MinorCompactionReason.SYSTEM);
+      log.debug("Initiating minor compaction for {} because {}", getExtent(), reason);
+    }
+  }
+
   Set<String> beginClearingUnusedLogs() {
     Set<String> unusedLogs = new HashSet<>();
 
@@ -2547,15 +2573,10 @@ public class Tablet implements TabletCommitter {
   // this lock is basically used to synchronize writing of log info to metadata
   private final ReentrantLock logLock = new ReentrantLock();
 
-  public synchronized int getLogCount() {
-    return currentLogs.size();
-  }
-
   // don't release the lock if this method returns true for success; instead, the caller should
   // clean up by calling finishUpdatingLogsUsed()
   @SuppressFBWarnings(value = "UL_UNRELEASED_LOCK",
       justification = "lock is released by caller calling finishedUpdatingLogsUsed method")
-  @Override
   public boolean beginUpdatingLogsUsed(InMemoryMap memTable, DfsLogger more, boolean mincFinish) {
 
     boolean releaseLock = true;
@@ -2636,7 +2657,6 @@ public class Tablet implements TabletCommitter {
     }
   }
 
-  @Override
   public void finishUpdatingLogsUsed() {
     logLock.unlock();
   }
@@ -2721,17 +2741,14 @@ public class Tablet implements TabletCommitter {
     }
   }
 
-  @Override
   public TableConfiguration getTableConfiguration() {
     return tableConfiguration;
   }
 
-  @Override
   public Durability getDurability() {
     return DurabilityImpl.fromString(getTableConfiguration().get(Property.TABLE_DURABILITY));
   }
 
-  @Override
   public void updateMemoryUsageStats(long size, long mincSize) {
     getTabletResources().updateMemoryUsageStats(this, size, mincSize);
   }
@@ -2817,11 +2834,6 @@ public class Tablet implements TabletCommitter {
   public synchronized void setLastCompactionID(Long compactionId) {
     if (compactionId != null)
       this.lastCompactID = compactionId;
-  }
-
-  public void removeMajorCompactionQueuedReason(MajorCompactionReason reason) {
-    majorCompactionQueued.remove(reason);
-
   }
 
   public void minorCompactionWaitingToStart() {

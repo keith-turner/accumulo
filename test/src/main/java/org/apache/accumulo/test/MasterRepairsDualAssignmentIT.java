@@ -69,8 +69,8 @@ public class MasterRepairsDualAssignmentIT extends ConfigurableMacBase {
   @Test
   public void test() throws Exception {
     // make some tablets, spread 'em around
-    try (AccumuloClient c = getClient()) {
-      ClientContext context = getClientContext();
+    try (AccumuloClient c = createClient()) {
+      ClientContext context = (ClientContext) c;
       String table = this.getUniqueNames(1)[0];
       c.securityOperations().grantTablePermission("root", MetadataTable.NAME,
           TablePermission.WRITE);

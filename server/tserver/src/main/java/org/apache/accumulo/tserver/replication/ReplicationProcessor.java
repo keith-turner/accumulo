@@ -22,8 +22,6 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -101,7 +99,7 @@ public class ReplicationProcessor implements Processor {
     Status status;
     try {
       status = getStatus(file, target);
-    } catch (ReplicationTableOfflineException | AccumuloException | AccumuloSecurityException e) {
+    } catch (ReplicationTableOfflineException e) {
       log.error("Could not look for replication record", e);
       throw new IllegalStateException("Could not look for replication record", e);
     } catch (InvalidProtocolBufferException e) {
@@ -159,7 +157,7 @@ public class ReplicationProcessor implements Processor {
     Map<String,String> configuredPeers = conf
         .getAllPropertiesWithPrefix(Property.REPLICATION_PEERS);
     String peerType = configuredPeers.get(Property.REPLICATION_PEERS.getKey() + peerName);
-    if (null == peerType) {
+    if (peerType == null) {
       String msg = "Cannot process replication for unknown peer: " + peerName;
       log.warn(msg);
       throw new IllegalArgumentException(msg);
@@ -178,12 +176,10 @@ public class ReplicationProcessor implements Processor {
   }
 
   protected Status getStatus(String file, ReplicationTarget target)
-      throws ReplicationTableOfflineException, AccumuloException, AccumuloSecurityException,
-      InvalidProtocolBufferException {
-    Scanner s = ReplicationTable.getScanner(context.getClient());
+      throws ReplicationTableOfflineException, InvalidProtocolBufferException {
+    Scanner s = ReplicationTable.getScanner(context);
     s.setRange(Range.exact(file));
     s.fetchColumn(WorkSection.NAME, target.toText());
-
     return Status.parseFrom(Iterables.getOnlyElement(s).getValue().get());
   }
 }

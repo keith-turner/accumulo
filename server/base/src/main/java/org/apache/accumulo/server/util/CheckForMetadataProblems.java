@@ -23,7 +23,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.apache.accumulo.core.client.AccumuloSecurityException;
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
@@ -34,14 +34,12 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.server.cli.ServerUtilOpts;
-import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.hadoop.io.Text;
 
 public class CheckForMetadataProblems {
   private static boolean sawProblems = false;
 
-  public static void checkTable(String tablename, TreeSet<KeyExtent> tablets, ServerUtilOpts opts)
-      throws AccumuloSecurityException {
+  public static void checkTable(String tablename, TreeSet<KeyExtent> tablets) {
     // sanity check of metadata table entries
     // make sure tablets has no holes, and that it starts and ends w/ null
 
@@ -92,70 +90,71 @@ public class CheckForMetadataProblems {
       sawProblems = true;
   }
 
-  public static void checkMetadataAndRootTableEntries(String tableNameToCheck, ServerUtilOpts opts,
-      VolumeManager fs) throws Exception {
+  public static void checkMetadataAndRootTableEntries(String tableNameToCheck, ServerUtilOpts opts)
+      throws Exception {
     System.out.println("Checking table: " + tableNameToCheck);
     Map<String,TreeSet<KeyExtent>> tables = new HashMap<>();
 
-    Scanner scanner;
+    try (AccumuloClient client = opts.createClient()) {
 
-    scanner = opts.getClient().createScanner(tableNameToCheck, Authorizations.EMPTY);
+      Scanner scanner = client.createScanner(tableNameToCheck, Authorizations.EMPTY);
 
-    scanner.setRange(MetadataSchema.TabletsSection.getRange());
-    TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
-    scanner.fetchColumnFamily(TabletsSection.CurrentLocationColumnFamily.NAME);
+      scanner.setRange(MetadataSchema.TabletsSection.getRange());
+      TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
+      scanner.fetchColumnFamily(TabletsSection.CurrentLocationColumnFamily.NAME);
 
-    Text colf = new Text();
-    Text colq = new Text();
-    boolean justLoc = false;
+      Text colf = new Text();
+      Text colq = new Text();
+      boolean justLoc = false;
 
-    int count = 0;
+      int count = 0;
 
-    for (Entry<Key,Value> entry : scanner) {
-      colf = entry.getKey().getColumnFamily(colf);
-      colq = entry.getKey().getColumnQualifier(colq);
+      for (Entry<Key,Value> entry : scanner) {
+        colf = entry.getKey().getColumnFamily(colf);
+        colq = entry.getKey().getColumnQualifier(colq);
 
-      count++;
+        count++;
 
-      String tableName = (new KeyExtent(entry.getKey().getRow(), (Text) null)).getTableId()
-          .canonicalID();
+        String tableName = (new KeyExtent(entry.getKey().getRow(), (Text) null)).getTableId()
+            .canonicalID();
 
-      TreeSet<KeyExtent> tablets = tables.get(tableName);
-      if (tablets == null) {
-        Set<Entry<String,TreeSet<KeyExtent>>> es = tables.entrySet();
+        TreeSet<KeyExtent> tablets = tables.get(tableName);
+        if (tablets == null) {
+          Set<Entry<String,TreeSet<KeyExtent>>> es = tables.entrySet();
 
-        for (Entry<String,TreeSet<KeyExtent>> entry2 : es) {
-          checkTable(entry2.getKey(), entry2.getValue(), opts);
+          for (Entry<String,TreeSet<KeyExtent>> entry2 : es) {
+            checkTable(entry2.getKey(), entry2.getValue());
+          }
+
+          tables.clear();
+
+          tablets = new TreeSet<>();
+          tables.put(tableName, tablets);
         }
 
-        tables.clear();
-
-        tablets = new TreeSet<>();
-        tables.put(tableName, tablets);
-      }
-
-      if (TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.equals(colf, colq)) {
-        KeyExtent tabletKe = new KeyExtent(entry.getKey().getRow(), entry.getValue());
-        tablets.add(tabletKe);
-        justLoc = false;
-      } else if (colf.equals(TabletsSection.CurrentLocationColumnFamily.NAME)) {
-        if (justLoc) {
-          System.out.println("Problem at key " + entry.getKey());
-          sawProblems = true;
+        if (TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN.equals(colf, colq)) {
+          KeyExtent tabletKe = new KeyExtent(entry.getKey().getRow(), entry.getValue());
+          tablets.add(tabletKe);
+          justLoc = false;
+        } else if (colf.equals(TabletsSection.CurrentLocationColumnFamily.NAME)) {
+          if (justLoc) {
+            System.out.println("Problem at key " + entry.getKey());
+            sawProblems = true;
+          }
+          justLoc = true;
         }
-        justLoc = true;
       }
-    }
 
-    if (count == 0) {
-      System.err.println("ERROR : " + tableNameToCheck + " table is empty");
-      sawProblems = true;
+      if (count == 0) {
+        System.err.println("ERROR : " + tableNameToCheck + " table is empty");
+        sawProblems = true;
+      }
     }
 
     Set<Entry<String,TreeSet<KeyExtent>>> es = tables.entrySet();
 
     for (Entry<String,TreeSet<KeyExtent>> entry : es) {
-      checkTable(entry.getKey(), entry.getValue(), opts);
+      checkTable(entry.getKey(), entry.getValue());
     }
 
     if (!sawProblems) {
@@ -168,10 +167,8 @@ public class CheckForMetadataProblems {
     ServerUtilOpts opts = new ServerUtilOpts();
     opts.parseArgs(CheckForMetadataProblems.class.getName(), args);
 
-    VolumeManager fs = opts.getServerContext().getVolumeManager();
-
-    checkMetadataAndRootTableEntries(RootTable.NAME, opts, fs);
-    checkMetadataAndRootTableEntries(MetadataTable.NAME, opts, fs);
+    checkMetadataAndRootTableEntries(RootTable.NAME, opts);
+    checkMetadataAndRootTableEntries(MetadataTable.NAME, opts);
     opts.stopTracing();
     if (sawProblems)
       throw new RuntimeException();

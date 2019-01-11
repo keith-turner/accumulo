@@ -43,10 +43,21 @@ import org.slf4j.LoggerFactory;
  * <pre>
  * AccumuloInputFormat.configure().clientProperties(props).table(name) // required
  *     .auths(auths).addIterator(iter1).ranges(ranges).fetchColumns(columns).executionHints(hints)
- *     .samplerConfiguration(sampleConf).disableAutoAdjustRanges() // enabled by default
- *     .scanIsolation() // not available with batchScan()
- *     .offlineScan() // not available with batchScan()
+ *     .samplerConfiguration(sampleConf).autoAdjustRanges(false) // enabled by default
+ *     .scanIsolation(true) // not available with batchScan()
+ *     .offlineScan(true) // not available with batchScan()
  *     .store(job);
+ * </pre>
+ *
+ * Multiple tables can be set by configuring clientProperties once and then calling .table() for
+ * each table. The methods following a call to .table() apply only to that table. For Example:
+ *
+ * <pre>
+ * AccumuloInputFormat.configure().clientProperties(props) // set client props once
+ *     .table(table1).auths(auths1).fetchColumns(cols1).batchScan(true) // options for table1
+ *     .table(table2).ranges(range2).auths(auths2).addIterator(iter2) // options for table2
+ *     .table(table3).ranges(range3).auths(auths3).addIterator(iter3) // options for table3
+ *     .store(job); // store all tables in the job when finished
  * </pre>
  *
  * For descriptions of all options see

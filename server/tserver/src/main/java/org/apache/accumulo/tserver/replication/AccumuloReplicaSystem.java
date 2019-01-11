@@ -38,13 +38,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.KerberosToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.clientImpl.ClientExecReturn;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.clientImpl.ReplicationClient;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ClientProperty;
@@ -53,7 +53,6 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.file.rfile.RFile;
 import org.apache.accumulo.core.protobuf.ProtobufUtil;
 import org.apache.accumulo.core.replication.ReplicationTarget;
-import org.apache.accumulo.core.replication.thrift.KeyValues;
 import org.apache.accumulo.core.replication.thrift.ReplicationServicer;
 import org.apache.accumulo.core.replication.thrift.ReplicationServicer.Client;
 import org.apache.accumulo.core.replication.thrift.WalEdits;
@@ -93,36 +92,8 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
   private AccumuloConfiguration conf;
   private VolumeManager fs;
 
-  protected String getInstanceName() {
-    return instanceName;
-  }
-
-  protected void setInstanceName(String instanceName) {
-    this.instanceName = instanceName;
-  }
-
-  protected String getZookeepers() {
-    return zookeepers;
-  }
-
-  protected void setZookeepers(String zookeepers) {
-    this.zookeepers = zookeepers;
-  }
-
-  protected AccumuloConfiguration getConf() {
-    return conf;
-  }
-
   protected void setConf(AccumuloConfiguration conf) {
     this.conf = conf;
-  }
-
-  protected VolumeManager getFs() {
-    return fs;
-  }
-
-  protected void setFs(VolumeManager fs) {
-    this.fs = fs;
   }
 
   /**
@@ -138,7 +109,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
 
     // instance_name,zookeepers
     int index = configuration.indexOf(',');
-    if (-1 == index) {
+    if (index == -1) {
       try {
         Thread.sleep(1000);
       } catch (InterruptedException e) {
@@ -184,7 +155,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
       password = getPassword(localConf, target);
     }
 
-    if (null != keytab) {
+    if (keytab != null) {
       try {
         final UserGroupInformation accumuloUgi = UserGroupInformation.getCurrentUser();
         // Get a UGI with the principal + keytab
@@ -270,7 +241,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
           span.stop();
         }
 
-        if (null == peerTserverStr) {
+        if (peerTserverStr == null) {
           // Something went wrong, and we didn't get a valid tserver from the remote for some reason
           log.warn("Did not receive tserver from master at {}, cannot proceed"
               + " with replication. Will retry.", target);
@@ -288,8 +259,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
           if (p.getName().endsWith(RFILE_SUFFIX)) {
             span = Trace.start("RFile replication");
             try {
-              finalStatus = replicateRFiles(peerContext, peerTserver, target, p, status, sizeLimit,
-                  remoteTableId, peerContext.rpcCreds(), helper, timeout);
+              finalStatus = replicateRFiles(peerContext, peerTserver, target, p, status, timeout);
             } finally {
               span.stop();
             }
@@ -324,51 +294,44 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
   }
 
   protected Status replicateRFiles(ClientContext peerContext, final HostAndPort peerTserver,
-      final ReplicationTarget target, final Path p, final Status status, final long sizeLimit,
-      final String remoteTableId, final TCredentials tcreds, final ReplicaSystemHelper helper,
-      long timeout) throws TTransportException, AccumuloException, AccumuloSecurityException {
-    try (final DataInputStream input = getRFileInputStream(p)) {
-      Status lastStatus = status, currentStatus = status;
-      while (true) {
-        // Read and send a batch of mutations
-        ReplicationStats replResult = ReplicationClient.executeServicerWithReturn(peerContext,
-            peerTserver, new RFileClientExecReturn(target, input, p, currentStatus, sizeLimit,
-                remoteTableId, tcreds),
-            timeout);
+      final ReplicationTarget target, final Path p, final Status status, long timeout)
+      throws TTransportException, AccumuloException, AccumuloSecurityException {
 
-        // Catch the overflow
-        long newBegin = currentStatus.getBegin() + replResult.entriesConsumed;
-        if (newBegin < 0) {
-          newBegin = Long.MAX_VALUE;
-        }
+    Status lastStatus = status, currentStatus = status;
+    while (true) {
+      // Read and send a batch of mutations
+      ReplicationStats replResult = ReplicationClient.executeServicerWithReturn(peerContext,
+          peerTserver, new RFileClientExecReturn(), timeout);
 
-        currentStatus = Status.newBuilder(currentStatus).setBegin(newBegin).build();
-
-        log.debug("Sent batch for replication of {} to {}, with new Status {}", p, target,
-            ProtobufUtil.toString(currentStatus));
-
-        // If we got a different status
-        if (!currentStatus.equals(lastStatus)) {
-          // If we don't have any more work, just quit
-          if (!StatusUtil.isWorkRequired(currentStatus)) {
-            return currentStatus;
-          } else {
-            // Otherwise, let it loop and replicate some more data
-            lastStatus = currentStatus;
-          }
-        } else {
-          log.debug("Did not replicate any new data for {} to {}, (state was {})", p, target,
-              ProtobufUtil.toString(lastStatus));
-
-          // otherwise, we didn't actually replicate (likely because there was error sending the
-          // data)
-          // we can just not record any updates, and it will be picked up again by the work assigner
-          return status;
-        }
+      // Catch the overflow
+      long newBegin = currentStatus.getBegin() + replResult.entriesConsumed;
+      if (newBegin < 0) {
+        newBegin = Long.MAX_VALUE;
       }
-    } catch (IOException e) {
-      log.error("Could not create input stream from RFile, will retry", e);
-      return status;
+
+      currentStatus = Status.newBuilder(currentStatus).setBegin(newBegin).build();
+
+      log.debug("Sent batch for replication of {} to {}, with new Status {}", p, target,
+          ProtobufUtil.toString(currentStatus));
+
+      // If we got a different status
+      if (!currentStatus.equals(lastStatus)) {
+        // If we don't have any more work, just quit
+        if (!StatusUtil.isWorkRequired(currentStatus)) {
+          return currentStatus;
+        } else {
+          // Otherwise, let it loop and replicate some more data
+          lastStatus = currentStatus;
+        }
+      } else {
+        log.debug("Did not replicate any new data for {} to {}, (state was {})", p, target,
+            ProtobufUtil.toString(lastStatus));
+
+        // otherwise, we didn't actually replicate (likely because there was error sending the
+        // data)
+        // we can just not record any updates, and it will be picked up again by the work assigner
+        return status;
+      }
     }
   }
 
@@ -390,7 +353,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
         // message,
         // building a Set of tids from DEFINE_TABLET events which correspond to table ids for future
         // mutations
-        tids = consumeWalPrefix(target, input, p, status, sizeLimit);
+        tids = consumeWalPrefix(target, input, status);
       } catch (IOException e) {
         log.warn("Unexpected error consuming file.");
         return status;
@@ -441,7 +404,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
         if (!currentStatus.equals(lastStatus)) {
           span = Trace.start("Update replication table");
           try {
-            if (null != accumuloUgi) {
+            if (accumuloUgi != null) {
               final Status copy = currentStatus;
               accumuloUgi.doAs(new PrivilegedAction<Void>() {
                 @Override
@@ -455,7 +418,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
                 }
               });
               Exception e = exceptionRef.get();
-              if (null != e) {
+              if (e != null) {
                 if (e instanceof TableNotFoundException) {
                   throw (TableNotFoundException) e;
                 } else if (e instanceof AccumuloSecurityException) {
@@ -558,11 +521,11 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
 
       log.debug(
           "Read {} WAL entries and retained {} bytes of WAL entries for replication to peer '{}'",
-          (Long.MAX_VALUE == edits.entriesConsumed) ? "all remaining" : edits.entriesConsumed,
+          (edits.entriesConsumed == Long.MAX_VALUE) ? "all remaining" : edits.entriesConsumed,
           edits.sizeInBytes, p);
 
       // If we have some edits to send
-      if (0 < edits.walEdits.getEditsSize()) {
+      if (edits.walEdits.getEditsSize() > 0) {
         log.debug("Sending {} edits", edits.walEdits.getEditsSize());
         long entriesReplicated = client.replicateLog(remoteTableId, edits.walEdits, tcreds);
         if (entriesReplicated != edits.numUpdates) {
@@ -591,40 +554,8 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
   protected class RFileClientExecReturn
       implements ClientExecReturn<ReplicationStats,ReplicationServicer.Client> {
 
-    private ReplicationTarget target;
-    private DataInputStream input;
-    private Path p;
-    private Status status;
-    private long sizeLimit;
-    private String remoteTableId;
-    private TCredentials tcreds;
-
-    public RFileClientExecReturn(ReplicationTarget target, DataInputStream input, Path p,
-        Status status, long sizeLimit, String remoteTableId, TCredentials tcreds) {
-      this.target = target;
-      this.input = input;
-      this.p = p;
-      this.status = status;
-      this.sizeLimit = sizeLimit;
-      this.remoteTableId = remoteTableId;
-      this.tcreds = tcreds;
-    }
-
     @Override
-    public ReplicationStats execute(Client client) throws Exception {
-      RFileReplication kvs = getKeyValues(target, input, p, status, sizeLimit);
-      if (0 < kvs.keyValues.getKeyValuesSize()) {
-        long entriesReplicated = client.replicateKeyValues(remoteTableId, kvs.keyValues, tcreds);
-        if (entriesReplicated != kvs.keyValues.getKeyValuesSize()) {
-          log.warn(
-              "Sent {} KeyValue entries for replication but only {} were reported as replicated",
-              kvs.keyValues.getKeyValuesSize(), entriesReplicated);
-        }
-
-        // Not as important to track as WALs because we don't skip any KVs in an RFile
-        return kvs;
-      }
-
+    public ReplicationStats execute(Client client) {
       // No data sent (bytes nor records) and no progress made
       return new ReplicationStats(0L, 0L, 0L);
     }
@@ -638,7 +569,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
         .getAllPropertiesWithPrefix(Property.REPLICATION_PEER_PASSWORD);
     String password = peerPasswords
         .get(Property.REPLICATION_PEER_PASSWORD.getKey() + target.getPeerName());
-    if (null == password) {
+    if (password == null) {
       throw new IllegalArgumentException("Cannot get password for " + target.getPeerName());
     }
     return password;
@@ -652,7 +583,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
         .getAllPropertiesWithPrefix(Property.REPLICATION_PEER_KEYTAB);
     String keytab = peerKeytabs
         .get(Property.REPLICATION_PEER_KEYTAB.getKey() + target.getPeerName());
-    if (null == keytab) {
+    if (keytab == null) {
       throw new IllegalArgumentException("Cannot get keytab for " + target.getPeerName());
     }
     return keytab;
@@ -668,7 +599,7 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
         .getAllPropertiesWithPrefix(Property.REPLICATION_PEER_USER);
 
     String user = peerUsers.get(userKey);
-    if (null == user) {
+    if (user == null) {
       throw new IllegalArgumentException("Cannot get user for " + target.getPeerName());
     }
     return user;
@@ -690,14 +621,8 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
     return new ClientContext(ClientInfo.from(properties, token), localConf);
   }
 
-  protected RFileReplication getKeyValues(ReplicationTarget target, DataInputStream input, Path p,
-      Status status, long sizeLimit) {
-    // TODO ACCUMULO-2580 Implement me
-    throw new UnsupportedOperationException();
-  }
-
-  protected Set<Integer> consumeWalPrefix(ReplicationTarget target, DataInputStream wal, Path p,
-      Status status, long sizeLimit) throws IOException {
+  protected Set<Integer> consumeWalPrefix(ReplicationTarget target, DataInputStream wal,
+      Status status) throws IOException {
     Set<Integer> tids = new HashSet<>();
     LogFileKey key = new LogFileKey();
     LogFileValue value = new LogFileValue();
@@ -840,10 +765,6 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
     return mutationsToSend;
   }
 
-  protected DataInputStream getRFileInputStream(Path p) throws IOException {
-    throw new UnsupportedOperationException("Not yet implemented");
-  }
-
   public static class ReplicationStats {
     /**
      * The size, in bytes, of the data sent
@@ -881,18 +802,6 @@ public class AccumuloReplicaSystem implements ReplicaSystem {
         }
       }
       return false;
-    }
-  }
-
-  public static class RFileReplication extends ReplicationStats {
-    /**
-     * The data to send
-     */
-    public KeyValues keyValues;
-
-    public RFileReplication(KeyValues kvs, long size) {
-      super(size, kvs.keyValues.size(), kvs.keyValues.size());
-      this.keyValues = kvs;
     }
   }
 

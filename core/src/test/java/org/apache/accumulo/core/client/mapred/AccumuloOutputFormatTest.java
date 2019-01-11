@@ -27,6 +27,10 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.mapred.JobConf;
 import org.junit.Test;
 
+/**
+ * @deprecated since 2.0.0
+ */
+@Deprecated
 public class AccumuloOutputFormatTest {
 
   @Test
@@ -49,7 +53,7 @@ public class AccumuloOutputFormatTest {
 
     AccumuloOutputFormat myAOF = new AccumuloOutputFormat() {
       @Override
-      public void checkOutputSpecs(FileSystem ignored, JobConf job) throws IOException {
+      public void checkOutputSpecs(FileSystem ignored, JobConf job) {
         BatchWriterConfig bwOpts = getBatchWriterOptions(job);
 
         // passive check

@@ -21,7 +21,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -34,10 +33,8 @@ import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.server.fs.FileRef;
 import org.junit.Test;
 
-/**
- *
- */
 public class SizeLimitCompactionStrategyTest {
+
   private Map<FileRef,DataFileValue> nfl(String... sa) {
 
     HashMap<FileRef,DataFileValue> ret = new HashMap<>();
@@ -50,7 +47,7 @@ public class SizeLimitCompactionStrategyTest {
   }
 
   @Test
-  public void testLimits() throws IOException {
+  public void testLimits() {
     SizeLimitCompactionStrategy slcs = new SizeLimitCompactionStrategy();
     HashMap<String,String> opts = new HashMap<>();
     opts.put(SizeLimitCompactionStrategy.SIZE_LIMIT_OPT, "1G");

@@ -24,17 +24,19 @@ import static org.junit.Assert.assertTrue;
 import java.util.Properties;
 
 import org.apache.accumulo.core.Constants;
-import org.apache.accumulo.core.client.Accumulo;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.junit.Test;
 
+/**
+ * @deprecated since 2.0.0
+ */
+@Deprecated
 public class ConfiguratorBaseTest {
 
   private enum PrivateTestingEnum {
@@ -64,32 +66,19 @@ public class ConfiguratorBaseTest {
   }
 
   @Test
-  public void testSetConnectorInfoClassOfQConfigurationStringString()
-      throws AccumuloSecurityException {
+  public void testSetConnectorInfoClassOfQConfigurationStringString() {
     Configuration conf = new Configuration();
     assertFalse(ConfiguratorBase.isConnectorInfoSet(this.getClass(), conf));
     ConfiguratorBase.setConnectorInfo(this.getClass(), conf, "testUser",
         new PasswordToken("testPass"));
     assertTrue(ConfiguratorBase.isConnectorInfoSet(this.getClass(), conf));
     assertEquals("testUser", ConfiguratorBase.getPrincipal(this.getClass(), conf));
-    assertEquals("testPass", new String(((PasswordToken) ConfiguratorBase
-        .getClientInfo(this.getClass(), conf).getAuthenticationToken()).getPassword()));
+    assertEquals("testPass",
+        new String(((PasswordToken) ClientInfo
+            .from(ConfiguratorBase.getClientProperties(this.getClass(), conf))
+            .getAuthenticationToken()).getPassword()));
   }
 
-  @Test
-  public void testSetClientInfo() {
-    Configuration conf = new Configuration();
-    ClientInfo info = ClientInfo.from(
-        Accumulo.newClientProperties().to("myinstance", "myzookeepers").as("user", "pass").build());
-    ConfiguratorBase.setClientInfo(this.getClass(), conf, info);
-    ClientInfo info2 = ConfiguratorBase.getClientInfo(this.getClass(), conf);
-    assertEquals("myinstance", info2.getInstanceName());
-    assertEquals("myzookeepers", info2.getZooKeepers());
-    assertEquals("user", info2.getPrincipal());
-    assertTrue(info2.getAuthenticationToken() instanceof PasswordToken);
-  }
-
-  @SuppressWarnings("deprecation")
   @Test
   public void testSetZooKeeperInstance() {
     Configuration conf = new Configuration();
@@ -103,7 +92,7 @@ public class ConfiguratorBaseTest {
     assertEquals("testInstanceName", clientConf
         .get(org.apache.accumulo.core.client.ClientConfiguration.ClientProperty.INSTANCE_NAME));
 
-    Properties props = ConfiguratorBase.getClientInfo(this.getClass(), conf).getProperties();
+    Properties props = ConfiguratorBase.getClientProperties(this.getClass(), conf);
     assertEquals("testInstanceName", props.getProperty(ClientProperty.INSTANCE_NAME.getKey()));
     assertEquals("testZooKeepers", props.getProperty(ClientProperty.INSTANCE_ZOOKEEPERS.getKey()));
     assertEquals("true", props.getProperty(ClientProperty.SSL_ENABLED.getKey()));

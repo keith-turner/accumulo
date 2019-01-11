@@ -51,6 +51,7 @@ import org.apache.accumulo.tserver.compaction.strategies.TooManyDeletesCompactio
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 
@@ -94,6 +95,7 @@ public class MajorCompactionRequest implements Cloneable {
     this.files = mcr.files;
   }
 
+  @VisibleForTesting
   public TabletId getTabletId() {
     return new TabletIdImpl(extent);
   }
@@ -147,7 +149,7 @@ public class MajorCompactionRequest implements Cloneable {
    * @see WriterOptions#withSummarizers(SummarizerConfiguration...)
    */
   public List<Summary> getSummaries(Collection<FileRef> files,
-      Predicate<SummarizerConfiguration> summarySelector) throws IOException {
+      Predicate<SummarizerConfiguration> summarySelector) {
     Preconditions.checkState(volumeManager != null,
         "Getting summaries is not" + " supported at this time. It's only supported when"
             + " CompactionStrategy.gatherInformation() is called.");
@@ -157,8 +159,8 @@ public class MajorCompactionRequest implements Cloneable {
       FileSystem fs = volumeManager.getVolumeByPath(file.path()).getFileSystem();
       Configuration conf = CachedConfiguration.getInstance();
       SummaryCollection fsc = SummaryReader
-          .load(fs, conf, tableConfig, factory, file.path(), summarySelector, summaryCache,
-              indexCache, fileLenCache, context.getCryptoService())
+          .load(fs, conf, factory, file.path(), summarySelector, summaryCache, indexCache,
+              fileLenCache, context.getCryptoService())
           .getSummaries(Collections.singletonList(new Gatherer.RowRange(extent)));
       sc.merge(fsc, factory);
     }

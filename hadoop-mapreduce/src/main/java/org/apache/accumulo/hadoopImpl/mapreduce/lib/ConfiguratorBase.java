@@ -29,11 +29,11 @@ import java.util.Scanner;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.admin.DelegationTokenConfig;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.client.security.tokens.KerberosToken;
 import org.apache.accumulo.core.clientImpl.AuthenticationTokenIdentifier;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.clientImpl.ClientInfoImpl;
 import org.apache.accumulo.core.clientImpl.DelegationTokenImpl;
 import org.apache.accumulo.core.conf.ClientProperty;
@@ -107,8 +107,7 @@ public class ConfiguratorBase {
     ClientInfo result = info;
     if (info.getAuthenticationToken() instanceof KerberosToken) {
       log.info("Received KerberosToken, attempting to fetch DelegationToken");
-      try {
-        AccumuloClient client = Accumulo.newClient().from(info.getProperties()).build();
+      try (AccumuloClient client = Accumulo.newClient().from(info.getProperties()).build()) {
         AuthenticationToken token = client.securityOperations()
             .getDelegationToken(new DelegationTokenConfig());
         result = ClientInfo.from(Accumulo.newClientProperties().from(info.getProperties())
@@ -287,16 +286,16 @@ public class ConfiguratorBase {
   }
 
   /**
-   * Creates an Accumulo {@link AccumuloClient} based on the configuration
+   * Creates an {@link AccumuloClient} based on the configuration that must be closed by user
    *
    * @param implementingClass
    *          class whose name will be used as a prefix for the property configuration
    * @param conf
    *          Hadoop configuration object
-   * @return Accumulo connector
+   * @return {@link AccumuloClient} that must be closed by user
    * @since 2.0.0
    */
-  public static AccumuloClient getClient(Class<?> implementingClass, Configuration conf) {
+  public static AccumuloClient createClient(Class<?> implementingClass, Configuration conf) {
     return Accumulo.newClient().from(getClientProperties(implementingClass, conf)).build();
   }
 

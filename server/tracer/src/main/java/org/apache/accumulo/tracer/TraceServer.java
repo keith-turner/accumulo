@@ -72,7 +72,6 @@ import org.apache.thrift.server.TThreadPoolServer;
 import org.apache.thrift.transport.TServerSocket;
 import org.apache.thrift.transport.TServerTransport;
 import org.apache.thrift.transport.TTransport;
-import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.Watcher.Event.EventType;
@@ -80,7 +79,7 @@ import org.apache.zookeeper.Watcher.Event.KeeperState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class TraceServer implements Watcher {
+public class TraceServer implements Watcher, AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(TraceServer.class);
   private final ServerConfigurationFactory serverConfiguration;
@@ -97,6 +96,13 @@ public class TraceServer implements Watcher {
     m.put(new Text(cf), new Text(cq), new Value(bytes, 0, len));
   }
 
+  @Override
+  public void close() {
+    if (accumuloClient != null) {
+      accumuloClient.close();
+    }
+  }
+
   static class ByteArrayTransport extends TTransport {
     TByteArrayOutputStream out = new TByteArrayOutputStream();
 
@@ -106,7 +112,7 @@ public class TraceServer implements Watcher {
     }
 
     @Override
-    public void open() throws TTransportException {}
+    public void open() {}
 
     @Override
     public void close() {}
@@ -117,7 +123,7 @@ public class TraceServer implements Watcher {
     }
 
     @Override
-    public void write(byte[] buf, int off, int len) throws TTransportException {
+    public void write(byte[] buf, int off, int len) {
       out.write(buf, off, len);
     }
 
@@ -160,7 +166,7 @@ public class TraceServer implements Watcher {
          * Check for null, because we expect spans to come in much faster than flush calls. In the
          * case of failure, we'd rather avoid logging tons of NPEs.
          */
-        if (null == writer) {
+        if (writer == null) {
           log.warn("writer is not ready; discarding span.");
           return;
         }
@@ -209,7 +215,7 @@ public class TraceServer implements Watcher {
         log.warn("Unable to start trace server on port {}", port);
       }
     }
-    if (null == sock) {
+    if (sock == null) {
       throw new RuntimeException(
           "Unable to start trace server on configured ports: " + Arrays.toString(ports));
     }
@@ -267,14 +273,13 @@ public class TraceServer implements Watcher {
           for (Entry<String,String> entry : loginMap.entrySet()) {
             props.put(entry.getKey().substring(prefixLength), entry.getValue());
           }
-
           token.init(props);
-
           at = token;
         }
 
         accumuloClient = Accumulo.newClient().from(context.getProperties()).as(principal, at)
             .build();
+
         if (!accumuloClient.tableOperations().exists(tableName)) {
           accumuloClient.tableOperations().create(tableName);
           IteratorSetting setting = new IteratorSetting(10, "ageoff", AgeOffFilter.class.getName());
@@ -288,25 +293,25 @@ public class TraceServer implements Watcher {
           | RuntimeException ex) {
         log.info("Waiting to checking/create the trace table.", ex);
         sleepUninterruptibly(1, TimeUnit.SECONDS);
+        if (accumuloClient != null) {
+          accumuloClient.close();
+          accumuloClient = null;
+        }
       }
     }
     return accumuloClient;
   }
 
-  public void run() throws Exception {
-    SimpleTimer.getInstance(serverConfiguration.getSystemConfiguration()).schedule(new Runnable() {
-      @Override
-      public void run() {
-        flush();
-      }
-    }, SCHEDULE_DELAY, SCHEDULE_PERIOD);
+  public void run() {
+    SimpleTimer.getInstance(serverConfiguration.getSystemConfiguration()).schedule(() -> flush(),
+        SCHEDULE_DELAY, SCHEDULE_PERIOD);
     server.serve();
   }
 
   private void flush() {
     try {
       final BatchWriter writer = this.writer.get();
-      if (null != writer) {
+      if (writer != null) {
         writer.flush();
       } else {
         // We don't have a writer. If the table exists, try to make a new writer.
@@ -336,7 +341,7 @@ public class TraceServer implements Watcher {
       /* Trade in the new writer (even if null) for the one we need to close. */
       writer = this.writer.getAndSet(writer);
       try {
-        if (null != writer) {
+        if (writer != null) {
           writer.close();
         }
       } catch (Exception ex) {
@@ -405,8 +410,7 @@ public class TraceServer implements Watcher {
     loginTracer(context.getConfiguration());
     MetricsSystemHelper.configure(TraceServer.class.getSimpleName());
     ServerUtil.init(context, app);
-    TraceServer server = new TraceServer(context, opts.getAddress());
-    try {
+    try (TraceServer server = new TraceServer(context, opts.getAddress())) {
       server.run();
     } finally {
       log.info("tracer stopping");

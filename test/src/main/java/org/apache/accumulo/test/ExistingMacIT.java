@@ -87,7 +87,7 @@ public class ExistingMacIT extends ConfigurableMacBase {
   @Test
   public void testExistingInstance() throws Exception {
 
-    AccumuloClient client = getCluster().getAccumuloClient("root",
+    AccumuloClient client = getCluster().createAccumuloClient("root",
         new PasswordToken(ROOT_PASSWORD));
 
     client.tableOperations().create("table1");
@@ -142,7 +142,7 @@ public class ExistingMacIT extends ConfigurableMacBase {
     MiniAccumuloClusterImpl accumulo2 = new MiniAccumuloClusterImpl(macConfig2);
     accumulo2.start();
 
-    client = accumulo2.getAccumuloClient("root", new PasswordToken(ROOT_PASSWORD));
+    client = accumulo2.createAccumuloClient("root", new PasswordToken(ROOT_PASSWORD));
 
     try (Scanner scanner = client.createScanner("table1", Authorizations.EMPTY)) {
       int sum = 0;
@@ -158,7 +158,7 @@ public class ExistingMacIT extends ConfigurableMacBase {
   @Test
   public void testExistingRunningInstance() throws Exception {
     final String table = getUniqueNames(1)[0];
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       // Ensure that a master and tserver are up so the existing instance check won't fail.
       client.tableOperations().create(table);
       BatchWriter bw = client.createBatchWriter(table, new BatchWriterConfig());

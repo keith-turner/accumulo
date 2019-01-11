@@ -47,9 +47,9 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.cluster.ClusterUser;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.KerberosToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.clientImpl.Namespace;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -178,7 +178,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
   public static void setUpProxy() throws Exception {
     assertNotNull("Implementations must initialize the TProtocolFactory", factory);
 
-    try (AccumuloClient c = SharedMiniClusterBase.getClient()) {
+    try (AccumuloClient c = SharedMiniClusterBase.createClient()) {
       waitForAccumulo(c);
 
       hostname = InetAddress.getLocalHost().getCanonicalHostName();
@@ -239,7 +239,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
 
   @AfterClass
   public static void tearDownProxy() throws Exception {
-    if (null != proxyServer) {
+    if (proxyServer != null) {
       proxyServer.stop();
     }
 
@@ -312,7 +312,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
 
   @After
   public void teardown() throws Exception {
-    if (null != tableName) {
+    if (tableName != null) {
       if (isKerberosEnabled()) {
         UserGroupInformation.loginUserFromKeytab(clientPrincipal, clientKeytab.getAbsolutePath());
       }
@@ -325,7 +325,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
       }
     }
 
-    if (null != namespaceName) {
+    if (namespaceName != null) {
       try {
         if (client.namespaceExists(creds, namespaceName)) {
           client.deleteNamespace(creds, namespaceName);
@@ -336,7 +336,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
     }
 
     // Close the transport after the test
-    if (null != proxyClient) {
+    if (proxyClient != null) {
       proxyClient.close();
     }
   }
@@ -1274,7 +1274,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
         } catch (Exception e) {
           throw new RuntimeException(e);
         } finally {
-          if (null != proxyClient2) {
+          if (proxyClient2 != null) {
             proxyClient2.close();
           }
         }
@@ -1360,7 +1360,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
         } catch (Exception e) {
           throw new RuntimeException(e);
         } finally {
-          if (null != proxyClient2) {
+          if (proxyClient2 != null) {
             proxyClient2.close();
           }
         }
@@ -1472,7 +1472,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
         otherProxyClient = new TestProxyClient(hostname, proxyPort, factory, proxyPrimary, ugi);
         otherProxyClient.proxy().login(user, Collections.<String,String> emptyMap());
       } finally {
-        if (null != otherProxyClient) {
+        if (otherProxyClient != null) {
           otherProxyClient.close();
         }
       }
@@ -2391,7 +2391,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
 
       assertEquals(1, results.size());
       status = results.get(s2bb("00347"));
-      if (ConditionalStatus.VIOLATED != status) {
+      if (status != ConditionalStatus.VIOLATED) {
         log.info("ConditionalUpdate was not rejected by server due to table"
             + " constraint. Sleeping and retrying");
         Thread.sleep(5000);
@@ -2626,7 +2626,7 @@ public abstract class SimpleProxyBase extends SharedMiniClusterBase {
     } finally {
       if (isKerberosEnabled()) {
         // Close the other client
-        if (null != cwuserProxyClient) {
+        if (cwuserProxyClient != null) {
           cwuserProxyClient.close();
         }
 

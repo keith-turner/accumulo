@@ -45,8 +45,6 @@ import org.apache.accumulo.core.clientImpl.Translator;
 import org.apache.accumulo.core.clientImpl.Translators;
 import org.apache.accumulo.core.clientImpl.thrift.ClientService;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
-import org.apache.accumulo.core.clientImpl.thrift.ThriftTableOperationException;
-import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Range;
@@ -58,7 +56,6 @@ import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.Tracer;
-import org.apache.accumulo.core.util.CachedConfiguration;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.NamingThreadFactory;
 import org.apache.accumulo.core.util.StopWatch;
@@ -67,7 +64,6 @@ import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.fs.VolumeManagerImpl;
 import org.apache.accumulo.server.util.FileUtil;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
@@ -81,10 +77,8 @@ public class BulkImporter {
   private static final Logger log = LoggerFactory.getLogger(BulkImporter.class);
 
   public static List<String> bulkLoad(ServerContext context, long tid, String tableId,
-      List<String> files, String errorDir, boolean setTime) throws IOException, AccumuloException,
-      AccumuloSecurityException, ThriftTableOperationException {
-    AssignmentStats stats = new BulkImporter(context, tid, tableId, setTime).importFiles(files,
-        new Path(errorDir));
+      List<String> files, boolean setTime) throws IOException {
+    AssignmentStats stats = new BulkImporter(context, tid, tableId, setTime).importFiles(files);
     List<String> result = new ArrayList<>();
     for (Path p : stats.completeFailures.keySet()) {
       result.add(p.toString());
@@ -110,8 +104,7 @@ public class BulkImporter {
     this.setTime = setTime;
   }
 
-  public AssignmentStats importFiles(List<String> files, Path failureDir) throws IOException,
-      AccumuloException, AccumuloSecurityException, ThriftTableOperationException {
+  public AssignmentStats importFiles(List<String> files) throws IOException {
 
     int numThreads = context.getConfiguration().getCount(Property.TSERV_BULK_PROCESS_THREADS);
     int numAssignThreads = context.getConfiguration()
@@ -120,7 +113,6 @@ public class BulkImporter {
     timer = new StopWatch<>(Timers.class);
     timer.start(Timers.TOTAL);
 
-    Configuration conf = CachedConfiguration.getInstance();
     VolumeManagerImpl.get(context.getConfiguration());
     final VolumeManager fs = VolumeManagerImpl.get(context.getConfiguration());
 
@@ -177,8 +169,8 @@ public class BulkImporter {
       timer.stop(Timers.EXAMINE_MAP_FILES);
 
       assignmentStats.attemptingAssignments(assignments);
-      Map<Path,List<KeyExtent>> assignmentFailures = assignMapFiles(context, conf, fs, tableId,
-          assignments, paths, numAssignThreads, numThreads);
+      Map<Path,List<KeyExtent>> assignmentFailures = assignMapFiles(fs, assignments, paths,
+          numAssignThreads, numThreads);
       assignmentStats.assignmentsFailed(assignmentFailures);
 
       Map<Path,Integer> failureCount = new TreeMap<>();
@@ -230,8 +222,8 @@ public class BulkImporter {
         }
 
         assignmentStats.attemptingAssignments(assignments);
-        Map<Path,List<KeyExtent>> assignmentFailures2 = assignMapFiles(context, conf, fs, tableId,
-            assignments, paths, numAssignThreads, numThreads);
+        Map<Path,List<KeyExtent>> assignmentFailures2 = assignMapFiles(fs, assignments, paths,
+            numAssignThreads, numThreads);
         assignmentStats.assignmentsFailed(assignmentFailures2);
 
         // merge assignmentFailures2 into assignmentFailures
@@ -349,9 +341,8 @@ public class BulkImporter {
     return result;
   }
 
-  private Map<Path,List<AssignmentInfo>> estimateSizes(final AccumuloConfiguration acuConf,
-      final Configuration conf, final VolumeManager vm, Map<Path,List<TabletLocation>> assignments,
-      Collection<Path> paths, int numThreads) {
+  private Map<Path,List<AssignmentInfo>> estimateSizes(final VolumeManager vm,
+      Map<Path,List<TabletLocation>> assignments, Collection<Path> paths, int numThreads) {
 
     long t1 = System.currentTimeMillis();
     final Map<Path,Long> mapFileSizes = new TreeMap<>();
@@ -390,7 +381,7 @@ public class BulkImporter {
 
           try {
             estimatedSizes = FileUtil.estimateSizes(context, entry.getKey(),
-                mapFileSizes.get(entry.getKey()), extentsOf(entry.getValue()), conf);
+                mapFileSizes.get(entry.getKey()), extentsOf(entry.getValue()));
           } catch (IOException e) {
             log.warn("Failed to estimate map file sizes {}", e.getMessage());
           }
@@ -445,18 +436,18 @@ public class BulkImporter {
     return result;
   }
 
-  private Map<Path,List<KeyExtent>> assignMapFiles(ClientContext context, Configuration conf,
-      VolumeManager fs, String tableId, Map<Path,List<TabletLocation>> assignments,
-      Collection<Path> paths, int numThreads, int numMapThreads) {
+  private Map<Path,List<KeyExtent>> assignMapFiles(VolumeManager fs,
+      Map<Path,List<TabletLocation>> assignments, Collection<Path> paths, int numThreads,
+      int numMapThreads) {
     timer.start(Timers.EXAMINE_MAP_FILES);
-    Map<Path,List<AssignmentInfo>> assignInfo = estimateSizes(context.getConfiguration(), conf, fs,
-        assignments, paths, numMapThreads);
+    Map<Path,List<AssignmentInfo>> assignInfo = estimateSizes(fs, assignments, paths,
+        numMapThreads);
     timer.stop(Timers.EXAMINE_MAP_FILES);
 
     Map<Path,List<KeyExtent>> ret;
 
     timer.start(Timers.IMPORT_MAP_FILES);
-    ret = assignMapFiles(tableId, assignInfo, locationsOf(assignments), numThreads);
+    ret = assignMapFiles(assignInfo, locationsOf(assignments), numThreads);
     timer.stop(Timers.IMPORT_MAP_FILES);
 
     return ret;
@@ -467,8 +458,8 @@ public class BulkImporter {
     HostAndPort location;
     private Map<KeyExtent,List<PathSize>> assignmentsPerTablet;
 
-    public AssignmentTask(Map<Path,List<KeyExtent>> assignmentFailures, String tableName,
-        String location, Map<KeyExtent,List<PathSize>> assignmentsPerTablet) {
+    public AssignmentTask(Map<Path,List<KeyExtent>> assignmentFailures, String location,
+        Map<KeyExtent,List<PathSize>> assignmentsPerTablet) {
       this.assignmentFailures = assignmentFailures;
       this.location = HostAndPort.fromString(location);
       this.assignmentsPerTablet = assignmentsPerTablet;
@@ -529,8 +520,8 @@ public class BulkImporter {
     }
   }
 
-  private Map<Path,List<KeyExtent>> assignMapFiles(String tableName,
-      Map<Path,List<AssignmentInfo>> assignments, Map<KeyExtent,String> locations, int numThreads) {
+  private Map<Path,List<KeyExtent>> assignMapFiles(Map<Path,List<AssignmentInfo>> assignments,
+      Map<KeyExtent,String> locations, int numThreads) {
 
     // group assignments by tablet
     Map<KeyExtent,List<PathSize>> assignmentsPerTablet = new TreeMap<>();
@@ -594,8 +585,7 @@ public class BulkImporter {
     for (Entry<String,Map<KeyExtent,List<PathSize>>> entry : assignmentsPerTabletServer
         .entrySet()) {
       String location = entry.getKey();
-      threadPool
-          .submit(new AssignmentTask(assignmentFailures, tableName, location, entry.getValue()));
+      threadPool.submit(new AssignmentTask(assignmentFailures, location, entry.getValue()));
     }
 
     threadPool.shutdown();

@@ -53,7 +53,7 @@ public class TableConfigurationUpdateIT extends AccumuloClusterHarness {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       ServerContext context = getCluster().getServerContext();
 
       String table = getUniqueNames(1)[0];
@@ -85,7 +85,7 @@ public class TableConfigurationUpdateIT extends AccumuloClusterHarness {
 
       for (Future<Exception> fut : futures) {
         Exception e = fut.get();
-        if (null != e) {
+        if (e != null) {
           fail("Thread failed with exception " + e);
         }
       }

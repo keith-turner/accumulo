@@ -23,7 +23,6 @@ import org.apache.commons.configuration.AbstractFileConfiguration;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.EnvironmentConfiguration;
-import org.apache.commons.configuration.SystemConfiguration;
 import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.commons.configuration.event.ConfigurationEvent;
 import org.apache.commons.configuration.event.ConfigurationListener;
@@ -40,8 +39,6 @@ public class MetricsConfiguration {
   private boolean notFound = false;
 
   private int notFoundCount = 0;
-
-  private static SystemConfiguration sysConfig = null;
 
   private static EnvironmentConfiguration envConfig = null;
 
@@ -109,17 +106,9 @@ public class MetricsConfiguration {
 
   public Configuration getEnvironmentConfiguration() {
     synchronized (MetricsConfiguration.class) {
-      if (null == envConfig)
+      if (envConfig == null)
         envConfig = new EnvironmentConfiguration();
       return envConfig;
-    }
-  }
-
-  public Configuration getSystemConfiguration() {
-    synchronized (MetricsConfiguration.class) {
-      if (null == sysConfig)
-        sysConfig = new SystemConfiguration();
-      return sysConfig;
     }
   }
 
@@ -136,11 +125,11 @@ public class MetricsConfiguration {
         notFoundCount++;
       }
     }
-    if (null == config || needsReloading) {
+    if (config == null || needsReloading) {
       synchronized (lock) {
         if (needsReloading) {
           loadConfiguration();
-        } else if (null == config) {
+        } else if (config == null) {
           loadConfiguration();
         }
         needsReloading = false;
@@ -169,7 +158,7 @@ public class MetricsConfiguration {
 
       // Start a background Thread that checks a property from the XMLConfiguration
       // every so often to force the FileChangedReloadingStrategy to fire.
-      if (null == watcher || !watcher.isAlive()) {
+      if (watcher == null || !watcher.isAlive()) {
         watcher = new MetricsConfigWatcher();
         watcher.start();
       }
@@ -195,7 +184,7 @@ public class MetricsConfiguration {
 
   public boolean isEnabled() {
     // Force reload if necessary
-    if (null == getMetricsConfiguration())
+    if (getMetricsConfiguration() == null)
       return false;
     return enabled;
   }

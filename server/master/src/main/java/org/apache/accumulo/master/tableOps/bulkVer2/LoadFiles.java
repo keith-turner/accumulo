@@ -38,12 +38,13 @@ import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.MapFileInfo;
+import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.master.state.tables.TableState;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
-import org.apache.accumulo.core.metadata.schema.MetadataScanner;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.Tracer;
@@ -93,7 +94,7 @@ class LoadFiles extends MasterRepo {
   }
 
   @Override
-  public Repo<Master> call(final long tid, final Master master) throws Exception {
+  public Repo<Master> call(final long tid, final Master master) {
     if (bulkInfo.tableState == TableState.ONLINE) {
       return new CompleteBulkImport(bulkInfo);
     } else {
@@ -128,6 +129,12 @@ class LoadFiles extends MasterRepo {
     // track how many tablets were sent load messages per tablet server
     MapCounter<HostAndPort> loadMsgs;
 
+    // Each RPC to a tablet server needs to check in zookeeper to see if the transaction is still
+    // active. The purpose of this map is to group load request by tablet servers inorder to do less
+    // RPCs. Less RPCs will result in less calls to Zookeeper.
+    Map<HostAndPort,Map<TKeyExtent,Map<String,MapFileInfo>>> loadQueue;
+    private int queuedDataSize = 0;
+
     @Override
     void start(Path bulkDir, Master master, long tid, boolean setTime) throws Exception {
       super.start(bulkDir, master, tid, setTime);
@@ -136,6 +143,52 @@ class LoadFiles extends MasterRepo {
       fmtTid = String.format("%016x", tid);
 
       loadMsgs = new MapCounter<>();
+
+      loadQueue = new HashMap<>();
+    }
+
+    private void sendQueued(int threshhold) {
+      if (queuedDataSize > threshhold || threshhold == 0) {
+        loadQueue.forEach((server, tabletFiles) -> {
+
+          if (log.isTraceEnabled()) {
+            log.trace("tid {} asking {} to bulk import {} files for {} tablets", fmtTid, server,
+                tabletFiles.values().stream().mapToInt(Map::size).sum(), tabletFiles.size());
+          }
+
+          TabletClientService.Client client = null;
+          try {
+            client = ThriftUtil.getTServerClient(server, master.getContext(), timeInMillis);
+            client.loadFiles(Tracer.traceInfo(), master.getContext().rpcCreds(), tid,
+                bulkDir.toString(), tabletFiles, setTime);
+          } catch (TException ex) {
+            log.debug("rpc failed server: " + server + ", tid:" + fmtTid + " " + ex.getMessage(),
+                ex);
+          } finally {
+            ThriftUtil.returnClient(client);
+          }
+        });
+
+        loadQueue.clear();
+        queuedDataSize = 0;
+      }
+    }
+
+    private void addToQueue(HostAndPort server, KeyExtent extent,
+        Map<String,MapFileInfo> thriftImports) {
+      if (!thriftImports.isEmpty()) {
+        loadMsgs.increment(server, 1);
+
+        Map<String,MapFileInfo> prev = loadQueue.computeIfAbsent(server, k -> new HashMap<>())
+            .putIfAbsent(extent.toThrift(), thriftImports);
+
+        Preconditions.checkState(prev == null, "Unexpectedly saw extent %s twice", extent);
+
+        // keep a very rough estimate of how much is memory so we can send if over a few megs is
+        // buffered
+        queuedDataSize += thriftImports.keySet().stream().mapToInt(String::length).sum()
+            + server.getHost().length() + 4 + thriftImports.size() * 32;
+      }
     }
 
     @Override
@@ -165,30 +218,17 @@ class LoadFiles extends MasterRepo {
           }
         }
 
-        if (thriftImports.size() > 0) {
-          // must always increment this even if there is a comms failure, because it indicates there
-          // is work to do
-          loadMsgs.increment(server, 1);
-          log.trace("tid {} asking {} to bulk import {} files", fmtTid, server,
-              thriftImports.size());
-          TabletClientService.Client client = null;
-          try {
-            client = ThriftUtil.getTServerClient(server, master.getContext(), timeInMillis);
-            client.loadFiles(Tracer.traceInfo(), master.getContext().rpcCreds(), tid,
-                tablet.getExtent().toThrift(), bulkDir.toString(), thriftImports, setTime);
-          } catch (TException ex) {
-            log.debug("rpc failed server: " + server + ", tid:" + fmtTid + " " + ex.getMessage(),
-                ex);
-          } finally {
-            ThriftUtil.returnClient(client);
-          }
-        }
+        addToQueue(server, tablet.getExtent(), thriftImports);
       }
 
+      sendQueued(4 * 1024 * 1024);
     }
 
     @Override
     long finish() {
+
+      sendQueued(0);
+
       long sleepTime = 0;
       if (loadMsgs.size() > 0) {
         // find which tablet server had the most load messages sent to it and sleep 13ms for each
@@ -216,7 +256,7 @@ class LoadFiles extends MasterRepo {
     void start(Path bulkDir, Master master, long tid, boolean setTime) throws Exception {
       Preconditions.checkArgument(!setTime);
       super.start(bulkDir, master, tid, setTime);
-      bw = master.getClient().createBatchWriter(MetadataTable.NAME);
+      bw = master.getContext().createBatchWriter(MetadataTable.NAME);
       unloadingTablets = new MapCounter<>();
     }
 
@@ -271,9 +311,9 @@ class LoadFiles extends MasterRepo {
 
     Text startRow = loadMapEntry.getKey().getPrevEndRow();
 
-    Iterator<TabletMetadata> tabletIter = MetadataScanner.builder().from(master.getContext())
-        .scanMetadataTable().overRange(tableId, startRow, null).checkConsistency().fetchPrev()
-        .fetchLocation().fetchLoaded().build().iterator();
+    Iterator<TabletMetadata> tabletIter = TabletsMetadata.builder().forTable(tableId)
+        .overlapping(startRow, null).checkConsistency().fetchPrev().fetchLocation().fetchLoaded()
+        .build(master.getContext()).iterator();
 
     List<TabletMetadata> tablets = new ArrayList<>();
     TabletMetadata currentTablet = tabletIter.next();

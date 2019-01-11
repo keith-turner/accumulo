@@ -332,7 +332,6 @@ public class TabletServer implements Runnable {
 
   private Thread majorCompactorThread;
 
-  private HostAndPort replicationAddress;
   private HostAndPort clientAddress;
 
   private volatile boolean serverStopRequested = false;
@@ -341,7 +340,7 @@ public class TabletServer implements Runnable {
   private ZooLock tabletServerLock;
 
   private TServer server;
-  private TServer replServer;
+  private volatile TServer replServer;
 
   private DistributedWorkQueue bulkFailedCopyQ;
 
@@ -487,70 +486,83 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public List<TKeyExtent> bulkImport(TInfo tinfo, TCredentials credentials, long tid,
-        Map<TKeyExtent,Map<String,MapFileInfo>> files, boolean setTime)
+    public List<TKeyExtent> bulkImport(TInfo tinfo, TCredentials credentials, final long tid,
+        final Map<TKeyExtent,Map<String,MapFileInfo>> files, final boolean setTime)
         throws ThriftSecurityException {
 
       if (!security.canPerformSystemActions(credentials))
         throw new ThriftSecurityException(credentials.getPrincipal(),
             SecurityErrorCode.PERMISSION_DENIED);
 
-      List<TKeyExtent> failures = new ArrayList<>();
+      try {
+        return watcher.run(Constants.BULK_ARBITRATOR_TYPE, tid, () -> {
+          List<TKeyExtent> failures = new ArrayList<>();
 
-      for (Entry<TKeyExtent,Map<String,MapFileInfo>> entry : files.entrySet()) {
-        TKeyExtent tke = entry.getKey();
-        Map<String,MapFileInfo> fileMap = entry.getValue();
-        Map<FileRef,MapFileInfo> fileRefMap = new HashMap<>();
-        for (Entry<String,MapFileInfo> mapping : fileMap.entrySet()) {
-          Path path = new Path(mapping.getKey());
-          FileSystem ns = fs.getVolumeByPath(path).getFileSystem();
-          path = ns.makeQualified(path);
-          fileRefMap.put(new FileRef(path.toString(), path), mapping.getValue());
-        }
+          for (Entry<TKeyExtent,Map<String,MapFileInfo>> entry : files.entrySet()) {
+            TKeyExtent tke = entry.getKey();
+            Map<String,MapFileInfo> fileMap = entry.getValue();
+            Map<FileRef,MapFileInfo> fileRefMap = new HashMap<>();
+            for (Entry<String,MapFileInfo> mapping : fileMap.entrySet()) {
+              Path path = new Path(mapping.getKey());
+              FileSystem ns = fs.getVolumeByPath(path).getFileSystem();
+              path = ns.makeQualified(path);
+              fileRefMap.put(new FileRef(path.toString(), path), mapping.getValue());
+            }
 
-        Tablet importTablet = onlineTablets.get(new KeyExtent(tke));
+            Tablet importTablet = onlineTablets.get(new KeyExtent(tke));
 
-        if (importTablet == null) {
-          failures.add(tke);
-        } else {
-          try {
-            importTablet.importMapFiles(tid, fileRefMap, setTime);
-          } catch (IOException ioe) {
-            log.info("files {} not imported to {}: {}", fileMap.keySet(), new KeyExtent(tke),
-                ioe.getMessage());
-            failures.add(tke);
+            if (importTablet == null) {
+              failures.add(tke);
+            } else {
+              try {
+                importTablet.importMapFiles(tid, fileRefMap, setTime);
+              } catch (IOException ioe) {
+                log.info("files {} not imported to {}: {}", fileMap.keySet(), new KeyExtent(tke),
+                    ioe.getMessage());
+                failures.add(tke);
+              }
+            }
           }
-        }
+          return failures;
+        });
+      } catch (RuntimeException e) {
+        throw e;
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
-      return failures;
     }
 
     @Override
-    public void loadFiles(TInfo tinfo, TCredentials credentials, long tid, TKeyExtent tke,
-        String dir, Map<String,MapFileInfo> fileMap, boolean setTime)
+    public void loadFiles(TInfo tinfo, TCredentials credentials, long tid, String dir,
+        Map<TKeyExtent,Map<String,MapFileInfo>> tabletImports, boolean setTime)
         throws ThriftSecurityException {
       if (!security.canPerformSystemActions(credentials))
         throw new ThriftSecurityException(credentials.getPrincipal(),
             SecurityErrorCode.PERMISSION_DENIED);
 
-      Map<FileRef,MapFileInfo> fileRefMap = new HashMap<>();
-      for (Entry<String,MapFileInfo> mapping : fileMap.entrySet()) {
-        Path path = new Path(dir, mapping.getKey());
-        FileSystem ns = fs.getVolumeByPath(path).getFileSystem();
-        path = ns.makeQualified(path);
-        fileRefMap.put(new FileRef(path.toString(), path), mapping.getValue());
-      }
+      watcher.runQuietly(Constants.BULK_ARBITRATOR_TYPE, tid, () -> {
+        tabletImports.forEach((tke, fileMap) -> {
+          Map<FileRef,MapFileInfo> fileRefMap = new HashMap<>();
+          for (Entry<String,MapFileInfo> mapping : fileMap.entrySet()) {
+            Path path = new Path(dir, mapping.getKey());
+            FileSystem ns = fs.getVolumeByPath(path).getFileSystem();
+            path = ns.makeQualified(path);
+            fileRefMap.put(new FileRef(path.toString(), path), mapping.getValue());
+          }
 
-      Tablet importTablet = onlineTablets.get(new KeyExtent(tke));
+          Tablet importTablet = onlineTablets.get(new KeyExtent(tke));
 
-      if (importTablet != null) {
-        try {
-          importTablet.importMapFiles(tid, fileRefMap, setTime);
-        } catch (IOException ioe) {
-          log.info("files {} not imported to {}: {}", fileMap.keySet(), new KeyExtent(tke),
-              ioe.getMessage());
-        }
-      }
+          if (importTablet != null) {
+            try {
+              importTablet.importMapFiles(tid, fileRefMap, setTime);
+            } catch (IOException ioe) {
+              log.debug("files {} not imported to {}: {}", fileMap.keySet(), new KeyExtent(tke),
+                  ioe.getMessage());
+            }
+          }
+        });
+      });
+
     }
 
     private ScanDispatcher getScanDispatcher(KeyExtent extent) {
@@ -764,13 +776,7 @@ public class TabletServer implements Runnable {
 
       // check if user has permission to the tables
       for (Table.ID tableId : tables) {
-        Namespace.ID namespaceId;
-        try {
-          namespaceId = Tables.getNamespaceId(context, tableId);
-        } catch (TableNotFoundException e1) {
-          throw new ThriftSecurityException(credentials.getPrincipal(),
-              SecurityErrorCode.TABLE_DOESNT_EXIST);
-        }
+        Namespace.ID namespaceId = getNamespaceId(credentials, tableId);
         if (!security.canScan(credentials, tableId, namespaceId, tbatch, tcolumns, ssiList, ssio,
             authorizations))
           throw new ThriftSecurityException(credentials.getPrincipal(),
@@ -811,10 +817,7 @@ public class TabletServer implements Runnable {
 
       MultiScanResult result;
       try {
-        result = continueMultiScan(tinfo, sid, mss);
-      } catch (NoSuchScanIDException e) {
-        log.error("the impossible happened", e);
-        throw new RuntimeException("the impossible happened", e);
+        result = continueMultiScan(sid, mss);
       } finally {
         sessionManager.unreserveSession(sid);
       }
@@ -833,14 +836,14 @@ public class TabletServer implements Runnable {
       }
 
       try {
-        return continueMultiScan(tinfo, scanID, session);
+        return continueMultiScan(scanID, session);
       } finally {
         sessionManager.unreserveSession(session);
       }
     }
 
-    private MultiScanResult continueMultiScan(TInfo tinfo, long scanID, MultiScanSession session)
-        throws NoSuchScanIDException, TSampleNotPresentException {
+    private MultiScanResult continueMultiScan(long scanID, MultiScanSession session)
+        throws TSampleNotPresentException {
 
       if (session.lookupTask == null) {
         session.lookupTask = new LookupTask(TabletServer.this, scanID);
@@ -1019,7 +1022,8 @@ public class TabletServer implements Runnable {
     private void flush(UpdateSession us) {
 
       int mutationCount = 0;
-      Map<CommitSession,Mutations> sendables = new HashMap<>();
+      Map<CommitSession,List<Mutation>> sendables = new HashMap<>();
+      Map<CommitSession,TabletMutations> loggables = new HashMap<>();
       Throwable error = null;
 
       long pt1 = System.currentTimeMillis();
@@ -1037,7 +1041,8 @@ public class TabletServer implements Runnable {
         for (Entry<Tablet,? extends List<Mutation>> entry : us.queuedMutations.entrySet()) {
 
           Tablet tablet = entry.getKey();
-          Durability tabletDurability = tablet.getDurability();
+          Durability durability = DurabilityImpl.resolveDurabilty(us.durability,
+              tablet.getDurability());
           List<Mutation> mutations = entry.getValue();
           if (mutations.size() > 0) {
             try {
@@ -1051,8 +1056,11 @@ public class TabletServer implements Runnable {
                 }
                 us.failures.put(tablet.getExtent(), us.successfulCommits.get(tablet));
               } else {
-                sendables.put(commitSession, new Mutations(
-                    DurabilityImpl.resolveDurabilty(us.durability, tabletDurability), mutations));
+                if (durability != Durability.NONE) {
+                  loggables.put(commitSession,
+                      new TabletMutations(commitSession, mutations, durability));
+                }
+                sendables.put(commitSession, mutations);
                 mutationCount += mutations.size();
               }
 
@@ -1065,9 +1073,11 @@ public class TabletServer implements Runnable {
                 // only log and commit mutations if there were some
                 // that did not violate constraints... this is what
                 // prepareMutationsForCommit() expects
-                sendables.put(e.getCommitSession(),
-                    new Mutations(DurabilityImpl.resolveDurabilty(us.durability, tabletDurability),
-                        e.getNonViolators()));
+                CommitSession cs = e.getCommitSession();
+                if (durability != Durability.NONE) {
+                  loggables.put(cs, new TabletMutations(cs, e.getNonViolators(), durability));
+                }
+                sendables.put(cs, e.getNonViolators());
               }
 
               mutationCount += mutations.size();
@@ -1088,9 +1098,7 @@ public class TabletServer implements Runnable {
       updateAvgPrepTime(pt2 - pt1, us.queuedMutations.size());
 
       if (error != null) {
-        for (Entry<CommitSession,Mutations> e : sendables.entrySet()) {
-          e.getKey().abortCommit(e.getValue().getMutations());
-        }
+        sendables.forEach((commitSession, value) -> commitSession.abortCommit());
         throw new RuntimeException(error);
       }
       try {
@@ -1100,7 +1108,7 @@ public class TabletServer implements Runnable {
             try {
               long t1 = System.currentTimeMillis();
 
-              logger.logManyTablets(sendables);
+              logger.logManyTablets(loggables);
 
               long t2 = System.currentTimeMillis();
               us.walogTimes.addStat(t2 - t1);
@@ -1121,12 +1129,8 @@ public class TabletServer implements Runnable {
         Span commit = Trace.start("commit");
         try {
           long t1 = System.currentTimeMillis();
-          for (Entry<CommitSession,Mutations> entry : sendables.entrySet()) {
-            CommitSession commitSession = entry.getKey();
-            List<Mutation> mutations = entry.getValue().getMutations();
-
+          sendables.forEach((commitSession, mutations) -> {
             commitSession.commit(mutations);
-
             KeyExtent extent = commitSession.getExtent();
 
             if (us.currentTablet != null && extent == us.currentTablet.getExtent()) {
@@ -1137,7 +1141,7 @@ public class TabletServer implements Runnable {
               us.successfulCommits.increment(us.currentTablet,
                   us.queuedMutations.get(us.currentTablet).size());
             }
-          }
+          });
           long t2 = System.currentTimeMillis();
 
           us.flushTime += (t2 - pt1);
@@ -1232,13 +1236,7 @@ public class TabletServer implements Runnable {
         throws NotServingTabletException, ConstraintViolationException, ThriftSecurityException {
 
       final Table.ID tableId = Table.ID.of(new String(tkeyExtent.getTable(), UTF_8));
-      Namespace.ID namespaceId;
-      try {
-        namespaceId = Tables.getNamespaceId(context, tableId);
-      } catch (TableNotFoundException e1) {
-        throw new ThriftSecurityException(credentials.getPrincipal(),
-            SecurityErrorCode.TABLE_DOESNT_EXIST);
-      }
+      Namespace.ID namespaceId = getNamespaceId(credentials, tableId);
       if (!security.canWrite(credentials, tableId, namespaceId))
         throw new ThriftSecurityException(credentials.getPrincipal(),
             SecurityErrorCode.PERMISSION_DENIED);
@@ -1278,12 +1276,14 @@ public class TabletServer implements Runnable {
           throw new NotServingTabletException(tkeyExtent);
         }
 
-        while (true) {
+        Durability durability = DurabilityImpl
+            .resolveDurabilty(DurabilityImpl.fromThrift(tdurability), tabletDurability);
+        // instead of always looping on true, skip completely when durability is NONE
+        while (durability != Durability.NONE) {
           try {
             final Span wal = Trace.start("wal");
             try {
-              logger.log(cs, cs.getWALogSeq(), mutation, DurabilityImpl
-                  .resolveDurabilty(DurabilityImpl.fromThrift(tdurability), tabletDurability));
+              logger.log(cs, mutation, durability);
             } finally {
               wal.stop();
             }
@@ -1304,6 +1304,16 @@ public class TabletServer implements Runnable {
             Translator.translate(e.getViolations().asList(), Translators.CVST));
       } finally {
         writeTracker.finishWrite(opid);
+      }
+    }
+
+    private Namespace.ID getNamespaceId(TCredentials credentials, Table.ID tableId)
+        throws ThriftSecurityException {
+      try {
+        return Tables.getNamespaceId(context, tableId);
+      } catch (TableNotFoundException e1) {
+        throw new ThriftSecurityException(credentials.getPrincipal(),
+            SecurityErrorCode.TABLE_DOESNT_EXIST);
       }
     }
 
@@ -1358,7 +1368,8 @@ public class TabletServer implements Runnable {
         ArrayList<TCMResult> results, ConditionalSession sess) {
       Set<Entry<KeyExtent,List<ServerConditionalMutation>>> es = updates.entrySet();
 
-      Map<CommitSession,Mutations> sendables = new HashMap<>();
+      Map<CommitSession,List<Mutation>> sendables = new HashMap<>();
+      Map<CommitSession,TabletMutations> loggables = new HashMap<>();
 
       boolean sessionCanceled = sess.interruptFlag.get();
 
@@ -1371,7 +1382,8 @@ public class TabletServer implements Runnable {
             for (ServerConditionalMutation scm : entry.getValue())
               results.add(new TCMResult(scm.getID(), TCMStatus.IGNORED));
           } else {
-            final Durability tabletDurability = tablet.getDurability();
+            final Durability durability = DurabilityImpl.resolveDurabilty(sess.durability,
+                tablet.getDurability());
             try {
 
               @SuppressWarnings("unchecked")
@@ -1388,18 +1400,19 @@ public class TabletServer implements Runnable {
                 } else {
                   for (ServerConditionalMutation scm : entry.getValue())
                     results.add(new TCMResult(scm.getID(), TCMStatus.ACCEPTED));
-                  sendables.put(cs,
-                      new Mutations(
-                          DurabilityImpl.resolveDurabilty(sess.durability, tabletDurability),
-                          mutations));
+                  if (durability != Durability.NONE) {
+                    loggables.put(cs, new TabletMutations(cs, mutations, durability));
+                  }
+                  sendables.put(cs, mutations);
                 }
               }
             } catch (TConstraintViolationException e) {
+              CommitSession cs = e.getCommitSession();
               if (e.getNonViolators().size() > 0) {
-                sendables.put(e.getCommitSession(),
-                    new Mutations(
-                        DurabilityImpl.resolveDurabilty(sess.durability, tabletDurability),
-                        e.getNonViolators()));
+                if (durability != Durability.NONE) {
+                  loggables.put(cs, new TabletMutations(cs, e.getNonViolators(), durability));
+                }
+                sendables.put(cs, e.getNonViolators());
                 for (Mutation m : e.getNonViolators())
                   results.add(
                       new TCMResult(((ServerConditionalMutation) m).getID(), TCMStatus.ACCEPTED));
@@ -1420,10 +1433,10 @@ public class TabletServer implements Runnable {
 
       Span walSpan = Trace.start("wal");
       try {
-        while (sendables.size() > 0) {
+        while (loggables.size() > 0) {
           try {
             long t1 = System.currentTimeMillis();
-            logger.logManyTablets(sendables);
+            logger.logManyTablets(loggables);
             long t2 = System.currentTimeMillis();
             updateWalogWriteTime(t2 - t1);
             break;
@@ -1442,12 +1455,7 @@ public class TabletServer implements Runnable {
       Span commitSpan = Trace.start("commit");
       try {
         long t1 = System.currentTimeMillis();
-        for (Entry<CommitSession,Mutations> entry : sendables.entrySet()) {
-          CommitSession commitSession = entry.getKey();
-          List<Mutation> mutations = entry.getValue().getMutations();
-
-          commitSession.commit(mutations);
-        }
+        sendables.forEach(CommitSession::commit);
         long t2 = System.currentTimeMillis();
         updateAvgCommitTime(t2 - t1, sendables.size());
       } finally {
@@ -1498,14 +1506,8 @@ public class TabletServer implements Runnable {
 
       Table.ID tableId = Table.ID.of(tableIdStr);
       Authorizations userauths = null;
-      Namespace.ID namespaceId;
-      try {
-        namespaceId = Tables.getNamespaceId(context, tableId);
-      } catch (TableNotFoundException e) {
-        throw new ThriftSecurityException(credentials.getPrincipal(),
-            SecurityErrorCode.TABLE_DOESNT_EXIST);
-      }
-      if (!security.canConditionallyUpdate(credentials, tableId, namespaceId, authorizations))
+      Namespace.ID namespaceId = getNamespaceId(credentials, tableId);
+      if (!security.canConditionallyUpdate(credentials, tableId, namespaceId))
         throw new ThriftSecurityException(credentials.getPrincipal(),
             SecurityErrorCode.PERMISSION_DENIED);
 
@@ -1516,8 +1518,7 @@ public class TabletServer implements Runnable {
               SecurityErrorCode.BAD_AUTHORIZATIONS);
 
       ConditionalSession cs = new ConditionalSession(credentials,
-          new Authorizations(authorizations), tableId, DurabilityImpl.fromThrift(tdurabilty),
-          classLoaderContext);
+          new Authorizations(authorizations), tableId, DurabilityImpl.fromThrift(tdurabilty));
 
       long sid = sessionManager.createSession(cs, false);
       return new TConditionalSession(sid, lockID, sessionManager.getMaxIdleTime());
@@ -1575,7 +1576,7 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public void invalidateConditionalUpdate(TInfo tinfo, long sessID) throws TException {
+    public void invalidateConditionalUpdate(TInfo tinfo, long sessID) {
       // this method should wait for any running conditional update to complete
       // after this method returns a conditional update should not be able to start
 
@@ -1589,7 +1590,7 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public void closeConditionalUpdate(TInfo tinfo, long sessID) throws TException {
+    public void closeConditionalUpdate(TInfo tinfo, long sessID) {
       sessionManager.removeSession(sessID, false);
     }
 
@@ -1598,14 +1599,7 @@ public class TabletServer implements Runnable {
         ByteBuffer splitPoint) throws NotServingTabletException, ThriftSecurityException {
 
       Table.ID tableId = Table.ID.of(new String(ByteBufferUtil.toBytes(tkeyExtent.table)));
-      Namespace.ID namespaceId;
-      try {
-        namespaceId = Tables.getNamespaceId(context, tableId);
-      } catch (TableNotFoundException ex) {
-        // tableOperationsImpl catches ThriftSecurityException and checks for missing table
-        throw new ThriftSecurityException(credentials.getPrincipal(),
-            SecurityErrorCode.TABLE_DOESNT_EXIST);
-      }
+      Namespace.ID namespaceId = getNamespaceId(credentials, tableId);
 
       if (!security.canSplitTablet(credentials, tableId, namespaceId))
         throw new ThriftSecurityException(credentials.getPrincipal(),
@@ -1632,14 +1626,12 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public TabletServerStatus getTabletServerStatus(TInfo tinfo, TCredentials credentials)
-        throws ThriftSecurityException, TException {
+    public TabletServerStatus getTabletServerStatus(TInfo tinfo, TCredentials credentials) {
       return getStats(sessionManager.getActiveScansPerTable());
     }
 
     @Override
-    public List<TabletStats> getTabletStats(TInfo tinfo, TCredentials credentials, String tableId)
-        throws ThriftSecurityException, TException {
+    public List<TabletStats> getTabletStats(TInfo tinfo, TCredentials credentials, String tableId) {
       TreeMap<KeyExtent,Tablet> onlineTabletsCopy;
       synchronized (onlineTablets) {
         onlineTabletsCopy = new TreeMap<>(onlineTablets);
@@ -1861,8 +1853,8 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public void flushTablet(TInfo tinfo, TCredentials credentials, String lock, TKeyExtent textent)
-        throws TException {
+    public void flushTablet(TInfo tinfo, TCredentials credentials, String lock,
+        TKeyExtent textent) {
       try {
         checkPermission(credentials, lock, "flushTablet");
       } catch (ThriftSecurityException e) {
@@ -1913,8 +1905,7 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public TabletStats getHistoricalStats(TInfo tinfo, TCredentials credentials)
-        throws ThriftSecurityException, TException {
+    public TabletStats getHistoricalStats(TInfo tinfo, TCredentials credentials) {
       return statsKeeper.getTabletStats();
     }
 
@@ -1932,8 +1923,7 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public void chop(TInfo tinfo, TCredentials credentials, String lock, TKeyExtent textent)
-        throws TException {
+    public void chop(TInfo tinfo, TCredentials credentials, String lock, TKeyExtent textent) {
       try {
         checkPermission(credentials, lock, "chop");
       } catch (ThriftSecurityException e) {
@@ -1951,7 +1941,7 @@ public class TabletServer implements Runnable {
 
     @Override
     public void compact(TInfo tinfo, TCredentials credentials, String lock, String tableId,
-        ByteBuffer startRow, ByteBuffer endRow) throws TException {
+        ByteBuffer startRow, ByteBuffer endRow) {
       try {
         checkPermission(credentials, lock, "compact");
       } catch (ThriftSecurityException e) {
@@ -2007,18 +1997,17 @@ public class TabletServer implements Runnable {
     }
 
     @Override
-    public List<String> getActiveLogs(TInfo tinfo, TCredentials credentials) throws TException {
+    public List<String> getActiveLogs(TInfo tinfo, TCredentials credentials) {
       String log = logger.getLogFile();
       // Might be null if there no active logger
-      if (null == log) {
+      if (log == null) {
         return Collections.emptyList();
       }
       return Collections.singletonList(log);
     }
 
     @Override
-    public void removeLogs(TInfo tinfo, TCredentials credentials, List<String> filenames)
-        throws TException {
+    public void removeLogs(TInfo tinfo, TCredentials credentials, List<String> filenames) {
       log.warn("Garbage collector is attempting to remove logs through the tablet server");
       log.warn("This is probably because your file"
           + " Garbage Collector is an older version than your tablet servers.\n"
@@ -2061,8 +2050,8 @@ public class TabletServer implements Runnable {
 
     @Override
     public TSummaries startGetSummaries(TInfo tinfo, TCredentials credentials,
-        TSummaryRequest request) throws ThriftSecurityException, ThriftTableOperationException,
-        NoSuchScanIDException, TException {
+        TSummaryRequest request)
+        throws ThriftSecurityException, ThriftTableOperationException, TException {
       Namespace.ID namespaceId;
       Table.ID tableId = Table.ID.of(request.getTableId());
       try {
@@ -2088,7 +2077,7 @@ public class TabletServer implements Runnable {
     @Override
     public TSummaries startGetSummariesForPartition(TInfo tinfo, TCredentials credentials,
         TSummaryRequest request, int modulus, int remainder)
-        throws ThriftSecurityException, NoSuchScanIDException, TException {
+        throws ThriftSecurityException, TException {
       // do not expect users to call this directly, expect other tservers to call this method
       if (!security.canPerformSystemActions(credentials)) {
         throw new AccumuloSecurityException(credentials.getPrincipal(),
@@ -2107,7 +2096,7 @@ public class TabletServer implements Runnable {
     @Override
     public TSummaries startGetSummariesFromFiles(TInfo tinfo, TCredentials credentials,
         TSummaryRequest request, Map<String,List<TRowRange>> files)
-        throws ThriftSecurityException, NoSuchScanIDException, TException {
+        throws ThriftSecurityException, TException {
       // do not expect users to call this directly, expect other tservers to call this method
       if (!security.canPerformSystemActions(credentials)) {
         throw new AccumuloSecurityException(credentials.getPrincipal(),
@@ -2198,6 +2187,12 @@ public class TabletServer implements Runnable {
             // modification
           }
 
+          List<DfsLogger> closedCopy;
+
+          synchronized (closedLogs) {
+            closedCopy = copyClosedLogs(closedLogs);
+          }
+
           Iterator<Entry<KeyExtent,Tablet>> iter = copyOnlineTablets.entrySet().iterator();
 
           // bail early now if we're shutting down
@@ -2214,14 +2209,7 @@ public class TabletServer implements Runnable {
               continue;
             }
 
-            int maxLogEntriesPerTablet = getTableConfiguration(tablet.getExtent())
-                .getCount(Property.TABLE_MINC_LOGS_MAX);
-
-            if (tablet.getLogCount() >= maxLogEntriesPerTablet) {
-              log.debug("Initiating minor compaction for {} because it has {} write ahead logs",
-                  tablet.getExtent(), tablet.getLogCount());
-              tablet.initiateMinorCompaction(MinorCompactionReason.SYSTEM);
-            }
+            tablet.checkIfMinorCompactionNeededForLogs(closedCopy);
 
             synchronized (tablet) {
               tablet.initiateMajorCompaction(MajorCompactionReason.NORMAL);
@@ -2246,10 +2234,10 @@ public class TabletServer implements Runnable {
         tablet.initiateMajorCompaction(MajorCompactionReason.NORMAL);
       }
     } catch (IOException e) {
-      statsKeeper.updateTime(Operation.SPLIT, 0, 0, true);
+      statsKeeper.updateTime(Operation.SPLIT, 0, true);
       log.error("split failed: {} for tablet {}", e.getMessage(), tablet.getExtent(), e);
     } catch (Exception e) {
-      statsKeeper.updateTime(Operation.SPLIT, 0, 0, true);
+      statsKeeper.updateTime(Operation.SPLIT, 0, true);
       log.error("Unknown error on split:", e);
     }
   }
@@ -2294,7 +2282,7 @@ public class TabletServer implements Runnable {
         new Text("/" + newTablets[0].getLocation().getName()), newTablets[1].getExtent(),
         new Text("/" + newTablets[1].getLocation().getName())));
 
-    statsKeeper.updateTime(Operation.SPLIT, start, 0, false);
+    statsKeeper.updateTime(Operation.SPLIT, start, false);
     long t2 = System.currentTimeMillis();
     log.info("Tablet split: {} size0 {} size1 {} time {}ms", tablet.getExtent(),
         newTablets[0].estimateTabletSize(), newTablets[1].estimateTabletSize(), (t2 - t1));
@@ -2517,10 +2505,9 @@ public class TabletServer implements Runnable {
             getTableConfiguration(extent));
         TabletData data;
         if (extent.isRootTablet()) {
-          data = new TabletData(context, fs, context.getZooReaderWriter(),
-              getTableConfiguration(extent));
+          data = new TabletData(context, fs, getTableConfiguration(extent));
         } else {
-          data = new TabletData(context, extent, fs, tabletsKeyValues.entrySet().iterator());
+          data = new TabletData(extent, fs, tabletsKeyValues.entrySet().iterator());
         }
 
         tablet = new Tablet(TabletServer.this, extent, trm, data);
@@ -2604,7 +2591,7 @@ public class TabletServer implements Runnable {
     }
   }
 
-  private void acquireRecoveryMemory(KeyExtent extent) throws InterruptedException {
+  private void acquireRecoveryMemory(KeyExtent extent) {
     if (!extent.isMeta()) {
       recoveryLock.lock();
     }
@@ -2664,7 +2651,7 @@ public class TabletServer implements Runnable {
     clientHandler = new ThriftClientHandler();
     Iface rpcProxy = TraceWrap.service(clientHandler);
     final Processor<Iface> processor;
-    if (ThriftServerType.SASL == context.getThriftServerType()) {
+    if (context.getThriftServerType() == ThriftServerType.SASL) {
       Iface tcredProxy = TCredentialsUpdatingWrapper.service(rpcProxy, ThriftClientHandler.class,
           getConfiguration());
       processor = new Processor<>(tcredProxy);
@@ -2677,7 +2664,7 @@ public class TabletServer implements Runnable {
     return address;
   }
 
-  private HostAndPort startReplicationService() throws UnknownHostException {
+  private void startReplicationService() throws UnknownHostException {
     final ReplicationServicerHandler handler = new ReplicationServicerHandler(this);
     ReplicationServicer.Iface rpcProxy = TraceWrap.service(handler);
     ReplicationServicer.Iface repl = TCredentialsUpdatingWrapper.service(rpcProxy,
@@ -2708,8 +2695,6 @@ public class TabletServer implements Runnable {
       log.error("Could not advertise replication service port", e);
       throw new RuntimeException(e);
     }
-
-    return sp.address;
   }
 
   public ZooLock getLock() {
@@ -2725,7 +2710,7 @@ public class TabletServer implements Runnable {
       try {
         zoo.putPersistentData(zPath, new byte[] {}, NodeExistsPolicy.SKIP);
       } catch (KeeperException e) {
-        if (KeeperException.Code.NOAUTH == e.code()) {
+        if (e.code() == KeeperException.Code.NOAUTH) {
           log.error("Failed to write to ZooKeeper. Ensure that"
               + " accumulo.properties, specifically instance.secret, is consistent.");
         }
@@ -2810,7 +2795,7 @@ public class TabletServer implements Runnable {
       log.error("Error registering with JMX", e);
     }
 
-    if (null != authKeyWatcher) {
+    if (authKeyWatcher != null) {
       log.info("Seeding ZooKeeper watcher for authentication keys");
       try {
         authKeyWatcher.updateAuthKeys();
@@ -2854,35 +2839,16 @@ public class TabletServer implements Runnable {
       log.error("Error setting watches for recoveries");
       throw new RuntimeException(ex);
     }
-
-    // Start the thrift service listening for incoming replication requests
-    try {
-      replicationAddress = startReplicationService();
-    } catch (UnknownHostException e) {
-      throw new RuntimeException("Failed to start replication service", e);
-    }
-
-    // Start the pool to handle outgoing replications
-    final ThreadPoolExecutor replicationThreadPool = new SimpleThreadPool(
-        getConfiguration().getCount(Property.REPLICATION_WORKER_THREADS), "replication task");
-    replWorker.setExecutor(replicationThreadPool);
-    replWorker.run();
-
-    // Check the configuration value for the size of the pool and, if changed, resize the pool,
-    // every 5 seconds);
     final AccumuloConfiguration aconf = getConfiguration();
-    Runnable replicationWorkThreadPoolResizer = new Runnable() {
-      @Override
-      public void run() {
-        int maxPoolSize = aconf.getCount(Property.REPLICATION_WORKER_THREADS);
-        if (replicationThreadPool.getMaximumPoolSize() != maxPoolSize) {
-          log.info("Resizing thread pool for sending replication work from {} to {}",
-              replicationThreadPool.getMaximumPoolSize(), maxPoolSize);
-          replicationThreadPool.setMaximumPoolSize(maxPoolSize);
+    // if the replication name is ever set, then start replication services
+    SimpleTimer.getInstance(aconf).schedule(() -> {
+      if (this.replServer == null) {
+        if (!getConfiguration().get(Property.REPLICATION_NAME).isEmpty()) {
+          log.info(Property.REPLICATION_NAME.getKey() + " was set, starting repl services.");
+          setupReplication(aconf);
         }
       }
-    };
-    SimpleTimer.getInstance(aconf).schedule(replicationWorkThreadPoolResizer, 10000, 30000);
+    }, 0, 5000);
 
     final long CLEANUP_BULK_LOADED_CACHE_MILLIS = 15 * 60 * 1000;
     SimpleTimer.getInstance(aconf).schedule(new BulkImportCacheCleaner(this),
@@ -2967,6 +2933,7 @@ public class TabletServer implements Runnable {
     }
     log.debug("Stopping Replication Server");
     TServerUtils.stopTServer(this.replServer);
+
     log.debug("Stopping Thrift Servers");
     TServerUtils.stopTServer(server);
 
@@ -2988,8 +2955,34 @@ public class TabletServer implements Runnable {
     }
   }
 
-  private static Pair<Text,KeyExtent> verifyRootTablet(ServerContext context, KeyExtent extent,
-      TServerInstance instance) throws DistributedStoreException, AccumuloException {
+  private void setupReplication(AccumuloConfiguration aconf) {
+    // Start the thrift service listening for incoming replication requests
+    try {
+      startReplicationService();
+    } catch (UnknownHostException e) {
+      throw new RuntimeException("Failed to start replication service", e);
+    }
+
+    // Start the pool to handle outgoing replications
+    final ThreadPoolExecutor replicationThreadPool = new SimpleThreadPool(
+        getConfiguration().getCount(Property.REPLICATION_WORKER_THREADS), "replication task");
+    replWorker.setExecutor(replicationThreadPool);
+    replWorker.run();
+
+    // Check the configuration value for the size of the pool and, if changed, resize the pool
+    Runnable replicationWorkThreadPoolResizer = () -> {
+      int maxPoolSize = aconf.getCount(Property.REPLICATION_WORKER_THREADS);
+      if (replicationThreadPool.getMaximumPoolSize() != maxPoolSize) {
+        log.info("Resizing thread pool for sending replication work from {} to {}",
+            replicationThreadPool.getMaximumPoolSize(), maxPoolSize);
+        replicationThreadPool.setMaximumPoolSize(maxPoolSize);
+      }
+    };
+    SimpleTimer.getInstance(aconf).schedule(replicationWorkThreadPoolResizer, 10000, 30000);
+  }
+
+  private static Pair<Text,KeyExtent> verifyRootTablet(ServerContext context,
+      TServerInstance instance) throws AccumuloException {
     ZooTabletStateStore store = new ZooTabletStateStore(context);
     if (!store.iterator().hasNext()) {
       throw new AccumuloException("Illegal state: location is not set in zookeeper");
@@ -3012,13 +3005,12 @@ public class TabletServer implements Runnable {
 
   public static Pair<Text,KeyExtent> verifyTabletInformation(ServerContext context,
       KeyExtent extent, TServerInstance instance, final SortedMap<Key,Value> tabletsKeyValues,
-      String clientAddress, ZooLock lock)
-      throws AccumuloSecurityException, DistributedStoreException, AccumuloException {
+      String clientAddress, ZooLock lock) throws DistributedStoreException, AccumuloException {
     Objects.requireNonNull(tabletsKeyValues);
 
     log.debug("verifying extent {}", extent);
     if (extent.isRootTablet()) {
-      return verifyRootTablet(context, extent, instance);
+      return verifyRootTablet(context, instance);
     }
     Table.ID tableToVerify = MetadataTable.ID;
     if (extent.isMeta())
@@ -3059,14 +3051,8 @@ public class TabletServer implements Runnable {
       SortedMap<Text,SortedMap<ColumnFQ,Value>> tabletEntries;
       tabletEntries = MetadataTableUtil.getTabletEntries(tabletsKeyValues, columnsToFetch);
 
-      KeyExtent fke;
-      try {
-        fke = MasterMetadataUtil.fixSplit(context, metadataEntry, tabletEntries.get(metadataEntry),
-            instance, lock);
-      } catch (IOException e) {
-        log.error("Error fixing split {}", metadataEntry);
-        throw new AccumuloException(e.toString());
-      }
+      KeyExtent fke = MasterMetadataUtil.fixSplit(context, metadataEntry,
+          tabletEntries.get(metadataEntry), lock);
 
       if (!fke.equals(extent)) {
         return new Pair<>(null, fke);
@@ -3147,13 +3133,6 @@ public class TabletServer implements Runnable {
     if (clientAddress == null)
       return null;
     return clientAddress.getHost() + ":" + clientAddress.getPort();
-  }
-
-  public String getReplicationAddressSTring() {
-    if (null == replicationAddress) {
-      return null;
-    }
-    return replicationAddress.getHost() + ":" + replicationAddress.getPort();
   }
 
   public TServerInstance getTabletSession() {
@@ -3370,11 +3349,10 @@ public class TabletServer implements Runnable {
     return DurabilityImpl.fromString(conf.get(Property.TABLE_DURABILITY));
   }
 
-  public void minorCompactionFinished(CommitSession tablet, String newDatafile, long walogSeq)
-      throws IOException {
+  public void minorCompactionFinished(CommitSession tablet, long walogSeq) throws IOException {
     Durability durability = getMincEventDurability(tablet.getExtent());
     totalMinorCompactions.incrementAndGet();
-    logger.minorCompactionFinished(tablet, newDatafile, walogSeq, durability);
+    logger.minorCompactionFinished(tablet, walogSeq, durability);
     markUnusedWALs();
   }
 
@@ -3384,18 +3362,16 @@ public class TabletServer implements Runnable {
     logger.minorCompactionStarted(tablet, lastUpdateSequence, newMapfileLocation, durability);
   }
 
-  public void recover(VolumeManager fs, KeyExtent extent, TableConfiguration tconf,
-      List<LogEntry> logEntries, Set<String> tabletFiles, MutationReceiver mutationReceiver)
-      throws IOException {
+  public void recover(VolumeManager fs, KeyExtent extent, List<LogEntry> logEntries,
+      Set<String> tabletFiles, MutationReceiver mutationReceiver) throws IOException {
     List<Path> recoveryLogs = new ArrayList<>();
     List<LogEntry> sorted = new ArrayList<>(logEntries);
     Collections.sort(sorted, (e1, e2) -> (int) (e1.timestamp - e2.timestamp));
     for (LogEntry entry : sorted) {
       Path recovery = null;
-      Path finished = RecoveryPath.getRecoveryPath(fs,
-          fs.getFullPath(FileType.WAL, entry.filename));
+      Path finished = RecoveryPath.getRecoveryPath(fs.getFullPath(FileType.WAL, entry.filename));
       finished = SortedLogState.getFinishedMarkerPath(finished);
-      TabletServer.log.info("Looking for " + finished);
+      TabletServer.log.debug("Looking for " + finished);
       if (fs.exists(finished)) {
         recovery = finished.getParent();
       }
@@ -3404,7 +3380,7 @@ public class TabletServer implements Runnable {
             "Unable to find recovery files for extent " + extent + " logEntry: " + entry);
       recoveryLogs.add(recovery);
     }
-    logger.recover(fs, extent, tconf, recoveryLogs, tabletFiles, mutationReceiver);
+    logger.recover(fs, extent, recoveryLogs, tabletFiles, mutationReceiver);
   }
 
   public int createLogId() {
@@ -3466,13 +3442,6 @@ public class TabletServer implements Runnable {
 
   // avoid unnecessary redundant markings to meta
   final ConcurrentHashMap<DfsLogger,EnumSet<TabletLevel>> metadataTableLogs = new ConcurrentHashMap<>();
-  final Object levelLocks[] = new Object[TabletLevel.values().length];
-
-  {
-    for (int i = 0; i < levelLocks.length; i++) {
-      levelLocks[i] = new Object();
-    }
-  }
 
   // This is a set of WALs that are closed but may still be referenced by tablets. A LinkedHashSet
   // is used because its very import to know the order in which WALs were closed when deciding if a
@@ -3523,7 +3492,7 @@ public class TabletServer implements Runnable {
       // very important this copy maintains same order ..
       closedCopy.add(dfsLogger);
     }
-    return closedCopy;
+    return Collections.unmodifiableList(closedCopy);
   }
 
   private void markUnusedWALs() {
@@ -3569,11 +3538,20 @@ public class TabletServer implements Runnable {
 
   public void walogClosed(DfsLogger currentLog) throws WalMarkerException {
     metadataTableLogs.remove(currentLog);
-    synchronized (closedLogs) {
-      closedLogs.add(currentLog);
+
+    if (currentLog.getWrites() > 0) {
+      int clSize;
+      synchronized (closedLogs) {
+        closedLogs.add(currentLog);
+        clSize = closedLogs.size();
+      }
+      log.info("Marking " + currentLog.getPath() + " as closed. Total closed logs " + clSize);
+      walMarker.closeWal(getTabletSession(), currentLog.getPath());
+    } else {
+      log.info(
+          "Marking " + currentLog.getPath() + " as unreferenced (skipping closed writes == 0)");
+      walMarker.walUnreferenced(getTabletSession(), currentLog.getPath());
     }
-    log.info("Marking " + currentLog.getPath() + " as closed");
-    walMarker.closeWal(getTabletSession(), currentLog.getPath());
   }
 
   public void updateBulkImportState(List<String> files, BulkImportState state) {
@@ -3586,12 +3564,8 @@ public class TabletServer implements Runnable {
 
   private static final String MAJC_READ_LIMITER_KEY = "tserv_majc_read";
   private static final String MAJC_WRITE_LIMITER_KEY = "tserv_majc_write";
-  private final RateProvider rateProvider = new RateProvider() {
-    @Override
-    public long getDesiredRate() {
-      return getConfiguration().getAsBytes(Property.TSERV_MAJC_THROUGHPUT);
-    }
-  };
+  private final RateProvider rateProvider = () -> getConfiguration()
+      .getAsBytes(Property.TSERV_MAJC_THROUGHPUT);
 
   /**
    * Get the {@link RateLimiter} for reads during major compactions on this tserver. All writes

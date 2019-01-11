@@ -63,7 +63,7 @@ public class BalanceAfterCommsFailureIT extends ConfigurableMacBase {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient c = this.getClient()) {
+    try (AccumuloClient c = this.createClient()) {
       c.tableOperations().create("test");
       Collection<ProcessReference> tservers = getCluster().getProcesses()
           .get(ServerType.TABLET_SERVER);
@@ -102,7 +102,7 @@ public class BalanceAfterCommsFailureIT extends ConfigurableMacBase {
   }
 
   private void checkBalance(AccumuloClient c) throws Exception {
-    ClientContext context = getClientContext();
+    ClientContext context = (ClientContext) c;
 
     MasterMonitorInfo stats = null;
     int unassignedTablets = 1;

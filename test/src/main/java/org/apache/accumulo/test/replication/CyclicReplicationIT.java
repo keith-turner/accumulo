@@ -133,12 +133,12 @@ public class CyclicReplicationIT {
 
       // Passwords might be stored in CredentialProvider
       String keystorePassword = primarySiteConfig.get(Property.RPC_SSL_KEYSTORE_PASSWORD.getKey());
-      if (null != keystorePassword) {
+      if (keystorePassword != null) {
         peerSiteConfig.put(Property.RPC_SSL_KEYSTORE_PASSWORD.getKey(), keystorePassword);
       }
       String truststorePassword = primarySiteConfig
           .get(Property.RPC_SSL_TRUSTSTORE_PASSWORD.getKey());
-      if (null != truststorePassword) {
+      if (truststorePassword != null) {
         peerSiteConfig.put(Property.RPC_SSL_TRUSTSTORE_PASSWORD.getKey(), truststorePassword);
       }
 
@@ -149,7 +149,7 @@ public class CyclicReplicationIT {
     // Use the CredentialProvider if the primary also uses one
     String credProvider = primarySiteConfig
         .get(Property.GENERAL_SECURITY_CREDENTIAL_PROVIDER_PATHS.getKey());
-    if (null != credProvider) {
+    if (credProvider != null) {
       Map<String,String> peerSiteConfig = peerCfg.getSiteConfig();
       peerSiteConfig.put(Property.GENERAL_SECURITY_CREDENTIAL_PROVIDER_PATHS.getKey(),
           credProvider);
@@ -170,7 +170,7 @@ public class CyclicReplicationIT {
       master1Cfg.setInstanceName("master1");
 
       // Set up SSL if needed
-      ConfigurableMacBase.configureForEnvironment(master1Cfg, this.getClass(),
+      ConfigurableMacBase.configureForEnvironment(master1Cfg,
           ConfigurableMacBase.getSslDir(master1Dir));
 
       master1Cfg.setProperty(Property.REPLICATION_NAME, master1Cfg.getInstanceName());
@@ -216,9 +216,9 @@ public class CyclicReplicationIT {
     }
 
     try {
-      AccumuloClient clientMaster1 = master1Cluster.getAccumuloClient("root",
+      AccumuloClient clientMaster1 = master1Cluster.createAccumuloClient("root",
           new PasswordToken(password)),
-          clientMaster2 = master2Cluster.getAccumuloClient("root", new PasswordToken(password));
+          clientMaster2 = master2Cluster.createAccumuloClient("root", new PasswordToken(password));
 
       String master1UserName = "master1", master1Password = "foo";
       String master2UserName = "master2", master2Password = "bar";

@@ -60,7 +60,7 @@ public class MetadataMaxFilesIT extends ConfigurableMacBase {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       SortedSet<Text> splits = new TreeSet<>();
       for (int i = 0; i < 1000; i++) {
         splits.add(new Text(String.format("%03d", i)));
@@ -86,10 +86,10 @@ public class MetadataMaxFilesIT extends ConfigurableMacBase {
       cluster.start();
 
       while (true) {
-        MasterMonitorInfo stats = null;
+        MasterMonitorInfo stats;
         Client client = null;
         try {
-          ClientContext context = getClientContext();
+          ClientContext context = (ClientContext) c;
           client = MasterClient.getConnectionWithRetry(context);
           log.info("Fetching stats");
           stats = client.getMasterStats(Tracer.traceInfo(), context.rpcCreds());

@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.core.client.AccumuloClient;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.commons.io.FileUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -58,9 +59,9 @@ public class ZooCacheIT extends ConfigurableMacBase {
       Thread reader = new Thread() {
         @Override
         public void run() {
-          try (AccumuloClient client = getClient()) {
+          try (AccumuloClient client = createClient()) {
             CacheTestReader.main(new String[] {pathName, testDir.getAbsolutePath(),
-                getClientInfo().getZooKeepers()});
+                ClientInfo.from(client.properties()).getZooKeepers()});
           } catch (Exception ex) {
             ref.set(ex);
           }

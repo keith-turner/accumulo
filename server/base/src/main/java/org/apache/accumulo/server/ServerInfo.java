@@ -23,9 +23,9 @@ import java.util.Properties;
 import java.util.UUID;
 
 import org.apache.accumulo.core.Constants;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.clientImpl.ClientConfConverter;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.clientImpl.Credentials;
 import org.apache.accumulo.core.clientImpl.InstanceOperationsImpl;
 import org.apache.accumulo.core.conf.ClientProperty;
@@ -48,7 +48,6 @@ public class ServerInfo implements ClientInfo {
   private String instanceName;
   private String zooKeepers;
   private int zooKeepersSessionTimeOut;
-  private String zooKeeperRoot;
   private VolumeManager volumeManager;
   private ZooCache zooCache;
 
@@ -79,7 +78,6 @@ public class ServerInfo implements ClientInfo {
       throw new RuntimeException("Instance id " + instanceID + " pointed to by the name "
           + instanceName + " does not exist in zookeeper");
     }
-    zooKeeperRoot = ZooUtil.getRoot(instanceID);
   }
 
   ServerInfo(SiteConfiguration config) {
@@ -92,7 +90,6 @@ public class ServerInfo implements ClientInfo {
     }
     Path instanceIdPath = ServerUtil.getAccumuloInstanceIdPath(volumeManager);
     instanceID = ZooUtil.getInstanceIDFromHdfs(instanceIdPath, config);
-    zooKeeperRoot = ZooUtil.getRoot(instanceID);
     zooKeepers = config.get(Property.INSTANCE_ZK_HOST);
     zooKeepersSessionTimeOut = (int) config.getTimeInMillis(Property.INSTANCE_ZK_TIMEOUT);
     zooCache = new ZooCacheFactory().getZooCache(zooKeepers, zooKeepersSessionTimeOut);
@@ -109,10 +106,6 @@ public class ServerInfo implements ClientInfo {
 
   public String getInstanceID() {
     return instanceID;
-  }
-
-  public String getZooKeeperRoot() {
-    return zooKeeperRoot;
   }
 
   @Override

@@ -179,6 +179,15 @@ public class Compactor implements Callable<CompactionStats> {
     return MajorCompactionReason.values()[reason];
   }
 
+  protected Map<String,Set<ByteSequence>> getLocalityGroups(AccumuloConfiguration acuTableConf)
+      throws IOException {
+    try {
+      return LocalityGroupUtil.getLocalityGroups(acuTableConf);
+    } catch (LocalityGroupConfigurationError e) {
+      throw new IOException(e);
+    }
+  }
+
   @Override
   public CompactionStats call() throws IOException, CompactionCanceledException {
 
@@ -204,12 +213,7 @@ public class Compactor implements Callable<CompactionStats> {
           .forFile(outputFilePathName, ns, ns.getConf(), context.getCryptoService())
           .withTableConfiguration(acuTableConf).withRateLimiter(env.getWriteLimiter()).build();
 
-      Map<String,Set<ByteSequence>> lGroups;
-      try {
-        lGroups = LocalityGroupUtil.getLocalityGroups(acuTableConf);
-      } catch (LocalityGroupConfigurationError e) {
-        throw new IOException(e);
-      }
+      Map<String,Set<ByteSequence>> lGroups = getLocalityGroups(acuTableConf);
 
       long t1 = System.currentTimeMillis();
 
@@ -278,7 +282,7 @@ public class Compactor implements Callable<CompactionStats> {
     }
   }
 
-  private List<SortedKeyValueIterator<Key,Value>> openMapDataFiles(String lgName,
+  private List<SortedKeyValueIterator<Key,Value>> openMapDataFiles(
       ArrayList<FileSKVIterator> readers) throws IOException {
 
     List<SortedKeyValueIterator<Key,Value>> iters = new ArrayList<>(filesToCompact.size());
@@ -338,7 +342,7 @@ public class Compactor implements Callable<CompactionStats> {
     Span span = Trace.start("compact");
     try {
       long entriesCompacted = 0;
-      List<SortedKeyValueIterator<Key,Value>> iters = openMapDataFiles(lgName, readers);
+      List<SortedKeyValueIterator<Key,Value>> iters = openMapDataFiles(readers);
 
       if (imm != null) {
         iters.add(imm.compactionIterator());

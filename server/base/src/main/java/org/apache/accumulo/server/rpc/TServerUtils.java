@@ -143,7 +143,7 @@ public class TServerUtils {
         .getCount(Property.GENERAL_SIMPLETIMER_THREADPOOL_SIZE);
     final ThriftServerType serverType = service.getThriftServerType();
 
-    if (ThriftServerType.SASL == serverType) {
+    if (serverType == ThriftServerType.SASL) {
       processor = updateSaslProcessor(serverType, processor);
     }
 
@@ -189,9 +189,9 @@ public class TServerUtils {
    * Create a NonBlockingServer with a custom thread pool that can dynamically resize itself.
    */
   public static ServerAddress createNonBlockingServer(HostAndPort address, TProcessor processor,
-      TProtocolFactory protocolFactory, final String serverName, String threadName,
-      final int numThreads, final int numSTThreads, long timeBetweenThreadChecks,
-      long maxMessageSize) throws TTransportException {
+      TProtocolFactory protocolFactory, final String serverName, final int numThreads,
+      final int numSTThreads, long timeBetweenThreadChecks, long maxMessageSize)
+      throws TTransportException {
 
     final TNonblockingServerSocket transport = new TNonblockingServerSocket(
         new InetSocketAddress(address.getHost(), address.getPort()));
@@ -295,23 +295,6 @@ public class TServerUtils {
   }
 
   /**
-   * Create a {@link TThreadPoolServer} with the provided transport, processor and transport
-   * factory.
-   *
-   * @param transport
-   *          Server transport
-   * @param processor
-   *          Processor implementation
-   * @param transportFactory
-   *          Transport factory
-   * @return A configured {@link TThreadPoolServer}
-   */
-  public static TThreadPoolServer createTThreadPoolServer(TServerTransport transport,
-      TProcessor processor, TTransportFactory transportFactory, TProtocolFactory protocolFactory) {
-    return createTThreadPoolServer(transport, processor, transportFactory, protocolFactory, null);
-  }
-
-  /**
    * Create a {@link TThreadPoolServer} with the provided server transport, processor and transport
    * factory.
    *
@@ -329,7 +312,7 @@ public class TServerUtils {
     options.protocolFactory(protocolFactory);
     options.transportFactory(transportFactory);
     options.processorFactory(new ClientInfoProcessorFactory(clientAddress, processor));
-    if (null != service) {
+    if (service != null) {
       options.executorService(service);
     }
     return new TThreadPoolServer(options);
@@ -426,7 +409,7 @@ public class TServerUtils {
 
   public static ServerAddress createSaslThreadPoolServer(HostAndPort address, TProcessor processor,
       TProtocolFactory protocolFactory, long socketTimeout, SaslServerConnectionParams params,
-      final String serverName, String threadName, final int numThreads, final int numSTThreads,
+      final String serverName, final int numThreads, final int numSTThreads,
       long timeBetweenThreadChecks) throws TTransportException {
     // We'd really prefer to use THsHaServer (or similar) to avoid 1 RPC == 1 Thread that the
     // TThreadPoolServer does,
@@ -488,7 +471,7 @@ public class TServerUtils {
     saslTransportFactory.addServerDefinition(ThriftUtil.GSSAPI, params.getKerberosServerPrimary(),
         hostname, params.getSaslProperties(), new SaslRpcServer.SaslGssCallbackHandler());
 
-    if (null != params.getSecretManager()) {
+    if (params.getSecretManager() != null) {
       log.info("Adding DIGEST-MD5 server definition for delegation tokens");
       saslTransportFactory.addServerDefinition(ThriftUtil.DIGEST_MD5,
           params.getKerberosServerPrimary(), hostname, params.getSaslProperties(),
@@ -523,7 +506,7 @@ public class TServerUtils {
       SaslServerConnectionParams saslParams, long serverSocketTimeout, HostAndPort... addresses)
       throws TTransportException {
 
-    if (ThriftServerType.SASL == serverType) {
+    if (serverType == ThriftServerType.SASL) {
       processor = updateSaslProcessor(serverType, processor);
     }
 
@@ -579,7 +562,7 @@ public class TServerUtils {
           case SASL:
             log.debug("Instantiating SASL Thrift server");
             serverAddress = createSaslThreadPoolServer(address, processor, protocolFactory,
-                serverSocketTimeout, saslParams, serverName, threadName, numThreads, numSTThreads,
+                serverSocketTimeout, saslParams, serverName, numThreads, numSTThreads,
                 timeBetweenThreadChecks);
             break;
           case THREADPOOL:
@@ -592,14 +575,14 @@ public class TServerUtils {
           default:
             log.debug("Instantiating default, unsecure custom half-async Thrift server");
             serverAddress = createNonBlockingServer(address, processor, protocolFactory, serverName,
-                threadName, numThreads, numSTThreads, timeBetweenThreadChecks, maxMessageSize);
+                numThreads, numSTThreads, timeBetweenThreadChecks, maxMessageSize);
         }
         break;
       } catch (TTransportException e) {
         log.warn("Error attempting to create server at {}. Error: {}", address, e.getMessage());
       }
     }
-    if (null == serverAddress) {
+    if (serverAddress == null) {
       throw new TTransportException(
           "Unable to create server on addresses: " + Arrays.toString(addresses));
     }
@@ -662,7 +645,7 @@ public class TServerUtils {
    * @return A {@link UGIAssumingProcessor} which wraps the provided processor
    */
   private static TProcessor updateSaslProcessor(ThriftServerType serverType, TProcessor processor) {
-    checkArgument(ThriftServerType.SASL == serverType);
+    checkArgument(serverType == ThriftServerType.SASL);
 
     // Wrap the provided processor in our special processor which proxies the provided UGI on the
     // logged-in UGI

@@ -28,9 +28,9 @@ import org.apache.accumulo.cluster.ClusterUser;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.KerberosToken;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
@@ -83,18 +83,18 @@ public class KerberosReplicationIT extends AccumuloITBase {
     kdc = new TestingKdc();
     kdc.start();
     krbEnabledForITs = System.getProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION);
-    if (null == krbEnabledForITs || !Boolean.parseBoolean(krbEnabledForITs)) {
+    if (krbEnabledForITs == null || !Boolean.parseBoolean(krbEnabledForITs)) {
       System.setProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION, "true");
     }
     rootUser = kdc.getRootUser();
   }
 
   @AfterClass
-  public static void stopKdc() throws Exception {
-    if (null != kdc) {
+  public static void stopKdc() {
+    if (kdc != null) {
       kdc.stop();
     }
-    if (null != krbEnabledForITs) {
+    if (krbEnabledForITs != null) {
       System.setProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION, krbEnabledForITs);
     }
   }
@@ -150,10 +150,10 @@ public class KerberosReplicationIT extends AccumuloITBase {
 
   @After
   public void teardown() throws Exception {
-    if (null != peer) {
+    if (peer != null) {
       peer.stop();
     }
-    if (null != primary) {
+    if (primary != null) {
       primary.stop();
     }
     UserGroupInformation.setConfiguration(new Configuration(false));
@@ -167,8 +167,10 @@ public class KerberosReplicationIT extends AccumuloITBase {
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       log.info("testing {}", ugi);
       final KerberosToken token = new KerberosToken();
-      try (AccumuloClient primaryclient = primary.getAccumuloClient(rootUser.getPrincipal(), token);
-          AccumuloClient peerclient = peer.getAccumuloClient(rootUser.getPrincipal(), token)) {
+      try (
+          AccumuloClient primaryclient = primary.createAccumuloClient(rootUser.getPrincipal(),
+              token);
+          AccumuloClient peerclient = peer.createAccumuloClient(rootUser.getPrincipal(), token)) {
 
         ClusterUser replicationUser = kdc.getClientPrincipal(0);
 

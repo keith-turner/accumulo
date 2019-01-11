@@ -23,8 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.MutationsRejectedException;
@@ -34,7 +32,6 @@ import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.ColumnUpdate;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.replication.AccumuloReplicationReplayer;
-import org.apache.accumulo.core.replication.thrift.KeyValues;
 import org.apache.accumulo.core.replication.thrift.RemoteReplicationErrorCode;
 import org.apache.accumulo.core.replication.thrift.RemoteReplicationException;
 import org.apache.accumulo.core.replication.thrift.WalEdits;
@@ -55,7 +52,7 @@ public class BatchWriterReplicationReplayer implements AccumuloReplicationReplay
 
   @Override
   public long replicateLog(ClientContext context, String tableName, WalEdits data)
-      throws RemoteReplicationException, AccumuloException, AccumuloSecurityException {
+      throws RemoteReplicationException {
     final LogFileKey key = new LogFileKey();
     final LogFileValue value = new LogFileValue();
     final long memoryInBytes = context.getConfiguration()
@@ -79,11 +76,11 @@ public class BatchWriterReplicationReplayer implements AccumuloReplicationReplay
         }
 
         // Create the batchScanner if we don't already have one.
-        if (null == bw) {
+        if (bw == null) {
           BatchWriterConfig bwConfig = new BatchWriterConfig();
           bwConfig.setMaxMemory(memoryInBytes);
           try {
-            bw = context.getClient().createBatchWriter(tableName, bwConfig);
+            bw = context.createBatchWriter(tableName, bwConfig);
           } catch (TableNotFoundException e) {
             throw new RemoteReplicationException(RemoteReplicationErrorCode.TABLE_DOES_NOT_EXIST,
                 "Table " + tableName + " does not exist");
@@ -127,7 +124,7 @@ public class BatchWriterReplicationReplayer implements AccumuloReplicationReplay
 
             // We also need to preserve the replicationSource information to prevent cycles
             Set<String> replicationSources = orig.getReplicationSources();
-            if (null != replicationSources && !replicationSources.isEmpty()) {
+            if (replicationSources != null && !replicationSources.isEmpty()) {
               for (String replicationSource : replicationSources) {
                 copy.addReplicationSource(replicationSource);
               }
@@ -155,7 +152,7 @@ public class BatchWriterReplicationReplayer implements AccumuloReplicationReplay
         mutationsApplied += mutationsCopy.size();
       }
     } finally {
-      if (null != bw) {
+      if (bw != null) {
         try {
           bw.close();
         } catch (MutationsRejectedException e) {
@@ -169,12 +166,6 @@ public class BatchWriterReplicationReplayer implements AccumuloReplicationReplay
     log.info("Applied {} mutations in total to {}", mutationsApplied, tableName);
 
     return mutationsApplied;
-  }
-
-  @Override
-  public long replicateKeyValues(ClientContext context, String tableName, KeyValues kvs) {
-    // TODO Implement me
-    throw new UnsupportedOperationException();
   }
 
 }

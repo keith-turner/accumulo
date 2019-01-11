@@ -22,15 +22,13 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.File;
-import java.io.IOException;
 
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.mapreduce.AccumuloFileOutputFormat;
-import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat;
 import org.apache.accumulo.core.client.sample.RowSampler;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.crypto.CryptoServiceFactory;
 import org.apache.accumulo.core.data.Key;
@@ -57,6 +55,10 @@ import org.junit.rules.TemporaryFolder;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 
+/**
+ * This tests deprecated mapreduce code in core jar
+ */
+@Deprecated
 public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
 
   private String PREFIX;
@@ -83,7 +85,7 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
     TEST_TABLE = PREFIX + "_mapreduce_test_table";
     EMPTY_TABLE = PREFIX + "_mapreduce_empty_table";
 
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(EMPTY_TABLE);
       c.tableOperations().create(TEST_TABLE);
       c.tableOperations().create(BAD_TABLE);
@@ -117,8 +119,7 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
       int index = 0;
 
       @Override
-      protected void map(Key key, Value value, Context context)
-          throws IOException, InterruptedException {
+      protected void map(Key key, Value value, Context context) {
         String table = context.getConfiguration().get("MRTester_tableName");
         assertNotNull(table);
         try {
@@ -136,7 +137,7 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
       }
 
       @Override
-      protected void cleanup(Context context) throws IOException, InterruptedException {
+      protected void cleanup(Context context) {
         String table = context.getConfiguration().get("MRTester_tableName");
         assertNotNull(table);
         try {
@@ -163,18 +164,25 @@ public class AccumuloFileOutputFormatIT extends AccumuloClusterHarness {
           this.getClass().getSimpleName() + "_" + System.currentTimeMillis());
       job.setJarByClass(this.getClass());
 
-      job.setInputFormatClass(AccumuloInputFormat.class);
+      job.setInputFormatClass(org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.class);
 
-      AccumuloInputFormat.setClientInfo(job, getClientInfo());
-      AccumuloInputFormat.setInputTableName(job, table);
-      AccumuloFileOutputFormat.setOutputPath(job, new Path(args[1]));
-      AccumuloFileOutputFormat.setSampler(job, SAMPLER_CONFIG);
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.setInputTableName(job, table);
+      org.apache.accumulo.core.client.mapreduce.AccumuloFileOutputFormat.setOutputPath(job,
+          new Path(args[1]));
+      org.apache.accumulo.core.client.mapreduce.AccumuloFileOutputFormat.setSampler(job,
+          SAMPLER_CONFIG);
 
       job.setMapperClass(
           table.endsWith("_mapreduce_bad_table") ? BadKeyMapper.class : Mapper.class);
       job.setMapOutputKeyClass(Key.class);
       job.setMapOutputValueClass(Value.class);
-      job.setOutputFormatClass(AccumuloFileOutputFormat.class);
+      job.setOutputFormatClass(
+          org.apache.accumulo.core.client.mapreduce.AccumuloFileOutputFormat.class);
       job.getConfiguration().set("MRTester_tableName", table);
 
       job.setNumReduceTasks(0);

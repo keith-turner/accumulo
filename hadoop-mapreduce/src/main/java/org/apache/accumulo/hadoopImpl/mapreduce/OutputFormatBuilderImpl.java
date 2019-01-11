@@ -25,7 +25,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 
-import org.apache.accumulo.core.client.ClientInfo;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.hadoop.mapreduce.OutputFormatBuilder;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Job;
@@ -53,14 +53,14 @@ public class OutputFormatBuilderImpl<T>
   }
 
   @Override
-  public OutputFormatBuilder.OutputOptions<T> createTables() {
-    this.createTables = true;
+  public OutputFormatBuilder.OutputOptions<T> createTables(boolean value) {
+    this.createTables = value;
     return this;
   }
 
   @Override
-  public OutputFormatBuilder.OutputOptions<T> simulationMode() {
-    this.simulationMode = true;
+  public OutputFormatBuilder.OutputOptions<T> simulationMode(boolean value) {
+    this.simulationMode = value;
     return this;
   }
 

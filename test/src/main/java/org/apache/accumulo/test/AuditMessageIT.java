@@ -83,7 +83,7 @@ public class AuditMessageIT extends ConfigurableMacBase {
   }
 
   @Override
-  public void beforeClusterStart(MiniAccumuloConfigImpl cfg) throws Exception {
+  public void beforeClusterStart(MiniAccumuloConfigImpl cfg) {
     cfg.setNumTservers(1);
   }
 
@@ -167,7 +167,7 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
   @Before
   public void resetInstance() throws Exception {
-    client = getClient();
+    client = createClient();
 
     removeUsersAndTables();
 
@@ -199,7 +199,7 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
   @Test
   public void testTableOperationsAudits() throws AccumuloException, AccumuloSecurityException,
-      TableExistsException, TableNotFoundException, IOException, InterruptedException {
+      TableExistsException, TableNotFoundException, IOException {
 
     client.securityOperations().createLocalUser(AUDIT_USER_1, new PasswordToken(PASSWORD));
     client.securityOperations().grantSystemPermission(AUDIT_USER_1, SystemPermission.SYSTEM);
@@ -207,7 +207,8 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
     // Connect as Audit User and do a bunch of stuff.
     // Testing activity begins here
-    auditAccumuloClient = getCluster().getAccumuloClient(AUDIT_USER_1, new PasswordToken(PASSWORD));
+    auditAccumuloClient = getCluster().createAccumuloClient(AUDIT_USER_1,
+        new PasswordToken(PASSWORD));
     auditAccumuloClient.tableOperations().create(OLD_TEST_TABLE_NAME);
     auditAccumuloClient.tableOperations().rename(OLD_TEST_TABLE_NAME, NEW_TEST_TABLE_NAME);
     Map<String,String> emptyMap = Collections.emptyMap();
@@ -237,8 +238,8 @@ public class AuditMessageIT extends ConfigurableMacBase {
   }
 
   @Test
-  public void testUserOperationsAudits() throws AccumuloSecurityException, AccumuloException,
-      TableExistsException, InterruptedException, IOException {
+  public void testUserOperationsAudits()
+      throws AccumuloSecurityException, AccumuloException, TableExistsException, IOException {
 
     client.securityOperations().createLocalUser(AUDIT_USER_1, new PasswordToken(PASSWORD));
     client.securityOperations().grantSystemPermission(AUDIT_USER_1, SystemPermission.SYSTEM);
@@ -247,7 +248,8 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
     // Connect as Audit User and do a bunch of stuff.
     // Start testing activities here
-    auditAccumuloClient = getCluster().getAccumuloClient(AUDIT_USER_1, new PasswordToken(PASSWORD));
+    auditAccumuloClient = getCluster().createAccumuloClient(AUDIT_USER_1,
+        new PasswordToken(PASSWORD));
     auditAccumuloClient.securityOperations().createLocalUser(AUDIT_USER_2,
         new PasswordToken(PASSWORD));
 
@@ -291,9 +293,8 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
   @SuppressFBWarnings(value = "PATH_TRAVERSAL_IN", justification = "paths provided by test")
   @Test
-  public void testImportExportOperationsAudits()
-      throws AccumuloSecurityException, AccumuloException, TableExistsException,
-      TableNotFoundException, IOException, InterruptedException {
+  public void testImportExportOperationsAudits() throws AccumuloSecurityException,
+      AccumuloException, TableExistsException, TableNotFoundException, IOException {
 
     client.securityOperations().createLocalUser(AUDIT_USER_1, new PasswordToken(PASSWORD));
     client.securityOperations().grantSystemPermission(AUDIT_USER_1, SystemPermission.SYSTEM);
@@ -302,7 +303,8 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
     // Connect as Audit User and do a bunch of stuff.
     // Start testing activities here
-    auditAccumuloClient = getCluster().getAccumuloClient(AUDIT_USER_1, new PasswordToken(PASSWORD));
+    auditAccumuloClient = getCluster().createAccumuloClient(AUDIT_USER_1,
+        new PasswordToken(PASSWORD));
     auditAccumuloClient.tableOperations().create(OLD_TEST_TABLE_NAME);
 
     // Insert some play data
@@ -381,7 +383,7 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
   @Test
   public void testDataOperationsAudits() throws AccumuloSecurityException, AccumuloException,
-      TableExistsException, TableNotFoundException, IOException, InterruptedException {
+      TableExistsException, TableNotFoundException, IOException {
 
     client.securityOperations().createLocalUser(AUDIT_USER_1, new PasswordToken(PASSWORD));
     client.securityOperations().grantSystemPermission(AUDIT_USER_1, SystemPermission.SYSTEM);
@@ -390,7 +392,8 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
     // Connect as Audit User and do a bunch of stuff.
     // Start testing activities here
-    auditAccumuloClient = getCluster().getAccumuloClient(AUDIT_USER_1, new PasswordToken(PASSWORD));
+    auditAccumuloClient = getCluster().createAccumuloClient(AUDIT_USER_1,
+        new PasswordToken(PASSWORD));
     auditAccumuloClient.tableOperations().create(OLD_TEST_TABLE_NAME);
 
     // Insert some play data
@@ -427,9 +430,9 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
     ArrayList<String> auditMessages = getAuditMessages("testDataOperationsAudits");
     assertTrue(
-        1 <= findAuditMessage(auditMessages, "action: scan; targetTable: " + OLD_TEST_TABLE_NAME));
+        findAuditMessage(auditMessages, "action: scan; targetTable: " + OLD_TEST_TABLE_NAME) >= 1);
     assertTrue(
-        1 <= findAuditMessage(auditMessages, "action: scan; targetTable: " + OLD_TEST_TABLE_NAME));
+        findAuditMessage(auditMessages, "action: scan; targetTable: " + OLD_TEST_TABLE_NAME) >= 1);
     assertEquals(1,
         findAuditMessage(auditMessages,
             String.format(AuditedSecurityOperation.CAN_DELETE_RANGE_AUDIT_TEMPLATE,
@@ -439,12 +442,13 @@ public class AuditMessageIT extends ConfigurableMacBase {
 
   @Test
   public void testDeniedAudits() throws AccumuloSecurityException, AccumuloException,
-      TableExistsException, TableNotFoundException, IOException, InterruptedException {
+      TableExistsException, TableNotFoundException, IOException {
 
     // Create our user with no privs
     client.securityOperations().createLocalUser(AUDIT_USER_1, new PasswordToken(PASSWORD));
     client.tableOperations().create(OLD_TEST_TABLE_NAME);
-    auditAccumuloClient = getCluster().getAccumuloClient(AUDIT_USER_1, new PasswordToken(PASSWORD));
+    auditAccumuloClient = getCluster().createAccumuloClient(AUDIT_USER_1,
+        new PasswordToken(PASSWORD));
 
     // Start testing activities
     // We should get denied or / failed audit messages here.
@@ -508,8 +512,7 @@ public class AuditMessageIT extends ConfigurableMacBase {
   }
 
   @Test
-  public void testFailedAudits() throws AccumuloSecurityException, AccumuloException,
-      TableExistsException, TableNotFoundException, IOException, InterruptedException {
+  public void testFailedAudits() throws AccumuloException, IOException {
 
     // Start testing activities
     // Test that we get a few "failed" audit messages come through when we tell it to do dumb stuff

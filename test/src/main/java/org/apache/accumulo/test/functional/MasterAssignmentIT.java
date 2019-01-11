@@ -20,8 +20,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
-import java.io.FileNotFoundException;
-
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
@@ -34,7 +32,6 @@ import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
 import org.apache.accumulo.server.master.state.MetaDataTableScanner;
 import org.apache.accumulo.server.master.state.TabletLocationState;
-import org.apache.commons.configuration.ConfigurationException;
 import org.junit.Test;
 
 public class MasterAssignmentIT extends AccumuloClusterHarness {
@@ -46,7 +43,7 @@ public class MasterAssignmentIT extends AccumuloClusterHarness {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       String tableName = super.getUniqueNames(1)[0];
       c.tableOperations().create(tableName);
       String tableId = c.tableOperations().tableIdMap().get(tableName);
@@ -89,10 +86,8 @@ public class MasterAssignmentIT extends AccumuloClusterHarness {
     }
   }
 
-  private TabletLocationState getTabletLocationState(AccumuloClient c, String tableId)
-      throws FileNotFoundException, ConfigurationException {
-    ClientContext context = getClientContext();
-    try (MetaDataTableScanner s = new MetaDataTableScanner(context,
+  private TabletLocationState getTabletLocationState(AccumuloClient c, String tableId) {
+    try (MetaDataTableScanner s = new MetaDataTableScanner((ClientContext) c,
         new Range(TabletsSection.getRow(Table.ID.of(tableId), null)))) {
       return s.next();
     }

@@ -48,6 +48,7 @@ import org.apache.accumulo.core.client.TableExistsException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.DiskUsage;
 import org.apache.accumulo.core.client.admin.TableOperations;
+import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.constraints.DefaultKeySizeConstraint;
 import org.apache.accumulo.core.data.Key;
@@ -61,7 +62,6 @@ import org.apache.accumulo.harness.AccumuloClusterHarness;
 import org.apache.accumulo.test.functional.BadIterator;
 import org.apache.accumulo.test.functional.FunctionalTestUtils;
 import org.apache.hadoop.io.Text;
-import org.apache.thrift.TException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -71,7 +71,6 @@ import com.google.common.collect.Sets;
 public class TableOperationsIT extends AccumuloClusterHarness {
 
   static TabletClientService.Client client;
-
   private AccumuloClient accumuloClient;
 
   @Override
@@ -80,19 +79,19 @@ public class TableOperationsIT extends AccumuloClusterHarness {
   }
 
   @Before
-  public void setup() throws Exception {
-    accumuloClient = getAccumuloClient();
+  public void setup() {
+    accumuloClient = createAccumuloClient();
   }
 
   @After
   public void checkForDanglingFateLocks() {
-    FunctionalTestUtils.assertNoDanglingFateLocks(getClientContext(), getCluster());
+    FunctionalTestUtils.assertNoDanglingFateLocks((ClientContext) accumuloClient, getCluster());
     accumuloClient.close();
   }
 
   @Test
   public void getDiskUsageErrors() throws TableExistsException, AccumuloException,
-      AccumuloSecurityException, TableNotFoundException, TException {
+      AccumuloSecurityException, TableNotFoundException {
     String tableName = getUniqueNames(1)[0];
     accumuloClient.tableOperations().create(tableName);
     List<DiskUsage> diskUsage = accumuloClient.tableOperations()
@@ -117,7 +116,7 @@ public class TableOperationsIT extends AccumuloClusterHarness {
 
   @Test
   public void getDiskUsage() throws TableExistsException, AccumuloException,
-      AccumuloSecurityException, TableNotFoundException, TException {
+      AccumuloSecurityException, TableNotFoundException {
     final String[] names = getUniqueNames(2);
     String tableName = names[0];
     accumuloClient.tableOperations().create(tableName);

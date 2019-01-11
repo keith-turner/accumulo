@@ -57,7 +57,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   }
 
   @AfterClass
-  public static void teardown() throws Exception {
+  public static void teardown() {
     SharedMiniClusterBase.stopMiniCluster();
   }
 
@@ -65,9 +65,9 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
    * Test that setting properties more than once overwrites the previous property settings.
    */
   @Test
-  public void testSetPropertiesOverwriteOlderProperties() throws AccumuloSecurityException,
-      AccumuloException, TableExistsException, TableNotFoundException {
-    try (AccumuloClient client = getClient()) {
+  public void testSetPropertiesOverwriteOlderProperties()
+      throws AccumuloSecurityException, AccumuloException, TableExistsException {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
       NewTableConfiguration ntc = new NewTableConfiguration();
       Map<String,String> initialProps = new HashMap<>();
@@ -98,8 +98,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
    * IllegalArgumentException indicating that groups overlap.
    */
   @Test(expected = IllegalArgumentException.class)
-  public void testOverlappingGroupsFail()
-      throws AccumuloSecurityException, AccumuloException, TableExistsException {
+  public void testOverlappingGroupsFail() {
     NewTableConfiguration ntc = new NewTableConfiguration();
     Map<String,Set<Text>> lgroups = new HashMap<>();
     lgroups.put("lg1", ImmutableSet.of(new Text("colFamA"), new Text("colFamB")));
@@ -113,7 +112,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testSimpleLocalityGroupCreation() throws AccumuloSecurityException, AccumuloException,
       TableExistsException, TableNotFoundException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
       NewTableConfiguration ntc = new NewTableConfiguration();
       // set locality groups map
@@ -140,7 +139,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testMulitpleCallsToSetLocalityGroups() throws AccumuloSecurityException,
       AccumuloException, TableExistsException, TableNotFoundException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
       NewTableConfiguration ntc = new NewTableConfiguration();
       // set first locality groups map
@@ -167,7 +166,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testSetPropertiesAndGroups() throws AccumuloSecurityException, AccumuloException,
       TableExistsException, TableNotFoundException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
       NewTableConfiguration ntc = new NewTableConfiguration();
 
@@ -212,8 +211,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
    * Verify that properties set using NewTableConfiguration must be table properties.
    */
   @Test(expected = IllegalArgumentException.class)
-  public void testInvalidTablePropertiesSet() throws AccumuloSecurityException, AccumuloException,
-      TableExistsException, TableNotFoundException {
+  public void testInvalidTablePropertiesSet() {
     NewTableConfiguration ntc = new NewTableConfiguration();
     Map<String,String> props = new HashMap<>();
 
@@ -234,7 +232,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testSetGroupsWithoutDefaultIterators() throws AccumuloSecurityException,
       AccumuloException, TableExistsException, TableNotFoundException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
       NewTableConfiguration ntc = new NewTableConfiguration().withoutDefaultIterators();
 
@@ -260,7 +258,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testPreconfigureIteratorWithDefaultIterator1() throws AccumuloException,
       TableNotFoundException, AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -289,7 +287,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testPreconfiguredIteratorWithDefaultIterator2() throws AccumuloException,
       TableNotFoundException, AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -319,7 +317,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testPreconfiguredIteratorWithDefaultIterator3() throws AccumuloException,
       TableNotFoundException, AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -347,7 +345,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testSettingInitialIteratorWithAdditionalIteratorOptions() throws AccumuloException,
       TableNotFoundException, AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -370,7 +368,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testSetIteratorWithoutDefaultIterators() throws AccumuloException,
       TableNotFoundException, AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration().withoutDefaultIterators();
@@ -398,7 +396,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testSettingIteratorAndProperties() throws AccumuloException, TableNotFoundException,
       AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -436,9 +434,9 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
    * Verify iterator conflicts are discovered
    */
   @Test(expected = IllegalArgumentException.class)
-  public void testIteratorConflictFound1() throws AccumuloException, TableNotFoundException,
-      AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+  public void testIteratorConflictFound1()
+      throws AccumuloException, AccumuloSecurityException, TableExistsException {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -451,9 +449,9 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   }
 
   @Test(expected = IllegalArgumentException.class)
-  public void testIteratorConflictFound2() throws AccumuloException, TableNotFoundException,
-      AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+  public void testIteratorConflictFound2()
+      throws AccumuloException, AccumuloSecurityException, TableExistsException {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -466,9 +464,9 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   }
 
   @Test(expected = IllegalArgumentException.class)
-  public void testIteratorConflictFound3() throws AccumuloException, TableNotFoundException,
-      AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+  public void testIteratorConflictFound3()
+      throws AccumuloException, AccumuloSecurityException, TableExistsException {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -487,7 +485,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testMultipleIteratorValid() throws AccumuloException, TableNotFoundException,
       AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -517,7 +515,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testGroupsIteratorAndPropsTogether() throws AccumuloException, TableNotFoundException,
       AccumuloSecurityException, TableExistsException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       NewTableConfiguration ntc = new NewTableConfiguration();
@@ -559,7 +557,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
   @Test
   public void testNtcChaining() throws AccumuloException, AccumuloSecurityException,
       TableExistsException, TableNotFoundException {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tableName = getUniqueNames(2)[0];
 
       IteratorSetting setting = new IteratorSetting(10, "anIterator", "it.class",
@@ -639,7 +637,7 @@ public class NewTableConfigurationIT extends SharedMiniClusterBase {
    * Verify checkDisjoint works with iterators groups.
    */
   @Test(expected = IllegalArgumentException.class)
-  public void testAttachIteratorDisjointCheck() throws AccumuloException {
+  public void testAttachIteratorDisjointCheck() {
     NewTableConfiguration ntc = new NewTableConfiguration();
 
     Map<String,String> props = new HashMap<>();

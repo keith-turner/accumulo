@@ -122,7 +122,7 @@ public class VolumeIT extends ConfigurableMacBase {
   @Test
   public void test() throws Exception {
     // create a table
-    try (AccumuloClient accumuloClient = getClient()) {
+    try (AccumuloClient accumuloClient = createClient()) {
       String tableName = getUniqueNames(1)[0];
       accumuloClient.tableOperations().create(tableName);
       SortedSet<Text> partitions = new TreeSet<>();
@@ -193,7 +193,7 @@ public class VolumeIT extends ConfigurableMacBase {
 
     List<String> expected = new ArrayList<>();
 
-    try (AccumuloClient accumuloClient = getClient()) {
+    try (AccumuloClient accumuloClient = createClient()) {
       String tableName = getUniqueNames(1)[0];
       accumuloClient.tableOperations().create(tableName,
           new NewTableConfiguration().withoutDefaultIterators());
@@ -282,7 +282,7 @@ public class VolumeIT extends ConfigurableMacBase {
 
   @Test
   public void testAddVolumes() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String[] tableNames = getUniqueNames(2);
 
       // grab this before shutting down cluster
@@ -328,7 +328,7 @@ public class VolumeIT extends ConfigurableMacBase {
     String[] tableNames = getUniqueNames(2);
 
     // grab this before shutting down cluster
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String uuid = client.getInstanceID();
 
       verifyVolumesUsed(client, tableNames[0], false, v1, v2);
@@ -489,7 +489,7 @@ public class VolumeIT extends ConfigurableMacBase {
 
   @Test
   public void testRemoveVolumes() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String[] tableNames = getUniqueNames(2);
 
       verifyVolumesUsed(client, tableNames[0], false, v1, v2);
@@ -533,7 +533,8 @@ public class VolumeIT extends ConfigurableMacBase {
     verifyVolumesUsed(client, tableNames[0], false, v1, v2);
 
     // write to 2nd table, but do not flush data to disk before shutdown
-    writeData(tableNames[1], cluster.getAccumuloClient("root", new PasswordToken(ROOT_PASSWORD)));
+    writeData(tableNames[1],
+        cluster.createAccumuloClient("root", new PasswordToken(ROOT_PASSWORD)));
 
     if (cleanShutdown)
       assertEquals(0, cluster.exec(Admin.class, "stopAll").waitFor());
@@ -589,14 +590,14 @@ public class VolumeIT extends ConfigurableMacBase {
 
   @Test
   public void testCleanReplaceVolumes() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       testReplaceVolume(client, true);
     }
   }
 
   @Test
   public void testDirtyReplaceVolumes() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       testReplaceVolume(client, false);
     }
   }

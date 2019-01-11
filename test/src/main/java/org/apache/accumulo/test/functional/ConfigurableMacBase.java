@@ -28,15 +28,11 @@ import java.util.Properties;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
-import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.util.MonitorUtil;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
 import org.apache.accumulo.harness.AccumuloITBase;
 import org.apache.accumulo.minicluster.MiniAccumuloCluster;
@@ -49,7 +45,6 @@ import org.apache.accumulo.test.util.CertUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.zookeeper.KeeperException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.experimental.categories.Category;
@@ -72,12 +67,11 @@ public class ConfigurableMacBase extends AccumuloITBase {
 
   protected void configure(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {}
 
-  protected void beforeClusterStart(MiniAccumuloConfigImpl cfg) throws Exception {}
+  protected void beforeClusterStart(MiniAccumuloConfigImpl cfg) {}
 
   protected static final String ROOT_PASSWORD = "testRootPassword1";
 
-  public static void configureForEnvironment(MiniAccumuloConfigImpl cfg, Class<?> testClass,
-      File folder) {
+  public static void configureForEnvironment(MiniAccumuloConfigImpl cfg, File folder) {
     if ("true".equals(System.getProperty("org.apache.accumulo.test.functional.useSslForIT"))) {
       configureForSsl(cfg, folder);
     }
@@ -164,7 +158,7 @@ public class ConfigurableMacBase extends AccumuloITBase {
     Configuration coreSite = new Configuration(false);
     cfg.setProperty(Property.TSERV_NATIVEMAP_ENABLED, Boolean.TRUE.toString());
     configure(cfg, coreSite);
-    configureForEnvironment(cfg, getClass(), getSslDir(baseDir));
+    configureForEnvironment(cfg, getSslDir(baseDir));
     cluster = new MiniAccumuloClusterImpl(cfg);
     if (coreSite.size() > 0) {
       File csFile = new File(cluster.getConfig().getConfDir(), "core-site.xml");
@@ -181,25 +175,22 @@ public class ConfigurableMacBase extends AccumuloITBase {
   }
 
   @After
-  public void tearDown() throws Exception {
-    if (cluster != null)
+  public void tearDown() {
+    if (cluster != null) {
       try {
         cluster.stop();
       } catch (Exception e) {
         // ignored
       }
+    }
   }
 
   protected MiniAccumuloClusterImpl getCluster() {
     return cluster;
   }
 
-  protected AccumuloClient getClient() {
-    return getCluster().getAccumuloClient("root", new PasswordToken(ROOT_PASSWORD));
-  }
-
-  protected ClientContext getClientContext() {
-    return new ClientContext(getClientInfo());
+  protected AccumuloClient createClient() {
+    return getCluster().createAccumuloClient("root", new PasswordToken(ROOT_PASSWORD));
   }
 
   protected Properties getClientProperties() {
@@ -224,10 +215,5 @@ public class ConfigurableMacBase extends AccumuloITBase {
 
   protected Process exec(Class<?> clazz, String... args) throws IOException {
     return getCluster().exec(clazz, args);
-  }
-
-  protected String getMonitor()
-      throws KeeperException, InterruptedException, AccumuloSecurityException, AccumuloException {
-    return MonitorUtil.getLocation(getClientContext());
   }
 }

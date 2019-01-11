@@ -29,9 +29,9 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.admin.InstanceOperations;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
@@ -85,7 +85,7 @@ public class BadDeleteMarkersCreatedIT extends AccumuloClusterHarness {
 
   @Before
   public void alterConfig() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       InstanceOperations iops = client.instanceOperations();
       Map<String,String> config = iops.getSystemConfiguration();
       gcCycleDelay = config.get(Property.GC_CYCLE_DELAY.getKey());
@@ -96,7 +96,7 @@ public class BadDeleteMarkersCreatedIT extends AccumuloClusterHarness {
     }
     getCluster().getClusterControl().stopAllServers(ServerType.GARBAGE_COLLECTOR);
 
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       ClientInfo info = ClientInfo.from(client.properties());
       ZooCache zcache = new ZooCache(info.getZooKeepers(), info.getZooKeepersSessionTimeOut());
       zcache.clear();
@@ -104,11 +104,11 @@ public class BadDeleteMarkersCreatedIT extends AccumuloClusterHarness {
       byte[] gcLockData;
       do {
         gcLockData = ZooLock.getLockData(zcache, path, null);
-        if (null != gcLockData) {
+        if (gcLockData != null) {
           log.info("Waiting for GC ZooKeeper lock to expire");
           Thread.sleep(2000);
         }
-      } while (null != gcLockData);
+      } while (gcLockData != null);
 
       log.info("GC lock was lost");
 
@@ -118,11 +118,11 @@ public class BadDeleteMarkersCreatedIT extends AccumuloClusterHarness {
       gcLockData = null;
       do {
         gcLockData = ZooLock.getLockData(zcache, path, null);
-        if (null == gcLockData) {
+        if (gcLockData == null) {
           log.info("Waiting for GC ZooKeeper lock to be acquired");
           Thread.sleep(2000);
         }
-      } while (null == gcLockData);
+      } while (gcLockData == null);
 
       log.info("GC lock was acquired");
     }
@@ -130,12 +130,12 @@ public class BadDeleteMarkersCreatedIT extends AccumuloClusterHarness {
 
   @After
   public void restoreConfig() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       InstanceOperations iops = c.instanceOperations();
-      if (null != gcCycleDelay) {
+      if (gcCycleDelay != null) {
         iops.setProperty(Property.GC_CYCLE_DELAY.getKey(), gcCycleDelay);
       }
-      if (null != gcCycleStart) {
+      if (gcCycleStart != null) {
         iops.setProperty(Property.GC_CYCLE_START.getKey(), gcCycleStart);
       }
       log.info("Restarting garbage collector");
@@ -149,7 +149,7 @@ public class BadDeleteMarkersCreatedIT extends AccumuloClusterHarness {
   public void test() throws Exception {
     // make a table
     String tableName = getUniqueNames(1)[0];
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       log.info("Creating table to be deleted");
       c.tableOperations().create(tableName);
       final String tableId = c.tableOperations().tableIdMap().get(tableName);

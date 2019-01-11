@@ -27,7 +27,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.NamespaceNotFoundException;
 import org.apache.accumulo.core.client.TableNotFoundException;
@@ -176,7 +175,7 @@ public class ClientServiceHandler implements ClientService.Iface {
   public void createLocalUser(TInfo tinfo, TCredentials credentials, String principal,
       ByteBuffer password) throws ThriftSecurityException {
     AuthenticationToken token;
-    if (null != context.getSaslParams()) {
+    if (context.getSaslParams() != null) {
       try {
         token = new KerberosToken();
       } catch (IOException e) {
@@ -339,14 +338,13 @@ public class ClientServiceHandler implements ClientService.Iface {
             SecurityErrorCode.PERMISSION_DENIED);
       bulkImportStatus.updateBulkImportStatus(files, BulkImportState.INITIAL);
       log.debug("Got request to bulk import files to table({}): {}", tableId, files);
-      return transactionWatcher.run(Constants.BULK_ARBITRATOR_TYPE, tid, () -> {
-        bulkImportStatus.updateBulkImportStatus(files, BulkImportState.PROCESSING);
-        try {
-          return BulkImporter.bulkLoad(context, tid, tableId, files, errorDir, setTime);
-        } finally {
-          bulkImportStatus.removeBulkImportStatus(files);
-        }
-      });
+
+      bulkImportStatus.updateBulkImportStatus(files, BulkImportState.PROCESSING);
+      try {
+        return BulkImporter.bulkLoad(context, tid, tableId, files, setTime);
+      } finally {
+        bulkImportStatus.removeBulkImportStatus(files);
+      }
     } catch (AccumuloSecurityException e) {
       throw e.asThriftException();
     } catch (Exception ex) {
@@ -355,7 +353,7 @@ public class ClientServiceHandler implements ClientService.Iface {
   }
 
   @Override
-  public boolean isActive(TInfo tinfo, long tid) throws TException {
+  public boolean isActive(TInfo tinfo, long tid) {
     return transactionWatcher.isActive(tid);
   }
 
@@ -467,8 +465,7 @@ public class ClientServiceHandler implements ClientService.Iface {
       }
 
       // use the same set of tableIds that were validated above to avoid race conditions
-      Map<TreeSet<String>,Long> diskUsage = TableDiskUsage.getDiskUsage(tableIds, fs,
-          context.getClient());
+      Map<TreeSet<String>,Long> diskUsage = TableDiskUsage.getDiskUsage(tableIds, fs, context);
       List<TDiskUsage> retUsages = new ArrayList<>();
       for (Map.Entry<TreeSet<String>,Long> usageItem : diskUsage.entrySet()) {
         retUsages.add(new TDiskUsage(new ArrayList<>(usageItem.getKey()), usageItem.getValue()));

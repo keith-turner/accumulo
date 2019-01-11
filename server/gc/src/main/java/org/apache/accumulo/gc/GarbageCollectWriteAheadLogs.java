@@ -28,7 +28,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 
-import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.data.Key;
@@ -59,7 +58,6 @@ import org.apache.accumulo.server.master.state.TabletState;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
-import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,8 +84,7 @@ public class GarbageCollectWriteAheadLogs {
    * @param useTrash
    *          true to move files to trash rather than delete them
    */
-  GarbageCollectWriteAheadLogs(final ServerContext context, VolumeManager fs, boolean useTrash)
-      throws IOException {
+  GarbageCollectWriteAheadLogs(final ServerContext context, VolumeManager fs, boolean useTrash) {
     this.context = context;
     this.fs = fs;
     this.useTrash = useTrash;
@@ -115,8 +112,8 @@ public class GarbageCollectWriteAheadLogs {
    */
   @VisibleForTesting
   GarbageCollectWriteAheadLogs(ServerContext context, VolumeManager fs, boolean useTrash,
-      LiveTServerSet liveTServerSet, WalStateManager walMarker, Iterable<TabletLocationState> store)
-      throws IOException {
+      LiveTServerSet liveTServerSet, WalStateManager walMarker,
+      Iterable<TabletLocationState> store) {
     this.context = context;
     this.fs = fs;
     this.useTrash = useTrash;
@@ -277,7 +274,7 @@ public class GarbageCollectWriteAheadLogs {
 
   private Map<UUID,TServerInstance> removeEntriesInUse(Map<TServerInstance,Set<UUID>> candidates,
       Set<TServerInstance> liveServers, Map<UUID,Pair<WalState,Path>> logsState,
-      Map<UUID,Path> recoveryLogs) throws IOException, KeeperException, InterruptedException {
+      Map<UUID,Path> recoveryLogs) {
 
     Map<UUID,TServerInstance> result = new HashMap<>();
     for (Entry<TServerInstance,Set<UUID>> entry : candidates.entrySet()) {
@@ -336,13 +333,10 @@ public class GarbageCollectWriteAheadLogs {
     return result;
   }
 
-  protected int removeReplicationEntries(Map<UUID,TServerInstance> candidates)
-      throws IOException, KeeperException, InterruptedException {
-    AccumuloClient client;
+  protected int removeReplicationEntries(Map<UUID,TServerInstance> candidates) {
     try {
-      client = context.getClient();
       try {
-        final Scanner s = ReplicationTable.getScanner(client);
+        final Scanner s = ReplicationTable.getScanner(context);
         StatusSection.limit(s);
         for (Entry<Key,Value> entry : s) {
           UUID id = path2uuid(new Path(entry.getKey().getRow().toString()));
@@ -353,7 +347,7 @@ public class GarbageCollectWriteAheadLogs {
         return candidates.size();
       }
 
-      final Scanner scanner = client.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
+      final Scanner scanner = context.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
       scanner.fetchColumnFamily(MetadataSchema.ReplicationSection.COLF);
       scanner.setRange(MetadataSchema.ReplicationSection.getRange());
       for (Entry<Key,Value> entry : scanner) {

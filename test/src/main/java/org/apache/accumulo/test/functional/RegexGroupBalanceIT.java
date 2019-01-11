@@ -47,13 +47,13 @@ import com.google.common.collect.Table;
 public class RegexGroupBalanceIT extends ConfigurableMacBase {
 
   @Override
-  public void beforeClusterStart(MiniAccumuloConfigImpl cfg) throws Exception {
+  public void beforeClusterStart(MiniAccumuloConfigImpl cfg) {
     cfg.setNumTservers(4);
   }
 
   @Test(timeout = 120000)
   public void testBalancing() throws Exception {
-    try (AccumuloClient client = getClient()) {
+    try (AccumuloClient client = createClient()) {
       String tablename = getUniqueNames(1)[0];
       client.tableOperations().create(tablename);
 

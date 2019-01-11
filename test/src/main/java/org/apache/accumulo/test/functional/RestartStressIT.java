@@ -70,13 +70,13 @@ public class RestartStressIT extends AccumuloClusterHarness {
   private ExecutorService svc;
 
   @Before
-  public void setup() throws Exception {
+  public void setup() {
     svc = Executors.newFixedThreadPool(1);
   }
 
   @After
   public void teardown() throws Exception {
-    if (null == svc) {
+    if (svc == null) {
       return;
     }
 
@@ -98,7 +98,7 @@ public class RestartStressIT extends AccumuloClusterHarness {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       final String tableName = getUniqueNames(1)[0];
       final AuthenticationToken token = getAdminToken();
       c.tableOperations().create(tableName);

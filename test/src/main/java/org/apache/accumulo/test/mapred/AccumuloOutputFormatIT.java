@@ -33,11 +33,9 @@ import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.Scanner;
-import org.apache.accumulo.core.client.mapred.AccumuloInputFormat;
-import org.apache.accumulo.core.client.mapred.AccumuloOutputFormat;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
@@ -59,6 +57,10 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.junit.Test;
 
+/**
+ * This tests deprecated mapreduce code in core jar
+ */
+@Deprecated
 public class AccumuloOutputFormatIT extends ConfigurableMacBase {
 
   @Override
@@ -70,7 +72,7 @@ public class AccumuloOutputFormatIT extends ConfigurableMacBase {
   // Prevent regression of ACCUMULO-3709.
   @Test
   public void testMapred() throws Exception {
-    try (AccumuloClient accumuloClient = getClient()) {
+    try (AccumuloClient accumuloClient = createClient()) {
       // create a table and put some data in it
       accumuloClient.tableOperations().create(testName.getMethodName());
 
@@ -82,9 +84,14 @@ public class AccumuloOutputFormatIT extends ConfigurableMacBase {
       batchConfig.setMaxWriteThreads(1);
       // set the max memory so that we ensure we don't flush on the write.
       batchConfig.setMaxMemory(Long.MAX_VALUE);
-      AccumuloOutputFormat outputFormat = new AccumuloOutputFormat();
-      AccumuloOutputFormat.setClientInfo(job, getClientInfo());
-      AccumuloOutputFormat.setBatchWriterOptions(job, batchConfig);
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat outputFormat = new org.apache.accumulo.core.client.mapred.AccumuloOutputFormat();
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.setBatchWriterOptions(job,
+          batchConfig);
       RecordWriter<Text,Mutation> writer = outputFormat.getRecordWriter(null, job, "Test", null);
 
       try {
@@ -167,24 +174,30 @@ public class AccumuloOutputFormatIT extends ConfigurableMacBase {
       JobConf job = new JobConf(getConf());
       job.setJarByClass(this.getClass());
 
-      job.setInputFormat(AccumuloInputFormat.class);
+      job.setInputFormat(org.apache.accumulo.core.client.mapred.AccumuloInputFormat.class);
 
       ClientInfo info = ClientInfo
           .from(Accumulo.newClientProperties().to(instanceName, zooKeepers).as(user, pass).build());
 
-      AccumuloInputFormat.setClientInfo(job, info);
-      AccumuloInputFormat.setInputTableName(job, table1);
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setZooKeeperInstance(job,
+          info.getInstanceName(), info.getZooKeepers());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setConnectorInfo(job,
+          info.getPrincipal(), info.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapred.AccumuloInputFormat.setInputTableName(job, table1);
 
       job.setMapperClass(TestMapper.class);
       job.setMapOutputKeyClass(Key.class);
       job.setMapOutputValueClass(Value.class);
-      job.setOutputFormat(AccumuloOutputFormat.class);
+      job.setOutputFormat(org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.class);
       job.setOutputKeyClass(Text.class);
       job.setOutputValueClass(Mutation.class);
 
-      AccumuloOutputFormat.setClientInfo(job, info);
-      AccumuloOutputFormat.setCreateTables(job, false);
-      AccumuloOutputFormat.setDefaultTableName(job, table2);
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.setZooKeeperInstance(job,
+          info.getInstanceName(), info.getZooKeepers());
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.setConnectorInfo(job,
+          info.getPrincipal(), info.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.setCreateTables(job, false);
+      org.apache.accumulo.core.client.mapred.AccumuloOutputFormat.setDefaultTableName(job, table2);
 
       job.setNumReduceTasks(0);
 
@@ -202,7 +215,7 @@ public class AccumuloOutputFormatIT extends ConfigurableMacBase {
 
   @Test
   public void testMR() throws Exception {
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       String instanceName = getCluster().getInstanceName();
       String table1 = instanceName + "_t1";
       String table2 = instanceName + "_t2";

@@ -20,17 +20,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
-import org.apache.accumulo.core.client.mapred.AccumuloInputFormat;
-import org.apache.accumulo.core.client.mapred.AccumuloMultiTableInputFormat;
-import org.apache.accumulo.core.client.mapred.RangeInputSplit;
-import org.apache.accumulo.core.client.mapreduce.InputTableConfig;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
@@ -48,6 +44,10 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.junit.Test;
 
+/**
+ * This tests deprecated mapreduce code in core jar
+ */
+@Deprecated
 public class AccumuloMultiTableInputFormatIT extends AccumuloClusterHarness {
 
   private static AssertionError e1 = null;
@@ -59,10 +59,10 @@ public class AccumuloMultiTableInputFormatIT extends AccumuloClusterHarness {
       int count = 0;
 
       @Override
-      public void map(Key k, Value v, OutputCollector<Key,Value> output, Reporter reporter)
-          throws IOException {
+      public void map(Key k, Value v, OutputCollector<Key,Value> output, Reporter reporter) {
         try {
-          String tableName = ((RangeInputSplit) reporter.getInputSplit()).getTableName();
+          String tableName = ((org.apache.accumulo.core.client.mapred.RangeInputSplit) reporter
+              .getInputSplit()).getTableName();
           if (key != null)
             assertEquals(key.getRow().toString(), new String(v.get()));
           assertEquals(new Text(String.format("%s_%09x", tableName, count + 1)), k.getRow());
@@ -78,7 +78,7 @@ public class AccumuloMultiTableInputFormatIT extends AccumuloClusterHarness {
       public void configure(JobConf job) {}
 
       @Override
-      public void close() throws IOException {
+      public void close() {
         try {
           assertEquals(100, count);
         } catch (AssertionError e) {
@@ -102,18 +102,24 @@ public class AccumuloMultiTableInputFormatIT extends AccumuloClusterHarness {
       JobConf job = new JobConf(getConf());
       job.setJarByClass(this.getClass());
 
-      job.setInputFormat(AccumuloInputFormat.class);
+      job.setInputFormat(
+          org.apache.accumulo.core.client.mapred.AccumuloMultiTableInputFormat.class);
 
-      AccumuloMultiTableInputFormat.setClientInfo(job, getClientInfo());
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapred.AccumuloMultiTableInputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapred.AccumuloMultiTableInputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
 
-      InputTableConfig tableConfig1 = new InputTableConfig();
-      InputTableConfig tableConfig2 = new InputTableConfig();
+      org.apache.accumulo.core.client.mapreduce.InputTableConfig tableConfig1 = new org.apache.accumulo.core.client.mapreduce.InputTableConfig();
+      org.apache.accumulo.core.client.mapreduce.InputTableConfig tableConfig2 = new org.apache.accumulo.core.client.mapreduce.InputTableConfig();
 
-      Map<String,InputTableConfig> configMap = new HashMap<>();
+      Map<String,org.apache.accumulo.core.client.mapreduce.InputTableConfig> configMap = new HashMap<>();
       configMap.put(table1, tableConfig1);
       configMap.put(table2, tableConfig2);
 
-      AccumuloMultiTableInputFormat.setInputTableConfigs(job, configMap);
+      org.apache.accumulo.core.client.mapred.AccumuloMultiTableInputFormat.setInputTableConfigs(job,
+          configMap);
 
       job.setMapperClass(TestMapper.class);
       job.setMapOutputKeyClass(Key.class);
@@ -139,7 +145,7 @@ public class AccumuloMultiTableInputFormatIT extends AccumuloClusterHarness {
     String[] tableNames = getUniqueNames(2);
     String table1 = tableNames[0];
     String table2 = tableNames[1];
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(table1);
       c.tableOperations().create(table2);
       BatchWriter bw = c.createBatchWriter(table1, new BatchWriterConfig());

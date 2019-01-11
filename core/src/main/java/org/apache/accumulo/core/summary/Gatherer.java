@@ -43,7 +43,6 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.clientImpl.ServerClient;
@@ -56,8 +55,8 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TRowRange;
 import org.apache.accumulo.core.dataImpl.thrift.TSummaries;
 import org.apache.accumulo.core.dataImpl.thrift.TSummaryRequest;
-import org.apache.accumulo.core.metadata.schema.MetadataScanner;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
@@ -163,12 +162,11 @@ public class Gatherer {
    *         associated with a file represent the tablets that use the file.
    */
   private Map<String,Map<String,List<TRowRange>>> getFilesGroupedByLocation(
-      Predicate<String> fileSelector)
-      throws TableNotFoundException, AccumuloException, AccumuloSecurityException {
+      Predicate<String> fileSelector) {
 
-    Iterable<TabletMetadata> tmi = MetadataScanner.builder().from(ctx).scanMetadataTable()
-        .overRange(tableId, startRow, endRow).fetchFiles().fetchLocation().fetchLast().fetchPrev()
-        .build();
+    Iterable<TabletMetadata> tmi = TabletsMetadata.builder().forTable(tableId)
+        .overlapping(startRow, endRow).fetchFiles().fetchLocation().fetchLast().fetchPrev()
+        .build(ctx);
 
     // get a subset of files
     Map<String,List<TabletMetadata>> files = new HashMap<>();
@@ -204,7 +202,7 @@ public class Gatherer {
 
       if (location == null) {
         if (tservers == null) {
-          tservers = ctx.getClient().instanceOperations().getTabletServers();
+          tservers = ctx.instanceOperations().getTabletServers();
           Collections.sort(tservers);
         }
 
@@ -522,12 +520,10 @@ public class Gatherer {
         (sc1, sc2) -> SummaryCollection.merge(sc1, sc2, factory), SummaryCollection::new);
   }
 
-  private int countFiles()
-      throws TableNotFoundException, AccumuloException, AccumuloSecurityException {
+  private int countFiles() {
     // TODO use a batch scanner + iterator to parallelize counting files
-    return MetadataScanner.builder().from(ctx).scanMetadataTable()
-        .overRange(tableId, startRow, endRow).fetchFiles().fetchPrev().build().stream()
-        .mapToInt(tm -> tm.getFiles().size()).sum();
+    return TabletsMetadata.builder().forTable(tableId).overlapping(startRow, endRow).fetchFiles()
+        .fetchPrev().build(ctx).stream().mapToInt(tm -> tm.getFiles().size()).sum();
   }
 
   private class GatherRequest implements Supplier<SummaryCollection> {
@@ -571,12 +567,7 @@ public class Gatherer {
   }
 
   public Future<SummaryCollection> gather(ExecutorService es) {
-    int numFiles;
-    try {
-      numFiles = countFiles();
-    } catch (TableNotFoundException | AccumuloException | AccumuloSecurityException e) {
-      throw new RuntimeException(e);
-    }
+    int numFiles = countFiles();
 
     log.debug("Gathering summaries from {} files", numFiles);
 
@@ -669,8 +660,7 @@ public class Gatherer {
       Cache<String,Long> fileLenCache) {
     Path path = new Path(file);
     Configuration conf = CachedConfiguration.getInstance();
-    return SummaryReader.load(volMgr.get(path), conf, ctx.getConfiguration(), factory, path,
-        summarySelector, summaryCache, indexCache, fileLenCache, cryptoService)
-        .getSummaries(ranges);
+    return SummaryReader.load(volMgr.get(path), conf, factory, path, summarySelector, summaryCache,
+        indexCache, fileLenCache, cryptoService).getSummaries(ranges);
   }
 }

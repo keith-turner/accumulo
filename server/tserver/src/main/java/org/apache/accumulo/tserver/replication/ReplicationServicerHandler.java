@@ -37,9 +37,6 @@ import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- */
 public class ReplicationServicerHandler implements Iface {
   private static final Logger log = LoggerFactory.getLogger(ReplicationServicerHandler.class);
 
@@ -51,7 +48,7 @@ public class ReplicationServicerHandler implements Iface {
 
   @Override
   public long replicateLog(String tableIdStr, WalEdits data, TCredentials tcreds)
-      throws RemoteReplicationException, TException {
+      throws TException {
     Table.ID tableId = Table.ID.of(tableIdStr);
     log.debug("Got replication request to tableID {} with {} edits", tableId, data.getEditsSize());
     tabletServer.getSecurityOperation().authenticateUser(tabletServer.getContext().rpcCreds(),
@@ -74,7 +71,7 @@ public class ReplicationServicerHandler implements Iface {
     String propertyForHandlerTable = Property.TSERV_REPLICATION_REPLAYERS.getKey() + tableId;
 
     String handlerClassForTable = replicationHandlers.get(propertyForHandlerTable);
-    if (null == handlerClassForTable) {
+    if (handlerClassForTable == null) {
       if (!replicationHandlers.isEmpty()) {
         log.debug("Could not find replication replayer for {}", tableId);
       }
@@ -119,8 +116,7 @@ public class ReplicationServicerHandler implements Iface {
   }
 
   @Override
-  public long replicateKeyValues(String tableId, KeyValues data, TCredentials creds)
-      throws RemoteReplicationException, TException {
+  public long replicateKeyValues(String tableId, KeyValues data, TCredentials creds) {
     throw new UnsupportedOperationException();
   }
 

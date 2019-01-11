@@ -61,7 +61,6 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
-import org.apache.accumulo.core.metadata.schema.MetadataScanner;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ChoppedColumnFamily;
@@ -72,6 +71,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Sc
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletDeletedException;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.replication.ReplicationTable;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
@@ -97,6 +97,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Iterables;
 
 /**
  * provides a reference to the metadata table for updates by tablet servers
@@ -289,7 +290,7 @@ public class MetadataTableUtil {
   }
 
   public static SortedMap<FileRef,DataFileValue> getDataFileSizes(KeyExtent extent,
-      ServerContext context) throws IOException {
+      ServerContext context) {
     TreeMap<FileRef,DataFileValue> sizes = new TreeMap<>();
 
     try (Scanner mdScanner = new ScannerImpl(context, MetadataTable.ID, Authorizations.EMPTY)) {
@@ -358,7 +359,7 @@ public class MetadataTableUtil {
   }
 
   public static void addDeleteEntries(KeyExtent extent, Set<FileRef> datafilesToDelete,
-      ServerContext context) throws IOException {
+      ServerContext context) {
 
     Table.ID tableId = extent.getTableId();
 
@@ -370,14 +371,13 @@ public class MetadataTableUtil {
     }
   }
 
-  public static void addDeleteEntry(ServerContext context, Table.ID tableId, String path)
-      throws IOException {
+  public static void addDeleteEntry(ServerContext context, Table.ID tableId, String path) {
     update(context, createDeleteMutation(context, tableId, path),
         new KeyExtent(tableId, null, null));
   }
 
   public static Mutation createDeleteMutation(ServerContext context, Table.ID tableId,
-      String pathToRemove) throws IOException {
+      String pathToRemove) {
     Path path = context.getVolumeManager().getFullPath(tableId, pathToRemove);
     Mutation delFlag = new Mutation(new Text(MetadataSchema.DeletesSection.getRowPrefix() + path));
     delFlag.put(EMPTY_TEXT, EMPTY_TEXT, new Value(new byte[] {}));
@@ -444,7 +444,7 @@ public class MetadataTableUtil {
   }
 
   public static void deleteTable(Table.ID tableId, boolean insertDeletes, ServerContext context,
-      ZooLock lock) throws AccumuloException, IOException {
+      ZooLock lock) throws AccumuloException {
     try (Scanner ms = new ScannerImpl(context, MetadataTable.ID, Authorizations.EMPTY);
         BatchWriter bw = new BatchWriterImpl(context, MetadataTable.ID,
             new BatchWriterConfig().setMaxMemory(1000000)
@@ -551,27 +551,19 @@ public class MetadataTableUtil {
       }
 
     } else {
-      Table.ID systemTableToCheck = extent.isMeta() ? RootTable.ID : MetadataTable.ID;
-      try (Scanner scanner = new ScannerImpl(context, systemTableToCheck, Authorizations.EMPTY)) {
-        scanner.fetchColumnFamily(LogColumnFamily.NAME);
-        scanner.fetchColumnFamily(DataFileColumnFamily.NAME);
-        scanner.setRange(extent.toMetadataRange());
+      try (TabletsMetadata tablets = TabletsMetadata.builder().forTablet(extent).fetchFiles()
+          .fetchLogs().fetchPrev().build(context)) {
 
-        for (Entry<Key,Value> entry : scanner) {
-          if (!entry.getKey().getRow().equals(extent.getMetadataEntry())) {
-            throw new RuntimeException("Unexpected row " + entry.getKey().getRow() + " expected "
-                + extent.getMetadataEntry());
-          }
+        TabletMetadata tablet = Iterables.getOnlyElement(tablets);
 
-          if (entry.getKey().getColumnFamily().equals(LogColumnFamily.NAME)) {
-            result.add(LogEntry.fromKeyValue(entry.getKey(), entry.getValue()));
-          } else if (entry.getKey().getColumnFamily().equals(DataFileColumnFamily.NAME)) {
-            DataFileValue dfv = new DataFileValue(entry.getValue().get());
-            sizes.put(new FileRef(fs, entry.getKey()), dfv);
-          } else {
-            throw new RuntimeException("Unexpected col fam " + entry.getKey().getColumnFamily());
-          }
-        }
+        if (!tablet.getExtent().equals(extent))
+          throw new RuntimeException(
+              "Unexpected extent " + tablet.getExtent() + " expected " + extent);
+
+        result.addAll(tablet.getLogs());
+        tablet.getFilesMap().forEach((k, v) -> {
+          sizes.put(new FileRef(k, fs.getFullPath(tablet.getTableId(), k)), v);
+        });
       }
     }
 
@@ -650,8 +642,7 @@ public class MetadataTableUtil {
       rootTableEntries = getLogEntries(context, new KeyExtent(MetadataTable.ID, null, null))
           .iterator();
       try {
-        Scanner scanner = context.getClient().createScanner(MetadataTable.NAME,
-            Authorizations.EMPTY);
+        Scanner scanner = context.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
         log.info("Setting range to {}", MetadataSchema.TabletsSection.getRange());
         scanner.setRange(MetadataSchema.TabletsSection.getRange());
         scanner.fetchColumnFamily(LogColumnFamily.NAME);
@@ -694,8 +685,7 @@ public class MetadataTableUtil {
     if (extent.isRootTablet()) {
       retryZooKeeperUpdate(context, zooLock, new ZooOperation() {
         @Override
-        public void run(IZooReaderWriter rw)
-            throws KeeperException, InterruptedException, IOException {
+        public void run(IZooReaderWriter rw) throws KeeperException, InterruptedException {
           String root = getZookeeperLogLocation(context);
           for (LogEntry entry : entries) {
             String path = root + "/" + entry.getUniqueID();
@@ -713,7 +703,8 @@ public class MetadataTableUtil {
     }
   }
 
-  private static void getFiles(Set<String> files, List<String> tabletFiles, Table.ID srcTableId) {
+  private static void getFiles(Set<String> files, Collection<String> tabletFiles,
+      Table.ID srcTableId) {
     for (String file : tabletFiles) {
       if (srcTableId != null && !file.startsWith("../") && !file.contains(":")) {
         file = "../" + srcTableId + file;
@@ -766,13 +757,9 @@ public class MetadataTableUtil {
       range = TabletsSection.getRange(tableId);
     }
 
-    try {
-      return MetadataScanner.builder().from(client).scanTable(tableName).overRange(range)
-          .checkConsistency().saveKeyValues().fetchFiles().fetchLocation().fetchLast().fetchCloned()
-          .fetchPrev().fetchTime().build();
-    } catch (AccumuloException | AccumuloSecurityException e) {
-      throw new RuntimeException(e);
-    }
+    return TabletsMetadata.builder().scanTable(tableName).overRange(range).checkConsistency()
+        .saveKeyValues().fetchFiles().fetchLocation().fetchLast().fetchCloned().fetchPrev()
+        .fetchTime().build(client);
   }
 
   @VisibleForTesting
@@ -882,19 +869,18 @@ public class MetadataTableUtil {
   public static void cloneTable(ServerContext context, Table.ID srcTableId, Table.ID tableId,
       VolumeManager volumeManager) throws Exception {
 
-    AccumuloClient client = context.getClient();
-    try (BatchWriter bw = client.createBatchWriter(MetadataTable.NAME, new BatchWriterConfig())) {
+    try (BatchWriter bw = context.createBatchWriter(MetadataTable.NAME, new BatchWriterConfig())) {
 
       while (true) {
 
         try {
-          initializeClone(null, srcTableId, tableId, client, bw);
+          initializeClone(null, srcTableId, tableId, context, bw);
 
           // the following loop looks changes in the file that occurred during the copy.. if files
           // were dereferenced then they could have been GCed
 
           while (true) {
-            int rewrites = checkClone(null, srcTableId, tableId, client, bw);
+            int rewrites = checkClone(null, srcTableId, tableId, context, bw);
 
             if (rewrites == 0)
               break;
@@ -918,7 +904,7 @@ public class MetadataTableUtil {
       }
 
       // delete the clone markers and create directory entries
-      Scanner mscanner = client.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
+      Scanner mscanner = context.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
       mscanner.setRange(new KeyExtent(tableId, null, null).toMetadataRange());
       mscanner.fetchColumnFamily(ClonedColumnFamily.NAME);
 
@@ -969,7 +955,7 @@ public class MetadataTableUtil {
   }
 
   public static List<FileRef> getBulkFilesLoaded(ServerContext context, AccumuloClient client,
-      KeyExtent extent, long tid) throws IOException {
+      KeyExtent extent, long tid) {
     List<FileRef> result = new ArrayList<>();
     try (Scanner mscanner = new IsolatedScanner(client.createScanner(
         extent.isMeta() ? RootTable.NAME : MetadataTable.NAME, Authorizations.EMPTY))) {
@@ -990,7 +976,7 @@ public class MetadataTableUtil {
   }
 
   public static Map<Long,? extends Collection<FileRef>> getBulkFilesLoaded(ServerContext context,
-      KeyExtent extent) throws IOException {
+      KeyExtent extent) {
     Text metadataRow = extent.getMetadataEntry();
     Map<Long,List<FileRef>> result = new HashMap<>();
 
@@ -1036,7 +1022,7 @@ public class MetadataTableUtil {
   /**
    * During an upgrade from 1.6 to 1.7, we need to add the replication table
    */
-  public static void createReplicationTable(ServerContext context) throws IOException {
+  public static void createReplicationTable(ServerContext context) {
 
     VolumeChooserEnvironment chooserEnv = new VolumeChooserEnvironment(ReplicationTable.ID,
         context);

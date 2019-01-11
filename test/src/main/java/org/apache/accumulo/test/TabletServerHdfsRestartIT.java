@@ -44,9 +44,11 @@ public class TabletServerHdfsRestartIT extends ConfigurableMacBase {
 
   @Test(timeout = 2 * 60 * 1000)
   public void test() throws Exception {
-    try (AccumuloClient client = this.getClient()) {
-      // Yes, there's a tabletserver
-      assertEquals(1, client.instanceOperations().getTabletServers().size());
+    try (AccumuloClient client = this.createClient()) {
+      // wait until a tablet server is up
+      while (client.instanceOperations().getTabletServers().isEmpty()) {
+        Thread.sleep(50);
+      }
       final String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
       BatchWriter bw = client.createBatchWriter(tableName, null);

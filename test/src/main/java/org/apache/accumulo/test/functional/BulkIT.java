@@ -23,8 +23,8 @@ import org.apache.accumulo.core.cli.ScannerOpts;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.TableNotFoundException;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.util.CachedConfiguration;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
 import org.apache.accumulo.test.TestIngest;
@@ -58,14 +58,14 @@ public class BulkIT extends AccumuloClusterHarness {
 
   @After
   public void restoreConf() {
-    if (null != origConf) {
+    if (origConf != null) {
       CachedConfiguration.setInstance(origConf);
     }
   }
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       runTest(client, getClientInfo(), getCluster().getFileSystem(),
           getCluster().getTemporaryPath(), getUniqueNames(1)[0], this.getClass().getName(),
           testName.getMethodName(), false);
@@ -74,7 +74,7 @@ public class BulkIT extends AccumuloClusterHarness {
 
   @Test
   public void testOld() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       runTest(client, getClientInfo(), getCluster().getFileSystem(),
           getCluster().getTemporaryPath(), getUniqueNames(1)[0], this.getClass().getName(),
           testName.getMethodName(), true);
@@ -140,7 +140,5 @@ public class BulkIT extends AccumuloClusterHarness {
     } else {
       c.tableOperations().importDirectory(files.toString()).to(tableName).load();
     }
-
   }
-
 }

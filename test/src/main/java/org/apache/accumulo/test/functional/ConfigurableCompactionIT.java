@@ -75,13 +75,13 @@ public class ConfigurableCompactionIT extends ConfigurableMacBase {
     int count = 3;
 
     @Override
-    public boolean shouldCompact(MajorCompactionRequest request) throws IOException {
+    public boolean shouldCompact(MajorCompactionRequest request) {
       return request.getFiles().size() == count;
 
     }
 
     @Override
-    public CompactionPlan getCompactionPlan(MajorCompactionRequest request) throws IOException {
+    public CompactionPlan getCompactionPlan(MajorCompactionRequest request) {
       CompactionPlan result = new CompactionPlan();
       result.inputFiles.addAll(request.getFiles().keySet());
       return result;
@@ -91,7 +91,7 @@ public class ConfigurableCompactionIT extends ConfigurableMacBase {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       final String tableName = getUniqueNames(1)[0];
       c.tableOperations().create(tableName);
       c.tableOperations().setProperty(tableName, Property.TABLE_COMPACTION_STRATEGY.getKey(),
@@ -105,7 +105,7 @@ public class ConfigurableCompactionIT extends ConfigurableMacBase {
 
   @Test
   public void testPerTableClasspath() throws Exception {
-    try (AccumuloClient c = getClient()) {
+    try (AccumuloClient c = createClient()) {
       final String tableName = getUniqueNames(1)[0];
       File destFile = installJar(getCluster().getConfig().getAccumuloDir(),
           "/TestCompactionStrat.jar");
@@ -124,7 +124,7 @@ public class ConfigurableCompactionIT extends ConfigurableMacBase {
       for (char ch = 'a'; ch < 'l'; ch++)
         writeFlush(c, tableName, ch + "");
 
-      while (countFiles(c, tableName) != 7) {
+      while (countFiles(c) != 7) {
         UtilWaitThread.sleep(200);
       }
     }
@@ -164,12 +164,12 @@ public class ConfigurableCompactionIT extends ConfigurableMacBase {
 
   private void runTest(final AccumuloClient c, final String tableName, final int n)
       throws Exception {
-    for (int i = countFiles(c, tableName); i < n - 1; i++)
+    for (int i = countFiles(c); i < n - 1; i++)
       makeFile(c, tableName);
-    assertEquals(n - 1, countFiles(c, tableName));
+    assertEquals(n - 1, countFiles(c));
     makeFile(c, tableName);
     for (int i = 0; i < 10; i++) {
-      int count = countFiles(c, tableName);
+      int count = countFiles(c);
       assertTrue(count == 1 || count == n);
       if (count == 1)
         break;
@@ -177,7 +177,7 @@ public class ConfigurableCompactionIT extends ConfigurableMacBase {
     }
   }
 
-  private int countFiles(AccumuloClient c, String tableName) throws Exception {
+  private int countFiles(AccumuloClient c) throws Exception {
     try (Scanner s = c.createScanner(MetadataTable.NAME, Authorizations.EMPTY)) {
       s.fetchColumnFamily(MetadataSchema.TabletsSection.DataFileColumnFamily.NAME);
       return Iterators.size(s.iterator());

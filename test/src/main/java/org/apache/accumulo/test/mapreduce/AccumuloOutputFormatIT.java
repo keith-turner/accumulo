@@ -30,8 +30,7 @@ import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Scanner;
-import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat;
-import org.apache.accumulo.core.client.mapreduce.AccumuloOutputFormat;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
@@ -46,6 +45,10 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.junit.Test;
 
+/**
+ * This tests deprecated mapreduce code in core jar
+ */
+@Deprecated
 public class AccumuloOutputFormatIT extends AccumuloClusterHarness {
   private static AssertionError e1 = null;
 
@@ -55,7 +58,7 @@ public class AccumuloOutputFormatIT extends AccumuloClusterHarness {
       int count = 0;
 
       @Override
-      protected void map(Key k, Value v, Context context) throws IOException, InterruptedException {
+      protected void map(Key k, Value v, Context context) {
         try {
           if (key != null)
             assertEquals(key.getRow().toString(), new String(v.get()));
@@ -91,21 +94,30 @@ public class AccumuloOutputFormatIT extends AccumuloClusterHarness {
           this.getClass().getSimpleName() + "_" + System.currentTimeMillis());
       job.setJarByClass(this.getClass());
 
-      job.setInputFormatClass(AccumuloInputFormat.class);
+      job.setInputFormatClass(org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.class);
 
-      AccumuloInputFormat.setClientInfo(job, getClientInfo());
-      AccumuloInputFormat.setInputTableName(job, table1);
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat.setInputTableName(job, table1);
 
       job.setMapperClass(TestMapper.class);
       job.setMapOutputKeyClass(Key.class);
       job.setMapOutputValueClass(Value.class);
-      job.setOutputFormatClass(AccumuloOutputFormat.class);
+      job.setOutputFormatClass(
+          org.apache.accumulo.core.client.mapreduce.AccumuloOutputFormat.class);
       job.setOutputKeyClass(Text.class);
       job.setOutputValueClass(Mutation.class);
 
-      AccumuloOutputFormat.setClientInfo(job, getClientInfo());
-      AccumuloOutputFormat.setCreateTables(job, false);
-      AccumuloOutputFormat.setDefaultTableName(job, table2);
+      org.apache.accumulo.core.client.mapreduce.AccumuloOutputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapreduce.AccumuloOutputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapreduce.AccumuloOutputFormat.setCreateTables(job, false);
+      org.apache.accumulo.core.client.mapreduce.AccumuloOutputFormat.setDefaultTableName(job,
+          table2);
 
       job.setNumReduceTasks(0);
 
@@ -128,7 +140,7 @@ public class AccumuloOutputFormatIT extends AccumuloClusterHarness {
     String[] tableNames = getUniqueNames(2);
     String table1 = tableNames[0];
     String table2 = tableNames[1];
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.tableOperations().create(table1);
       c.tableOperations().create(table2);
       BatchWriter bw = c.createBatchWriter(table1, new BatchWriterConfig());

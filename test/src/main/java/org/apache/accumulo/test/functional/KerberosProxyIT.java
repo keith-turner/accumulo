@@ -119,7 +119,7 @@ public class KerberosProxyIT extends AccumuloITBase {
     kdc = new TestingKdc();
     kdc.start();
     krbEnabledForITs = System.getProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION);
-    if (null == krbEnabledForITs || !Boolean.parseBoolean(krbEnabledForITs)) {
+    if (krbEnabledForITs == null || !Boolean.parseBoolean(krbEnabledForITs)) {
       System.setProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION, "true");
     }
 
@@ -136,11 +136,11 @@ public class KerberosProxyIT extends AccumuloITBase {
   }
 
   @AfterClass
-  public static void stopKdc() throws Exception {
-    if (null != kdc) {
+  public static void stopKdc() {
+    if (kdc != null) {
       kdc.stop();
     }
-    if (null != krbEnabledForITs) {
+    if (krbEnabledForITs != null) {
       System.setProperty(MiniClusterHarness.USE_KERBEROS_FOR_IT_OPTION, krbEnabledForITs);
     }
     UserGroupInformation.setConfiguration(new Configuration(false));
@@ -209,14 +209,14 @@ public class KerberosProxyIT extends AccumuloITBase {
         success = true;
       } catch (TTransportException e) {
         Throwable cause = e.getCause();
-        if (null != cause && cause instanceof ConnectException) {
+        if (cause != null && cause instanceof ConnectException) {
           log.info("Proxy not yet up, waiting");
           Thread.sleep(3000);
           proxyProcess = checkProxyAndRestart(proxyProcess, cfg);
           continue;
         }
       } finally {
-        if (null != ugiTransport) {
+        if (ugiTransport != null) {
           ugiTransport.close();
         }
       }
@@ -329,14 +329,14 @@ public class KerberosProxyIT extends AccumuloITBase {
 
   @After
   public void stopMac() throws Exception {
-    if (null != proxyProcess) {
+    if (proxyProcess != null) {
       log.info("Destroying proxy process");
       proxyProcess.destroy();
       log.info("Waiting for proxy termination");
       proxyProcess.waitFor();
       log.info("Proxy terminated");
     }
-    if (null != mac) {
+    if (mac != null) {
       mac.stop();
     }
   }
@@ -469,7 +469,7 @@ public class KerberosProxyIT extends AccumuloITBase {
     try {
       client.login(kdc.qualifyUser(user), Collections.<String,String> emptyMap());
     } finally {
-      if (null != ugiTransport) {
+      if (ugiTransport != null) {
         ugiTransport.close();
       }
     }
@@ -518,7 +518,7 @@ public class KerberosProxyIT extends AccumuloITBase {
     try {
       client.login(rootUser.getPrincipal(), Collections.<String,String> emptyMap());
     } finally {
-      if (null != ugiTransport) {
+      if (ugiTransport != null) {
         ugiTransport.close();
       }
     }
@@ -544,7 +544,7 @@ public class KerberosProxyIT extends AccumuloITBase {
 
     // Create a table and user, grant permission to our user to read that table.
     rootUgi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      AccumuloClient client = mac.getAccumuloClient(rootUgi.getUserName(), new KerberosToken());
+      AccumuloClient client = mac.createAccumuloClient(rootUgi.getUserName(), new KerberosToken());
       client.tableOperations().create(tableName);
       client.securityOperations().createLocalUser(userWithoutCredentials1,
           new PasswordToken("ignored"));
@@ -557,7 +557,7 @@ public class KerberosProxyIT extends AccumuloITBase {
       return null;
     });
     realUgi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      AccumuloClient client = mac.getAccumuloClient(proxyPrincipal, new KerberosToken());
+      AccumuloClient client = mac.createAccumuloClient(proxyPrincipal, new KerberosToken());
       try (Scanner s = client.createScanner(tableName, Authorizations.EMPTY)) {
         s.iterator().hasNext();
         fail("Expected to see an exception");
@@ -572,7 +572,7 @@ public class KerberosProxyIT extends AccumuloITBase {
     });
     // Allowed to be proxied and has read permission
     proxyUser1.doAs((PrivilegedExceptionAction<Void>) () -> {
-      AccumuloClient client = mac.getAccumuloClient(userWithoutCredentials1,
+      AccumuloClient client = mac.createAccumuloClient(userWithoutCredentials1,
           new KerberosToken(userWithoutCredentials1));
       Scanner s = client.createScanner(tableName, Authorizations.EMPTY);
       assertFalse(s.iterator().hasNext());
@@ -580,7 +580,7 @@ public class KerberosProxyIT extends AccumuloITBase {
     });
     // Allowed to be proxied but does not have read permission
     proxyUser2.doAs((PrivilegedExceptionAction<Void>) () -> {
-      AccumuloClient client = mac.getAccumuloClient(userWithoutCredentials2,
+      AccumuloClient client = mac.createAccumuloClient(userWithoutCredentials2,
           new KerberosToken(userWithoutCredentials3));
       try (Scanner s = client.createScanner(tableName, Authorizations.EMPTY)) {
         s.iterator().hasNext();
@@ -598,7 +598,7 @@ public class KerberosProxyIT extends AccumuloITBase {
     proxyUser3.doAs((PrivilegedExceptionAction<Void>) () -> {
       try {
         KerberosToken token = new KerberosToken(userWithoutCredentials3);
-        AccumuloClient client = mac.getAccumuloClient(userWithoutCredentials3, token);
+        AccumuloClient client = mac.createAccumuloClient(userWithoutCredentials3, token);
         client.securityOperations().authenticateUser(userWithoutCredentials3, token);
         fail("Should not be able to create a Connector as this user cannot be proxied");
       } catch (org.apache.accumulo.core.client.AccumuloSecurityException e) {

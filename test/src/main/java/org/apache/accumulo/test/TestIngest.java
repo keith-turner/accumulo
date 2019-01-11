@@ -183,7 +183,7 @@ public class TestIngest {
     }
   }
 
-  public static void main(String[] args) throws Exception {
+  public static void main(String[] args) {
 
     Opts opts = new Opts();
     BatchWriterOpts bwOpts = new BatchWriterOpts();
@@ -191,16 +191,14 @@ public class TestIngest {
 
     String name = TestIngest.class.getSimpleName();
     DistributedTrace.enable(name);
-
     try {
       opts.startTracing(name);
-
       if (opts.debug)
         Logger.getLogger(TabletServerBatchWriter.class.getName()).setLevel(Level.TRACE);
 
-      // test batch update
-
-      ingest(opts.getClient(), opts, bwOpts);
+      try (AccumuloClient client = opts.createClient()) {
+        ingest(client, opts, bwOpts);
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {

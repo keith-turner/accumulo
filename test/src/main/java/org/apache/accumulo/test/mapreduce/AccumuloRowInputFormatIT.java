@@ -21,7 +21,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -31,8 +30,7 @@ import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.MutationsRejectedException;
-import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat;
-import org.apache.accumulo.core.client.mapreduce.AccumuloRowInputFormat;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.KeyValue;
 import org.apache.accumulo.core.data.Mutation;
@@ -51,6 +49,10 @@ import org.apache.hadoop.util.ToolRunner;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+/**
+ * This tests deprecated mapreduce code in core jar
+ */
+@Deprecated
 public class AccumuloRowInputFormatIT extends AccumuloClusterHarness {
 
   private static final String ROW1 = "row1";
@@ -104,8 +106,7 @@ public class AccumuloRowInputFormatIT extends AccumuloClusterHarness {
       int count = 0;
 
       @Override
-      protected void map(Text k, PeekingIterator<Entry<Key,Value>> v, Context context)
-          throws IOException, InterruptedException {
+      protected void map(Text k, PeekingIterator<Entry<Key,Value>> v, Context context) {
         try {
           switch (count) {
             case 0:
@@ -130,7 +131,7 @@ public class AccumuloRowInputFormatIT extends AccumuloClusterHarness {
       }
 
       @Override
-      protected void cleanup(Context context) throws IOException, InterruptedException {
+      protected void cleanup(Context context) {
         try {
           assertEquals(3, count);
         } catch (AssertionError e) {
@@ -152,10 +153,16 @@ public class AccumuloRowInputFormatIT extends AccumuloClusterHarness {
           this.getClass().getSimpleName() + "_" + System.currentTimeMillis());
       job.setJarByClass(this.getClass());
 
-      job.setInputFormatClass(AccumuloRowInputFormat.class);
+      job.setInputFormatClass(
+          org.apache.accumulo.core.client.mapreduce.AccumuloRowInputFormat.class);
 
-      AccumuloRowInputFormat.setClientInfo(job, getClientInfo());
-      AccumuloInputFormat.setInputTableName(job, table);
+      ClientInfo ci = getClientInfo();
+      org.apache.accumulo.core.client.mapreduce.AccumuloRowInputFormat.setZooKeeperInstance(job,
+          ci.getInstanceName(), ci.getZooKeepers());
+      org.apache.accumulo.core.client.mapreduce.AccumuloRowInputFormat.setConnectorInfo(job,
+          ci.getPrincipal(), ci.getAuthenticationToken());
+      org.apache.accumulo.core.client.mapreduce.AccumuloRowInputFormat.setInputTableName(job,
+          table);
 
       job.setMapperClass(TestMapper.class);
       job.setMapOutputKeyClass(Key.class);
@@ -180,7 +187,7 @@ public class AccumuloRowInputFormatIT extends AccumuloClusterHarness {
 
   @Test
   public void test() throws Exception {
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       client.tableOperations().create(tableName);
       BatchWriter writer = null;

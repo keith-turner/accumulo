@@ -138,18 +138,7 @@ public class ReplicationClient {
     }
   }
 
-  public static void close(ReplicationCoordinator.Iface iface) {
-    TServiceClient client = (TServiceClient) iface;
-    if (client != null && client.getInputProtocol() != null
-        && client.getInputProtocol().getTransport() != null) {
-      ThriftTransportPool.getInstance().returnTransport(client.getInputProtocol().getTransport());
-    } else {
-      log.debug("Attempt to close null connection to the remote system", new Exception());
-    }
-  }
-
-  public static void close(ReplicationServicer.Iface iface) {
-    TServiceClient client = (TServiceClient) iface;
+  private static void close(TServiceClient client) {
     if (client != null && client.getInputProtocol() != null
         && client.getInputProtocol().getTransport() != null) {
       ThriftTransportPool.getInstance().returnTransport(client.getInputProtocol().getTransport());
@@ -191,7 +180,7 @@ public class ReplicationClient {
 
   public static <T> T executeServicerWithReturn(ClientContext context, HostAndPort tserver,
       ClientExecReturn<T,ReplicationServicer.Client> exec, long timeout)
-      throws AccumuloException, AccumuloSecurityException, TTransportException {
+      throws AccumuloException, AccumuloSecurityException {
     ReplicationServicer.Client client = null;
     while (true) {
       try {

@@ -109,7 +109,7 @@ public abstract class SharedMiniClusterBase extends AccumuloITBase implements Cl
         miniClusterCallback, krb);
     cluster.start();
 
-    if (null != krb) {
+    if (krb != null) {
       final String traceTable = Property.TRACE_TABLE.getDefaultValue();
       final ClusterUser systemUser = krb.getAccumuloServerUser(), rootUser = krb.getRootUser();
       // Login as the trace user
@@ -117,41 +117,44 @@ public abstract class SharedMiniClusterBase extends AccumuloITBase implements Cl
       // permissions to)
       UserGroupInformation.loginUserFromKeytab(systemUser.getPrincipal(),
           systemUser.getKeytab().getAbsolutePath());
-      AccumuloClient client = cluster.getAccumuloClient(systemUser.getPrincipal(),
-          new KerberosToken());
+
+      AuthenticationToken tempToken = new KerberosToken();
+      try (AccumuloClient c = cluster.createAccumuloClient(systemUser.getPrincipal(), tempToken)) {
+        c.securityOperations().authenticateUser(systemUser.getPrincipal(), tempToken);
+      }
 
       // Then, log back in as the "root" user and do the grant
       UserGroupInformation.loginUserFromKeytab(rootUser.getPrincipal(),
           rootUser.getKeytab().getAbsolutePath());
-      client = cluster.getAccumuloClient(principal, token);
 
-      // Create the trace table
-      client.tableOperations().create(traceTable);
-
-      // Trace user (which is the same kerberos principal as the system user, but using a normal
-      // KerberosToken) needs
-      // to have the ability to read, write and alter the trace table
-      client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
-          TablePermission.READ);
-      client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
-          TablePermission.WRITE);
-      client.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
-          TablePermission.ALTER_TABLE);
+      try (AccumuloClient c = cluster.createAccumuloClient(principal, token)) {
+        // Create the trace table
+        c.tableOperations().create(traceTable);
+        // Trace user (which is the same kerberos principal as the system user, but using a normal
+        // KerberosToken) needs
+        // to have the ability to read, write and alter the trace table
+        c.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
+            TablePermission.READ);
+        c.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
+            TablePermission.WRITE);
+        c.securityOperations().grantTablePermission(systemUser.getPrincipal(), traceTable,
+            TablePermission.ALTER_TABLE);
+      }
     }
   }
 
   /**
    * Stops the MiniAccumuloCluster and related services if they are running.
    */
-  public static void stopMiniCluster() throws Exception {
-    if (null != cluster) {
+  public static void stopMiniCluster() {
+    if (cluster != null) {
       try {
         cluster.stop();
       } catch (Exception e) {
         log.error("Failed to stop minicluster", e);
       }
     }
-    if (null != krb) {
+    if (krb != null) {
       try {
         krb.stop();
       } catch (Exception e) {
@@ -188,12 +191,8 @@ public abstract class SharedMiniClusterBase extends AccumuloITBase implements Cl
     return cluster.getConfig().getDir();
   }
 
-  public static AccumuloClient getClient() {
-    try {
-      return getCluster().getAccumuloClient(principal, getToken());
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+  public static AccumuloClient createClient() {
+    return getCluster().createAccumuloClient(principal, getToken());
   }
 
   public static TestingKdc getKdc() {
@@ -202,7 +201,7 @@ public abstract class SharedMiniClusterBase extends AccumuloITBase implements Cl
 
   @Override
   public ClusterUser getAdminUser() {
-    if (null == krb) {
+    if (krb == null) {
       return new ClusterUser(getPrincipal(), getRootPassword());
     } else {
       return krb.getRootUser();
@@ -211,7 +210,7 @@ public abstract class SharedMiniClusterBase extends AccumuloITBase implements Cl
 
   @Override
   public ClusterUser getUser(int offset) {
-    if (null == krb) {
+    if (krb == null) {
       String user = SharedMiniClusterBase.class.getName() + "_" + testName.getMethodName() + "_"
           + offset;
       // Password is the username

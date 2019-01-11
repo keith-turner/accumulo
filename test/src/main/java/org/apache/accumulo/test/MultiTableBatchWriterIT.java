@@ -26,8 +26,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.MultiTableBatchWriter;
 import org.apache.accumulo.core.client.MutationsRejectedException;
@@ -57,8 +55,8 @@ public class MultiTableBatchWriterIT extends AccumuloClusterHarness {
   }
 
   @Before
-  public void setUpArgs() throws AccumuloException, AccumuloSecurityException {
-    accumuloClient = getAccumuloClient();
+  public void setUpArgs() {
+    accumuloClient = createAccumuloClient();
     mtbw = getMultiTableBatchWriter();
   }
 
@@ -130,7 +128,7 @@ public class MultiTableBatchWriterIT extends AccumuloClusterHarness {
       }
 
     } finally {
-      if (null != mtbw) {
+      if (mtbw != null) {
         mtbw.close();
       }
     }
@@ -187,7 +185,7 @@ public class MultiTableBatchWriterIT extends AccumuloClusterHarness {
         }
       }
     } finally {
-      if (null != mtbw) {
+      if (mtbw != null) {
         mtbw.close();
       }
     }
@@ -264,7 +262,7 @@ public class MultiTableBatchWriterIT extends AccumuloClusterHarness {
         }
       }
     } finally {
-      if (null != mtbw) {
+      if (mtbw != null) {
         mtbw.close();
       }
     }
@@ -308,7 +306,7 @@ public class MultiTableBatchWriterIT extends AccumuloClusterHarness {
         // Pass
       }
     } finally {
-      if (null != mtbw) {
+      if (mtbw != null) {
         mtbw.close();
       }
     }
@@ -351,7 +349,7 @@ public class MultiTableBatchWriterIT extends AccumuloClusterHarness {
       }
 
     } finally {
-      if (null != mtbw) {
+      if (mtbw != null) {
         try {
           // Mutations might have flushed before the table offline occurred
           mtbw.close();
@@ -401,7 +399,7 @@ public class MultiTableBatchWriterIT extends AccumuloClusterHarness {
         mutationsRejected = true;
       }
     } finally {
-      if (null != mtbw) {
+      if (mtbw != null) {
         try {
           mtbw.close();
         } catch (MutationsRejectedException e) {

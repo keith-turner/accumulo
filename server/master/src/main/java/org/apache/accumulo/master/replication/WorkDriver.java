@@ -21,8 +21,6 @@ import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.util.Daemon;
@@ -44,10 +42,10 @@ public class WorkDriver extends Daemon {
   private WorkAssigner assigner;
   private String assignerImplName;
 
-  public WorkDriver(Master master) throws AccumuloException, AccumuloSecurityException {
+  public WorkDriver(Master master) {
     super();
     this.master = master;
-    this.client = master.getClient();
+    this.client = master.getContext();
     this.conf = master.getConfiguration();
     configureWorkAssigner();
   }
@@ -55,7 +53,7 @@ public class WorkDriver extends Daemon {
   protected void configureWorkAssigner() {
     String workAssignerClass = conf.get(Property.REPLICATION_WORK_ASSIGNER);
 
-    if (null == assigner || !assigner.getClass().getName().equals(workAssignerClass)) {
+    if (assigner == null || !assigner.getClass().getName().equals(workAssignerClass)) {
       log.info("Initializing work assigner implementation of {}", workAssignerClass);
 
       try {
@@ -71,25 +69,6 @@ public class WorkDriver extends Daemon {
       this.assignerImplName = assigner.getClass().getName();
       this.setName(assigner.getName());
     }
-  }
-
-  /*
-   * Getters/setters for testing purposes
-   */
-  protected AccumuloClient getClient() {
-    return client;
-  }
-
-  protected void setClient(AccumuloClient client) {
-    this.client = client;
-  }
-
-  protected AccumuloConfiguration getConf() {
-    return conf;
-  }
-
-  protected void setConf(AccumuloConfiguration conf) {
-    this.conf = conf;
   }
 
   @Override

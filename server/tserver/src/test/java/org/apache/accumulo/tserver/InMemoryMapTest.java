@@ -41,6 +41,7 @@ import org.apache.accumulo.core.client.sample.RowSampler;
 import org.apache.accumulo.core.client.sample.Sampler;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.clientImpl.BaseIteratorEnvironment;
+import org.apache.accumulo.core.clientImpl.Table;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -103,7 +104,7 @@ public class InMemoryMapTest {
   public ExpectedException thrown = ExpectedException.none();
 
   @BeforeClass
-  public static void setUp() throws Exception {
+  public static void setUp() {
     // suppress log messages having to do with not having an instance
     Logger.getLogger(ZooConfiguration.class).setLevel(Level.OFF);
   }
@@ -127,7 +128,7 @@ public class InMemoryMapTest {
     String[] sa = column.split(":");
     m.putDelete(new Text(sa[0]), new Text(sa[1]), ts);
 
-    imm.mutate(Collections.singletonList(m));
+    imm.mutate(Collections.singletonList(m), 1);
   }
 
   public void mutate(InMemoryMap imm, String row, String column, long ts, String value) {
@@ -135,7 +136,7 @@ public class InMemoryMapTest {
     String[] sa = column.split(":");
     m.put(new Text(sa[0]), new Text(sa[1]), ts, new Value(value.getBytes()));
 
-    imm.mutate(Collections.singletonList(m));
+    imm.mutate(Collections.singletonList(m), 1);
   }
 
   static Key newKey(String row, String column, long ts) {
@@ -153,7 +154,7 @@ public class InMemoryMapTest {
   }
 
   static void assertEqualsNoNext(SortedKeyValueIterator<Key,Value> dc, String row, String column,
-      int ts, String val) throws IOException {
+      int ts, String val) {
     assertTrue(dc.hasTop());
     assertEquals(newKey(row, column, ts), dc.getTopKey());
     assertEquals(new Value(val.getBytes()), dc.getTopValue());
@@ -188,7 +189,7 @@ public class InMemoryMapTest {
     ConfigurationCopy config = new ConfigurationCopy(DefaultConfiguration.getInstance());
     config.set(Property.TSERV_NATIVEMAP_ENABLED, "" + useNative);
     config.set(Property.TSERV_MEMDUMP_DIR, memDumpDir);
-    return new InMemoryMap(config, getServerContext());
+    return new InMemoryMap(config, getServerContext(), Table.ID.of("--TEST--"));
   }
 
   @Test
@@ -492,7 +493,7 @@ public class InMemoryMapTest {
     Mutation m = new Mutation(new Text("r1"));
     m.put(new Text("foo"), new Text("cq"), 3, new Value("v1".getBytes()));
     m.put(new Text("foo"), new Text("cq"), 3, new Value("v2".getBytes()));
-    imm.mutate(Collections.singletonList(m));
+    imm.mutate(Collections.singletonList(m), 2);
 
     MemoryIterator skvi1 = imm.skvIterator(null);
     skvi1.seek(new Range(), LocalityGroupUtil.EMPTY_CF_SET, false);
@@ -529,7 +530,7 @@ public class InMemoryMapTest {
                 Mutation m = new Mutation("row");
                 m.put("cf", "cq", new Value("v".getBytes()));
                 List<Mutation> mutations = Collections.singletonList(m);
-                imm.mutate(mutations);
+                imm.mutate(mutations, 1);
                 counts[threadId]++;
               }
             }
@@ -561,7 +562,7 @@ public class InMemoryMapTest {
         LocalityGroupUtil.encodeColumnFamilies(toTextSet("cf3", "cf4")));
     config.set(Property.TABLE_LOCALITY_GROUPS.getKey(), "lg1,lg2");
 
-    InMemoryMap imm = new InMemoryMap(config, getServerContext());
+    InMemoryMap imm = new InMemoryMap(config, getServerContext(), Table.ID.of("--TEST--"));
 
     Mutation m1 = new Mutation("r1");
     m1.put("cf1", "x", 2, "1");
@@ -583,7 +584,7 @@ public class InMemoryMapTest {
     m5.put("cf3", "z", 6, "A");
     m5.put("cf4", "z", 6, "B");
 
-    imm.mutate(Arrays.asList(m1, m2, m3, m4, m5));
+    imm.mutate(Arrays.asList(m1, m2, m3, m4, m5), 10);
 
     MemoryIterator iter1 = imm.skvIterator(null);
 
@@ -623,8 +624,7 @@ public class InMemoryMapTest {
     }
 
     for (ConfigurationCopy config : Arrays.asList(config1, config2)) {
-
-      InMemoryMap imm = new InMemoryMap(config, getServerContext());
+      InMemoryMap imm = new InMemoryMap(config, getServerContext(), Table.ID.of("--TEST--"));
 
       TreeMap<Key,Value> expectedSample = new TreeMap<>();
       TreeMap<Key,Value> expectedAll = new TreeMap<>();
@@ -710,7 +710,7 @@ public class InMemoryMapTest {
       config1.set(entry.getKey(), entry.getValue());
     }
 
-    InMemoryMap imm = new InMemoryMap(config1, getServerContext());
+    InMemoryMap imm = new InMemoryMap(config1, getServerContext(), Table.ID.of("--TEST--"));
 
     TreeMap<Key,Value> expectedSample = new TreeMap<>();
     TreeMap<Key,Value> expectedAll = new TreeMap<>();
@@ -770,7 +770,7 @@ public class InMemoryMapTest {
       config1.set(entry.getKey(), entry.getValue());
     }
 
-    InMemoryMap imm = new InMemoryMap(config1, getServerContext());
+    InMemoryMap imm = new InMemoryMap(config1, getServerContext(), Table.ID.of("--TEST--"));
 
     mutate(imm, "r", "cf:cq", 5, "b");
 
@@ -815,7 +815,7 @@ public class InMemoryMapTest {
       config1.set(entry.getKey(), entry.getValue());
     }
 
-    InMemoryMap imm = new InMemoryMap(config1, getServerContext());
+    InMemoryMap imm = new InMemoryMap(config1, getServerContext(), Table.ID.of("--TEST--"));
 
     // change sampler config after creating in mem map.
     SamplerConfigurationImpl sampleConfig2 = new SamplerConfigurationImpl(

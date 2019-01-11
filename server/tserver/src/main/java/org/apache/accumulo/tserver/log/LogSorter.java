@@ -51,9 +51,6 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- */
 public class LogSorter {
 
   private static final Logger log = LoggerFactory.getLogger(LogSorter.class);
@@ -193,7 +190,7 @@ public class LogSorter {
     synchronized void close() throws IOException {
       // If we receive an empty or malformed-header WAL, we won't
       // have input streams that need closing. Avoid the NPE.
-      if (null != input) {
+      if (input != null) {
         bytesCopied = input.getPos();
         input.close();
         decryptingInput.close();

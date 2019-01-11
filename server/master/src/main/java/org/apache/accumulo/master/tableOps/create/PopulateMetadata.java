@@ -53,7 +53,7 @@ class PopulateMetadata extends MasterRepo {
   }
 
   @Override
-  public long isReady(long tid, Master environment) throws Exception {
+  public long isReady(long tid, Master environment) {
     return 0;
   }
 
@@ -69,7 +69,7 @@ class PopulateMetadata extends MasterRepo {
       SortedSet<Text> dirs = Utils
           .getSortedSetFromFile(environment.getInputStream(tableInfo.getSplitDirsFile()), false);
       Map<Text,Text> splitDirMap = createSplitDirectoryMap(splits, dirs);
-      try (BatchWriter bw = environment.getClient().createBatchWriter("accumulo.metadata")) {
+      try (BatchWriter bw = environment.getContext().createBatchWriter("accumulo.metadata")) {
         writeSplitsToMetadataTable(environment.getContext(), tableInfo.getTableId(), splits,
             splitDirMap, tableInfo.getTimeType(), environment.getMasterLock(), bw);
       }

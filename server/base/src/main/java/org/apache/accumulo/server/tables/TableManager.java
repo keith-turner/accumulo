@@ -135,14 +135,6 @@ public class TableManager {
       }
     }
 
-    public TableState getOldState() {
-      return oldState;
-    }
-
-    public TableState getNewState() {
-      return newState;
-    }
-
     @Override
     public String getMessage() {
       return message;
@@ -266,7 +258,7 @@ public class TableManager {
   public boolean addObserver(TableObserver to) {
     synchronized (observers) {
       synchronized (tableStateCache) {
-        to.initialize(Collections.unmodifiableMap(tableStateCache));
+        to.initialize();
         return observers.add(to);
       }
     }

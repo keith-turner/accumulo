@@ -330,7 +330,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
     if (config.getHadoopConfDir() != null)
       builder.environment().put("HADOOP_CONF_DIR", config.getHadoopConfDir().getAbsolutePath());
 
-    log.info("Starting MiniAccumuloCluster process with class: " + clazz.getSimpleName()
+    log.debug("Starting MiniAccumuloCluster process with class: " + clazz.getSimpleName()
         + "\n, jvmOpts: " + extraJvmOpts + "\n, classpath: " + classpath + "\n, args: " + argList
         + "\n, environment: " + builder.environment());
     Process process = builder.start();
@@ -626,7 +626,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
         // If we aren't using SASL, add in the root password
         final String saslEnabled = config.getSiteConfig()
             .get(Property.INSTANCE_RPC_SASL_ENABLED.getKey());
-        if (null == saslEnabled || !Boolean.parseBoolean(saslEnabled)) {
+        if (saslEnabled == null || !Boolean.parseBoolean(saslEnabled)) {
           args.add("--password");
           args.add(config.getRootPassword());
         }
@@ -662,7 +662,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
     control.start(ServerType.MASTER);
     control.start(ServerType.GARBAGE_COLLECTOR);
 
-    if (null == executor) {
+    if (executor == null) {
       executor = Executors.newSingleThreadExecutor();
     }
   }
@@ -694,10 +694,10 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
     result.put(ServerType.MASTER, references(control.masterProcess));
     result.put(ServerType.TABLET_SERVER,
         references(control.tabletServerProcesses.toArray(new Process[0])));
-    if (null != control.zooKeeperProcess) {
+    if (control.zooKeeperProcess != null) {
       result.put(ServerType.ZOOKEEPER, references(control.zooKeeperProcess));
     }
-    if (null != control.gcProcess) {
+    if (control.gcProcess != null) {
       result.put(ServerType.GARBAGE_COLLECTOR, references(control.gcProcess));
     }
     return result;
@@ -733,7 +733,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
    */
   @Override
   public synchronized void stop() throws IOException, InterruptedException {
-    if (null == executor) {
+    if (executor == null) {
       // keep repeated calls to stop() from failing
       return;
     }
@@ -750,7 +750,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
     control.stop(ServerType.ZOOKEEPER, null);
 
     // ACCUMULO-2985 stop the ExecutorService after we finished using it to stop accumulo procs
-    if (null != executor) {
+    if (executor != null) {
       List<Runnable> tasksRemaining = executor.shutdownNow();
 
       // the single thread executor shouldn't have any pending tasks, but check anyways
@@ -780,7 +780,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
   }
 
   @Override
-  public AccumuloClient getAccumuloClient(String user, AuthenticationToken token) {
+  public AccumuloClient createAccumuloClient(String user, AuthenticationToken token) {
     return Accumulo.newClient().from(getClientProperties()).as(user, token).build();
   }
 
@@ -842,10 +842,9 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
       throws AccumuloException, AccumuloSecurityException {
     MasterClientService.Iface client = null;
     while (true) {
-      try {
-        ClientContext context = new ClientContext(getClientProperties());
-        client = MasterClient.getConnectionWithRetry(context);
-        return client.getMasterStats(Tracer.traceInfo(), context.rpcCreds());
+      try (AccumuloClient c = Accumulo.newClient().from(getClientProperties()).build()) {
+        client = MasterClient.getConnectionWithRetry((ClientContext) c);
+        return client.getMasterStats(Tracer.traceInfo(), ((ClientContext) c).rpcCreds());
       } catch (ThriftSecurityException exception) {
         throw new AccumuloSecurityException(exception);
       } catch (ThriftNotActiveServiceException e) {

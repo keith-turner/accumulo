@@ -38,7 +38,6 @@ import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.Scanner;
-import org.apache.accumulo.core.client.TableExistsException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.security.SecurityErrorCode;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
@@ -77,8 +76,8 @@ public class PermissionsIT extends AccumuloClusterHarness {
 
   @Before
   public void limitToMini() throws Exception {
-    Assume.assumeTrue(ClusterType.MINI == getClusterType());
-    try (AccumuloClient c = getAccumuloClient()) {
+    Assume.assumeTrue(getClusterType() == ClusterType.MINI);
+    try (AccumuloClient c = createAccumuloClient()) {
       Set<String> users = c.securityOperations().listLocalUsers();
       ClusterUser user = getUser(0);
       if (users.contains(user.getPrincipal())) {
@@ -97,7 +96,7 @@ public class PermissionsIT extends AccumuloClusterHarness {
     ClusterUser testUser = getUser(0), rootUser = getAdminUser();
 
     // verify that the test is being run by root
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       verifyHasOnlyTheseSystemPermissions(c, c.whoami(), SystemPermission.values());
 
       // create the test user
@@ -569,7 +568,7 @@ public class PermissionsIT extends AccumuloClusterHarness {
       passwordToken = (PasswordToken) token;
     }
     loginAs(rootUser);
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       c.securityOperations().createLocalUser(principal, passwordToken);
       loginAs(testUser);
       try (AccumuloClient test_user_client = Accumulo.newClient().from(c.properties())
@@ -589,12 +588,12 @@ public class PermissionsIT extends AccumuloClusterHarness {
           // test permission before and after granting it
           createTestTable(c, principal, tableName);
           loginAs(testUser);
-          testMissingTablePermission(test_user_client, testUser, perm, tableName);
+          testMissingTablePermission(test_user_client, perm, tableName);
           loginAs(rootUser);
           c.securityOperations().grantTablePermission(principal, tableName, perm);
           verifyHasOnlyTheseTablePermissions(c, principal, tableName, perm);
           loginAs(testUser);
-          testGrantedTablePermission(test_user_client, testUser, perm, tableName);
+          testGrantedTablePermission(test_user_client, perm, tableName);
 
           loginAs(rootUser);
           createTestTable(c, principal, tableName);
@@ -624,8 +623,8 @@ public class PermissionsIT extends AccumuloClusterHarness {
     }
   }
 
-  private void testMissingTablePermission(AccumuloClient test_user_client, ClusterUser testUser,
-      TablePermission perm, String tableName) throws Exception {
+  private void testMissingTablePermission(AccumuloClient test_user_client, TablePermission perm,
+      String tableName) throws Exception {
     BatchWriter writer;
     Mutation m;
     log.debug("Confirming that the lack of the {} permission properly restricts the user", perm);
@@ -713,9 +712,9 @@ public class PermissionsIT extends AccumuloClusterHarness {
     }
   }
 
-  private void testGrantedTablePermission(AccumuloClient test_user_client, ClusterUser normalUser,
-      TablePermission perm, String tableName) throws AccumuloException, TableExistsException,
-      AccumuloSecurityException, TableNotFoundException, MutationsRejectedException {
+  private void testGrantedTablePermission(AccumuloClient test_user_client, TablePermission perm,
+      String tableName) throws AccumuloException, AccumuloSecurityException, TableNotFoundException,
+      MutationsRejectedException {
     BatchWriter writer;
     Mutation m;
     log.debug("Confirming that the presence of the {} permission properly permits the user", perm);

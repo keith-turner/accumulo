@@ -31,12 +31,12 @@ public class CommitSession {
 
   private final long seq;
   private final InMemoryMap memTable;
-  private final TabletCommitter committer;
+  private final Tablet committer;
 
   private int commitsInProgress;
   private long maxCommittedTime = Long.MIN_VALUE;
 
-  CommitSession(TabletCommitter committer, long seq, InMemoryMap imm) {
+  CommitSession(Tablet committer, long seq, InMemoryMap imm) {
     this.seq = seq;
     this.memTable = imm;
     this.committer = committer;
@@ -73,16 +73,12 @@ public class CommitSession {
     }
   }
 
-  public void abortCommit(List<Mutation> value) {
-    committer.abortCommit(this, value);
+  public void abortCommit() {
+    committer.abortCommit(this);
   }
 
   public void commit(List<Mutation> mutations) {
     committer.commit(this, mutations);
-  }
-
-  public TabletCommitter getTablet() {
-    return committer;
   }
 
   public boolean beginUpdatingLogsUsed(DfsLogger copy, boolean mincFinish) {
@@ -111,7 +107,7 @@ public class CommitSession {
     return maxCommittedTime;
   }
 
-  public void mutate(List<Mutation> mutations) {
-    memTable.mutate(mutations);
+  public void mutate(List<Mutation> mutations, int count) {
+    memTable.mutate(mutations, count);
   }
 }

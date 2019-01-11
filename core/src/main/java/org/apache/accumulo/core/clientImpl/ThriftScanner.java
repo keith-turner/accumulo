@@ -90,8 +90,8 @@ public class ThriftScanner {
       String server, SortedMap<Key,Value> results, SortedSet<Column> fetchedColumns,
       List<IterInfo> serverSideIteratorList,
       Map<String,Map<String,String>> serverSideIteratorOptions, int size,
-      Authorizations authorizations, boolean retry, long batchTimeOut, String classLoaderContext)
-      throws AccumuloException, AccumuloSecurityException, NotServingTabletException {
+      Authorizations authorizations, long batchTimeOut, String classLoaderContext)
+      throws AccumuloException, AccumuloSecurityException {
     if (server == null)
       throw new AccumuloException(new IOException());
 
@@ -560,12 +560,13 @@ public class ThriftScanner {
 
   static void close(ScanState scanState) {
 
-    // TODO if it has been a bit, then probably could assume the session has timed out and do nothing here
+    // TODO if it has been a bit, then probably could assume the session has timed out and do
+    // nothing here
 
     if (!scanState.finished && scanState.scanID != null && scanState.prevLoc != null) {
       TInfo tinfo = Tracer.traceInfo();
 
-      //TODO change to debug
+      // TODO change to debug
       log.info("Closing active scan " + scanState.prevLoc + " " + scanState.scanID);
       HostAndPort parsedLocation = HostAndPort.fromString(scanState.prevLoc.tablet_location);
       TabletClientService.Client client = null;

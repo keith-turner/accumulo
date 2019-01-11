@@ -23,8 +23,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.net.URL;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -53,7 +51,7 @@ public class StandaloneClusterControl implements ClusterControl {
   private static final Logger log = LoggerFactory.getLogger(StandaloneClusterControl.class);
 
   private static final String ACCUMULO_SERVICE_SCRIPT = "accumulo-service",
-      ACCUMULO_SCRIPT = "accumulo", ACCUMULO_UTIL_SCRIPT = "accumulo-util";
+      ACCUMULO_SCRIPT = "accumulo";
   private static final String MASTER_HOSTS_FILE = "masters", GC_HOSTS_FILE = "gc",
       TSERVER_HOSTS_FILE = "tservers", TRACER_HOSTS_FILE = "tracers",
       MONITOR_HOSTS_FILE = "monitor";
@@ -65,7 +63,7 @@ public class StandaloneClusterControl implements ClusterControl {
   private String serverCmdPrefix;
   protected RemoteShellOptions options;
 
-  protected String accumuloServicePath, accumuloPath, accumuloUtilPath;
+  protected String accumuloServicePath, accumuloPath;
 
   @SuppressFBWarnings(value = "PATH_TRAVERSAL_IN",
       justification = "code runs in same security context as user who provided input file name")
@@ -81,11 +79,6 @@ public class StandaloneClusterControl implements ClusterControl {
     File bin = new File(accumuloHome, "bin");
     this.accumuloServicePath = new File(bin, ACCUMULO_SERVICE_SCRIPT).getAbsolutePath();
     this.accumuloPath = new File(bin, ACCUMULO_SCRIPT).getAbsolutePath();
-    this.accumuloUtilPath = new File(bin, ACCUMULO_UTIL_SCRIPT).getAbsolutePath();
-  }
-
-  String getAccumuloUtilPath() {
-    return this.accumuloUtilPath;
   }
 
   protected Entry<Integer,String> exec(String hostname, String[] command) throws IOException {
@@ -133,41 +126,13 @@ public class StandaloneClusterControl implements ClusterControl {
     return msg.replaceAll("[\r\n]", "");
   }
 
-  public Entry<Integer,String> execMapreduceWithStdout(Class<?> clz, String[] args)
-      throws IOException {
-    String host = "localhost";
-    List<String> cmd = new ArrayList<>();
-    cmd.add(getAccumuloUtilPath());
-    cmd.add("hadoop-jar");
-    cmd.add(getJarFromClass(clz));
-    cmd.add(clz.getName());
-    for (String arg : args) {
-      cmd.add("'" + arg + "'");
-    }
-    log.info("Running: '{}' on {}", StringUtils.join(cmd, " "), host);
-    return exec(host, cmd.toArray(new String[cmd.size()]));
-  }
-
-  String getJarFromClass(Class<?> clz) {
-    CodeSource source = clz.getProtectionDomain().getCodeSource();
-    if (null == source) {
-      throw new RuntimeException("Could not get CodeSource for class");
-    }
-    URL jarUrl = source.getLocation();
-    String jar = jarUrl.getPath();
-    if (!jar.endsWith(".jar")) {
-      throw new RuntimeException("Need to have a jar to run mapreduce: " + jar);
-    }
-    return jar;
-  }
-
   @Override
   public void adminStopAll() throws IOException {
     String master = getHosts(MASTER_HOSTS_FILE).get(0);
     String[] cmd = {serverCmdPrefix, accumuloPath, Admin.class.getName(), "stopAll"};
     // Directly invoke the RemoteShell
     Entry<Integer,String> pair = exec(master, cmd);
-    if (0 != pair.getKey()) {
+    if (pair.getKey() != 0) {
       throw new IOException("stopAll did not finish successfully, retcode=" + pair.getKey()
           + ", stdout=" + pair.getValue());
     }
@@ -187,7 +152,7 @@ public class StandaloneClusterControl implements ClusterControl {
     String master = getHosts(MASTER_HOSTS_FILE).get(0);
     String[] cmd = {serverCmdPrefix, accumuloPath, SetGoalState.class.getName(), goalState};
     Entry<Integer,String> pair = exec(master, cmd);
-    if (0 != pair.getKey()) {
+    if (pair.getKey() != 0) {
       throw new IOException("SetGoalState did not finish successfully, retcode=" + pair.getKey()
           + ", stdout=" + pair.getValue());
     }
@@ -239,7 +204,7 @@ public class StandaloneClusterControl implements ClusterControl {
   public void start(ServerType server, String hostname) throws IOException {
     String[] cmd = {serverCmdPrefix, accumuloServicePath, getProcessString(server), "start"};
     Entry<Integer,String> pair = exec(hostname, cmd);
-    if (0 != pair.getKey()) {
+    if (pair.getKey() != 0) {
       throw new IOException(
           "Start " + server + " on " + hostname + " failed for execute successfully");
     }
@@ -311,7 +276,7 @@ public class StandaloneClusterControl implements ClusterControl {
     }
 
     Entry<Integer,String> pair = exec(hostname, stopCmd);
-    if (0 != pair.getKey()) {
+    if (pair.getKey() != 0) {
       throw new IOException("Signal " + signal + " to " + server + " on " + hostname
           + " failed for execute successfully. stdout=" + pair.getValue());
     }
@@ -336,7 +301,7 @@ public class StandaloneClusterControl implements ClusterControl {
       throws IOException {
     String[] getPidCommand = getPidCommand(server, accumuloHome);
     Entry<Integer,String> ret = exec(hostname, getPidCommand);
-    if (0 != ret.getKey()) {
+    if (ret.getKey() != 0) {
       throw new IOException(
           "Could not locate PID for " + getProcessString(server) + " on " + hostname);
     }

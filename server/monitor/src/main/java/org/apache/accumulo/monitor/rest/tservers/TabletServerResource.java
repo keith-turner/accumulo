@@ -78,7 +78,7 @@ public class TabletServerResource {
   @GET
   public TabletServers getTserverSummary() {
     MasterMonitorInfo mmi = Monitor.getMmi();
-    if (null == mmi) {
+    if (mmi == null) {
       throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
     }
 
@@ -118,7 +118,7 @@ public class TabletServerResource {
     TabletServersRecovery recoveryList = new TabletServersRecovery();
 
     MasterMonitorInfo mmi = Monitor.getMmi();
-    if (null == mmi) {
+    if (mmi == null) {
       throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR);
     }
 
@@ -163,7 +163,6 @@ public class TabletServerResource {
       return null;
     }
 
-    double totalElapsedForAll = 0;
     double splitStdDev = 0;
     double minorStdDev = 0;
     double minorQueueStdDev = 0;
@@ -210,7 +209,6 @@ public class TabletServerResource {
 
     ActionStatsUpdator.update(total.minors, historical.minors);
     ActionStatsUpdator.update(total.majors, historical.majors);
-    totalElapsedForAll += total.majors.elapsed + historical.splits.elapsed + total.minors.elapsed;
 
     minorStdDev = stddev(total.minors.elapsed, total.minors.num, total.minors.sumDev);
     minorQueueStdDev = stddev(total.minors.queueTime, total.minors.num, total.minors.queueSumDev);
@@ -219,10 +217,10 @@ public class TabletServerResource {
     splitStdDev = stddev(historical.splits.num, historical.splits.elapsed,
         historical.splits.sumDev);
 
-    TabletServerDetailInformation details = doDetails(address, tsStats.size());
+    TabletServerDetailInformation details = doDetails(tsStats.size());
 
     List<AllTimeTabletResults> allTime = doAllTimeResults(majorQueueStdDev, minorQueueStdDev,
-        totalElapsedForAll, splitStdDev, majorStdDev, minorStdDev);
+        splitStdDev, majorStdDev, minorStdDev);
 
     CurrentTabletResults currentRes = doCurrentTabletResults(currentMinorAvg, currentMinorStdDev,
         currentMajorAvg, currentMajorStdDev);
@@ -260,15 +258,14 @@ public class TabletServerResource {
     return stats;
   }
 
-  private TabletServerDetailInformation doDetails(HostAndPort address, int numTablets) {
+  private TabletServerDetailInformation doDetails(int numTablets) {
 
     return new TabletServerDetailInformation(numTablets, total.numEntries, total.minors.status,
         total.majors.status, historical.splits.status);
   }
 
   private List<AllTimeTabletResults> doAllTimeResults(double majorQueueStdDev,
-      double minorQueueStdDev, double totalElapsedForAll, double splitStdDev, double majorStdDev,
-      double minorStdDev) {
+      double minorQueueStdDev, double splitStdDev, double majorStdDev, double minorStdDev) {
 
     List<AllTimeTabletResults> allTime = new ArrayList<>();
 

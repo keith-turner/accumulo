@@ -17,8 +17,6 @@
 package org.apache.accumulo.master.replication;
 
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.trace.Trace;
@@ -64,16 +62,8 @@ public class ReplicationDriver extends Daemon {
     log.debug("Starting replication loop");
 
     while (master.stillMaster()) {
-      if (null == workMaker) {
-        try {
-          client = master.getClient();
-        } catch (AccumuloException | AccumuloSecurityException e) {
-          // couldn't get a client, try again in a "short" amount of time
-          log.warn("Error trying to get client to process replication records", e);
-          UtilWaitThread.sleep(2000);
-          continue;
-        }
-
+      if (workMaker == null) {
+        client = master.getContext();
         statusMaker = new StatusMaker(client, master.getFileSystem());
         workMaker = new WorkMaker(master.getContext(), client);
         finishedWorkUpdater = new FinishedWorkUpdater(client);

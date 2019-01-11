@@ -96,7 +96,7 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
 
   @After
   public void stopExecutor() {
-    if (null != executor) {
+    if (executor != null) {
       executor.shutdownNow();
     }
   }
@@ -143,12 +143,12 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
 
       // Passwords might be stored in CredentialProvider
       String keystorePassword = primarySiteConfig.get(Property.RPC_SSL_KEYSTORE_PASSWORD.getKey());
-      if (null != keystorePassword) {
+      if (keystorePassword != null) {
         peerSiteConfig.put(Property.RPC_SSL_KEYSTORE_PASSWORD.getKey(), keystorePassword);
       }
       String truststorePassword = primarySiteConfig
           .get(Property.RPC_SSL_TRUSTSTORE_PASSWORD.getKey());
-      if (null != truststorePassword) {
+      if (truststorePassword != null) {
         peerSiteConfig.put(Property.RPC_SSL_TRUSTSTORE_PASSWORD.getKey(), truststorePassword);
       }
 
@@ -159,7 +159,7 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
     // Use the CredentialProvider if the primary also uses one
     String credProvider = primarySiteConfig
         .get(Property.GENERAL_SECURITY_CREDENTIAL_PROVIDER_PATHS.getKey());
-    if (null != credProvider) {
+    if (credProvider != null) {
       Map<String,String> peerSiteConfig = peerCfg.getSiteConfig();
       peerSiteConfig.put(Property.GENERAL_SECURITY_CREDENTIAL_PROVIDER_PATHS.getKey(),
           credProvider);
@@ -180,8 +180,8 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
 
     peerCluster.start();
 
-    try (AccumuloClient clientMaster = getClient();
-        AccumuloClient clientPeer = peerCluster.getAccumuloClient("root",
+    try (AccumuloClient clientMaster = createClient();
+        AccumuloClient clientPeer = peerCluster.createAccumuloClient("root",
             new PasswordToken(ROOT_PASSWORD))) {
 
       ReplicationTable.setOnline(clientMaster);
@@ -345,8 +345,8 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
 
     peer1Cluster.start();
 
-    try (AccumuloClient clientMaster = getClient();
-        AccumuloClient clientPeer = peer1Cluster.getAccumuloClient("root",
+    try (AccumuloClient clientMaster = createClient();
+        AccumuloClient clientPeer = peer1Cluster.createAccumuloClient("root",
             new PasswordToken(ROOT_PASSWORD))) {
 
       String peerClusterName = "peer";
@@ -520,8 +520,8 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
 
     peerCluster.start();
 
-    try (AccumuloClient clientMaster = getClient();
-        AccumuloClient clientPeer = peerCluster.getAccumuloClient("root",
+    try (AccumuloClient clientMaster = createClient();
+        AccumuloClient clientPeer = peerCluster.createAccumuloClient("root",
             new PasswordToken(ROOT_PASSWORD))) {
 
       String peerUserName = "repl";
@@ -636,8 +636,8 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
 
     peer1Cluster.start();
 
-    try (AccumuloClient clientMaster = getClient();
-        AccumuloClient clientPeer = peer1Cluster.getAccumuloClient("root",
+    try (AccumuloClient clientMaster = createClient();
+        AccumuloClient clientPeer = peer1Cluster.createAccumuloClient("root",
             new PasswordToken(ROOT_PASSWORD))) {
 
       String peerClusterName = "peer";
@@ -769,7 +769,7 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
               + entry.getValue(), entry.getKey().getRow().toString().startsWith(masterTable1));
         }
         log.info("Found {} records in {}", countTable, peerTable1);
-        if (0 < countTable) {
+        if (countTable > 0) {
           break;
         }
         Thread.sleep(2000);
@@ -786,7 +786,7 @@ public class UnorderedWorkAssignerReplicationIT extends ConfigurableMacBase {
         }
 
         log.info("Found {} records in {}", countTable, peerTable2);
-        if (0 < countTable) {
+        if (countTable > 0) {
           break;
         }
         Thread.sleep(2000);

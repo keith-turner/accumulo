@@ -59,12 +59,11 @@ public class RowDeleteIT extends AccumuloClusterHarness {
 
   @Test
   public void run() throws Exception {
-    try (AccumuloClient c = getAccumuloClient()) {
+    try (AccumuloClient c = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
       c.tableOperations().create(tableName);
       Map<String,Set<Text>> groups = new HashMap<>();
       groups.put("lg1", Collections.singleton(new Text("foo")));
-      groups.put("dg", Collections.emptySet());
       c.tableOperations().setLocalityGroups(tableName, groups);
       IteratorSetting setting = new IteratorSetting(30, RowDeletingIterator.class);
       c.tableOperations().attachIterator(tableName, setting, EnumSet.of(IteratorScope.majc));

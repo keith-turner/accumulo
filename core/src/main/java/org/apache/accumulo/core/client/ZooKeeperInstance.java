@@ -27,18 +27,15 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
-import org.apache.accumulo.core.clientImpl.AccumuloClientImpl;
 import org.apache.accumulo.core.clientImpl.ClientConfConverter;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.clientImpl.ClientInfoImpl;
-import org.apache.accumulo.core.clientImpl.ConnectorImpl;
 import org.apache.accumulo.core.clientImpl.InstanceOperationsImpl;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.singletons.SingletonManager;
 import org.apache.accumulo.core.singletons.SingletonManager.Mode;
-import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.accumulo.core.util.OpTimer;
 import org.apache.accumulo.fate.zookeeper.ZooCache;
 import org.apache.accumulo.fate.zookeeper.ZooCacheFactory;
@@ -106,7 +103,7 @@ public class ZooKeeperInstance implements Instance {
     this.zooKeepersSessionTimeOut = (int) ConfigurationTypeHelper
         .getTimeInMillis(clientConf.get(ClientConfiguration.ClientProperty.INSTANCE_ZK_TIMEOUT));
     zooCache = zcf.getZooCache(zooKeepers, zooKeepersSessionTimeOut);
-    if (null != instanceName) {
+    if (instanceName != null) {
       // Validates that the provided instanceName actually exists
       getInstanceID();
     }
@@ -228,8 +225,8 @@ public class ZooKeeperInstance implements Instance {
     Properties properties = ClientConfConverter.toProperties(clientConf);
     properties.setProperty(ClientProperty.AUTH_PRINCIPAL.getKey(), principal);
     properties.setProperty(ClientProperty.INSTANCE_NAME.getKey(), getInstanceName());
-    return new ConnectorImpl(new AccumuloClientImpl(SingletonReservation.noop(),
-        new ClientContext(new ClientInfoImpl(properties, token))));
+    return new org.apache.accumulo.core.clientImpl.ConnectorImpl(
+        new ClientContext(new ClientInfoImpl(properties, token)));
   }
 
   @Override

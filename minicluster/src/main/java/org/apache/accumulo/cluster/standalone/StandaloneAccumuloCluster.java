@@ -29,9 +29,9 @@ import org.apache.accumulo.cluster.AccumuloCluster;
 import org.apache.accumulo.cluster.ClusterUser;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.ClientInfo;
 import org.apache.accumulo.core.client.security.tokens.AuthenticationToken;
 import org.apache.accumulo.core.clientImpl.ClientConfConverter;
+import org.apache.accumulo.core.clientImpl.ClientInfo;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.SiteConfiguration;
@@ -107,10 +107,10 @@ public class StandaloneAccumuloCluster implements AccumuloCluster {
   }
 
   public String getHadoopConfDir() {
-    if (null == hadoopConfDir) {
+    if (hadoopConfDir == null) {
       hadoopConfDir = System.getenv("HADOOP_CONF_DIR");
     }
-    if (null == hadoopConfDir) {
+    if (hadoopConfDir == null) {
       throw new IllegalArgumentException("Cannot determine HADOOP_CONF_DIR for standalone cluster");
     }
     return hadoopConfDir;
@@ -139,7 +139,7 @@ public class StandaloneAccumuloCluster implements AccumuloCluster {
   }
 
   @Override
-  public AccumuloClient getAccumuloClient(String user, AuthenticationToken token) {
+  public AccumuloClient createAccumuloClient(String user, AuthenticationToken token) {
     return Accumulo.newClient().to(getInstanceName(), getZooKeepers()).as(user, token).build();
   }
 
