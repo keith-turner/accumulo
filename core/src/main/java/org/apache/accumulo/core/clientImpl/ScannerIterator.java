@@ -65,7 +65,12 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
       TimeUnit.SECONDS, new SynchronousQueue<>(),
       new NamingThreadFactory("Accumulo scanner read ahead thread"));
 
-  private List<KeyValue> readBatch() throws Exception {
+  private boolean closed = false;
+
+  private synchronized List<KeyValue> readBatch() throws Exception {
+    // this is synchronized so its mutually exclusive with closing
+    Preconditions.checkState(!closed, "Scanner was closed");
+
     List<KeyValue> batch;
 
     do {
@@ -105,12 +110,6 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   private void initiateReadAhead() {
     Preconditions.checkState(readAheadOperation == null);
     readAheadOperation = readaheadPool.submit(this::readBatch);
-  }
-
-  private void markFinished() {
-    finished = true;
-    activeIters.remove(this);
-    readaheadPool.shutdownNow();
   }
 
   private List<KeyValue> getNextBatch() {
@@ -168,6 +167,7 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
     iter = getNextBatch().iterator();
     if (!iter.hasNext()) {
       finished = true;
+      activeIters.remove(this);
       return false;
     }
 
@@ -189,11 +189,13 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   }
 
   void close() {
-    if (readAheadOperation != null) {
-
-    } else {
-      ThriftScanner.close(scanState);
-      readaheadPool.shutdownNow();
-    }
+    // run actual close operation in the background so this does not block.
+    readaheadPool.execute(() -> {
+      synchronized (ScannerIterator.this) {
+        // this is synchronized so its mutually exclusive with readBatch()
+        closed = true;
+        ThriftScanner.close(scanState);
+      }
+    });
   }
 }

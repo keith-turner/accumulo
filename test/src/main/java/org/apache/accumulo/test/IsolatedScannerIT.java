@@ -38,7 +38,7 @@ public class IsolatedScannerIT extends AccumuloClusterHarness {
   @Test
   public void testManyScans() throws Exception {
 
-    try (AccumuloClient client = getAccumuloClient()) {
+    try (AccumuloClient client = createAccumuloClient()) {
       String tableName = getUniqueNames(1)[0];
 
       client.tableOperations().create(tableName);
@@ -61,6 +61,7 @@ public class IsolatedScannerIT extends AccumuloClusterHarness {
               }
             }
           }
+          System.out.println("about to close");
         }
       }
 
