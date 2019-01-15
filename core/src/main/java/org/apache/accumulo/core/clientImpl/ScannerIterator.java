@@ -48,7 +48,7 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
 
   // scanner state
   private Iterator<KeyValue> iter;
-  private ScanState scanState;
+  private final ScanState scanState;
 
   private ScannerOptions options;
 
@@ -68,13 +68,15 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   private boolean closed = false;
 
   private synchronized List<KeyValue> readBatch() throws Exception {
-    // this is synchronized so its mutually exclusive with closing
-    Preconditions.checkState(!closed, "Scanner was closed");
 
     List<KeyValue> batch;
 
     do {
-      batch = ThriftScanner.scan(scanState.context, scanState, timeOut);
+      synchronized (scanState) {
+        // this is synchronized so its mutually exclusive with closing
+        Preconditions.checkState(!closed, "Scanner was closed");
+        batch = ThriftScanner.scan(scanState.context, scanState, timeOut);
+      }
     } while (batch != null && batch.size() == 0);
 
     return batch == null ? Collections.emptyList() : batch;
@@ -191,7 +193,7 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
   void close() {
     // run actual close operation in the background so this does not block.
     readaheadPool.execute(() -> {
-      synchronized (ScannerIterator.this) {
+      synchronized (scanState) {
         // this is synchronized so its mutually exclusive with readBatch()
         closed = true;
         ThriftScanner.close(scanState);
