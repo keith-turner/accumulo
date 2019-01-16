@@ -67,21 +67,6 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
 
   private boolean closed = false;
 
-  private synchronized List<KeyValue> readBatch() throws Exception {
-
-    List<KeyValue> batch;
-
-    do {
-      synchronized (scanState) {
-        // this is synchronized so its mutually exclusive with closing
-        Preconditions.checkState(!closed, "Scanner was closed");
-        batch = ThriftScanner.scan(scanState.context, scanState, timeOut);
-      }
-    } while (batch != null && batch.size() == 0);
-
-    return batch == null ? Collections.emptyList() : batch;
-  }
-
   ScannerIterator(ClientContext context, Table.ID tableId, Authorizations authorizations,
       Range range, int size, long timeOut, ScannerOptions options, boolean isolated,
       long readaheadThreshold, Set<ScannerIterator> activeIters) {
@@ -109,9 +94,61 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
     iter = null;
   }
 
+  @Override
+  public boolean hasNext() {
+    if (finished)
+      return false;
+
+    if (iter != null && iter.hasNext()) {
+      return true;
+    }
+
+    iter = getNextBatch().iterator();
+    if (!iter.hasNext()) {
+      finished = true;
+      activeIters.remove(this);
+      return false;
+    }
+
+    return true;
+  }
+
+  @Override
+  public Entry<Key,Value> next() {
+    if (hasNext())
+      return iter.next();
+    throw new NoSuchElementException();
+  }
+
+  void close() {
+    // run actual close operation in the background so this does not block.
+    readaheadPool.execute(() -> {
+      synchronized (scanState) {
+        // this is synchronized so its mutually exclusive with readBatch()
+        closed = true;
+        ThriftScanner.close(scanState);
+      }
+    });
+  }
+
   private void initiateReadAhead() {
     Preconditions.checkState(readAheadOperation == null);
     readAheadOperation = readaheadPool.submit(this::readBatch);
+  }
+
+  private synchronized List<KeyValue> readBatch() throws Exception {
+
+    List<KeyValue> batch;
+
+    do {
+      synchronized (scanState) {
+        // this is synchronized so its mutually exclusive with closing
+        Preconditions.checkState(!closed, "Scanner was closed");
+        batch = ThriftScanner.scan(scanState.context, scanState, timeOut);
+      }
+    } while (batch != null && batch.size() == 0);
+
+    return batch == null ? Collections.emptyList() : batch;
   }
 
   private List<KeyValue> getNextBatch() {
@@ -155,49 +192,5 @@ public class ScannerIterator implements Iterator<Entry<Key,Value>> {
     }
 
     return nextBatch;
-  }
-
-  @Override
-  public boolean hasNext() {
-    if (finished)
-      return false;
-
-    if (iter != null && iter.hasNext()) {
-      return true;
-    }
-
-    iter = getNextBatch().iterator();
-    if (!iter.hasNext()) {
-      finished = true;
-      activeIters.remove(this);
-      return false;
-    }
-
-    return true;
-  }
-
-  @Override
-  public Entry<Key,Value> next() {
-    if (hasNext())
-      return iter.next();
-    throw new NoSuchElementException();
-  }
-
-  // just here to satisfy the interface
-  // could make this actually delete things from the database
-  @Override
-  public void remove() {
-    throw new UnsupportedOperationException("remove is not supported in Scanner");
-  }
-
-  void close() {
-    // run actual close operation in the background so this does not block.
-    readaheadPool.execute(() -> {
-      synchronized (scanState) {
-        // this is synchronized so its mutually exclusive with readBatch()
-        closed = true;
-        ThriftScanner.close(scanState);
-      }
-    });
   }
 }
