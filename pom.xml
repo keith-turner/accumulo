@@ -842,7 +842,7 @@
             </goals>
             <phase>validate</phase>
           </execution>
-          <execution>
+          <!--          <execution>
             <id>enforce-java-signatures</id>
             <goals>
               <goal>enforce</goal>
@@ -863,7 +863,7 @@
                 </checkSignatureRule>
               </rules>
             </configuration>
-          </execution>
+          </execution>-->
           <execution>
             <id>enforce-hadoop-profile</id>
             <goals>

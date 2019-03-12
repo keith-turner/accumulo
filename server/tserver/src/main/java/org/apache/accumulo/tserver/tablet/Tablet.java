@@ -41,6 +41,10 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -94,6 +98,7 @@ import org.apache.accumulo.core.trace.Trace;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
+import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.ServerConstants;
 import org.apache.accumulo.server.conf.TableConfiguration;
 import org.apache.accumulo.server.fs.FileRef;
@@ -1806,6 +1811,221 @@ public class Tablet implements TabletCommitter {
     return !isClosing() && !getTabletServer().isMajorCompactionDisabled();
   }
 
+  private ExecutorService sideCompactionExecutor = Executors.newCachedThreadPool();
+
+  private class SideCompactionHandle {
+
+    volatile boolean canceled = false;
+    Future<?> task;
+
+    void cancelAndWait() {
+      long t1 = System.currentTimeMillis();
+      canceled = true;
+      try {
+        task.get();
+      } catch (InterruptedException | ExecutionException e) {
+        log.error("Side compaction failed for " + extent, e);
+      }
+
+      long t2 = System.currentTimeMillis();
+      // log.info("SCE waited for SC exit " + (t2 - t1));
+    }
+  }
+
+  private AtomicBoolean sideCompactionRunning = new AtomicBoolean(false);
+
+  private class SideCompactionTask implements Callable<Void> {
+
+    final SideCompactionHandle sch;
+    final CompactionStrategyConfig csc;
+    final long delay;
+    final Set<FileRef> originalFiles;
+
+    public SideCompactionTask(SideCompactionHandle sch, CompactionStrategyConfig csc, long delay,
+        Set<FileRef> originalFiles) {
+      super();
+      this.sch = sch;
+      this.csc = csc;
+      this.delay = delay;
+      this.originalFiles = originalFiles;
+    }
+
+    private void wait(SideCompactionHandle sch, long delay) {
+      long start = System.currentTimeMillis();
+      while (!sch.canceled && System.currentTimeMillis() - start < delay) {
+        UtilWaitThread.sleep(10);
+      }
+    }
+
+    @Override
+    public Void call() throws Exception {
+      if (!sideCompactionRunning.compareAndSet(false, true))
+        throw new IllegalStateException("Attempted to run concurrent side compactions!!");
+
+      try {
+        wait(sch, delay);
+
+        while (!sch.canceled) {
+          if (!sch.canceled) {
+            boolean shouldDelay = runSideCompaction(csc, originalFiles);
+            if (shouldDelay) {
+              wait(sch, delay);
+            }
+          }
+        }
+      } finally {
+        sideCompactionRunning.compareAndSet(true, false);
+      }
+      return null;
+    }
+  }
+
+  private SideCompactionHandle startSideCompaction(MajorCompactionReason reason,
+      final Set<FileRef> originalFiles) {
+
+    // TODO refine logging, current logging is suited for development debugging
+
+    if (extent.isMeta())
+      return null;
+
+    String scs = tableConfiguration.get(Property.TABLE_COMPACTION_SIDE_STRATEGY);
+    if (scs == null || scs.isEmpty())
+      return null;
+
+    if (reason == MajorCompactionReason.CHOP) {
+      // not sure its safe to run side compactions for this reason
+      return null;
+    }
+
+    boolean useUser = tableConfiguration.getBoolean(Property.TABLE_COMPACTION_SIDE_USE_USER);
+
+    if (reason == MajorCompactionReason.USER && useUser) {
+      log.warn(
+          "Side compaction not running for user compaction because unsupported feature was requested");
+      return null;
+    }
+
+    boolean limitFiles = tableConfiguration.getBoolean(Property.TABLE_COMPACTION_SIDE_LIMIT_FILES);
+    if (limitFiles) {
+      log.warn(
+          "Side compaction not running because unsupported feature to limit files was requested");
+      return null;
+    }
+
+    boolean cancelCompaction = tableConfiguration.getBoolean(Property.TABLE_COMPACTION_SIDE_CANCEL);
+    if (cancelCompaction) {
+      log.warn("Side compaction not running because unsupported feature to cancel was requested");
+      return null;
+    }
+
+    long delay = tableConfiguration.getTimeInMillis(Property.TABLE_COMPACTION_SIDE_DELAY);
+
+    // log.info("SCE starting side compaction thread. originalFiles:" + originalFiles.size());
+
+    SideCompactionHandle sch = new SideCompactionHandle();
+
+    Map<String,String> scsOpts = Property.getCompactionSideStrategyOptions(tableConfiguration);
+
+    CompactionStrategyConfig csc = new CompactionStrategyConfig(scs);
+    csc.setOptions(scsOpts);
+
+    sch.task = sideCompactionExecutor
+        .submit(new SideCompactionTask(sch, csc, delay, originalFiles));
+
+    return sch;
+  }
+
+  private boolean runSideCompaction(CompactionStrategyConfig csc, Set<FileRef> originalFiles)
+      throws Exception {
+
+    VolumeManager fs = getTabletServer().getFileSystem();
+
+    MajorCompactionReason reason = MajorCompactionReason.NORMAL;
+
+    // TODO only create if needed?
+    CompactionStrategy strategy = createCompactionStrategy(csc);
+    MajorCompactionRequest request = new MajorCompactionRequest(extent, reason, fs,
+        tableConfiguration);
+
+    Map<FileRef,DataFileValue> candidates;
+    synchronized (this) {
+      candidates = getDatafileManager().getSideCompactionCandidates();
+
+      // only consider files added after the main compaction started
+      candidates.keySet().removeAll(originalFiles);
+
+      if (candidates.isEmpty())
+        return true;
+
+      log.info("Side compaction candidates : " + candidates);
+
+      request.setFiles(candidates);
+
+      if (!strategy.shouldCompact(request)) {
+        return true;
+      }
+    }
+
+    strategy.gatherInformation(request);
+
+    // TODO recreate strat?
+    CompactionPlan plan = strategy.getCompactionPlan(request);
+
+    if (plan == null || plan.inputFiles.isEmpty()) {
+      return true;
+    }
+
+    if (!plan.deleteFiles.isEmpty()) {
+      log.warn("Side compaction does not handle deleting files");
+      return true;
+    }
+
+    plan.validate(candidates.keySet());
+
+    try {
+      synchronized (this) {
+        getDatafileManager().reserveSideCompactionFiles(plan.inputFiles);
+      }
+
+      FileRef fileName = getNextMapFilename("C");
+      FileRef compactTmpName = new FileRef(fileName.path().toString() + "_tmp");
+
+      AccumuloConfiguration tableConf = createTableConfiguration(tableConfiguration, plan);
+      CompactionEnv cenv = new TabletCompactionEnv();
+
+      Map<FileRef,DataFileValue> copy = new HashMap<>();
+      for (FileRef fr : plan.inputFiles) {
+        copy.put(fr, candidates.get(fr));
+      }
+
+      log.debug("Starting Side MajC " + extent + " (" + reason + ") " + copy.keySet() + " --> "
+          + compactTmpName);
+
+      Compactor compactor = new Compactor(tabletServer, this, copy, null, compactTmpName, true,
+          cenv, Collections.<IteratorSetting> emptyList(), reason.ordinal(), tableConf);
+
+      CompactionStats mcs = compactor.call();
+
+      // TODO ok to pass null for compaction ID?
+      getDatafileManager().bringMajorCompactionOnline(copy.keySet(), compactTmpName, fileName, null,
+          new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()), true);
+
+      log.debug("Finished Side MajC " + extent + " " + compactTmpName);
+      /*
+       * log.info("SCE side majc candidates:" + candidates.size() + " inputs:" +
+       * plan.inputFiles.size() + " outputSize:" + mcs.getFileSize() + " read:" +
+       * mcs.getEntriesRead());
+       */
+    } finally {
+      synchronized (this) {
+        getDatafileManager().clearSideCompactionFiles();
+      }
+    }
+
+    boolean shouldDelay = (candidates.size() - plan.inputFiles.size()) == 0;
+    return shouldDelay;
+  }
+
   private CompactionStats _majorCompact(MajorCompactionReason reason)
       throws IOException, CompactionCanceledException {
 
@@ -1850,6 +2070,8 @@ public class Tablet implements TabletCommitter {
     boolean propogateDeletes = false;
     boolean updateCompactionID = false;
 
+    Set<FileRef> originalFiles;
+
     synchronized (this) {
       // plan all that work that needs to be done in the sync block... then do the actual work
       // outside the sync block
@@ -1874,6 +2096,7 @@ public class Tablet implements TabletCommitter {
         RootFiles.cleanupReplacement(fs, fs.listStatus(this.location), false);
       }
       SortedMap<FileRef,DataFileValue> allFiles = getDatafileManager().getDatafileSizes();
+      originalFiles = allFiles.keySet();
       List<FileRef> inputFiles = new ArrayList<>();
       if (reason == MajorCompactionReason.CHOP) {
         // enforce rules: files with keys outside our range need to be compacted
@@ -1921,6 +2144,8 @@ public class Tablet implements TabletCommitter {
       t3 = System.currentTimeMillis();
     }
 
+    SideCompactionHandle sch = null;
+
     try {
 
       log.debug(String.format("MajC initiate lock %.2f secs, wait %.2f secs", (t3 - t2) / 1000.0,
@@ -1964,6 +2189,8 @@ public class Tablet implements TabletCommitter {
 
       }
 
+      sch = startSideCompaction(reason, originalFiles);
+
       // need to handle case where only one file is being major compacted
       // ACCUMULO-3645 run loop at least once, even if filesToCompact.isEmpty()
       do {
@@ -1986,28 +2213,7 @@ public class Tablet implements TabletCommitter {
         Span span = Trace.start("compactFiles");
 
         try {
-          CompactionEnv cenv = new CompactionEnv() {
-            @Override
-            public boolean isCompactionEnabled() {
-              return Tablet.this.isCompactionEnabled();
-            }
-
-            @Override
-            public IteratorScope getIteratorScope() {
-              return IteratorScope.majc;
-            }
-
-            @Override
-            public RateLimiter getReadLimiter() {
-              return getTabletServer().getMajorCompactionReadLimiter();
-            }
-
-            @Override
-            public RateLimiter getWriteLimiter() {
-              return getTabletServer().getMajorCompactionWriteLimiter();
-            }
-
-          };
+          CompactionEnv cenv = new TabletCompactionEnv();
 
           HashMap<FileRef,DataFileValue> copy = new HashMap<>(
               getDatafileManager().getDatafileSizes());
@@ -2037,7 +2243,7 @@ public class Tablet implements TabletCommitter {
           }
           getDatafileManager().bringMajorCompactionOnline(smallestFiles, compactTmpName, fileName,
               filesToCompact.size() == 0 && compactionId != null ? compactionId.getFirst() : null,
-              new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
+              new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()), false);
 
           // when major compaction produces a file w/ zero entries, it will be deleted... do not
           // want
@@ -2046,6 +2252,12 @@ public class Tablet implements TabletCommitter {
             filesToCompact.put(fileName,
                 new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
           }
+
+          /*
+           * log.info("SCE majc candidates:" + originalFiles.size() + " inputs:" + copy.size() +
+           * " outputSize:" + mcs.getFileSize() + " read:" + mcs.getEntriesRead());
+           */
+
         } finally {
           span.stop();
         }
@@ -2053,9 +2265,33 @@ public class Tablet implements TabletCommitter {
       } while (filesToCompact.size() > 0);
       return majCStats;
     } finally {
+      if (sch != null)
+        sch.cancelAndWait();
       synchronized (Tablet.this) {
         getDatafileManager().clearMajorCompactingFile();
       }
+    }
+  }
+
+  private class TabletCompactionEnv implements CompactionEnv {
+    @Override
+    public boolean isCompactionEnabled() {
+      return Tablet.this.isCompactionEnabled();
+    }
+
+    @Override
+    public IteratorScope getIteratorScope() {
+      return IteratorScope.majc;
+    }
+
+    @Override
+    public RateLimiter getReadLimiter() {
+      return getTabletServer().getMajorCompactionReadLimiter();
+    }
+
+    @Override
+    public RateLimiter getWriteLimiter() {
+      return getTabletServer().getMajorCompactionWriteLimiter();
     }
   }
 

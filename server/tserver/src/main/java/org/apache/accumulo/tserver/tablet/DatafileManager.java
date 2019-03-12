@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -54,6 +55,8 @@ import org.apache.accumulo.tserver.TLevel;
 import org.apache.hadoop.fs.Path;
 import org.apache.log4j.Logger;
 
+import com.google.common.base.Preconditions;
+
 class DatafileManager {
   private final Logger log = Logger.getLogger(DatafileManager.class);
   // access to datafilesizes needs to be synchronized: see CompactionRunner#getNumFiles
@@ -80,6 +83,7 @@ class DatafileManager {
   private boolean reservationsBlocked = false;
 
   private final Set<FileRef> majorCompactingFiles = new HashSet<>();
+  private final Set<FileRef> sideCompactingFiles = new HashSet<>();
 
   static void rename(VolumeManager fs, Path src, Path dst) throws IOException {
     if (!fs.rename(src, dst)) {
@@ -286,6 +290,8 @@ class DatafileManager {
   }
 
   FileRef reserveMergingMinorCompactionFile() {
+    // TODO consider side compaction files
+
     if (mergingMinorCompactionFile != null)
       throw new IllegalStateException(
           "Tried to reserve merging minor compaction file when already reserved  : "
@@ -318,7 +324,8 @@ class DatafileManager {
       FileRef minName = null;
 
       for (Entry<FileRef,DataFileValue> entry : datafileSizes.entrySet()) {
-        if (entry.getValue().getSize() <= min && !majorCompactingFiles.contains(entry.getKey())) {
+        if (entry.getValue().getSize() <= min && !majorCompactingFiles.contains(entry.getKey())
+            && !sideCompactingFiles.contains(entry.getKey())) {
           min = entry.getValue().getSize();
           minName = entry.getKey();
         }
@@ -507,6 +514,9 @@ class DatafileManager {
   }
 
   public void reserveMajorCompactingFiles(Collection<FileRef> files) {
+
+    // TODO sanity check side compaction files
+
     if (majorCompactingFiles.size() != 0)
       throw new IllegalStateException("Major compacting files not empty " + majorCompactingFiles);
 
@@ -523,7 +533,8 @@ class DatafileManager {
   }
 
   void bringMajorCompactionOnline(Set<FileRef> oldDatafiles, FileRef tmpDatafile,
-      FileRef newDatafile, Long compactionId, DataFileValue dfv) throws IOException {
+      FileRef newDatafile, Long compactionId, DataFileValue dfv, boolean isSideCompaction)
+      throws IOException {
     final KeyExtent extent = tablet.getExtent();
     long t1, t2;
 
@@ -581,7 +592,8 @@ class DatafileManager {
           log.error("file does not exist in set " + oldDatafile);
         }
         datafileSizes.remove(oldDatafile);
-        majorCompactingFiles.remove(oldDatafile);
+        if (!isSideCompaction)
+          majorCompactingFiles.remove(oldDatafile);
       }
 
       if (datafileSizes.containsKey(newDatafile)) {
@@ -593,7 +605,8 @@ class DatafileManager {
       }
 
       // could be used by a follow on compaction in a multipass compaction
-      majorCompactingFiles.add(newDatafile);
+      if (!isSideCompaction)
+        majorCompactingFiles.add(newDatafile);
 
       tablet.computeNumEntries();
 
@@ -636,4 +649,32 @@ class DatafileManager {
     return datafileSizes.size();
   }
 
+  public Map<FileRef,DataFileValue> getSideCompactionCandidates() {
+    Preconditions.checkState(sideCompactingFiles.isEmpty());
+    Preconditions.checkState(!majorCompactingFiles.isEmpty());
+
+    Map<FileRef,DataFileValue> files = new HashMap<>(datafileSizes);
+
+    files.keySet().removeAll(majorCompactingFiles);
+
+    if (mergingMinorCompactionFile != null) {
+      files.remove(mergingMinorCompactionFile);
+    }
+
+    return files;
+  }
+
+  public void reserveSideCompactionFiles(List<FileRef> inputFiles) {
+    Preconditions.checkState(sideCompactingFiles.isEmpty());
+    Preconditions.checkState(!majorCompactingFiles.isEmpty());
+    Preconditions.checkState(Collections.disjoint(majorCompactingFiles, sideCompactingFiles));
+    Preconditions.checkState(datafileSizes.keySet().containsAll(inputFiles));
+    Preconditions.checkState(
+        mergingMinorCompactionFile == null || !inputFiles.contains(mergingMinorCompactionFile));
+    sideCompactingFiles.addAll(inputFiles);
+  }
+
+  public void clearSideCompactionFiles() {
+    sideCompactingFiles.clear();
+  }
 }

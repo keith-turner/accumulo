@@ -793,6 +793,27 @@ public enum Property {
   TABLE_COMPACTION_STRATEGY_PREFIX("table.majc.compaction.strategy.opts.", null,
       PropertyType.PREFIX,
       "Properties in this category are used to configure the compaction strategy."),
+  TABLE_COMPACTION_SIDE_STRATEGY("table.majc.compaction.side-strategy", "", PropertyType.CLASSNAME,
+      "Side compactions run on new new files created after a long running compaction started.  By "
+          + "default these do not run.  Setting a strategy class for this option will enable them."),
+  TABLE_COMPACTION_SIDE_STRATEGY_PREFIX("table.majc.compaction.side-strategy.opts.", null,
+      PropertyType.PREFIX, "Options for the side compaction strategy."),
+  TABLE_COMPACTION_SIDE_DELAY("table.majc.compaction.side.delay", "15s", PropertyType.TIMEDURATION,
+      "The amount of time to delay before starting a side compaction."),
+  TABLE_COMPACTION_SIDE_LIMIT_FILES("table.majc.compaction.side.limitFiles", "false",
+      PropertyType.BOOLEAN,
+      "Side compactions will compact all files returned by the strategy.  The default compaction "
+          + "strategy will limit files to the system limit, but a custom compaction strategy may not. "
+          + "Setting this to true is unsupported, its here for documentation. "),
+  TABLE_COMPACTION_SIDE_USE_USER("table.majc.compaction.side.useUser", "false",
+      PropertyType.BOOLEAN,
+      "Side compactions always use table settings, even when a user compaction is running.  So if a"
+          + " user compaction had a strategy or iterators those would not be used.  Setting this to "
+          + "true is unsupported, its here for documentation."),
+  TABLE_COMPACTION_SIDE_CANCEL("table.majc.compaction.side.cancel", "false", PropertyType.BOOLEAN,
+      "Compaction will wait for any side compactions to finish.  In theory they could be canceled "
+          + "when the compaction finishes.  Setting this to true is unsupported, its here for "
+          + "documentation."),
   TABLE_REPLICATION("table.replication", "false", PropertyType.BOOLEAN,
       "Is replication enabled for the given table"),
   TABLE_REPLICATION_TARGET("table.replication.target.", null, PropertyType.PREFIX,
@@ -1314,6 +1335,18 @@ public enum Property {
       result.put(
           entry.getKey().substring(Property.TABLE_COMPACTION_STRATEGY_PREFIX.getKey().length()),
           entry.getValue());
+    }
+    return result;
+  }
+
+  public static Map<String,String> getCompactionSideStrategyOptions(
+      AccumuloConfiguration tableConf) {
+    Map<String,String> longNames = tableConf
+        .getAllPropertiesWithPrefix(Property.TABLE_COMPACTION_SIDE_STRATEGY_PREFIX);
+    Map<String,String> result = new HashMap<>();
+    for (Entry<String,String> entry : longNames.entrySet()) {
+      result.put(entry.getKey().substring(
+          Property.TABLE_COMPACTION_SIDE_STRATEGY_PREFIX.getKey().length()), entry.getValue());
     }
     return result;
   }
