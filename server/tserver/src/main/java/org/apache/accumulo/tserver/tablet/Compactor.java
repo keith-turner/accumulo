@@ -188,6 +188,17 @@ public class Compactor implements Callable<CompactionStats> {
     }
   }
 
+  private String getCompactionType() {
+    if(imm != null) {
+      if(filesToCompact.isEmpty())
+        return "Minor";
+      else
+        return "Merging";
+    } else {
+      return "Major";
+    }
+  }
+
   @Override
   public CompactionStats call() throws IOException, CompactionCanceledException {
 
@@ -245,6 +256,8 @@ public class Compactor implements Callable<CompactionStats> {
         }
         throw ex;
       }
+
+      log.info("CSTAT type:{} extent:{} read:{} wrote:{} files:{} time:{}", getCompactionType(), extent, majCStats.getEntriesRead(),  majCStats.getEntriesWritten(), filesToCompact.size(), t2-t1);
 
       log.debug(String.format(
           "Compaction %s %,d read | %,d written | %,6d entries/sec"
