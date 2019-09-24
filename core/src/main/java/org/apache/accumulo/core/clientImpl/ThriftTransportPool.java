@@ -28,6 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.singletons.SingletonManager;
@@ -67,7 +70,8 @@ public class ThriftTransportPool {
     }
   }
 
-  private Map<ThriftTransportKey,CachedConnections> cache = new HashMap<>();
+  private ConcurrentHashMap<ThriftTransportKey,Lock> locks = new ConcurrentHashMap<>();
+  private ConcurrentHashMap<ThriftTransportKey,CachedConnections> cache = new ConcurrentHashMap<>();
   private Map<ThriftTransportKey,Long> errorCount = new HashMap<>();
   private Map<ThriftTransportKey,Long> errorTime = new HashMap<>();
   private Set<ThriftTransportKey> serversWarnedAbout = new HashSet<>();
@@ -117,42 +121,7 @@ public class ThriftTransportPool {
 
     private void closeConnections() throws InterruptedException {
       while (true) {
-
-        ArrayList<CachedConnection> connectionsToClose = new ArrayList<>();
-
-        synchronized (pool) {
-          for (CachedConnections cachedConns : pool.getCache().values()) {
-            Deque<CachedConnection> unres = cachedConns.unreserved;
-
-            long currTime = System.currentTimeMillis();
-
-            // The following code is structured to avoid removing from the middle of the array
-            // deqeue which would be costly. It also assumes the oldest are at the end.
-            while (!unres.isEmpty() && currTime - unres.peekLast().lastReturnTime > pool.killTime) {
-              connectionsToClose.add(unres.removeLast());
-            }
-
-            for (CachedConnection cachedConnection : cachedConns.reserved.values()) {
-              cachedConnection.transport.checkForStuckIO(STUCK_THRESHOLD);
-            }
-          }
-
-          Iterator<Entry<ThriftTransportKey,Long>> iter = pool.errorTime.entrySet().iterator();
-          while (iter.hasNext()) {
-            Entry<ThriftTransportKey,Long> entry = iter.next();
-            long delta = System.currentTimeMillis() - entry.getValue();
-            if (delta >= STUCK_THRESHOLD) {
-              pool.errorCount.remove(entry.getKey());
-              iter.remove();
-            }
-          }
-        }
-
-        // close connections outside of sync block
-        for (CachedConnection cachedConnection : connectionsToClose) {
-          cachedConnection.transport.close();
-        }
-
+        pool.closeConnections();
         Thread.sleep(500);
       }
     }
@@ -413,7 +382,11 @@ public class ThriftTransportPool {
   private TTransport getTransport(ThriftTransportKey cacheKey) throws TTransportException {
     // compute hash code outside of lock, this lowers the time the lock is held
     cacheKey.precomputeHashCode();
-    synchronized (this) {
+
+    Lock lock = getLock(cacheKey);
+    lock.lock();
+
+    try {
       // atomically reserve location if it exist in cache
       CachedConnection cachedConnection =
           getCache().computeIfAbsent(cacheKey, ck -> new CachedConnections()).reserveAny();
@@ -421,6 +394,8 @@ public class ThriftTransportPool {
         log.trace("Using existing connection to {}", cacheKey.getServer());
         return cachedConnection.transport;
       }
+    }finally {
+      lock.unlock();
     }
 
     return createNewTransport(cacheKey);
@@ -435,22 +410,26 @@ public class ThriftTransportPool {
     if (preferCachedConnection) {
       HashSet<ThriftTransportKey> serversSet = new HashSet<>(servers);
 
-      synchronized (this) {
+      // randomly pick a server from the connection cache
+      serversSet.retainAll(getCache().keySet());
 
-        // randomly pick a server from the connection cache
-        serversSet.retainAll(getCache().keySet());
+      if (serversSet.size() > 0) {
+        ArrayList<ThriftTransportKey> cachedServers = new ArrayList<>(serversSet);
+        Collections.shuffle(cachedServers, random);
 
-        if (serversSet.size() > 0) {
-          ArrayList<ThriftTransportKey> cachedServers = new ArrayList<>(serversSet);
-          Collections.shuffle(cachedServers, random);
+        for (ThriftTransportKey ttk : cachedServers) {
+          Lock lock = getLock(ttk);
+          lock.lock();
 
-          for (ThriftTransportKey ttk : cachedServers) {
+          try {
             CachedConnection cachedConnection = getCache().get(ttk).reserveAny();
             if (cachedConnection != null) {
               final String serverAddr = ttk.getServer().toString();
               log.trace("Using existing connection to {}", serverAddr);
               return new Pair<>(serverAddr, cachedConnection.transport);
             }
+          }finally {
+            lock.unlock();
           }
         }
       }
@@ -462,7 +441,10 @@ public class ThriftTransportPool {
       ThriftTransportKey ttk = servers.get(index);
 
       if (preferCachedConnection) {
-        synchronized (this) {
+        Lock lock = getLock(ttk);
+        lock.lock();
+
+        try {
           CachedConnections cachedConns = getCache().get(ttk);
           if (cachedConns != null) {
             CachedConnection cachedConnection = cachedConns.reserveAny();
@@ -471,6 +453,8 @@ public class ThriftTransportPool {
               return new Pair<>(serverAddr, cachedConnection.transport);
             }
           }
+        }finally {
+          lock.unlock();
         }
       }
 
@@ -498,10 +482,15 @@ public class ThriftTransportPool {
     cc.reserve();
 
     try {
-      synchronized (this) {
+      Lock lock = getLock(cacheKey);
+      lock.lock();
+
+      try {
         CachedConnections cachedConns =
             getCache().computeIfAbsent(cacheKey, ck -> new CachedConnections());
         cachedConns.reserved.put(cc.transport, cc);
+      }finally {
+        lock.unlock();
       }
     } catch (TransportPoolShutdownException e) {
       cc.transport.close();
@@ -520,7 +509,10 @@ public class ThriftTransportPool {
 
     ArrayList<CachedConnection> closeList = new ArrayList<>();
 
-    synchronized (this) {
+    Lock lock = getLock(ctsc.getCacheKey());
+    lock.lock();
+
+    try {
       CachedConnections cachedConns = getCache().get(ctsc.getCacheKey());
       if (cachedConns != null) {
         CachedConnection cachedConnection = cachedConns.reserved.remove(ctsc);
@@ -564,9 +556,12 @@ public class ThriftTransportPool {
           existInCache = true;
         }
       }
+    }finally {
+      lock.unlock();
     }
 
     // close outside of sync block
+    // TODO - Might need to close within lock block.
     for (CachedConnection cachedConnection : closeList) {
       try {
         cachedConnection.transport.close();
@@ -649,6 +644,51 @@ public class ThriftTransportPool {
     }
   }
 
+  void closeConnections() {
+    ArrayList<CachedConnection> connectionsToClose = new ArrayList<>();
+
+    // TODO - Possibly still needs to be in synchronized(this) block.
+    for (Entry<ThriftTransportKey,CachedConnections> entry : getCache().entrySet()) {
+      Lock lock = getLock(entry.getKey());
+      lock.lock();
+
+      CachedConnections cachedConns = entry.getValue();
+      try {
+        Deque<CachedConnection> unres = cachedConns.unreserved;
+
+        long currTime = System.currentTimeMillis();
+
+        // The following code is structured to avoid removing from the middle of the array
+        // deqeue which would be costly. It also assumes the oldest are at the end.
+        while (!unres.isEmpty() && currTime - unres.peekLast().lastReturnTime > killTime) {
+          connectionsToClose.add(unres.removeLast());
+        }
+        for (CachedConnection cachedConnection : cachedConns.reserved.values()) {
+          cachedConnection.transport.checkForStuckIO(STUCK_THRESHOLD);
+        }
+      }finally {
+        lock.unlock();
+      }
+    }
+
+    synchronized (this) {
+      Iterator<Entry<ThriftTransportKey,Long>> iter = errorTime.entrySet().iterator();
+      while (iter.hasNext()) {
+        Entry<ThriftTransportKey,Long> entry = iter.next();
+        long delta = System.currentTimeMillis() - entry.getValue();
+        if (delta >= STUCK_THRESHOLD) {
+          errorCount.remove(entry.getKey());
+          iter.remove();
+        }
+      }
+    }
+
+    // close connections outside of sync block
+    for (CachedConnection cachedConnection : connectionsToClose) {
+      cachedConnection.transport.close();
+    }
+  }
+
   private void shutdown() {
     Thread ctl;
     synchronized (this) {
@@ -656,7 +696,13 @@ public class ThriftTransportPool {
         return;
 
       // close any connections in the pool... even ones that are in use
-      for (CachedConnections cachedConn : getCache().values()) {
+      for (Entry<ThriftTransportKey,CachedConnections> entry : getCache().entrySet()) {
+
+        // Do not allow other threads to access this lock during shutdown.
+        Lock lock = getLock(entry.getKey());
+        lock.lock();
+
+        CachedConnections cachedConn = entry.getValue();
         for (CachedConnection cc : Iterables.concat(cachedConn.reserved.values(),
             cachedConn.unreserved)) {
           try {
@@ -669,6 +715,7 @@ public class ThriftTransportPool {
 
       // this will render the pool unusable and cause the background thread to exit
       this.cache = null;
+      this.locks = null;
 
       ctl = checkThread;
     }
@@ -689,5 +736,9 @@ public class ThriftTransportPool {
           "The Accumulo singleton for connection pooling is disabled.  This is likely caused by "
               + "all AccumuloClients being closed or garbage collected.");
     return cache;
+  }
+
+  private Lock getLock(final ThriftTransportKey key) {
+    return locks.computeIfAbsent(key, k -> new ReentrantLock());
   }
 }
