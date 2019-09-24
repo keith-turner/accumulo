@@ -394,7 +394,7 @@ public class ThriftTransportPool {
         log.trace("Using existing connection to {}", cacheKey.getServer());
         return cachedConnection.transport;
       }
-    }finally {
+    } finally {
       lock.unlock();
     }
 
@@ -428,7 +428,7 @@ public class ThriftTransportPool {
               log.trace("Using existing connection to {}", serverAddr);
               return new Pair<>(serverAddr, cachedConnection.transport);
             }
-          }finally {
+          } finally {
             lock.unlock();
           }
         }
@@ -453,7 +453,7 @@ public class ThriftTransportPool {
               return new Pair<>(serverAddr, cachedConnection.transport);
             }
           }
-        }finally {
+        } finally {
           lock.unlock();
         }
       }
@@ -489,7 +489,7 @@ public class ThriftTransportPool {
         CachedConnections cachedConns =
             getCache().computeIfAbsent(cacheKey, ck -> new CachedConnections());
         cachedConns.reserved.put(cc.transport, cc);
-      }finally {
+      } finally {
         lock.unlock();
       }
     } catch (TransportPoolShutdownException e) {
@@ -520,19 +520,6 @@ public class ThriftTransportPool {
           if (ctsc.sawError) {
             closeList.add(cachedConnection);
 
-            log.trace("Returned connection had error {}", ctsc.getCacheKey());
-
-            Long ecount = errorCount.merge(ctsc.getCacheKey(), 1L, Long::sum);
-
-            // logs the first time an error occurred
-            errorTime.computeIfAbsent(ctsc.getCacheKey(), k -> System.currentTimeMillis());
-
-            if (ecount >= ERROR_THRESHOLD && serversWarnedAbout.add(ctsc.getCacheKey())) {
-              log.warn(
-                  "Server {} had {} failures in a short time period, will not complain anymore",
-                  ctsc.getCacheKey(), ecount);
-            }
-
             cachedConnection.unreserve();
 
             // remove all unreserved cached connection when a sever has an error, not just the
@@ -556,7 +543,7 @@ public class ThriftTransportPool {
           existInCache = true;
         }
       }
-    }finally {
+    } finally {
       lock.unlock();
     }
 
@@ -567,6 +554,32 @@ public class ThriftTransportPool {
         cachedConnection.transport.close();
       } catch (Exception e) {
         log.debug("Failed to close connection w/ errors", e);
+      }
+    }
+
+    if (ctsc.sawError) {
+
+      boolean shouldWarn = false;
+      Long ecount = null;
+
+      synchronized (errorCount) {
+
+        ecount = errorCount.merge(ctsc.getCacheKey(), 1L, Long::sum);
+
+        // logs the first time an error occurred
+        errorTime.computeIfAbsent(ctsc.getCacheKey(), k -> System.currentTimeMillis());
+
+        if (ecount >= ERROR_THRESHOLD && serversWarnedAbout.add(ctsc.getCacheKey())) {
+          // boolean facilitates logging outside of lock
+          shouldWarn = true;
+        }
+      }
+
+      log.trace("Returned connection had error {}", ctsc.getCacheKey());
+
+      if (shouldWarn) {
+        log.warn("Server {} had {} failures in a short time period, will not complain anymore",
+            ctsc.getCacheKey(), ecount);
       }
     }
 
@@ -666,12 +679,12 @@ public class ThriftTransportPool {
         for (CachedConnection cachedConnection : cachedConns.reserved.values()) {
           cachedConnection.transport.checkForStuckIO(STUCK_THRESHOLD);
         }
-      }finally {
+      } finally {
         lock.unlock();
       }
     }
 
-    synchronized (this) {
+    synchronized (errorCount) {
       Iterator<Entry<ThriftTransportKey,Long>> iter = errorTime.entrySet().iterator();
       while (iter.hasNext()) {
         Entry<ThriftTransportKey,Long> entry = iter.next();
