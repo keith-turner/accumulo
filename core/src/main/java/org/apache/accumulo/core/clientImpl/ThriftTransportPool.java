@@ -421,16 +421,19 @@ public class ThriftTransportPool {
           Lock lock = getLock(ttk);
           lock.lock();
 
+          CachedConnection cachedConnection;
           try {
-            CachedConnection cachedConnection = getCache().get(ttk).reserveAny();
-            if (cachedConnection != null) {
-              final String serverAddr = ttk.getServer().toString();
-              log.trace("Using existing connection to {}", serverAddr);
-              return new Pair<>(serverAddr, cachedConnection.transport);
-            }
+            cachedConnection = getCache().get(ttk).reserveAny();
           } finally {
             lock.unlock();
           }
+
+          if (cachedConnection != null) {
+            final String serverAddr = ttk.getServer().toString();
+            log.trace("Using existing connection to {}", serverAddr);
+            return new Pair<>(serverAddr, cachedConnection.transport);
+          }
+
         }
       }
     }
@@ -662,10 +665,10 @@ public class ThriftTransportPool {
 
     // TODO - Possibly still needs to be in synchronized(this) block.
     for (Entry<ThriftTransportKey,CachedConnections> entry : getCache().entrySet()) {
+      CachedConnections cachedConns = entry.getValue();
       Lock lock = getLock(entry.getKey());
       lock.lock();
 
-      CachedConnections cachedConns = entry.getValue();
       try {
         Deque<CachedConnection> unres = cachedConns.unreserved;
 
