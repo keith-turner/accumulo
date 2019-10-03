@@ -30,6 +30,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
@@ -339,7 +340,7 @@ class DatafileManager {
   }
 
   void bringMinorCompactionOnline(FileRef tmpDatafile, FileRef newDatafile, FileRef absMergeFile,
-      DataFileValue dfv, CommitSession commitSession, long flushId) {
+      DataFileValue dfv, CommitSession commitSession, long flushId, Consumer<Path> warmer) {
 
     // rename before putting in metadata table, so files in metadata table should
     // always exist
@@ -449,6 +450,8 @@ class DatafileManager {
       }
     } while (true);
 
+    warmer.accept(newDatafile.path());
+
     synchronized (tablet) {
       t1 = System.currentTimeMillis();
 
@@ -505,7 +508,8 @@ class DatafileManager {
   }
 
   void bringMajorCompactionOnline(Set<FileRef> oldDatafiles, FileRef tmpDatafile,
-      FileRef newDatafile, Long compactionId, DataFileValue dfv) throws IOException {
+      FileRef newDatafile, Long compactionId, DataFileValue dfv, Consumer<Path> warmer)
+      throws IOException {
     final KeyExtent extent = tablet.getExtent();
     long t1, t2;
 
@@ -520,6 +524,8 @@ class DatafileManager {
 
     if (dfv.getNumEntries() == 0) {
       tablet.getTabletServer().getFileSystem().deleteRecursively(newDatafile.path());
+    } else {
+      warmer.accept(newDatafile.path());
     }
 
     TServerInstance lastLocation = null;

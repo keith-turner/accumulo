@@ -101,4 +101,9 @@ class MultiIndexIterator extends HeapIterator implements FileSKVIterator {
     throw new UnsupportedOperationException();
   }
 
+  @Override
+  public void warm() {
+    throw new UnsupportedOperationException();
+  }
+
 }

@@ -742,6 +742,8 @@ public enum Property {
       "Determines whether index block cache is enabled for a table."),
   TABLE_BLOCKCACHE_ENABLED("table.cache.block.enable", "false", PropertyType.BOOLEAN,
       "Determines whether data block cache is enabled for a table."),
+  TABLE_CACHE_WARM("table.cache.warm", "false", PropertyType.BOOLEAN,
+      "Determines wether new files are automatically warmed in the cache. TODO potential problems"),
   TABLE_ITERATOR_PREFIX("table.iterator.", null, PropertyType.PREFIX,
       "Properties in this category specify iterators that are applied at"
           + " various stages (scopes) of interaction with a table. These properties"

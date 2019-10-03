@@ -445,6 +445,10 @@ public class BloomFilterLayer {
       return new BloomFilterLayer.Reader(reader.getSample(sampleConfig), bfl);
     }
 
+    @Override
+    public void warm() throws IOException {
+      reader.warm();
+    }
   }
 
   public static void main(String[] args) throws IOException {

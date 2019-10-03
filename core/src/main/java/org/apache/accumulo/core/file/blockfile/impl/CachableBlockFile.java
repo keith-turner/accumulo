@@ -472,6 +472,13 @@ public class CachableBlockFile {
       }
     }
 
+    public boolean isCachingIndex() {
+      return _iCache != null;
+    }
+
+    public boolean isCachingData() {
+      return _dCache != null;
+    }
   }
 
   public static class CachedBlockRead extends DataInputStream {

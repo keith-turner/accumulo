@@ -20,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.DataInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -158,6 +159,8 @@ public class DefaultCompactionStrategyTest {
       return null;
     }
 
+    @Override
+    public void warm() throws IOException {}
   }
 
   static final DefaultConfiguration dfault = DefaultConfiguration.getInstance();

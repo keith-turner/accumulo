@@ -34,6 +34,8 @@ public interface FileSKVIterator extends InterruptibleIterator, AutoCloseable {
 
   void closeDeepCopies() throws IOException;
 
+  void warm() throws IOException;
+
   @Override
   void close() throws IOException;
 }

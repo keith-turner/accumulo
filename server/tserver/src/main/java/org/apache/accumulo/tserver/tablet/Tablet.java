@@ -119,6 +119,7 @@ import org.apache.accumulo.tserver.ConditionCheckerContext.ConditionChecker;
 import org.apache.accumulo.tserver.InMemoryMap;
 import org.apache.accumulo.tserver.MinorCompactionReason;
 import org.apache.accumulo.tserver.TabletServer;
+import org.apache.accumulo.tserver.TabletServerResourceManager;
 import org.apache.accumulo.tserver.TabletServerResourceManager.TabletResourceManager;
 import org.apache.accumulo.tserver.TabletStatsKeeper;
 import org.apache.accumulo.tserver.TabletStatsKeeper.Operation;
@@ -846,7 +847,7 @@ public class Tablet {
       try (TraceScope span = Trace.startSpan("bringOnline")) {
         getDatafileManager().bringMinorCompactionOnline(tmpDatafile, newDatafile, mergeFile,
             new DataFileValue(stats.getFileSize(), stats.getEntriesWritten()), commitSession,
-            flushId);
+            flushId, this::warmFile);
       }
       return new DataFileValue(stats.getFileSize(), stats.getEntriesWritten());
     } catch (Exception | Error e) {
@@ -1680,6 +1681,44 @@ public class Tablet {
     return result;
   }
 
+  // TODO warm files on tablet load?? on bulk import??
+  // TODO where to put this function???
+  private void warmFile(Path path) {
+
+    if (!tableConfiguration.getBoolean(Property.TABLE_CACHE_WARM))
+      return;
+
+    boolean dataCacheEnabled = tableConfiguration.getBoolean(Property.TABLE_BLOCKCACHE_ENABLED);
+    boolean indexCacheEnabled = tableConfiguration.getBoolean(Property.TABLE_INDEXCACHE_ENABLED);
+
+    if (!dataCacheEnabled && !indexCacheEnabled)
+      return;
+
+    try {
+      // TODO check config
+
+      FileOperations fileFactory = FileOperations.getInstance();
+      VolumeManager fs = getTabletServer().getFileSystem();
+      FileSystem ns = fs.getVolumeByPath(path).getFileSystem();
+
+      TabletServerResourceManager tsrm = getTabletResources().getTabletServerResourceManager();
+
+      try (FileSKVIterator reader = fileFactory.newReaderBuilder()
+          .forFile(path.toString(), ns, ns.getConf(), context.getCryptoService())
+          .withTableConfiguration(this.getTableConfiguration())
+          .withBlockCache(dataCacheEnabled ? tsrm.getDataCache() : null,
+              indexCacheEnabled ? tsrm.getIndexCache() : null)
+          .withFileLenCache(tsrm.getFileLenCache()).build()) {
+        long t1 = System.currentTimeMillis();
+        reader.warm();
+        long t2 = System.currentTimeMillis();
+        log.info("Warmed " + path + " in " + (t2 - t1) + "ms");
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
   List<FileRef> findChopFiles(KeyExtent extent, Map<FileRef,Pair<Key,Key>> firstAndLastKeys,
       Collection<FileRef> allFiles) {
     List<FileRef> result = new ArrayList<>();
@@ -1955,7 +1994,7 @@ public class Tablet {
           }
           getDatafileManager().bringMajorCompactionOnline(smallestFiles, compactTmpName, fileName,
               filesToCompact.size() == 0 && compactionId != null ? compactionId.getFirst() : null,
-              new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
+              new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()), this::warmFile);
 
           // when major compaction produces a file w/ zero entries, it will be deleted... do not
           // want to add the deleted file

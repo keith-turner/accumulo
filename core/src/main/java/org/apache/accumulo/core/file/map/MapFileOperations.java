@@ -135,6 +135,11 @@ public class MapFileOperations extends FileOperations {
     public FileSKVIterator getSample(SamplerConfigurationImpl sampleConfig) {
       return ((FileSKVIterator) reader).getSample(sampleConfig);
     }
+
+    @Override
+    public void warm() throws IOException {
+      ((FileSKVIterator) reader).warm();
+    }
   }
 
   @Override

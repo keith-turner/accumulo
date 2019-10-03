@@ -1126,6 +1126,20 @@ public class RFile {
     public FileSKVIterator getSample(SamplerConfigurationImpl sampleConfig) {
       throw new UnsupportedOperationException();
     }
+
+    @Override
+    public void warm() throws IOException {
+      boolean cachingData = reader.isCachingData();
+      if (reader.isCachingIndex() || cachingData) {
+        Iterator<IndexEntry> index = getIndex();
+        while (index.hasNext()) {
+          IndexEntry indexEntry = index.next();
+          if (cachingData) {
+            getDataBlock(indexEntry).close();
+          }
+        }
+      }
+    }
   }
 
   public static class Reader extends HeapIterator implements FileSKVIterator {
@@ -1510,6 +1524,13 @@ public class RFile {
       this.interruptFlag = flag;
       for (LocalityGroupReader lgr : currentReaders) {
         lgr.setInterruptFlag(interruptFlag);
+      }
+    }
+
+    @Override
+    public void warm() throws IOException {
+      for (LocalityGroupReader lgr : currentReaders) {
+        lgr.warm();
       }
     }
   }

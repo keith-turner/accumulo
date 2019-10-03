@@ -134,4 +134,9 @@ public class SequenceFileIterator implements FileSKVIterator {
   public FileSKVIterator getSample(SamplerConfigurationImpl sampleConfig) {
     throw new UnsupportedOperationException();
   }
+
+  @Override
+  public void warm() throws IOException {
+    throw new UnsupportedOperationException();
+  }
 }

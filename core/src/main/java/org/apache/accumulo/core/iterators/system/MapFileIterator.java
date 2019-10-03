@@ -162,4 +162,9 @@ public class MapFileIterator implements FileSKVIterator {
   public FileSKVIterator getSample(SamplerConfigurationImpl sampleConfig) {
     return null;
   }
+
+  @Override
+  public void warm() throws IOException {
+    // TODO Auto-generated method stub
+  }
 }
