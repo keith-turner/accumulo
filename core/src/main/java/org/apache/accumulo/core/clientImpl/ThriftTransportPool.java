@@ -39,6 +39,7 @@ import org.apache.accumulo.core.singletons.SingletonManager;
 import org.apache.accumulo.core.singletons.SingletonService;
 import org.apache.accumulo.core.util.Daemon;
 import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.accumulo.core.util.Once;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
@@ -69,7 +70,8 @@ public class ThriftTransportPool {
       return cachedConnection;
     }
 
-    private void removeExpiredConnections(final ArrayList<CachedConnection> expired, final long killTime) {
+    private void removeExpiredConnections(final ArrayList<CachedConnection> expired,
+        final long killTime) {
       long currTime = System.currentTimeMillis();
       while (isLastUnreservedExpired(currTime, killTime)) {
         expired.add(unreserved.removeLast());
@@ -105,8 +107,18 @@ public class ThriftTransportPool {
   }
 
   private static class ConnectionPool {
-    final ConcurrentHashMap<ThriftTransportKey,ReentrantLock> locks = new ConcurrentHashMap<>();
-    final ConcurrentHashMap<ThriftTransportKey,CachedConnections> connections = new ConcurrentHashMap<>();
+    final Lock[] locks;
+    final ConcurrentHashMap<ThriftTransportKey,CachedConnections> connections =
+        new ConcurrentHashMap<>();
+    private volatile boolean shutdown = false;
+
+    ConnectionPool() {
+      // intentionally using a prime number, don't use 31
+      locks = new Lock[37];
+      for (int i = 0; i < locks.length; i++) {
+        locks[i] = new ReentrantLock();
+      }
+    }
 
     Set<ThriftTransportKey> getThriftTransportKeys() {
       return connections.keySet();
@@ -117,30 +129,40 @@ public class ThriftTransportPool {
     }
 
     CachedConnection reserveAnyIfPresent(final ThriftTransportKey key) {
-      return executeWithinLock(key, () -> connections.containsKey(key)
-          ? connections.get(key).reserveAny()
-          : null);
+      return executeWithinLock(key,
+          () -> connections.containsKey(key) ? connections.get(key).reserveAny() : null);
     }
 
     void putReserved(final ThriftTransportKey key, final CachedConnection connection) {
-      executeWithinLock(key, () -> getOrCreateCachedConnections(key).reserved.put(
-          connection.transport, connection));
+      executeWithinLock(key,
+          () -> getOrCreateCachedConnections(key).reserved.put(connection.transport, connection));
     }
 
-    boolean returnTransport(final CachedTTransport transport, final List<CachedConnection> toBeClosed) {
-      return executeWithinLock(transport.getCacheKey(), () -> unreserveConnection(transport, toBeClosed));
+    boolean returnTransport(final CachedTTransport transport,
+        final List<CachedConnection> toBeClosed) {
+      return executeWithinLock(transport.getCacheKey(),
+          () -> unreserveConnection(transport, toBeClosed)); // inline
     }
 
     void shutdown() {
-      for (Entry<ThriftTransportKey,CachedConnections> entry : connections.entrySet()) {
-        Lock lock = locks.get(entry.getKey());
-        // Explicitly do not release the lock afterwards in order to prevent other threads from
-        // obtaining it during shutdown. This pool instance is expected to be nullified after this
-        // method is called.
+      for (Lock lock : locks) {
         lock.lock();
+      }
 
-        // Close the transports.
-        entry.getValue().closeAllTransports();
+      // all locks are now acquired, so nothing else should be able to run concurrently...
+
+      try {
+        if (shutdown)
+          return;
+
+        shutdown = true;
+
+        connections.values().forEach(cc -> cc.closeAllTransports());
+
+      } finally {
+        for (Lock lock : locks) {
+          lock.unlock();
+        }
       }
     }
 
@@ -162,8 +184,19 @@ public class ThriftTransportPool {
       }
     }
 
-    ReentrantLock getLock(final ThriftTransportKey key){
-      return locks.computeIfAbsent(key, k -> new ReentrantLock());
+    Lock getLock(final ThriftTransportKey key) {
+      Lock lock = locks[Math.abs(key.hashCode()) % locks.length];
+
+      lock.lock();
+
+      if (shutdown) {
+        lock.unlock();
+        throw new TransportPoolShutdownException(
+            "The Accumulo singleton for connection pooling is disabled.  This is likely caused by "
+                + "all AccumuloClients being closed or garbage collected.");
+      }
+
+      return lock;
     }
 
     CachedConnections getCachedConnections(final ThriftTransportKey key) {
@@ -227,13 +260,15 @@ public class ThriftTransportPool {
     }
   }
 
-  private volatile ConnectionPool connectionPool = new ConnectionPool();
+  private final ConnectionPool connectionPool = new ConnectionPool();
 
   private Map<ThriftTransportKey,Long> errorCount = new HashMap<>();
   private Map<ThriftTransportKey,Long> errorTime = new HashMap<>();
   private Set<ThriftTransportKey> serversWarnedAbout = new HashSet<>();
 
-  private Thread checkThread;
+  private Once checkStarter = new Once(() -> {
+    new Daemon(new Closer(instance), "Thrift Connection Pool Checker").start();
+  });
 
   private static final Logger log = LoggerFactory.getLogger(ThriftTransportPool.class);
 
@@ -741,29 +776,24 @@ public class ThriftTransportPool {
     }
   }
 
-  public synchronized void startCheckerThread() {
-    if (connectionPool != null && checkThread == null) {
-      checkThread = new Daemon(new Closer(instance), "Thrift Connection Pool Checker");
-      checkThread.start();
-    }
+  public void startCheckerThread() {
+    checkStarter.run();
   }
 
   void closeExpiredConnections() {
     List<CachedConnection> expiredConnections;
 
-    synchronized (this) {
-      ConnectionPool pool = getConnectionPool();
-      expiredConnections = pool.removeExpiredConnections(killTime);
+    ConnectionPool pool = getConnectionPool();
+    expiredConnections = pool.removeExpiredConnections(killTime);
 
-      synchronized (errorCount) {
-        Iterator<Entry<ThriftTransportKey,Long>> iter = errorTime.entrySet().iterator();
-        while (iter.hasNext()) {
-          Entry<ThriftTransportKey,Long> entry = iter.next();
-          long delta = System.currentTimeMillis() - entry.getValue();
-          if (delta >= STUCK_THRESHOLD) {
-            errorCount.remove(entry.getKey());
-            iter.remove();
-          }
+    synchronized (errorCount) {
+      Iterator<Entry<ThriftTransportKey,Long>> iter = errorTime.entrySet().iterator();
+      while (iter.hasNext()) {
+        Entry<ThriftTransportKey,Long> entry = iter.next();
+        long delta = System.currentTimeMillis() - entry.getValue();
+        if (delta >= STUCK_THRESHOLD) {
+          errorCount.remove(entry.getKey());
+          iter.remove();
         }
       }
     }
@@ -773,39 +803,10 @@ public class ThriftTransportPool {
   }
 
   private void shutdown() {
-      Thread ctl;
-      synchronized (this) {
-        // Check if a shutdown has already occurred.
-        if (this.connectionPool == null) {
-          return;
-        }
-
-        // Shutdown the pool.
-        connectionPool.shutdown();
-        connectionPool = null;
-        ctl = checkThread;
-      }
-
-      // Shut down the pool checker thread.
-      if (ctl != null) {
-        try {
-          ctl.interrupt();
-          ctl.join();
-        } catch (InterruptedException e) {
-          throw new RuntimeException(e);
-        }
-      }
+    connectionPool.shutdown();
   }
 
   private ConnectionPool getConnectionPool() {
-    // Very important to only read volatile once into a local variable as multiple reads may see
-    // different things.
-    ConnectionPool local = connectionPool;
-    if  (local == null) {
-      throw new TransportPoolShutdownException(
-          "The Accumulo singleton for connection pooling is disabled.  This is likely caused by "
-              + "all AccumuloClients being closed or garbage collected.");
-    }
-    return local;
+    return connectionPool;
   }
 }
