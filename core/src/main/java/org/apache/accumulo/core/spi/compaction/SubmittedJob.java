@@ -22,15 +22,21 @@ public class SubmittedJob {
   private final Status status;
   private final CompactionId id;
   private final CompactionJob job;
+  private Type type;
 
   public enum Status {
     RUNNING, QUEUED
   }
 
-  public SubmittedJob(CompactionJob job, CompactionId id, Status status) {
+  public enum Type {
+    USER, SYSTEM
+  }
+
+  public SubmittedJob(CompactionJob job, CompactionId id, Status status, Type type) {
     this.job = job;
     this.id = id;
     this.status = status;
+    this.type = type;
   }
 
   public CompactionJob getJob() {
@@ -43,5 +49,9 @@ public class SubmittedJob {
 
   public Status getStatus() {
     return status;
+  }
+
+  public Type getRequester() {
+    return type;
   }
 }

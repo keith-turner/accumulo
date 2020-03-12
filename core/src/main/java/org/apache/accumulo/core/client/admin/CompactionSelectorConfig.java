@@ -1,21 +1,3 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- */
 package org.apache.accumulo.core.client.admin;
 
 import static java.util.Objects.requireNonNull;
@@ -25,15 +7,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Configuration object which describes how a Compaction is run. Configuration objects are dependent
- * upon the CompactionStrategy running insider the server. This class is used in conjunction with
- * {@link CompactionConfig}.
- *
- * @since 1.7.0
- * @deprecated since 2.1.0
+ * @since 2.1.0
  */
-@Deprecated
-public class CompactionStrategyConfig {
+public class CompactionSelectorConfig {
   private String className;
   private Map<String,String> options = Collections.emptyMap();
 
@@ -43,7 +19,7 @@ public class CompactionStrategyConfig {
    *          org.apache.accumulo.tserver.compaction.CompactionStrategy. This class must be exist on
    *          tservers.
    */
-  public CompactionStrategyConfig(String className) {
+  public CompactionSelectorConfig(String className) {
     requireNonNull(className);
     this.className = className;
   }
@@ -62,7 +38,7 @@ public class CompactionStrategyConfig {
    *          map.
    * @return this
    */
-  public CompactionStrategyConfig setOptions(Map<String,String> opts) {
+  public CompactionSelectorConfig setOptions(Map<String,String> opts) {
     requireNonNull(opts);
     this.options = new HashMap<>(opts);
     return this;
@@ -82,8 +58,8 @@ public class CompactionStrategyConfig {
 
   @Override
   public boolean equals(Object o) {
-    if (o instanceof CompactionStrategyConfig) {
-      CompactionStrategyConfig ocsc = (CompactionStrategyConfig) o;
+    if (o instanceof CompactionSelectorConfig) {
+      CompactionSelectorConfig ocsc = (CompactionSelectorConfig) o;
       return className.equals(ocsc.className) && options.equals(ocsc.options);
     }
 

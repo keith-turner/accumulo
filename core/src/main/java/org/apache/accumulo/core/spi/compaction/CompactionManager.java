@@ -31,6 +31,8 @@ public interface CompactionManager {
     Map<String,String> getOptions();
 
     ServiceEnvironment getServiceEnv();
+
+    Map<String,CompactionExecutor> getCompactionExecutors();
   }
 
   void init(InitParameters params);
@@ -38,12 +40,28 @@ public interface CompactionManager {
   public interface PlanningParameters {
     TableId getTableId();
 
-    Map<URI,FileInfo> getFiles();
+    Map<String,String> getHints();
 
-    Map<String,CompactionExecutor> getCompactionExecutors();
+    Map<URI,FileInfo> getFiles();
 
     Collection<SubmittedJob> getSubmittedJobs();
   }
 
   CompactionPlan makePlan(PlanningParameters params);
+
+  public interface UserPlanningParameters extends PlanningParameters {
+
+    Map<String,String> getExecutionHints();
+
+    /**
+     * These are the files a user requires compaction for. These may be a subset of
+     * {@link #getFiles()}. If multiple passes are required to compact these files, its ok to return
+     * a subset of the files. Later a plan will be requested for the remaining files. However, all
+     * files must eventually be compacted.
+     */
+    Map<URI,FileInfo> getUserFiles();
+  }
+
+  CompactionPlan makePlanForUser(UserPlanningParameters params);
+
 }

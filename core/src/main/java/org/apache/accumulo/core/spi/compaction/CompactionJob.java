@@ -23,12 +23,12 @@ import java.util.Collection;
 
 public class CompactionJob {
 
-  private final int priority;
+  private final long priority;
   private final String executor;
   private final Collection<URI> files;
   // TODO compaction config
 
-  public CompactionJob(int priority, String executor, Collection<URI> files) {
+  public CompactionJob(long priority, String executor, Collection<URI> files) {
     this.priority = priority;
     this.executor = executor;
     this.files = files;

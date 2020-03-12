@@ -24,9 +24,12 @@ import static org.apache.accumulo.core.clientImpl.CompactionStrategyConfigUtil.D
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.hadoop.io.Text;
+
+import com.google.common.base.Preconditions;
 
 /**
  * This class exist to pass parameters to {@link TableOperations#compact(String, CompactionConfig)}
@@ -40,6 +43,9 @@ public class CompactionConfig {
   private boolean wait = true;
   private List<IteratorSetting> iterators = Collections.emptyList();
   private CompactionStrategyConfig compactionStrategy = DEFAULT_STRATEGY;
+  private Map<String,String> overrides;
+  private Map<String,String> hints;
+  private CompactionSelectorConfig selectorConfig;
 
   /**
    * @param start
@@ -141,9 +147,12 @@ public class CompactionConfig {
    *          configures the strategy that will be used by each tablet to select files. If no
    *          strategy is set, then all files will be compacted.
    * @return this
+   * @deprecated since 2.1.0
    */
+  @Deprecated
   public CompactionConfig setCompactionStrategy(CompactionStrategyConfig csConfig) {
     requireNonNull(csConfig);
+    Preconditions.checkState(selectorConfig == null && overrides == null);
     this.compactionStrategy = csConfig;
     return this;
   }
@@ -152,8 +161,62 @@ public class CompactionConfig {
    * @return The previously set compaction strategy. Defaults to a configuration of
    *         org.apache.accumulo.tserver.compaction.EverythingCompactionStrategy which always
    *         compacts all files.
+   * @deprecated since 2.1.0
    */
+  @Deprecated
   public CompactionStrategyConfig getCompactionStrategy() {
     return compactionStrategy;
+  }
+
+  /**
+   * @return this;
+   * @since 2.1.0
+   */
+  public CompactionConfig setSelector(CompactionSelectorConfig csConfig) {
+    Preconditions.checkState(compactionStrategy == null);
+    this.selectorConfig = requireNonNull(csConfig);
+    return this;
+  }
+
+  /**
+   * @since 2.1.0
+   */
+  public CompactionSelectorConfig getSelector() {
+    return selectorConfig;
+  }
+
+  /**
+   * @since 2.1.0
+   */
+  public CompactionConfig setExecutionHints(Map<String,String> hints) {
+    Preconditions.checkState(compactionStrategy == null);
+    this.hints = Map.copyOf(hints);
+    return this;
+  }
+
+  /**
+   * @since 2.1.0
+   */
+  public Map<String,String> getExecutionHints() {
+    return hints;
+  }
+
+  /**
+   * Set and override any per-table properties that configure compaction file output like
+   * compression.
+   * 
+   * @since 2.1.0
+   */
+  public CompactionConfig setOutputOverrides(Map<String,String> overrides) {
+    Preconditions.checkState(compactionStrategy == null);
+    this.overrides = Map.copyOf(overrides);
+    return this;
+  }
+
+  /**
+   * @since 2.1.0
+   */
+  public Map<String,String> getOutputOverrides() {
+    return overrides;
   }
 }

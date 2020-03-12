@@ -18,6 +18,24 @@
  */
 package org.apache.accumulo.core.spi.compaction;
 
-public interface CompactionPlan {
+import java.util.List;
 
+public class CompactionPlan {
+  public final List<CompactionId> cancellations;
+  public final List<CompactionJob> jobs;
+
+  public CompactionPlan() {
+    this.cancellations = List.of();
+    this.jobs = List.of();
+  }
+
+  public CompactionPlan(List<CompactionJob> jobs, List<CompactionId> cancellations) {
+    this.jobs = List.copyOf(jobs);
+    this.cancellations = List.copyOf(cancellations);
+  }
+
+  @Override
+  public String toString() {
+    return "jobs: " + jobs + " cancellations: " + cancellations;
+  }
 }
