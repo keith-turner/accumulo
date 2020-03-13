@@ -28,7 +28,7 @@ public class CompactionId extends AbstractId<TableId> {
     super(canonical);
   }
 
-  public static CompactionId of(final String canonical) {
-    return new CompactionId(canonical);
+  public static CompactionId of(final long nextId) {
+    return new CompactionId(nextId + "");
   }
 }

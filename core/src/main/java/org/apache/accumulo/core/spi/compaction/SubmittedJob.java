@@ -18,25 +18,21 @@
  */
 package org.apache.accumulo.core.spi.compaction;
 
-public class SubmittedJob {
-  private final Status status;
+public abstract class SubmittedJob {
   private final CompactionId id;
   private final CompactionJob job;
-  private Type type;
 
   public enum Status {
-    RUNNING, QUEUED
+    RUNNING, QUEUED, COMPLETE, FAILED
   }
 
   public enum Type {
     USER, SYSTEM
   }
 
-  public SubmittedJob(CompactionJob job, CompactionId id, Status status, Type type) {
+  public SubmittedJob(CompactionJob job, CompactionId id) {
     this.job = job;
     this.id = id;
-    this.status = status;
-    this.type = type;
   }
 
   public CompactionJob getJob() {
@@ -47,11 +43,5 @@ public class SubmittedJob {
     return id;
   }
 
-  public Status getStatus() {
-    return status;
-  }
-
-  public Type getRequester() {
-    return type;
-  }
+  public abstract Status getStatus();
 }

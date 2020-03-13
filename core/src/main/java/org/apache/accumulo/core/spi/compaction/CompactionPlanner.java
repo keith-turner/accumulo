@@ -22,11 +22,10 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.Map;
 
-import org.apache.accumulo.core.clientImpl.bulk.Bulk.FileInfo;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 
-public interface CompactionManager {
+public interface CompactionPlanner {
   public interface InitParameters {
     Map<String,String> getOptions();
 

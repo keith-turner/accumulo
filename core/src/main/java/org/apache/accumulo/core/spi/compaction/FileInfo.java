@@ -18,6 +18,22 @@
  */
 package org.apache.accumulo.core.spi.compaction;
 
-public class FIleInfo {
+//TODO may need to make this an interface so it can have methods to get summaries and such
+public class FileInfo {
 
+  private final long estimatedSize;
+  private final long estimatedEntries;
+
+  public FileInfo(long estimatedSize, long estimatedEntries) {
+    this.estimatedSize = estimatedSize;
+    this.estimatedEntries = estimatedEntries;
+  }
+
+  public long getEstimatedSize() {
+    return estimatedSize;
+  }
+
+  public long getEstimatedEntries() {
+    return estimatedEntries;
+  }
 }

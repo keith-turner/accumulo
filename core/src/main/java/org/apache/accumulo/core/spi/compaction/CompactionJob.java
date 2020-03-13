@@ -33,4 +33,9 @@ public class CompactionJob {
     this.executor = executor;
     this.files = files;
   }
+
+  public String getExecutor() {
+    // TODO Auto-generated method stub
+    return executor;
+  }
 }
