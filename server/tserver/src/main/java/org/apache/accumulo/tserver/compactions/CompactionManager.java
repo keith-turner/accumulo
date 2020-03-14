@@ -1,14 +1,34 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package org.apache.accumulo.tserver.compactions;
 
 import java.util.Map;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.spi.compaction.Cancellation;
 import org.apache.accumulo.core.spi.compaction.CompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionPlan;
 import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.SubmittedJob;
 import org.apache.accumulo.core.spi.compaction.SubmittedJob.Status;
+import org.apache.accumulo.fate.util.UtilWaitThread;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Table;
@@ -22,29 +42,33 @@ public class CompactionManager {
   private long nextId = 0;
 
   private void mainLoop() {
-    for (Compactable compactable : compactables) {
+    while (true) {
+      for (Compactable compactable : compactables) {
 
-      // TODO look to avoid linear search
-      submittedJobs.cellSet().removeIf(cell -> {
-        var status = cell.getValue().getStatus();
-        return status == Status.COMPLETE || status == Status.FAILED;
-      });
+        // TODO look to avoid linear search
+        submittedJobs.cellSet().removeIf(cell -> {
+          var status = cell.getValue().getStatus();
+          return status == Status.COMPLETE || status == Status.FAILED;
+        });
 
-      CompactionPlan plan = planner.makePlan(new PlanningParametersImpl(compactable,
-          submittedJobs.row(compactable.getExtent()).values()));
+        CompactionPlan plan = planner.makePlan(new PlanningParametersImpl(compactable,
+            submittedJobs.row(compactable.getExtent()).values()));
 
-      for (CompactionId cancelId : plan.cancellations) {
-        SubmittedJob sjob = Iterables.getOnlyElement(submittedJobs.column(cancelId).values());
-        executors.get(sjob.getJob().getExecutor()).cancel(cancelId);
-        // TODO check if canceled
+        for (Cancellation cancelation : plan.getCancellations()) {
+          SubmittedJob sjob = Iterables
+              .getOnlyElement(submittedJobs.column(cancelation.getCompactionId()).values());
+          executors.get(sjob.getJob().getExecutor()).cancel(cancelation);
+          // TODO check if canceled
+          // TODO may be more efficient to cancel batches
+        }
+
+        for (CompactionJob job : plan.getJobs()) {
+          CompactionId compId = CompactionId.of(nextId++);
+          SubmittedJob sjob = executors.get(job.getExecutor()).submit(job, compId);
+          submittedJobs.put(compactable.getExtent(), compId, sjob);
+        }
       }
-
-      for (CompactionJob job : plan.jobs) {
-        CompactionId compId = CompactionId.of(nextId++);
-        SubmittedJob sjob = executors.get(job.getExecutor()).submit(job, compId);
-        submittedJobs.put(compactable.getExtent(), compId, sjob);
-      }
-
+      UtilWaitThread.sleep(3000);// TODO
     }
   }
 }

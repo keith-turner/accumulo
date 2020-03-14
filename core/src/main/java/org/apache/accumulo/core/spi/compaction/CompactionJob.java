@@ -34,8 +34,15 @@ public class CompactionJob {
     this.files = files;
   }
 
+  public long getPriority() {
+    return priority;
+  }
+
   public String getExecutor() {
-    // TODO Auto-generated method stub
     return executor;
+  }
+
+  public Collection<URI> getFiles() {
+    return files;
   }
 }

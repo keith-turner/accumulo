@@ -18,20 +18,30 @@
  */
 package org.apache.accumulo.core.spi.compaction;
 
+import java.util.Collection;
 import java.util.List;
 
 public class CompactionPlan {
-  public final List<CompactionId> cancellations;
-  public final List<CompactionJob> jobs;
+
+  private final Collection<Cancellation> cancellations;
+  private final Collection<CompactionJob> jobs;
 
   public CompactionPlan() {
     this.cancellations = List.of();
     this.jobs = List.of();
   }
 
-  public CompactionPlan(List<CompactionJob> jobs, List<CompactionId> cancellations) {
+  public CompactionPlan(Collection<CompactionJob> jobs, Collection<Cancellation> cancellations) {
     this.jobs = List.copyOf(jobs);
     this.cancellations = List.copyOf(cancellations);
+  }
+
+  public Collection<CompactionJob> getJobs() {
+    return jobs;
+  }
+
+  public Collection<Cancellation> getCancellations() {
+    return cancellations;
   }
 
   @Override
