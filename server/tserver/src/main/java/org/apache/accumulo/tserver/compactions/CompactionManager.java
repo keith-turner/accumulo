@@ -47,32 +47,37 @@ public class CompactionManager {
 
   private void mainLoop() {
     while (true) {
-      for (Compactable compactable : compactables) {
+      try {
+        for (Compactable compactable : compactables) {
 
-        // TODO look to avoid linear search
-        submittedJobs.cellSet().removeIf(cell -> {
-          var status = cell.getValue().getStatus();
-          return status == Status.COMPLETE || status == Status.FAILED;
-        });
+          // TODO look to avoid linear search
+          submittedJobs.cellSet().removeIf(cell -> {
+            var status = cell.getValue().getStatus();
+            return status == Status.COMPLETE || status == Status.FAILED;
+          });
 
-        CompactionPlan plan = planner.makePlan(new PlanningParametersImpl(compactable,
-            submittedJobs.row(compactable.getExtent()).values()));
+          CompactionPlan plan = planner.makePlan(new PlanningParametersImpl(compactable,
+              submittedJobs.row(compactable.getExtent()).values()));
 
-        log.info("Compaction plan for " + compactable.getExtent() + " " + plan);
+          log.info("Compaction plan for " + compactable.getExtent() + " " + plan);
 
-        for (Cancellation cancelation : plan.getCancellations()) {
-          SubmittedJob sjob = Iterables
-              .getOnlyElement(submittedJobs.column(cancelation.getCompactionId()).values());
-          executors.get(sjob.getJob().getExecutor()).cancel(cancelation);
-          // TODO check if canceled
-          // TODO may be more efficient to cancel batches
+          for (Cancellation cancelation : plan.getCancellations()) {
+            SubmittedJob sjob = Iterables
+                .getOnlyElement(submittedJobs.column(cancelation.getCompactionId()).values());
+            executors.get(sjob.getJob().getExecutor()).cancel(cancelation);
+            // TODO check if canceled
+            // TODO may be more efficient to cancel batches
+          }
+
+          for (CompactionJob job : plan.getJobs()) {
+            CompactionId compId = CompactionId.of(nextId++);
+            SubmittedJob sjob = executors.get(job.getExecutor()).submit(job, compId, compactable);
+            submittedJobs.put(compactable.getExtent(), compId, sjob);
+          }
         }
-
-        for (CompactionJob job : plan.getJobs()) {
-          CompactionId compId = CompactionId.of(nextId++);
-          SubmittedJob sjob = executors.get(job.getExecutor()).submit(job, compId, compactable);
-          submittedJobs.put(compactable.getExtent(), compId, sjob);
-        }
+      } catch (Exception e) {
+        // TODO
+        log.error("Loop failed ", e);
       }
       UtilWaitThread.sleep(3000);// TODO
     }
