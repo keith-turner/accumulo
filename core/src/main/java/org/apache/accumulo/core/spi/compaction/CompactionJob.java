@@ -45,4 +45,10 @@ public class CompactionJob {
   public Collection<URI> getFiles() {
     return files;
   }
+
+  @Override
+  public String toString() {
+    return "CompactionJob [priority=" + priority + ", executor=" + executor + ", files=" + files
+        + "]";
+  }
 }

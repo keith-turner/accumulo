@@ -29,11 +29,15 @@ import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.SubmittedJob;
 import org.apache.accumulo.core.spi.compaction.SubmittedJob.Status;
 import org.apache.accumulo.fate.util.UtilWaitThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Table;
 
 public class CompactionManager {
+
+  private static final Logger log = LoggerFactory.getLogger(CompactionManager.class);
 
   private CompactionPlanner planner;
   private Iterable<Compactable> compactables;
@@ -53,6 +57,8 @@ public class CompactionManager {
 
         CompactionPlan plan = planner.makePlan(new PlanningParametersImpl(compactable,
             submittedJobs.row(compactable.getExtent()).values()));
+
+        log.info("Compaction plan for " + compactable.getExtent() + " " + plan);
 
         for (Cancellation cancelation : plan.getCancellations()) {
           SubmittedJob sjob = Iterables
@@ -84,6 +90,7 @@ public class CompactionManager {
   public void start() {
     // TODO deamon thread
     // TODO stop method
+    log.info("Started compaction manager");
     new Thread(() -> mainLoop()).start();
   }
 }
