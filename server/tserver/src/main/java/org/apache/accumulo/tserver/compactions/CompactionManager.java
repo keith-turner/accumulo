@@ -64,7 +64,7 @@ public class CompactionManager {
 
         for (CompactionJob job : plan.getJobs()) {
           CompactionId compId = CompactionId.of(nextId++);
-          SubmittedJob sjob = executors.get(job.getExecutor()).submit(job, compId);
+          SubmittedJob sjob = executors.get(job.getExecutor()).submit(job, compId, compactable);
           submittedJobs.put(compactable.getExtent(), compId, sjob);
         }
       }

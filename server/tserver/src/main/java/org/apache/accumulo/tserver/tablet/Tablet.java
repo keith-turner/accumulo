@@ -28,6 +28,7 @@ import java.io.DataInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -64,6 +65,7 @@ import org.apache.accumulo.core.data.ColumnUpdate;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.MapFileInfo;
@@ -88,6 +90,8 @@ import org.apache.accumulo.core.replication.ReplicationConfigurationUtil;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.ColumnVisibility;
 import org.apache.accumulo.core.spi.cache.BlockCache;
+import org.apache.accumulo.core.spi.compaction.CompactionJob;
+import org.apache.accumulo.core.spi.compaction.FileInfo;
 import org.apache.accumulo.core.spi.scan.ScanDirectives;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
@@ -134,6 +138,7 @@ import org.apache.accumulo.tserver.compaction.DefaultCompactionStrategy;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
+import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.constraints.ConstraintChecker;
 import org.apache.accumulo.tserver.log.DfsLogger;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
@@ -2780,5 +2785,89 @@ public class Tablet {
 
   public String getDirName() {
     return dirName;
+  }
+
+  public Compactable asCompactable() {
+    return new Compactable() {
+
+      @Override
+      public TableId getTableId() {
+        return getExtent().getTableId();
+      }
+
+      @Override
+      public Map<URI,FileInfo> getFiles() {
+        HashMap<URI,FileInfo> translated = new HashMap<>();
+        datafileManager.getDatafileSizes().forEach((stf, dfv) -> {
+          translated.put(stf.getPath().toUri(), new FileInfo(dfv.getSize(), dfv.getNumEntries()));
+        });
+        return translated;
+      }
+
+      @Override
+      public KeyExtent getExtent() {
+        return Tablet.this.getExtent();
+      }
+
+      @Override
+      public void compact(CompactionJob compactionJob) {
+
+        try {
+          CompactionEnv cenv = new CompactionEnv() {
+            @Override
+            public boolean isCompactionEnabled() {
+              return !isClosing();
+            }
+
+            @Override
+            public IteratorScope getIteratorScope() {
+              return IteratorScope.majc;
+            }
+
+            @Override
+            public RateLimiter getReadLimiter() {
+              return getTabletServer().getMajorCompactionReadLimiter();
+            }
+
+            @Override
+            public RateLimiter getWriteLimiter() {
+              return getTabletServer().getMajorCompactionWriteLimiter();
+            }
+
+          };
+
+          // TODO
+          int reason = MajorCompactionReason.NORMAL.ordinal();
+
+          AccumuloConfiguration tableConfig = Tablet.this.tableConfiguration;
+
+          SortedMap<StoredTabletFile,DataFileValue> allFiles = datafileManager.getDatafileSizes();
+          Map<StoredTabletFile,DataFileValue> files = new HashMap<>();
+          compactionJob.getFiles().forEach(uri -> {
+            allFiles.forEach((stf, dfv) -> {
+              // TODO linear search
+              if (stf.getPath().toUri().equals(uri)) {
+                files.put(stf, dfv);
+              }
+            });
+          });
+          // TODO figure this out
+          boolean propogateDeletes = true;
+
+          TabletFile newFile = getNextMapFilename(!propogateDeletes ? "A" : "C");
+          TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));
+
+          // TODO user iters
+          List<IteratorSetting> iters = List.of();
+
+          Compactor compactor = new Compactor(context, Tablet.this, files, null, compactTmpName,
+              propogateDeletes, cenv, iters, reason, tableConfig);
+
+          compactor.call();
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }
+    };
   }
 }

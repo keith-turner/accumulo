@@ -23,6 +23,7 @@ import java.util.Map;
 
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.FileInfo;
 
 public interface Compactable {
@@ -33,4 +34,5 @@ public interface Compactable {
 
   KeyExtent getExtent();
 
+  void compact(CompactionJob compactionJob);
 }

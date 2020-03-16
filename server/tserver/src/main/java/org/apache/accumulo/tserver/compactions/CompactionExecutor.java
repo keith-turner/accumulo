@@ -32,10 +32,11 @@ public class CompactionExecutor {
   private static class CompactionTask extends SubmittedJob implements Runnable {
 
     private AtomicReference<Status> status = new AtomicReference<>(Status.QUEUED);
+    private Compactable compactable;
 
-    public CompactionTask(CompactionJob job, CompactionId id) {
+    public CompactionTask(CompactionJob job, CompactionId id, Compactable compactable) {
       super(job, id);
-      // TODO Auto-generated constructor stub
+      this.compactable = compactable;
     }
 
     @Override
@@ -43,7 +44,7 @@ public class CompactionExecutor {
 
       try {
         if (status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
-
+          compactable.compact(getJob());
         }
       } catch (Exception e) {
         // TODO
@@ -81,8 +82,9 @@ public class CompactionExecutor {
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
   }
 
-  public SubmittedJob submit(CompactionJob job, CompactionId compactionId) {
-    return new CompactionTask(job, compactionId);
+  public SubmittedJob submit(CompactionJob job, CompactionId compactionId,
+      Compactable compactable) {
+    return new CompactionTask(job, compactionId, compactable);
   }
 
   public void cancel(Cancellation cancelation) {
