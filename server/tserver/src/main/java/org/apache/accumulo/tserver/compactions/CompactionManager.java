@@ -32,6 +32,7 @@ import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Table;
 
@@ -89,6 +90,7 @@ public class CompactionManager {
     this.planner = new TieredCompactionManager(2);
     this.executors = Map.of("small", new CompactionExecutor(3), "medium", new CompactionExecutor(3),
         "large", new CompactionExecutor(3), "huge", new CompactionExecutor(2));
+    this.submittedJobs = HashBasedTable.create();
 
   }
 
