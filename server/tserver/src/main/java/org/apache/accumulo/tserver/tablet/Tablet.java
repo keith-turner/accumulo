@@ -2833,7 +2833,6 @@ public class Tablet {
             public RateLimiter getWriteLimiter() {
               return getTabletServer().getMajorCompactionWriteLimiter();
             }
-
           };
 
           // TODO
@@ -2863,7 +2862,12 @@ public class Tablet {
           Compactor compactor = new Compactor(context, Tablet.this, files, null, compactTmpName,
               propogateDeletes, cenv, iters, reason, tableConfig);
 
-          compactor.call();
+          var mcs = compactor.call();
+
+          // TODO compact ID
+          getDatafileManager().bringMajorCompactionOnline(files.keySet(), compactTmpName, newFile,
+              null, new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
+
         } catch (Exception e) {
           throw new RuntimeException(e);
         }

@@ -20,12 +20,15 @@ package org.apache.accumulo.tserver.compactions;
 
 import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.core.spi.compaction.Cancellation;
 import org.apache.accumulo.core.spi.compaction.CompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.SubmittedJob;
+import org.apache.accumulo.core.spi.compaction.SubmittedJob.Status;
 
 public class CompactionExecutor {
 
@@ -74,21 +77,35 @@ public class CompactionExecutor {
   }
 
   private PriorityBlockingQueue<Runnable> queue;
+  private ThreadPoolExecutor executor;
 
-  CompactionExecutor() {
+  CompactionExecutor(int threads) {
     var comparator = Comparator.comparingLong(CompactionExecutor::extractPriority)
         .thenComparingLong(CompactionExecutor::extractJobFiles).reversed();
 
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
+
+    executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS, queue);
+
   }
 
   public SubmittedJob submit(CompactionJob job, CompactionId compactionId,
       Compactable compactable) {
-    return new CompactionTask(job, compactionId, compactable);
+    var ctask = new CompactionTask(job, compactionId, compactable);
+    executor.submit(ctask);
+    return ctask;
   }
 
   public void cancel(Cancellation cancelation) {
-
+    // TODO avoid linear search
+    queue.forEach(runnable -> {
+      var ctask = (CompactionTask) runnable;
+      if (ctask.getId().equals(cancelation.getCompactionId())) {
+        cancelation.getStatusesToCancel()
+            .forEach(status -> ctask.status.compareAndSet(status, Status.CANCELED));
+        // TODO if running interrupt
+      }
+    });
   }
 
 }

@@ -204,7 +204,7 @@ public class CompactionConfig {
   /**
    * Set and override any per-table properties that configure compaction file output like
    * compression.
-   * 
+   *
    * @since 2.1.0
    */
   public CompactionConfig setOutputOverrides(Map<String,String> overrides) {

@@ -23,7 +23,7 @@ public abstract class SubmittedJob {
   private final CompactionJob job;
 
   public enum Status {
-    RUNNING, QUEUED, COMPLETE, FAILED
+    RUNNING, QUEUED, COMPLETE, FAILED, CANCELED
   }
 
   public enum Type {

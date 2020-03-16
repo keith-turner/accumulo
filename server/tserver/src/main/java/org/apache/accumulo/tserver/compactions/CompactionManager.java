@@ -71,4 +71,19 @@ public class CompactionManager {
       UtilWaitThread.sleep(3000);// TODO
     }
   }
+
+  public void CompactionManager(Iterable<Compactable> compactables) {
+    this.compactables = compactables;
+    // TODO confiugrable
+    this.planner = new TieredCompactionManager(2);
+    this.executors = Map.of("small", new CompactionExecutor(3), "medium", new CompactionExecutor(3),
+        "large", new CompactionExecutor(3), "huge", new CompactionExecutor(2));
+
+  }
+
+  public void start() {
+    // TODO deamon thread
+    // TODO stop method
+    new Thread(() -> mainLoop()).start();
+  }
 }
