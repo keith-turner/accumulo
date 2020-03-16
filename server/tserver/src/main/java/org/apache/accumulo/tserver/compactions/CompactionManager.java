@@ -72,7 +72,7 @@ public class CompactionManager {
     }
   }
 
-  public void CompactionManager(Iterable<Compactable> compactables) {
+  public CompactionManager(Iterable<Compactable> compactables) {
     this.compactables = compactables;
     // TODO confiugrable
     this.planner = new TieredCompactionManager(2);

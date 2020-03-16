@@ -1411,6 +1411,11 @@ public class Tablet {
 
   public synchronized void initiateMajorCompaction(MajorCompactionReason reason) {
 
+    // TODO
+    int x = 4;
+    if (4 == x)
+      return;
+
     if (isClosing() || isClosed() || !needsMajorCompaction(reason) || isMajorCompactionRunning()
         || majorCompactionQueued.contains(reason)) {
       return;
@@ -2797,6 +2802,7 @@ public class Tablet {
 
       @Override
       public Map<URI,FileInfo> getFiles() {
+        // TODO could be closed
         HashMap<URI,FileInfo> translated = new HashMap<>();
         datafileManager.getDatafileSizes().forEach((stf, dfv) -> {
           translated.put(stf.getPath().toUri(), new FileInfo(dfv.getSize(), dfv.getNumEntries()));
@@ -2811,6 +2817,7 @@ public class Tablet {
 
       @Override
       public void compact(CompactionJob compactionJob) {
+        // TODO could be closed
 
         try {
           CompactionEnv cenv = new CompactionEnv() {

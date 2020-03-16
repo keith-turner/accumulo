@@ -224,6 +224,8 @@ import org.apache.accumulo.tserver.RowLocks.RowLock;
 import org.apache.accumulo.tserver.TabletServerResourceManager.TabletResourceManager;
 import org.apache.accumulo.tserver.TabletStatsKeeper.Operation;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
+import org.apache.accumulo.tserver.compactions.Compactable;
+import org.apache.accumulo.tserver.compactions.CompactionManager;
 import org.apache.accumulo.tserver.data.ServerConditionalMutation;
 import org.apache.accumulo.tserver.log.DfsLogger;
 import org.apache.accumulo.tserver.log.LogSorter;
@@ -280,6 +282,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.collect.Collections2;
+import com.google.common.collect.Iterators;
 
 public class TabletServer extends AbstractServer {
 
@@ -2817,6 +2820,15 @@ public class TabletServer extends AbstractServer {
     final long CLEANUP_BULK_LOADED_CACHE_MILLIS = 15 * 60 * 1000;
     SimpleTimer.getInstance(aconf).schedule(new BulkImportCacheCleaner(this),
         CLEANUP_BULK_LOADED_CACHE_MILLIS, CLEANUP_BULK_LOADED_CACHE_MILLIS);
+
+    // TODO where should this go
+    new CompactionManager(new Iterable<Compactable>() {
+      @Override
+      public Iterator<Compactable> iterator() {
+        return Iterators.transform(onlineTablets.snapshot().values().iterator(),
+            Tablet::asCompactable);
+      }
+    }).start();
 
     HostAndPort masterHost;
     while (!serverStopRequested) {
