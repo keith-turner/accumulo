@@ -2836,7 +2836,7 @@ public class Tablet {
 
           SortedMap<StoredTabletFile,DataFileValue> allFiles = datafileManager.getDatafileSizes();
           Map<StoredTabletFile,DataFileValue> files = new HashMap<>();
-          compactionJob.getFiles().forEach(uri -> {
+          compactionJob.getFiles().keySet().forEach(uri -> {
             allFiles.forEach((stf, dfv) -> {
               // TODO linear search
               if (stf.getPath().toUri().equals(uri)) {

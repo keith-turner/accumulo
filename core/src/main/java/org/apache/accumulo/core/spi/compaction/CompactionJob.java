@@ -19,16 +19,16 @@
 package org.apache.accumulo.core.spi.compaction;
 
 import java.net.URI;
-import java.util.Collection;
+import java.util.Map;
 
 public class CompactionJob {
 
   private final long priority;
   private final String executor;
-  private final Collection<URI> files;
+  private final Map<URI,FileInfo> files;
   // TODO compaction config
 
-  public CompactionJob(long priority, String executor, Collection<URI> files) {
+  public CompactionJob(long priority, String executor, Map<URI,FileInfo> files) {
     this.priority = priority;
     this.executor = executor;
     this.files = files;
@@ -42,7 +42,7 @@ public class CompactionJob {
     return executor;
   }
 
-  public Collection<URI> getFiles() {
+  public Map<URI,FileInfo> getFiles() {
     return files;
   }
 

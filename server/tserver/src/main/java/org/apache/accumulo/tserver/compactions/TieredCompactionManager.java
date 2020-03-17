@@ -61,8 +61,8 @@ public class TieredCompactionManager implements CompactionPlanner {
     // find minimum file size for running compactions
     OptionalLong minCompacting =
         params.getSubmittedJobs().stream().filter(sj -> sj.getStatus() == Status.RUNNING)
-            .flatMap(sj -> sj.getJob().getFiles().stream())
-            .mapToLong(uri -> params.getFiles().get(uri).getEstimatedSize()).min();
+            .flatMap(sj -> sj.getJob().getFiles().values().stream())
+            .mapToLong(FileInfo::getEstimatedSize).min();
 
     if (minCompacting.isPresent()) {
       // This is done to ensure that compactions over time result in the mimimum number of files.
@@ -72,7 +72,7 @@ public class TieredCompactionManager implements CompactionPlanner {
 
     // remove any files from consideration that are in use by a running compaction
     params.getSubmittedJobs().stream().filter(sj -> sj.getStatus() == Status.RUNNING)
-        .flatMap(sj -> sj.getJob().getFiles().stream()).forEach(filesCopy::remove);
+        .flatMap(sj -> sj.getJob().getFiles().keySet().stream()).forEach(filesCopy::remove);
 
     Set<URI> group = findMapFilesToCompact(filesCopy, cRatio);
 
@@ -82,7 +82,7 @@ public class TieredCompactionManager implements CompactionPlanner {
       // find all files related to queued jobs
       Set<URI> queued =
           params.getSubmittedJobs().stream().filter(sj -> sj.getStatus() == Status.QUEUED)
-              .flatMap(sj -> sj.getJob().getFiles().stream()).collect(toSet());
+              .flatMap(sj -> sj.getJob().getFiles().keySet().stream()).collect(toSet());
 
       if (!queued.isEmpty()) {
         if (queued.equals(group)) {
@@ -100,7 +100,9 @@ public class TieredCompactionManager implements CompactionPlanner {
       String executor = getExecutor(
           group.stream().mapToLong(uri -> params.getFiles().get(uri).getEstimatedSize()).sum());
 
-      CompactionJob job = new CompactionJob(params.getFiles().size(), executor, group);
+      Map<URI,FileInfo> filesToCompact = new HashMap<>();
+      group.forEach(uri -> filesToCompact.put(uri, params.getFiles().get(uri)));
+      CompactionJob job = new CompactionJob(params.getFiles().size(), executor, filesToCompact);
 
       return new CompactionPlan(List.of(job), cancellations);
 
