@@ -800,8 +800,7 @@ public class Tablet {
   }
 
   DataFileValue minorCompact(InMemoryMap memTable, TabletFile tmpDatafile, TabletFile newDatafile,
-      StoredTabletFile mergeFile, long queued, CommitSession commitSession, long flushId,
-      MinorCompactionReason mincReason) {
+      long queued, CommitSession commitSession, long flushId, MinorCompactionReason mincReason) {
     boolean failed = false;
     long start = System.currentTimeMillis();
     timer.incrementStatusMinor();
@@ -815,18 +814,13 @@ public class Tablet {
       try (TraceScope span = Trace.startSpan("write")) {
         count = memTable.getNumEntries();
 
-        DataFileValue dfv = null;
-        if (mergeFile != null) {
-          dfv = getDatafileManager().getDatafileSizes().get(mergeFile);
-        }
-
-        MinorCompactor compactor = new MinorCompactor(tabletServer, this, memTable, mergeFile, dfv,
-            tmpDatafile, mincReason, tableConfiguration);
+        MinorCompactor compactor = new MinorCompactor(tabletServer, this, memTable, tmpDatafile,
+            mincReason, tableConfiguration);
         stats = compactor.call();
       }
 
       try (TraceScope span = Trace.startSpan("bringOnline")) {
-        getDatafileManager().bringMinorCompactionOnline(tmpDatafile, newDatafile, mergeFile,
+        getDatafileManager().bringMinorCompactionOnline(tmpDatafile, newDatafile,
             new DataFileValue(stats.getFileSize(), stats.getEntriesWritten()), commitSession,
             flushId);
       }
@@ -860,16 +854,10 @@ public class Tablet {
     otherLogs = currentLogs;
     currentLogs = new HashSet<>();
 
-    StoredTabletFile mergeFile = null;
-    if (mincReason != MinorCompactionReason.RECOVERY) {
-      mergeFile = getDatafileManager().reserveMergingMinorCompactionFile();
-    }
-
     double tracePercent =
         tabletServer.getConfiguration().getFraction(Property.TSERV_MINC_TRACE_PERCENT);
 
-    return new MinorCompactionTask(this, mergeFile, oldCommitSession, flushId, mincReason,
-        tracePercent);
+    return new MinorCompactionTask(this, oldCommitSession, flushId, mincReason, tracePercent);
 
   }
 
@@ -2687,17 +2675,16 @@ public class Tablet {
   }
 
   public StoredTabletFile updateTabletDataFile(long maxCommittedTime, TabletFile newDatafile,
-      StoredTabletFile absMergeFile, DataFileValue dfv, Set<String> unusedWalLogs,
-      Set<StoredTabletFile> filesInUseByScans, long flushId) {
+      DataFileValue dfv, Set<String> unusedWalLogs, long flushId) {
     synchronized (timeLock) {
       if (maxCommittedTime > persistedTime) {
         persistedTime = maxCommittedTime;
       }
 
       return MasterMetadataUtil.updateTabletDataFile(getTabletServer().getContext(), extent,
-          newDatafile, absMergeFile, dfv, tabletTime.getMetadataTime(persistedTime),
-          filesInUseByScans, tabletServer.getClientAddressString(), tabletServer.getLock(),
-          unusedWalLogs, lastLocation, flushId);
+          newDatafile, dfv, tabletTime.getMetadataTime(persistedTime),
+          tabletServer.getClientAddressString(), tabletServer.getLock(), unusedWalLogs,
+          lastLocation, flushId);
     }
 
   }
@@ -2817,7 +2804,7 @@ public class Tablet {
 
       @Override
       public void compact(CompactionJob compactionJob) {
-        // TODO could be closed
+        // TODO could be closed... maybe register and deregister compaction
 
         try {
           CompactionEnv cenv = new CompactionEnv() {
@@ -2857,8 +2844,8 @@ public class Tablet {
               }
             });
           });
-          // TODO figure this out
-          boolean propogateDeletes = true;
+          // TODO this is done outside of sync block
+          boolean propogateDeletes = !allFiles.keySet().equals(files.keySet());
 
           TabletFile newFile = getNextMapFilename(!propogateDeletes ? "A" : "C");
           TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));

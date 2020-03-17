@@ -2821,7 +2821,7 @@ public class TabletServer extends AbstractServer {
     SimpleTimer.getInstance(aconf).schedule(new BulkImportCacheCleaner(this),
         CLEANUP_BULK_LOADED_CACHE_MILLIS, CLEANUP_BULK_LOADED_CACHE_MILLIS);
 
-    // TODO where should this go
+    // TODO where should this go? Maybe tablet server resource manager
     new CompactionManager(new Iterable<Compactable>() {
       @Override
       public Iterator<Compactable> iterator() {

@@ -20,7 +20,6 @@ package org.apache.accumulo.tserver.tablet;
 
 import java.io.IOException;
 
-import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.trace.TraceUtil;
@@ -41,18 +40,16 @@ class MinorCompactionTask implements Runnable {
   private long queued;
   private CommitSession commitSession;
   private DataFileValue stats;
-  private StoredTabletFile mergeFile;
   private long flushId;
   private MinorCompactionReason mincReason;
   private double tracePercent;
 
-  MinorCompactionTask(Tablet tablet, StoredTabletFile mergeFile, CommitSession commitSession,
-      long flushId, MinorCompactionReason mincReason, double tracePercent) {
+  MinorCompactionTask(Tablet tablet, CommitSession commitSession, long flushId,
+      MinorCompactionReason mincReason, double tracePercent) {
     this.tablet = tablet;
     queued = System.currentTimeMillis();
     tablet.minorCompactionWaitingToStart();
     this.commitSession = commitSession;
-    this.mergeFile = mergeFile;
     this.flushId = flushId;
     this.mincReason = mincReason;
     this.tracePercent = tracePercent;
@@ -64,7 +61,7 @@ class MinorCompactionTask implements Runnable {
     ProbabilitySampler sampler = TraceUtil.probabilitySampler(tracePercent);
     try {
       try (TraceScope minorCompaction = Trace.startSpan("minorCompaction", sampler)) {
-        TabletFile newFile = tablet.getNextMapFilename(mergeFile == null ? "F" : "M");
+        TabletFile newFile = tablet.getNextMapFilename("F");
         TabletFile tmpFile = new TabletFile(new Path(newFile.getPathStr() + "_tmp"));
         try (TraceScope span = Trace.startSpan("waitForCommits")) {
           synchronized (tablet) {
@@ -92,7 +89,7 @@ class MinorCompactionTask implements Runnable {
         }
         try (TraceScope span = Trace.startSpan("compact")) {
           this.stats = tablet.minorCompact(tablet.getTabletMemory().getMinCMemTable(), tmpFile,
-              newFile, mergeFile, queued, commitSession, flushId, mincReason);
+              newFile, queued, commitSession, flushId, mincReason);
         }
 
         if (minorCompaction.getSpan() != null) {

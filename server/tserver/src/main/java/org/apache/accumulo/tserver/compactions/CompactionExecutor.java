@@ -32,6 +32,7 @@ import org.apache.accumulo.core.spi.compaction.SubmittedJob.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+//TODO rename to impl and extend CompactionExecutor?
 public class CompactionExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(CompactionExecutor.class);
@@ -115,5 +116,4 @@ public class CompactionExecutor {
       }
     });
   }
-
 }
