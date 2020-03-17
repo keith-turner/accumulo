@@ -29,8 +29,12 @@ import org.apache.accumulo.core.spi.compaction.CompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.SubmittedJob;
 import org.apache.accumulo.core.spi.compaction.SubmittedJob.Status;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CompactionExecutor {
+
+  private static final Logger log = LoggerFactory.getLogger(CompactionExecutor.class);
 
   private static class CompactionTask extends SubmittedJob implements Runnable {
 
@@ -47,7 +51,11 @@ public class CompactionExecutor {
 
       try {
         if (status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
+          log.info(
+              "Running compaction for " + compactable.getExtent() + " " + getJob().getExecutor());
           compactable.compact(getJob());
+          log.info(
+              "Finished compaction for " + compactable.getExtent() + " " + getJob().getExecutor());
         }
       } catch (Exception e) {
         // TODO
@@ -92,7 +100,7 @@ public class CompactionExecutor {
   public SubmittedJob submit(CompactionJob job, CompactionId compactionId,
       Compactable compactable) {
     var ctask = new CompactionTask(job, compactionId, compactable);
-    executor.submit(ctask);
+    executor.execute(ctask);
     return ctask;
   }
 

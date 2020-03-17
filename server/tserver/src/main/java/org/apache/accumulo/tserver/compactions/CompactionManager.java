@@ -60,7 +60,9 @@ public class CompactionManager {
           CompactionPlan plan = planner.makePlan(new PlanningParametersImpl(compactable,
               submittedJobs.row(compactable.getExtent()).values()));
 
-          log.info("Compaction plan for " + compactable.getExtent() + " " + plan);
+          if (!plan.getCancellations().isEmpty() || !plan.getJobs().isEmpty()) {
+            log.info("Compaction plan for " + compactable.getExtent() + " " + plan);
+          }
 
           for (Cancellation cancelation : plan.getCancellations()) {
             SubmittedJob sjob = Iterables
