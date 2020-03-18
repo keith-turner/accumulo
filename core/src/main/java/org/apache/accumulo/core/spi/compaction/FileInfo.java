@@ -36,4 +36,9 @@ public class FileInfo {
   public long getEstimatedEntries() {
     return estimatedEntries;
   }
+
+  @Override
+  public String toString() {
+    return "[estSize=" + estimatedSize + ", estEntries=" + estimatedEntries + "]";
+  }
 }
