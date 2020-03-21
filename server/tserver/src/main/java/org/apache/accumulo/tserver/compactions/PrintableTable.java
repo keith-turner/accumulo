@@ -70,12 +70,14 @@ public class PrintableTable {
     sb.append("\n");
 
     for (int i = 0; i < columns.length; i++) {
-      sb.append("C");
+      sb.append(" C");
       sb.append(i + 1);
-      sb.append(" : ");
+      sb.append("='");
       sb.append(columns[i]);
-      sb.append("\n");
+      sb.append("'");
     }
+
+    sb.append("\n");
 
     return sb.toString();
   }

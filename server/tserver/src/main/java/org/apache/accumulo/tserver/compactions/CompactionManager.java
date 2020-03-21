@@ -83,9 +83,10 @@ public class CompactionManager {
       while (true) {
 
         List<Compactable> sortedCompactables = new ArrayList<Compactable>();
+        sortedCompactables.removeIf(c -> c.getExtent().isMeta());
         compactables.forEach(sortedCompactables::add);
-        Collections.sort(sortedCompactables,
-            Comparator.nullsLast(Comparator.comparing(CompactionManager::getEndrow)));
+        Collections.sort(sortedCompactables, Comparator.comparing(CompactionManager::getEndrow,
+            Comparator.nullsLast(Comparator.naturalOrder())));
 
         int[][] data = new int[sortedCompactables.size()][];
         String[] rows = new String[sortedCompactables.size()];
@@ -116,7 +117,7 @@ public class CompactionManager {
           data[r][0] = files.size();
         }
 
-        if(rows.length > 0)
+        if (rows.length > 0)
           System.out.println(new PrintableTable(columns, rows, data).toString());
 
         try {
