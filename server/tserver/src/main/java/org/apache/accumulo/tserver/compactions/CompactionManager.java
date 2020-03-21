@@ -18,11 +18,11 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -101,13 +101,10 @@ public class CompactionManager {
 
           data[r] = new int[columns.length];
 
-          Set<URI> files = new HashSet<>(compactable.getFiles().keySet());
-
           submittedJobs.row(compactable.getExtent()).values().forEach(sjob -> {
             var status = sjob.getStatus();
 
             if (status == Status.QUEUED || status == Status.RUNNING) {
-              files.removeAll(sjob.getJob().getFiles().keySet());
               int pos = epos.get(sjob.getJob().getExecutor());
               if (status == Status.QUEUED)
                 pos++;
@@ -115,11 +112,13 @@ public class CompactionManager {
             }
           });
 
-          data[r][0] = files.size();
+          data[r][0] = compactable.getFiles().size();
         }
 
-        if (rows.length > 0)
+        if (rows.length > 0) {
+          System.out.println("Compaction stats : " + new Date());
           System.out.println(new PrintableTable(columns, rows, data).toString());
+        }
 
         try {
           wait(1000);
