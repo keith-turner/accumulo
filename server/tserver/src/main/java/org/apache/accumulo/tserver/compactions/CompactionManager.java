@@ -116,7 +116,8 @@ public class CompactionManager {
           data[r][0] = files.size();
         }
 
-        System.out.println(new PrintableTable(columns, rows, data).toString());
+        if(rows.length > 0)
+          System.out.println(new PrintableTable(columns, rows, data).toString());
 
         try {
           wait(1000);
