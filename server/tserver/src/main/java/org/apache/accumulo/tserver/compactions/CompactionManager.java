@@ -83,10 +83,10 @@ public class CompactionManager {
       while (true) {
 
         List<Compactable> sortedCompactables = new ArrayList<Compactable>();
+        compactables.forEach(sortedCompactables::add);
         sortedCompactables.removeIf(
             c -> c.getExtent().isMeta() || c.getExtent().getTableId().canonical().equals("+rep")
                 || c.getExtent().getTableId().canonical().equals("1"));
-        compactables.forEach(sortedCompactables::add);
         Collections.sort(sortedCompactables, Comparator.comparing(CompactionManager::getEndrow,
             Comparator.nullsLast(Comparator.naturalOrder())));
 
@@ -96,7 +96,6 @@ public class CompactionManager {
         for (int i = 0; i < sortedCompactables.size(); i++) {
           int r = i;
           var compactable = sortedCompactables.get(r);
-          submittedJobs.row(compactable.getExtent());
 
           rows[r] = compactable.getExtent().getEndRow() + "";
 

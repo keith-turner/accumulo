@@ -57,12 +57,15 @@ public class PrintableTable {
     sb.append("\n");
 
     for (int r = 0; r < rows.length; r++) {
-      sb.append(String.format("%" + widestRow + "s", rows[0]));
+      sb.append(String.format("%" + widestRow + "s", rows[r]));
 
       int[] row = data[r];
 
       for (int c = 0; c < row.length; c++) {
-        sb.append(String.format(" %4d ", row[c]));
+        if (row[c] == 0)
+          sb.append("      ");
+        else
+          sb.append(String.format(" %4d ", row[c]));
       }
       sb.append("\n");
     }
@@ -90,6 +93,5 @@ public class PrintableTable {
     int[][] data = {{0, 3, 1, 0, 0, 0}, {2, 0, 0, 0, 0, 0}, {2, 0, 4, 0, 0, 0}};
 
     System.out.println(new PrintableTable(columns, rows, data).toString());
-
   }
 }
