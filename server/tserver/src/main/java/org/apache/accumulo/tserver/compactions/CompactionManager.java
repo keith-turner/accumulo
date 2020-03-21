@@ -83,7 +83,9 @@ public class CompactionManager {
       while (true) {
 
         List<Compactable> sortedCompactables = new ArrayList<Compactable>();
-        sortedCompactables.removeIf(c -> c.getExtent().isMeta());
+        sortedCompactables.removeIf(
+            c -> c.getExtent().isMeta() || c.getExtent().getTableId().canonical().equals("+rep")
+                || c.getExtent().getTableId().canonical().equals("1"));
         compactables.forEach(sortedCompactables::add);
         Collections.sort(sortedCompactables, Comparator.comparing(CompactionManager::getEndrow,
             Comparator.nullsLast(Comparator.naturalOrder())));
@@ -98,7 +100,7 @@ public class CompactionManager {
 
           rows[r] = compactable.getExtent().getEndRow() + "";
 
-          data[r] = new int[8];
+          data[r] = new int[columns.length];
 
           Set<URI> files = new HashSet<>(compactable.getFiles().keySet());
 
