@@ -73,56 +73,60 @@ public class CompactionManager {
   }
 
   private synchronized void printStats() {
+    try {
 
-    Map<String,Integer> epos = Map.of("small", 1, "medium", 3, "large", 5, "huge", 7);
+      Map<String,Integer> epos = Map.of("small", 1, "medium", 3, "large", 5, "huge", 7);
 
-    String[] columns = {"not compacting", "small running", "small queued", "medium running",
-        "medium queued", "large running", "large queued", "huge running", "huge queued"};
+      String[] columns = {"not compacting", "small running", "small queued", "medium running",
+          "medium queued", "large running", "large queued", "huge running", "huge queued"};
 
-    while (true) {
+      while (true) {
 
-      List<Compactable> sortedCompactables = new ArrayList<Compactable>();
-      compactables.forEach(sortedCompactables::add);
-      Collections.sort(sortedCompactables,
-          Comparator.nullsLast(Comparator.comparing(CompactionManager::getEndrow)));
+        List<Compactable> sortedCompactables = new ArrayList<Compactable>();
+        compactables.forEach(sortedCompactables::add);
+        Collections.sort(sortedCompactables,
+            Comparator.nullsLast(Comparator.comparing(CompactionManager::getEndrow)));
 
-      int[][] data = new int[sortedCompactables.size()][];
-      String[] rows = new String[sortedCompactables.size()];
+        int[][] data = new int[sortedCompactables.size()][];
+        String[] rows = new String[sortedCompactables.size()];
 
-      for (int i = 0; i < sortedCompactables.size(); i++) {
-        int r = i;
-        var compactable = sortedCompactables.get(r);
-        submittedJobs.row(compactable.getExtent());
+        for (int i = 0; i < sortedCompactables.size(); i++) {
+          int r = i;
+          var compactable = sortedCompactables.get(r);
+          submittedJobs.row(compactable.getExtent());
 
-        rows[r] = compactable.getExtent().getEndRow() + "";
+          rows[r] = compactable.getExtent().getEndRow() + "";
 
-        data[r] = new int[8];
+          data[r] = new int[8];
 
-        Set<URI> files = new HashSet<>(compactable.getFiles().keySet());
+          Set<URI> files = new HashSet<>(compactable.getFiles().keySet());
 
-        submittedJobs.row(compactable.getExtent()).values().forEach(sjob -> {
-          var status = sjob.getStatus();
+          submittedJobs.row(compactable.getExtent()).values().forEach(sjob -> {
+            var status = sjob.getStatus();
 
-          if (status == Status.QUEUED || status == Status.RUNNING) {
-            files.removeAll(sjob.getJob().getFiles().keySet());
-            int pos = epos.get(sjob.getJob().getExecutor());
-            if (status == Status.QUEUED)
-              pos++;
-            data[r][pos] = sjob.getJob().getFiles().size();
-          }
-        });
+            if (status == Status.QUEUED || status == Status.RUNNING) {
+              files.removeAll(sjob.getJob().getFiles().keySet());
+              int pos = epos.get(sjob.getJob().getExecutor());
+              if (status == Status.QUEUED)
+                pos++;
+              data[r][pos] = sjob.getJob().getFiles().size();
+            }
+          });
 
-        data[r][0] = files.size();
+          data[r][0] = files.size();
+        }
+
+        System.out.println(new PrintableTable(columns, rows, data).toString());
+
+        try {
+          wait(1000);
+        } catch (InterruptedException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        }
       }
-
-      System.out.println(new PrintableTable(columns, rows, data).toString());
-
-      try {
-        wait(1000);
-      } catch (InterruptedException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      }
+    } catch (Exception e) {
+      log.error("CMSF", e);
     }
   }
 
