@@ -16,32 +16,24 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.core.spi.compaction;
+package org.apache.accumulo.tserver.compactions;
 
-public abstract class SubmittedJob {
-  private final CompactionId id;
-  private final CompactionJob job;
+import org.apache.accumulo.core.data.AbstractId;
 
-  public enum Status {
-    RUNNING, QUEUED, COMPLETE, FAILED, CANCELED
+public interface CompactionService {
+  public static class Id extends AbstractId<Id> {
+
+    private static final long serialVersionUID = 1L;
+
+    private Id(String id) {
+      super(id);
+    }
+
+    public static Id of(String canonical) {
+      return new Id(canonical);
+    }
   }
 
-  public enum Type {
-    USER, SYSTEM
-  }
+  void compact(CompactionType type, Compactable compactable);
 
-  public SubmittedJob(CompactionJob job, CompactionId id) {
-    this.job = job;
-    this.id = id;
-  }
-
-  public CompactionJob getJob() {
-    return job;
-  }
-
-  public CompactionId getId() {
-    return id;
-  }
-
-  public abstract Status getStatus();
 }

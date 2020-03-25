@@ -18,38 +18,32 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
-import java.util.Collection;
 import java.util.Comparator;
-import java.util.Set;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
-import org.apache.accumulo.core.spi.compaction.Cancellation;
-import org.apache.accumulo.core.spi.compaction.CompactionExecutor;
-import org.apache.accumulo.core.spi.compaction.CompactionId;
-import org.apache.accumulo.core.spi.compaction.CompactionJob;
-import org.apache.accumulo.core.spi.compaction.SubmittedJob;
-import org.apache.accumulo.core.spi.compaction.SubmittedJob.Status;
+import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-public class CompactionExecutorImpl implements CompactionExecutor {
+public class CompactionExecutor {
 
-  private static final Logger log = LoggerFactory.getLogger(CompactionExecutorImpl.class);
+  private static final Logger log = LoggerFactory.getLogger(CompactionExecutor.class);
 
   private static class CompactionTask extends SubmittedJob implements Runnable {
 
     private AtomicReference<Status> status = new AtomicReference<>(Status.QUEUED);
     private Compactable compactable;
+    private Id csid;
 
-    public CompactionTask(CompactionJob job, CompactionId id, Compactable compactable) {
-      super(job, id);
+    public CompactionTask(CompactionJob job, Compactable compactable, CompactionService.Id csid) {
+      super(job);
       this.compactable = compactable;
+      this.csid = csid;
     }
 
     @Override
@@ -59,7 +53,7 @@ public class CompactionExecutorImpl implements CompactionExecutor {
         if (status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
           log.info("Running compaction for {} on {}", compactable.getExtent(),
               getJob().getExecutor());
-          compactable.compact(getJob());
+          compactable.compact(csid, getJob());
           log.info("Finished compaction for {} on {}", compactable.getExtent(),
               getJob().getExecutor());
         }
@@ -76,6 +70,16 @@ public class CompactionExecutorImpl implements CompactionExecutor {
       return status.get();
     }
 
+    @Override
+    public boolean cancel(Status expectedStatus) {
+
+      if (expectedStatus == Status.QUEUED) {
+        return status.compareAndSet(expectedStatus, Status.CANCELED);
+      }
+
+      return false;
+    }
+
   }
 
   private static long extractPriority(Runnable r) {
@@ -90,55 +94,26 @@ public class CompactionExecutorImpl implements CompactionExecutor {
   private ThreadPoolExecutor executor;
   private final String name;
 
-  CompactionExecutorImpl(String name, int threads) {
+  CompactionExecutor(String name, int threads) {
     this.name = name;
-    var comparator = Comparator.comparingLong(CompactionExecutorImpl::extractPriority)
-        .thenComparingLong(CompactionExecutorImpl::extractJobFiles).reversed();
+    var comparator = Comparator.comparingLong(CompactionExecutor::extractPriority)
+        .thenComparingLong(CompactionExecutor::extractJobFiles).reversed();
 
+    // TODO may want to periodically clean queue
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
 
     executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS, queue);
 
   }
 
-  public SubmittedJob submit(CompactionJob job, CompactionId compactionId,
+  public SubmittedJob submit(CompactionService.Id csid, CompactionJob job,
       Compactable compactable) {
     Preconditions.checkArgument(job.getExecutor().equals(getName()));
-    var ctask = new CompactionTask(job, compactionId, compactable);
+    var ctask = new CompactionTask(job, compactable, csid);
     executor.execute(ctask);
     return ctask;
   }
 
-  public void cancel(Collection<Cancellation> cancellations,
-      Set<CompactionId> succesfullyCancelled) {
-    if (cancellations.isEmpty())
-      return;
-
-    // TODO handle running task
-    Set<CompactionId> queuedTaskToCancel =
-        cancellations.stream().filter(c -> c.getStatusesToCancel().contains(Status.QUEUED))
-            .map(Cancellation::getCompactionId).collect(Collectors.toSet());
-
-    if (queuedTaskToCancel.isEmpty())
-      return;
-
-    // do efficient bulk removal
-    queue.removeIf(runnable -> {
-      var ctask = (CompactionTask) runnable;
-
-      if (queuedTaskToCancel.contains(ctask.getId())) {
-        var set = ctask.status.compareAndSet(Status.QUEUED, Status.CANCELED);
-        if (set) {
-          succesfullyCancelled.add(ctask.getId());
-        }
-        return set;
-      }
-
-      return false;
-    });
-  }
-
-  @Override
   public String getName() {
     return name;
   }

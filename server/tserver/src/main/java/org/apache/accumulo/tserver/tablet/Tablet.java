@@ -28,7 +28,6 @@ import java.io.DataInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -38,6 +37,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.SortedMap;
@@ -90,8 +90,6 @@ import org.apache.accumulo.core.replication.ReplicationConfigurationUtil;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.ColumnVisibility;
 import org.apache.accumulo.core.spi.cache.BlockCache;
-import org.apache.accumulo.core.spi.compaction.CompactionJob;
-import org.apache.accumulo.core.spi.compaction.FileInfo;
 import org.apache.accumulo.core.spi.scan.ScanDirectives;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
@@ -139,6 +137,9 @@ import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
 import org.apache.accumulo.tserver.compactions.Compactable;
+import org.apache.accumulo.tserver.compactions.CompactionJob;
+import org.apache.accumulo.tserver.compactions.CompactionService.Id;
+import org.apache.accumulo.tserver.compactions.CompactionType;
 import org.apache.accumulo.tserver.constraints.ConstraintChecker;
 import org.apache.accumulo.tserver.log.DfsLogger;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
@@ -2782,19 +2783,12 @@ public class Tablet {
   public Compactable asCompactable() {
     return new Compactable() {
 
+      private Set<StoredTabletFile> compactingFiles = Collections.synchronizedSet(new HashSet<>());
+      private Id myService = Id.of("default");
+
       @Override
       public TableId getTableId() {
         return getExtent().getTableId();
-      }
-
-      @Override
-      public Map<URI,FileInfo> getFiles() {
-        // TODO could be closed
-        HashMap<URI,FileInfo> translated = new HashMap<>();
-        datafileManager.getDatafileSizes().forEach((stf, dfv) -> {
-          translated.put(stf.getPath().toUri(), new FileInfo(dfv.getSize(), dfv.getNumEntries()));
-        });
-        return translated;
       }
 
       @Override
@@ -2803,8 +2797,34 @@ public class Tablet {
       }
 
       @Override
-      public void compact(CompactionJob compactionJob) {
+      public Optional<Files> getFiles(Id service, CompactionType type) {
+        // TODO check service
+        if (type == CompactionType.MAINTENANCE) {
+          var files = datafileManager.getDatafileSizes();
+          Set<StoredTabletFile> compactingCopy;
+          synchronized (compactingFiles) {
+            compactingCopy = Set.copyOf(compactingFiles);
+          }
+          Optional.of(new Compactable.Files(files, type, files.keySet(), compactingCopy));
+        }
+        return Optional.empty();
+      }
+
+      @Override
+      public void compact(Id service, CompactionJob job) {
         // TODO could be closed... maybe register and deregister compaction
+
+        if (!service.equals(myService)) {
+          return;
+        }
+
+        synchronized (compactingFiles) {
+          if (Collections.disjoint(compactingFiles, job.getFiles()))
+            compactingFiles.addAll(job.getFiles());
+          else
+            return; // TODO log an error?
+        }
+        // TODO only add if not in set!
 
         try {
           CompactionEnv cenv = new CompactionEnv() {
@@ -2835,17 +2855,12 @@ public class Tablet {
           AccumuloConfiguration tableConfig = Tablet.this.tableConfiguration;
 
           SortedMap<StoredTabletFile,DataFileValue> allFiles = datafileManager.getDatafileSizes();
-          Map<StoredTabletFile,DataFileValue> files = new HashMap<>();
-          compactionJob.getFiles().keySet().forEach(uri -> {
-            allFiles.forEach((stf, dfv) -> {
-              // TODO linear search
-              if (stf.getPath().toUri().equals(uri)) {
-                files.put(stf, dfv);
-              }
-            });
-          });
+          HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
+          job.getFiles()
+              .forEach(file -> compactFiles.put((StoredTabletFile) file, allFiles.get(file)));
+
           // TODO this is done outside of sync block
-          boolean propogateDeletes = !allFiles.keySet().equals(files.keySet());
+          boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
 
           TabletFile newFile = getNextMapFilename(!propogateDeletes ? "A" : "C");
           TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));
@@ -2853,18 +2868,32 @@ public class Tablet {
           // TODO user iters
           List<IteratorSetting> iters = List.of();
 
-          Compactor compactor = new Compactor(context, Tablet.this, files, null, compactTmpName,
-              propogateDeletes, cenv, iters, reason, tableConfig);
+          Compactor compactor = new Compactor(context, Tablet.this, compactFiles, null,
+              compactTmpName, propogateDeletes, cenv, iters, reason, tableConfig);
 
           var mcs = compactor.call();
 
           // TODO compact ID
-          getDatafileManager().bringMajorCompactionOnline(files.keySet(), compactTmpName, newFile,
-              null, new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
+          getDatafileManager().bringMajorCompactionOnline(compactFiles.keySet(), compactTmpName,
+              newFile, null, new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
 
         } catch (Exception e) {
           throw new RuntimeException(e);
+        } finally {
+          compactingFiles.removeAll(job.getFiles());
         }
+      }
+
+      @Override
+      public Id getConfiguredService(CompactionType type) {
+        // TODO
+        return myService;
+      }
+
+      @Override
+      public double getCompactionRatio() {
+        // TODO
+        return 2;
       }
     };
   }

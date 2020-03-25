@@ -16,36 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.core.spi.compaction;
+package org.apache.accumulo.tserver.compactions;
 
-import java.util.Collection;
-import java.util.List;
-
-public class CompactionPlan {
-
-  private final Collection<Cancellation> cancellations;
-  private final Collection<CompactionJob> jobs;
-
-  public CompactionPlan() {
-    this.cancellations = List.of();
-    this.jobs = List.of();
-  }
-
-  public CompactionPlan(Collection<CompactionJob> jobs, Collection<Cancellation> cancellations) {
-    this.jobs = List.copyOf(jobs);
-    this.cancellations = List.copyOf(cancellations);
-  }
-
-  public Collection<CompactionJob> getJobs() {
-    return jobs;
-  }
-
-  public Collection<Cancellation> getCancellations() {
-    return cancellations;
-  }
-
-  @Override
-  public String toString() {
-    return "jobs: " + jobs + " cancellations: " + cancellations;
-  }
+public interface CompactionPlanner {
+  CompactionPlan makePlan(CompactionType type, Compactable.Files files, double cRatio);
 }

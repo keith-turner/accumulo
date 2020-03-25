@@ -18,21 +18,46 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
-import java.net.URI;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.SortedMap;
 
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.spi.compaction.CompactionJob;
-import org.apache.accumulo.core.spi.compaction.FileInfo;
+import org.apache.accumulo.core.metadata.StoredTabletFile;
+import org.apache.accumulo.core.metadata.schema.DataFileValue;
 
 public interface Compactable {
 
+  public static class Files {
+
+    public final Map<StoredTabletFile,DataFileValue> allFiles;
+    public final CompactionType type;
+    public final Set<StoredTabletFile> candidates;
+    public final Set<StoredTabletFile> compacting;
+
+    public Files(SortedMap<StoredTabletFile,DataFileValue> files, CompactionType type,
+        Set<StoredTabletFile> set, Set<StoredTabletFile> compacting) {
+      this.allFiles = files;
+      this.type = type;
+      this.candidates = set;
+      this.compacting = compacting;
+    }
+
+  }
+
   TableId getTableId();
 
-  Map<URI,FileInfo> getFiles();
+  Optional<Files> getFiles(CompactionService.Id service, CompactionType type);
 
   KeyExtent getExtent();
 
-  void compact(CompactionJob compactionJob);
+  // void compact(CompactionJob compactionJob);
+
+  void compact(CompactionService.Id service, CompactionJob job);
+
+  CompactionService.Id getConfiguredService(CompactionType type);
+
+  double getCompactionRatio();
 }

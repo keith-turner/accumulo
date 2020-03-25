@@ -16,22 +16,26 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.core.spi.compaction;
+package org.apache.accumulo.tserver.compactions;
 
-import java.net.URI;
-import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+import org.apache.accumulo.core.metadata.StoredTabletFile;
 
 public class CompactionJob {
 
   private final long priority;
   private final String executor;
-  private final Map<URI,FileInfo> files;
-  // TODO compaction config
+  private final Set<StoredTabletFile> files;
+  private final CompactionType type;
 
-  public CompactionJob(long priority, String executor, Map<URI,FileInfo> files) {
+  public CompactionJob(long priority, String executor, Set<StoredTabletFile> files,
+      CompactionType type) {
     this.priority = priority;
     this.executor = executor;
     this.files = files;
+    this.type = type;
   }
 
   public long getPriority() {
@@ -42,13 +46,35 @@ public class CompactionJob {
     return executor;
   }
 
-  public Map<URI,FileInfo> getFiles() {
+  public Set<StoredTabletFile> getFiles() {
     return files;
+  }
+
+  public CompactionType getType() {
+    return type;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(priority, executor, files, type);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o instanceof CompactionJob) {
+      CompactionJob ocj = (CompactionJob) o;
+
+      return priority == ocj.priority && executor.equals(ocj.executor) && files.equals(ocj.files)
+          && type == ocj.type;
+    }
+
+    return false;
   }
 
   @Override
   public String toString() {
     return "CompactionJob [priority=" + priority + ", executor=" + executor + ", files=" + files
-        + "]";
+        + ", type=" + type + "]";
   }
+
 }

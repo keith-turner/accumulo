@@ -16,8 +16,24 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.core.spi.compaction;
+package org.apache.accumulo.tserver.compactions;
 
-public interface CompactionExecutor {
-  String getName();
+public abstract class SubmittedJob {
+  private final CompactionJob job;
+
+  public enum Status {
+    RUNNING, QUEUED, COMPLETE, FAILED, CANCELED
+  }
+
+  public SubmittedJob(CompactionJob job) {
+    this.job = job;
+  }
+
+  public CompactionJob getJob() {
+    return job;
+  }
+
+  public abstract Status getStatus();
+
+  public abstract boolean cancel(Status status);
 }
