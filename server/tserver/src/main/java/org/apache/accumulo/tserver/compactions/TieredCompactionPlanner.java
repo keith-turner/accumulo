@@ -54,6 +54,11 @@ public class TieredCompactionPlanner implements CompactionPlanner {
     }
 
     Set<StoredTabletFile> group = findMapFilesToCompact(filesCopy, cRatio);
+
+    if (group.isEmpty() && (type == CompactionType.USER || type == CompactionType.CHOP)) {
+      group = files.candidates;
+    }
+
     if (group.isEmpty()) {
       return new CompactionPlan();
     } else {

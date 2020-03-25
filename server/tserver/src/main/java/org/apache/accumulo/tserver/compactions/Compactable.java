@@ -28,6 +28,9 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 
+/**
+ * Interface between compaction service and tablet.
+ */
 public interface Compactable {
 
   public static class Files {
@@ -37,11 +40,11 @@ public interface Compactable {
     public final Set<StoredTabletFile> candidates;
     public final Set<StoredTabletFile> compacting;
 
-    public Files(SortedMap<StoredTabletFile,DataFileValue> files, CompactionType type,
-        Set<StoredTabletFile> set, Set<StoredTabletFile> compacting) {
-      this.allFiles = files;
+    public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionType type,
+        Set<StoredTabletFile> candidates, Set<StoredTabletFile> compacting) {
+      this.allFiles = allFiles;
       this.type = type;
-      this.candidates = set;
+      this.candidates = candidates;
       this.compacting = compacting;
     }
 
@@ -49,9 +52,9 @@ public interface Compactable {
 
   TableId getTableId();
 
-  Optional<Files> getFiles(CompactionService.Id service, CompactionType type);
-
   KeyExtent getExtent();
+
+  Optional<Files> getFiles(CompactionService.Id service, CompactionType type);
 
   // void compact(CompactionJob compactionJob);
 

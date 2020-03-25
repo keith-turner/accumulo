@@ -2783,6 +2783,7 @@ public class Tablet {
   public Compactable asCompactable() {
     return new Compactable() {
 
+      // TODO this is a temporary hack and should be removed
       private Set<StoredTabletFile> compactingFiles = Collections.synchronizedSet(new HashSet<>());
       private Id myService = Id.of("default");
 
@@ -2798,6 +2799,9 @@ public class Tablet {
 
       @Override
       public Optional<Files> getFiles(Id service, CompactionType type) {
+        // TODO check if closed
+        // TODO get consistent snapshot of compacting files and existing files... race condition
+        // with current hack
         // TODO check service
         if (type == CompactionType.MAINTENANCE) {
           var files = datafileManager.getDatafileSizes();

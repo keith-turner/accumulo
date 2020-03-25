@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+// TODO reconcile merge with MajorCompactionReason
 public enum CompactionType {
   MAINTENANCE, USER, CHOP
 }
