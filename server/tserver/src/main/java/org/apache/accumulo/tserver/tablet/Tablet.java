@@ -37,7 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.SortedMap;
@@ -65,7 +64,6 @@ import org.apache.accumulo.core.data.ColumnUpdate;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
-import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.MapFileInfo;
@@ -137,9 +135,6 @@ import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
 import org.apache.accumulo.tserver.compactions.Compactable;
-import org.apache.accumulo.tserver.compactions.CompactionJob;
-import org.apache.accumulo.tserver.compactions.CompactionService.Id;
-import org.apache.accumulo.tserver.compactions.CompactionType;
 import org.apache.accumulo.tserver.constraints.ConstraintChecker;
 import org.apache.accumulo.tserver.log.DfsLogger;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
@@ -223,6 +218,8 @@ public class Tablet {
   enum CompactionState {
     WAITING_TO_START, IN_PROGRESS
   }
+
+  private CompactableImpl compactable;
 
   private volatile CompactionState minorCompactionState = null;
   private volatile CompactionState majorCompactionState = null;
@@ -461,6 +458,8 @@ public class Tablet {
       // look for any temp files hanging around
       removeOldTemporaryFiles();
     }
+
+    this.compactable = new CompactableImpl(this);
   }
 
   public ServerContext getContext() {
@@ -2576,13 +2575,15 @@ public class Tablet {
   }
 
   public void compactAll(long compactionId, UserCompactionConfig compactionConfig) {
-    boolean updateMetadata = false;
+
+    boolean shouldInitiate = false;
 
     synchronized (this) {
       if (lastCompactID >= compactionId) {
         return;
       }
 
+      // TODO remove???
       if (isMinorCompactionRunning()) {
         // want to wait for running minc to finish before starting majc, see ACCUMULO-3041
         if (compactionWaitInfo.compactionID == compactionId) {
@@ -2596,43 +2597,41 @@ public class Tablet {
         }
       }
 
+      // TODO remove major compaction state tracking
       if (isClosing() || isClosed() || majorCompactionQueued.contains(MajorCompactionReason.USER)
           || isMajorCompactionRunning()) {
         return;
       }
 
+      shouldInitiate = true;
+
+    }
+
+    // TODO may need to record in sync block that we are initiating
+    if (shouldInitiate) {
       CompactionStrategyConfig strategyConfig = compactionConfig.getCompactionStrategy();
       CompactionStrategy strategy = createCompactionStrategy(strategyConfig);
 
-      MajorCompactionRequest request = new MajorCompactionRequest(extent,
-          MajorCompactionReason.USER, tableConfiguration, context);
-      request.setFiles(getDatafileManager().getDatafileSizes());
+      // do not call this while holding tablet lock, could cause deadlock
+      compactable.initiateUserCompaction(compactionId, tabletFiles -> {
 
-      try {
-        if (strategy.shouldCompact(request)) {
-          initiateMajorCompaction(MajorCompactionReason.USER);
-        } else {
-          majorCompactionState = CompactionState.IN_PROGRESS;
-          updateMetadata = true;
-          lastCompactID = compactionId;
-        }
-      } catch (IOException e) {
-        throw new UncheckedIOException("IOException on " + extent + " during compact all", e);
-      }
-    }
+        MajorCompactionRequest request = new MajorCompactionRequest(extent,
+            MajorCompactionReason.USER, tableConfiguration, context);
 
-    if (updateMetadata) {
-      try {
-        // if multiple threads were allowed to update this outside of a sync block, then it would be
-        // a race condition
-        MetadataTableUtil.updateTabletCompactID(extent, compactionId,
-            getTabletServer().getContext(), getTabletServer().getLock());
-      } finally {
-        synchronized (this) {
-          majorCompactionState = null;
-          this.notifyAll();
+        request.setFiles(tabletFiles);
+
+        try {
+          if (strategy.shouldCompact(request)) {
+            strategy.gatherInformation(request);
+            var plan = strategy.getCompactionPlan(request);
+            return plan.inputFiles;
+          }
+        } catch (IOException e) {
+          // TODO ensure this is handled well
+          throw new UncheckedIOException(e);
         }
-      }
+        return Collections.emptySet();
+      });
     }
   }
 
@@ -2781,124 +2780,6 @@ public class Tablet {
   }
 
   public Compactable asCompactable() {
-    return new Compactable() {
-
-      // TODO this is a temporary hack and should be removed
-      private Set<StoredTabletFile> compactingFiles = Collections.synchronizedSet(new HashSet<>());
-      private Id myService = Id.of("default");
-
-      @Override
-      public TableId getTableId() {
-        return getExtent().getTableId();
-      }
-
-      @Override
-      public KeyExtent getExtent() {
-        return Tablet.this.getExtent();
-      }
-
-      @Override
-      public Optional<Files> getFiles(Id service, CompactionType type) {
-        // TODO check if closed
-        // TODO get consistent snapshot of compacting files and existing files... race condition
-        // with current hack
-        // TODO check service
-        if (type == CompactionType.MAINTENANCE) {
-          var files = datafileManager.getDatafileSizes();
-          Set<StoredTabletFile> compactingCopy;
-          synchronized (compactingFiles) {
-            compactingCopy = Set.copyOf(compactingFiles);
-          }
-          Optional.of(new Compactable.Files(files, type, files.keySet(), compactingCopy));
-        }
-        return Optional.empty();
-      }
-
-      @Override
-      public void compact(Id service, CompactionJob job) {
-        // TODO could be closed... maybe register and deregister compaction
-
-        if (!service.equals(myService)) {
-          return;
-        }
-
-        synchronized (compactingFiles) {
-          if (Collections.disjoint(compactingFiles, job.getFiles()))
-            compactingFiles.addAll(job.getFiles());
-          else
-            return; // TODO log an error?
-        }
-        // TODO only add if not in set!
-
-        try {
-          CompactionEnv cenv = new CompactionEnv() {
-            @Override
-            public boolean isCompactionEnabled() {
-              return !isClosing();
-            }
-
-            @Override
-            public IteratorScope getIteratorScope() {
-              return IteratorScope.majc;
-            }
-
-            @Override
-            public RateLimiter getReadLimiter() {
-              return getTabletServer().getMajorCompactionReadLimiter();
-            }
-
-            @Override
-            public RateLimiter getWriteLimiter() {
-              return getTabletServer().getMajorCompactionWriteLimiter();
-            }
-          };
-
-          // TODO
-          int reason = MajorCompactionReason.NORMAL.ordinal();
-
-          AccumuloConfiguration tableConfig = Tablet.this.tableConfiguration;
-
-          SortedMap<StoredTabletFile,DataFileValue> allFiles = datafileManager.getDatafileSizes();
-          HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
-          job.getFiles()
-              .forEach(file -> compactFiles.put((StoredTabletFile) file, allFiles.get(file)));
-
-          // TODO this is done outside of sync block
-          boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
-
-          TabletFile newFile = getNextMapFilename(!propogateDeletes ? "A" : "C");
-          TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));
-
-          // TODO user iters
-          List<IteratorSetting> iters = List.of();
-
-          Compactor compactor = new Compactor(context, Tablet.this, compactFiles, null,
-              compactTmpName, propogateDeletes, cenv, iters, reason, tableConfig);
-
-          var mcs = compactor.call();
-
-          // TODO compact ID
-          getDatafileManager().bringMajorCompactionOnline(compactFiles.keySet(), compactTmpName,
-              newFile, null, new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
-
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        } finally {
-          compactingFiles.removeAll(job.getFiles());
-        }
-      }
-
-      @Override
-      public Id getConfiguredService(CompactionType type) {
-        // TODO
-        return myService;
-      }
-
-      @Override
-      public double getCompactionRatio() {
-        // TODO
-        return 2;
-      }
-    };
+    return compactable;
   }
 }

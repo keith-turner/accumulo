@@ -18,15 +18,15 @@
  */
 package org.apache.accumulo.tserver.tablet;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
@@ -37,6 +37,7 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
+import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionJob;
@@ -63,7 +64,8 @@ public class CompactableImpl implements Compactable {
 
   private UserCompactionStatus userCompactionStatus = UserCompactionStatus.NOT_ACTIVE;
 
-  private Predicate<StoredTabletFile> selectionFunction;
+  private Selector selectionFunction;
+  private long compactionId;
 
   public CompactableImpl(Tablet tablet) {
     this.tablet = tablet;
@@ -73,15 +75,20 @@ public class CompactableImpl implements Compactable {
 
   private final Id myService = Id.of("default");
 
+  public static interface Selector {
+    Collection<StoredTabletFile> select(Map<StoredTabletFile,DataFileValue> files);
+  }
+
   /**
    * Tablet calls this signal a user compaction should run
    */
-  synchronized void initiateUserCompaction(Predicate<StoredTabletFile> selectionFunction) {
+  synchronized void initiateUserCompaction(long compactionId, Selector selectionFunction) {
     synchronized (this) {
       if (userCompactionStatus == UserCompactionStatus.NOT_ACTIVE) {
         userCompactionStatus = UserCompactionStatus.NEW;
         userCompactionFiles.clear();
         this.selectionFunction = selectionFunction;
+        this.compactionId = compactionId;
       } else {
         // TODO
       }
@@ -104,13 +111,27 @@ public class CompactableImpl implements Compactable {
 
     try {
       // run selection outside of sync
-      var selectedFiles = tablet.getDatafiles().keySet().stream().filter(selectionFunction)
-          .collect(Collectors.toList());
+      var selectedFiles = selectionFunction.select(tablet.getDatafiles());
 
-      synchronized (this) {
-        userCompactionStatus = UserCompactionStatus.SELECTED;
-        userCompactionFiles.addAll(selectedFiles);
+      if (selectedFiles.isEmpty()) {
+
+        // TODO seems like this should be set after the metadata update.. was before in the exisitng
+        // code
+        tablet.setLastCompactionID(compactionId);
+
+        MetadataTableUtil.updateTabletCompactID(tablet.getExtent(), compactionId,
+            tablet.getTabletServer().getContext(), tablet.getTabletServer().getLock());
+
+        synchronized (this) {
+          userCompactionStatus = UserCompactionStatus.NOT_ACTIVE;
+        }
+      } else {
+        synchronized (this) {
+          userCompactionStatus = UserCompactionStatus.SELECTED;
+          userCompactionFiles.addAll(selectedFiles);
+        }
       }
+
     } catch (Exception e) {
       synchronized (this) {
         userCompactionStatus = UserCompactionStatus.NEW;
@@ -126,6 +147,7 @@ public class CompactableImpl implements Compactable {
   private synchronized void userCompactionCompleted(CompactionJob job, StoredTabletFile newFile) {
     Preconditions.checkArgument(job.getType() == CompactionType.USER);
     Preconditions.checkState(userCompactionFiles.containsAll(job.getFiles()));
+    Preconditions.checkState(userCompactionStatus == UserCompactionStatus.SELECTED);
 
     userCompactionFiles.removeAll(job.getFiles());
 
@@ -265,9 +287,17 @@ public class CompactableImpl implements Compactable {
 
       var mcs = compactor.call();
 
-      // TODO compact ID
+      Long compactionId = null;
+      synchronized (this) {
+        // TODO this is really iffy in the face of failures!
+        if (job.getType() == CompactionType.USER && userCompactionFiles.equals(job.getFiles())) {
+          compactionId = this.compactionId;
+        }
+
+      }
+
       metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(compactFiles.keySet(),
-          compactTmpName, newFile, null,
+          compactTmpName, newFile, compactionId,
           new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
 
     } catch (Exception e) {
