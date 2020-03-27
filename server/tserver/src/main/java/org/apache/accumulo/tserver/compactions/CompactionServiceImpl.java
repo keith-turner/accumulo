@@ -28,7 +28,7 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 
 public class CompactionServiceImpl implements CompactionService {
-  private final CompactionPlanner planner = null;
+  private final CompactionPlanner planner = new TieredCompactionPlanner();
   private final Map<String,CompactionExecutor> executors;
   //TODO configurable
   private final Id myId = Id.of("default");
