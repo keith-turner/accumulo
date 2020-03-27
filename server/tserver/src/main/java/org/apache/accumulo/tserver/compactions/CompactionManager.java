@@ -20,8 +20,6 @@ package org.apache.accumulo.tserver.compactions;
 
 import java.util.Map;
 
-import org.apache.accumulo.tserver.compactions.CompactionService.Id;
-import org.apache.hadoop.io.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,10 +29,6 @@ public class CompactionManager {
 
   private Iterable<Compactable> compactables;
   private Map<CompactionService.Id,CompactionService> services;
-
-  private static Text getEndrow(Compactable c) {
-    return c.getExtent().getEndRow();
-  }
 
   /*
    * private synchronized void printStats() { try {

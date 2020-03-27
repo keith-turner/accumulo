@@ -21,8 +21,10 @@ package org.apache.accumulo.tserver.compactions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -71,7 +73,7 @@ public class CompactionServiceImpl implements CompactionService {
     if (files.isPresent()) {
 
       var plan = planner.makePlan(type, files.get(), compactable.getCompactionRatio());
-      Collection<CompactionJob> jobs = plan.getJobs();
+      Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
       List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
 
       if (reconcile(jobs, submitted)) {
