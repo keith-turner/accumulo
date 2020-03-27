@@ -21,7 +21,6 @@ package org.apache.accumulo.tserver.compactions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,7 +31,7 @@ import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 public class CompactionServiceImpl implements CompactionService {
   private final CompactionPlanner planner = new TieredCompactionPlanner();
   private final Map<String,CompactionExecutor> executors;
-  //TODO configurable
+  // TODO configurable
   private final Id myId = Id.of("default");
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
 

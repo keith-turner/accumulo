@@ -22,6 +22,7 @@ import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
@@ -34,7 +35,12 @@ public class CompactionExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(CompactionExecutor.class);
 
-  private static class CompactionTask extends SubmittedJob implements Runnable {
+  private PriorityBlockingQueue<Runnable> queue;
+  private ThreadPoolExecutor executor;
+  private final String name;
+  private AtomicLong cancelCount = new AtomicLong();
+
+  private class CompactionTask extends SubmittedJob implements Runnable {
 
     private AtomicReference<Status> status = new AtomicReference<>(Status.QUEUED);
     private Compactable compactable;
@@ -73,11 +79,21 @@ public class CompactionExecutor {
     @Override
     public boolean cancel(Status expectedStatus) {
 
+      boolean canceled = false;
+
       if (expectedStatus == Status.QUEUED) {
-        return status.compareAndSet(expectedStatus, Status.CANCELED);
+        canceled = status.compareAndSet(expectedStatus, Status.CANCELED);
+      } else {
+        // TODO
       }
 
-      return false;
+      if (canceled && cancelCount.incrementAndGet() % 1024 == 0) {
+        // need to occasionally clean the queue, it could have canceled task with low priority that
+        // hang around
+        queue.removeIf(runnable -> ((CompactionTask) runnable).getStatus() == Status.CANCELED);
+      }
+
+      return canceled;
     }
 
   }
@@ -89,10 +105,6 @@ public class CompactionExecutor {
   private static long extractJobFiles(Runnable r) {
     return ((CompactionTask) r).getJob().getFiles().size();
   }
-
-  private PriorityBlockingQueue<Runnable> queue;
-  private ThreadPoolExecutor executor;
-  private final String name;
 
   CompactionExecutor(String name, int threads) {
     this.name = name;
