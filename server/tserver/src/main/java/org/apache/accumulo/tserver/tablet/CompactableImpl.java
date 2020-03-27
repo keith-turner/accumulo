@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.tserver.tablet;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -30,20 +32,28 @@ import java.util.SortedMap;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.file.FileOperations;
+import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
+import org.apache.accumulo.core.master.thrift.TabletLoadState;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
+import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionJob;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.apache.accumulo.tserver.compactions.CompactionType;
+import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
 import com.google.common.base.Preconditions;
@@ -56,13 +66,20 @@ public class CompactableImpl implements Compactable {
   private Set<StoredTabletFile> compactingFiles = new HashSet<>();
 
   // TODO would be better if this set were persistent
-  private Set<StoredTabletFile> userCompactionFiles = new HashSet<>();
+  private Set<StoredTabletFile> userFiles = new HashSet<>();
 
-  private enum UserCompactionStatus {
+  private Set<StoredTabletFile> choppingFiles = new HashSet<>();
+
+  // track files produced by compactions of this tablet, those are considered chopped
+  private Set<StoredTabletFile> choppedFiles = new HashSet<>();
+
+  // status of special compactions
+  private enum SpecialStatus {
     NEW, SELECTING, SELECTED, NOT_ACTIVE
   }
 
-  private UserCompactionStatus userCompactionStatus = UserCompactionStatus.NOT_ACTIVE;
+  private SpecialStatus userStatus = SpecialStatus.NOT_ACTIVE;
+  private SpecialStatus chopStatus = SpecialStatus.NOT_ACTIVE;
 
   private Selector selectionFunction;
   private long compactionId;
@@ -79,31 +96,161 @@ public class CompactableImpl implements Compactable {
     Collection<StoredTabletFile> select(Map<StoredTabletFile,DataFileValue> files);
   }
 
+  void initiateChop() {
+    Set<StoredTabletFile> chopCandidates = new HashSet<>();
+    synchronized (this) {
+      if (chopStatus == SpecialStatus.NOT_ACTIVE) {
+        // TODO may want to do nothing instead of throw exception
+        Preconditions.checkState(userStatus == SpecialStatus.NOT_ACTIVE);
+        chopStatus = SpecialStatus.SELECTING;
+        choppingFiles.clear();
+
+        chopCandidates.addAll(tablet.getDatafiles().keySet());
+        // any files currently compacting will be chopped
+        chopCandidates.removeAll(compactingFiles);
+        chopCandidates.removeAll(choppedFiles);
+
+      } else {
+        // TODO
+        return;
+      }
+    }
+
+    Set<StoredTabletFile> chopSelections = selectChopFiles(chopCandidates);
+    if (chopSelections.isEmpty()) {
+      markChopped();
+    }
+
+    synchronized (this) {
+      Preconditions.checkState(chopStatus == SpecialStatus.SELECTING);
+      if (chopSelections.isEmpty()) {
+        chopStatus = SpecialStatus.NOT_ACTIVE;
+      } else {
+        chopStatus = SpecialStatus.SELECTED;
+        choppingFiles.addAll(chopSelections);
+      }
+
+      // any candidates that were analyzed and found not needing a chop can be considered chopped
+      choppedFiles.addAll(Sets.difference(chopCandidates, chopSelections));
+    }
+
+  }
+
+  private void markChopped() {
+    // TODO work into compaction mutation
+    MetadataTableUtil.chopped(tablet.getTabletServer().getContext(), getExtent(),
+        tablet.getTabletServer().getLock());
+    tablet.getTabletServer()
+        .enqueueMasterMessage(new TabletStatusMessage(TabletLoadState.CHOPPED, getExtent()));
+  }
+
+  private Set<StoredTabletFile> selectChopFiles(Set<StoredTabletFile> chopCandidates) {
+    try {
+      var firstAndLastKeys = getFirstAndLastKeys(chopCandidates);
+      return findChopFiles(getExtent(), firstAndLastKeys, chopCandidates);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private void chopCompactionCompleted(CompactionJob job) {
+    boolean markChopped = false;
+    synchronized (this) {
+      Preconditions.checkState(chopStatus == SpecialStatus.SELECTED);
+      Preconditions.checkState(choppingFiles.containsAll(job.getFiles()));
+
+      choppingFiles.removeAll(job.getFiles());
+
+      if (choppingFiles.isEmpty()) {
+        chopStatus = SpecialStatus.NOT_ACTIVE;
+        markChopped = true;
+      }
+    }
+
+    if (markChopped)
+      markChopped();
+  }
+
+  private Map<StoredTabletFile,Pair<Key,Key>> getFirstAndLastKeys(Set<StoredTabletFile> allFiles)
+      throws IOException {
+    final Map<StoredTabletFile,Pair<Key,Key>> result = new HashMap<>();
+    final FileOperations fileFactory = FileOperations.getInstance();
+    final VolumeManager fs = tablet.getTabletServer().getFileSystem();
+    for (StoredTabletFile file : allFiles) {
+      FileSystem ns = fs.getFileSystemByPath(file.getPath());
+      try (FileSKVIterator openReader = fileFactory.newReaderBuilder()
+          .forFile(file.getPathStr(), ns, ns.getConf(), tablet.getContext().getCryptoService())
+          .withTableConfiguration(tablet.getTableConfiguration()).seekToBeginning().build()) {
+        Key first = openReader.getFirstKey();
+        Key last = openReader.getLastKey();
+        result.put(file, new Pair<>(first, last));
+      }
+    }
+    return result;
+  }
+
+  Set<StoredTabletFile> findChopFiles(KeyExtent extent,
+      Map<StoredTabletFile,Pair<Key,Key>> firstAndLastKeys, Collection<StoredTabletFile> allFiles) {
+    Set<StoredTabletFile> result = new HashSet<>();
+    if (firstAndLastKeys == null) {
+      result.addAll(allFiles);
+      return result;
+    }
+
+    for (StoredTabletFile file : allFiles) {
+      Pair<Key,Key> pair = firstAndLastKeys.get(file);
+      if (pair == null) {
+        // file was created or imported after we obtained the first and last keys... there
+        // are a few options here... throw an exception which will cause the compaction to
+        // retry and also cause ugly error message that the admin has to ignore... could
+        // go get the first and last key, but this code is called while the tablet lock
+        // is held... or just compact the file....
+        result.add(file);
+      } else {
+        Key first = pair.getFirst();
+        Key last = pair.getSecond();
+        // If first and last are null, it's an empty file. Add it to the compact set so it goes
+        // away.
+        if ((first == null && last == null) || (first != null && !extent.contains(first.getRow()))
+            || (last != null && !extent.contains(last.getRow()))) {
+          result.add(file);
+        }
+      }
+    }
+    return result;
+  }
+
   /**
    * Tablet calls this signal a user compaction should run
    */
-  synchronized void initiateUserCompaction(long compactionId, Selector selectionFunction) {
+  void initiateUserCompaction(long compactionId, Selector selectionFunction) {
     synchronized (this) {
-      if (userCompactionStatus == UserCompactionStatus.NOT_ACTIVE) {
-        userCompactionStatus = UserCompactionStatus.NEW;
-        userCompactionFiles.clear();
+
+      if (userStatus == SpecialStatus.NOT_ACTIVE) {
+        // chop and user compactions should be mutually exclusive... except for canceled compactions
+        // and delayed threads/rpcs...
+        // TODO may want to do nothing instead of throw exception
+        Preconditions.checkState(chopStatus == SpecialStatus.NOT_ACTIVE);
+        userStatus = SpecialStatus.NEW;
+        userFiles.clear();
         this.selectionFunction = selectionFunction;
         this.compactionId = compactionId;
       } else {
         // TODO
+        return;
       }
     }
 
-    selectFiles();
+    selectUserFiles();
 
   }
 
-  private synchronized void selectFiles() {
+  private void selectUserFiles() {
     synchronized (this) {
-      if (userCompactionStatus == UserCompactionStatus.NEW && compactingFiles.isEmpty()) {
-        userCompactionFiles.clear();
-        userCompactionFiles.addAll(tablet.getDatafiles().keySet());
-        userCompactionStatus = UserCompactionStatus.SELECTING;
+      if (userStatus == SpecialStatus.NEW && compactingFiles.isEmpty()) {
+        userFiles.clear();
+        userFiles.addAll(tablet.getDatafiles().keySet());
+        userStatus = SpecialStatus.SELECTING;
       } else {
         return;
       }
@@ -123,19 +270,19 @@ public class CompactableImpl implements Compactable {
             tablet.getTabletServer().getContext(), tablet.getTabletServer().getLock());
 
         synchronized (this) {
-          userCompactionStatus = UserCompactionStatus.NOT_ACTIVE;
+          userStatus = SpecialStatus.NOT_ACTIVE;
         }
       } else {
         synchronized (this) {
-          userCompactionStatus = UserCompactionStatus.SELECTED;
-          userCompactionFiles.addAll(selectedFiles);
+          userStatus = SpecialStatus.SELECTED;
+          userFiles.addAll(selectedFiles);
         }
       }
 
     } catch (Exception e) {
       synchronized (this) {
-        userCompactionStatus = UserCompactionStatus.NEW;
-        userCompactionFiles.clear();
+        userStatus = SpecialStatus.NEW;
+        userFiles.clear();
       }
 
       // TODO
@@ -146,15 +293,15 @@ public class CompactableImpl implements Compactable {
 
   private synchronized void userCompactionCompleted(CompactionJob job, StoredTabletFile newFile) {
     Preconditions.checkArgument(job.getType() == CompactionType.USER);
-    Preconditions.checkState(userCompactionFiles.containsAll(job.getFiles()));
-    Preconditions.checkState(userCompactionStatus == UserCompactionStatus.SELECTED);
+    Preconditions.checkState(userFiles.containsAll(job.getFiles()));
+    Preconditions.checkState(userStatus == SpecialStatus.SELECTED);
 
-    userCompactionFiles.removeAll(job.getFiles());
+    userFiles.removeAll(job.getFiles());
 
-    if (userCompactionFiles.isEmpty()) {
-      userCompactionStatus = UserCompactionStatus.NOT_ACTIVE;
+    if (userFiles.isEmpty()) {
+      userStatus = SpecialStatus.NOT_ACTIVE;
     } else {
-      userCompactionFiles.add(newFile);
+      userFiles.add(newFile);
     }
   }
 
@@ -183,7 +330,7 @@ public class CompactableImpl implements Compactable {
 
     switch (type) {
       case MAINTENANCE:
-        switch (userCompactionStatus) {
+        switch (userStatus) {
           case NOT_ACTIVE:
             return Optional.of(new Compactable.Files(files, type,
                 Sets.difference(files.keySet(), compactingCopy), compactingCopy));
@@ -193,7 +340,7 @@ public class CompactableImpl implements Compactable {
           case SELECTED: {
             Set<StoredTabletFile> candidates = new HashSet<>(files.keySet());
             candidates.removeAll(compactingCopy);
-            candidates.removeAll(userCompactionFiles);
+            candidates.removeAll(userFiles);
             candidates = Collections.unmodifiableSet(candidates);
             return Optional.of(new Compactable.Files(files, type, candidates, compactingCopy));
           }
@@ -201,20 +348,27 @@ public class CompactableImpl implements Compactable {
             throw new AssertionError();
         }
       case USER:
-        switch (userCompactionStatus) {
+        switch (userStatus) {
           case NOT_ACTIVE:
           case NEW:
           case SELECTING:
             return Optional.of(new Compactable.Files(files, type, Set.of(), compactingCopy));
           case SELECTED:
-            return Optional.of(new Compactable.Files(files, type, Set.copyOf(userCompactionFiles),
-                compactingCopy));
+            return Optional
+                .of(new Compactable.Files(files, type, Set.copyOf(userFiles), compactingCopy));
           default:
             throw new AssertionError();
         }
       case CHOP:
-        // TODO
-        throw new UnsupportedOperationException();
+        switch (chopStatus) {
+          case NOT_ACTIVE:
+          case NEW:
+          case SELECTING:
+            return Optional.of(new Compactable.Files(files, type, Set.of(), compactingCopy));
+          case SELECTED:
+            return Optional
+                .of(new Compactable.Files(files, type, Set.copyOf(choppingFiles), compactingCopy));
+        }
       default:
         throw new AssertionError();
     }
@@ -222,13 +376,10 @@ public class CompactableImpl implements Compactable {
 
   @Override
   public void compact(Id service, CompactionJob job) {
-    // TODO could be closed... maybe register and deregister compaction
-
-    if (!service.equals(myService)) {
-      return;
-    }
 
     synchronized (this) {
+      if (!service.equals(myService))
+        return;
 
       if (Collections.disjoint(compactingFiles, job.getFiles()))
         compactingFiles.addAll(job.getFiles());
@@ -241,6 +392,7 @@ public class CompactableImpl implements Compactable {
       CompactionEnv cenv = new CompactionEnv() {
         @Override
         public boolean isCompactionEnabled() {
+          // TODO check for service change????
           return !tablet.isClosing();
         }
 
@@ -290,7 +442,8 @@ public class CompactableImpl implements Compactable {
       Long compactionId = null;
       synchronized (this) {
         // TODO this is really iffy in the face of failures!
-        if (job.getType() == CompactionType.USER && userCompactionFiles.equals(job.getFiles())) {
+        // TODO move metadata update to own method which can rollback changes after compaction
+        if (job.getType() == CompactionType.USER && userFiles.equals(job.getFiles())) {
           compactionId = this.compactionId;
         }
 
@@ -305,11 +458,20 @@ public class CompactableImpl implements Compactable {
     } finally {
       synchronized (this) {
         compactingFiles.removeAll(job.getFiles());
+
+        // TODO this tracking feels a bit iffy
+        if (metaFile != null) {
+          choppedFiles.add(metaFile);
+          choppedFiles.removeAll(job.getFiles());
+        }
       }
+
       if (job.getType() == CompactionType.USER && metaFile != null)
         userCompactionCompleted(job, metaFile);// TODO what if it failed?
+      else if (job.getType() == CompactionType.CHOP)
+        chopCompactionCompleted(job);
       else
-        selectFiles();
+        selectUserFiles();
     }
   }
 

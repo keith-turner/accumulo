@@ -82,10 +82,11 @@ public class CompactionManager {
   private synchronized void mainLoop() {
     while (true) {
       try {
-
+        // TODO need a way for compactables to signal they have work
         for (Compactable compactable : compactables) {
-          var service = services.get(compactable.getConfiguredService(CompactionType.MAINTENANCE));
-          service.compact(CompactionType.MAINTENANCE, compactable);
+          for (CompactionType ctype : CompactionType.values()) {
+            services.get(compactable.getConfiguredService(ctype)).compact(ctype, compactable);
+          }
         }
       } catch (Exception e) {
         // TODO

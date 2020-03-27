@@ -1601,6 +1601,7 @@ public class Tablet {
     return common;
   }
 
+  // TODO remove
   private Map<StoredTabletFile,Pair<Key,Key>>
       getFirstAndLastKeys(SortedMap<StoredTabletFile,DataFileValue> allFiles) throws IOException {
     final Map<StoredTabletFile,Pair<Key,Key>> result = new HashMap<>();
@@ -1620,6 +1621,7 @@ public class Tablet {
     return result;
   }
 
+  // TODO remove
   List<StoredTabletFile> findChopFiles(KeyExtent extent,
       Map<StoredTabletFile,Pair<Key,Key>> firstAndLastKeys, Collection<StoredTabletFile> allFiles) {
     List<StoredTabletFile> result = new ArrayList<>();
@@ -2551,8 +2553,8 @@ public class Tablet {
     logLock.unlock();
   }
 
-  public synchronized void chopFiles() {
-    initiateMajorCompaction(MajorCompactionReason.CHOP);
+  public void chopFiles() {
+    compactable.initiateChop();
   }
 
   private CompactionStrategy createCompactionStrategy(CompactionStrategyConfig strategyConfig) {
@@ -2615,8 +2617,13 @@ public class Tablet {
       // do not call this while holding tablet lock, could cause deadlock
       compactable.initiateUserCompaction(compactionId, tabletFiles -> {
 
+        BlockCache sc = tabletResources.getTabletServerResourceManager().getSummaryCache();
+        BlockCache ic = tabletResources.getTabletServerResourceManager().getIndexCache();
+        Cache<String,Long> fileLenCache =
+            tabletResources.getTabletServerResourceManager().getFileLenCache();
         MajorCompactionRequest request = new MajorCompactionRequest(extent,
-            MajorCompactionReason.USER, tableConfiguration, context);
+            MajorCompactionReason.USER, getTabletServer().getFileSystem(), tableConfiguration, sc,
+            ic, fileLenCache, context);
 
         request.setFiles(tabletFiles);
 
