@@ -30,7 +30,8 @@ import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 public class CompactionServiceImpl implements CompactionService {
   private final CompactionPlanner planner = null;
   private final Map<String,CompactionExecutor> executors;
-  private final Id myId = null;
+  //TODO configurable
+  private final Id myId = Id.of("default");
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs;
 
   public CompactionServiceImpl() {
