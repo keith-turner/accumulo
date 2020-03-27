@@ -192,30 +192,18 @@ public class CompactableImpl implements Compactable {
   Set<StoredTabletFile> findChopFiles(KeyExtent extent,
       Map<StoredTabletFile,Pair<Key,Key>> firstAndLastKeys, Collection<StoredTabletFile> allFiles) {
     Set<StoredTabletFile> result = new HashSet<>();
-    if (firstAndLastKeys == null) {
-      result.addAll(allFiles);
-      return result;
-    }
 
     for (StoredTabletFile file : allFiles) {
       Pair<Key,Key> pair = firstAndLastKeys.get(file);
-      if (pair == null) {
-        // file was created or imported after we obtained the first and last keys... there
-        // are a few options here... throw an exception which will cause the compaction to
-        // retry and also cause ugly error message that the admin has to ignore... could
-        // go get the first and last key, but this code is called while the tablet lock
-        // is held... or just compact the file....
+      Key first = pair.getFirst();
+      Key last = pair.getSecond();
+      // If first and last are null, it's an empty file. Add it to the compact set so it goes
+      // away.
+      if ((first == null && last == null) || (first != null && !extent.contains(first.getRow()))
+          || (last != null && !extent.contains(last.getRow()))) {
         result.add(file);
-      } else {
-        Key first = pair.getFirst();
-        Key last = pair.getSecond();
-        // If first and last are null, it's an empty file. Add it to the compact set so it goes
-        // away.
-        if ((first == null && last == null) || (first != null && !extent.contains(first.getRow()))
-            || (last != null && !extent.contains(last.getRow()))) {
-          result.add(file);
-        }
       }
+
     }
     return result;
   }
