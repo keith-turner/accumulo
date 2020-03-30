@@ -24,6 +24,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
@@ -45,11 +46,14 @@ public class CompactionExecutor {
     private AtomicReference<Status> status = new AtomicReference<>(Status.QUEUED);
     private Compactable compactable;
     private Id csid;
+    private Consumer<Compactable> completionCallback;
 
-    public CompactionTask(CompactionJob job, Compactable compactable, CompactionService.Id csid) {
+    public CompactionTask(CompactionJob job, Compactable compactable, CompactionService.Id csid,
+        Consumer<Compactable> completionCallback) {
       super(job);
       this.compactable = compactable;
       this.csid = csid;
+      this.completionCallback = completionCallback;
     }
 
     @Override
@@ -60,6 +64,7 @@ public class CompactionExecutor {
           log.info("Running compaction for {} on {}", compactable.getExtent(),
               getJob().getExecutor());
           compactable.compact(csid, getJob());
+          completionCallback.accept(compactable);
           log.info("Finished compaction for {} on {}", compactable.getExtent(),
               getJob().getExecutor());
         }
@@ -119,10 +124,10 @@ public class CompactionExecutor {
 
   }
 
-  public SubmittedJob submit(CompactionService.Id csid, CompactionJob job,
-      Compactable compactable) {
+  public SubmittedJob submit(CompactionService.Id csid, CompactionJob job, Compactable compactable,
+      Consumer<Compactable> completionCallback) {
     Preconditions.checkArgument(job.getExecutor().equals(getName()));
-    var ctask = new CompactionTask(job, compactable, csid);
+    var ctask = new CompactionTask(job, compactable, csid, completionCallback);
     executor.execute(ctask);
     return ctask;
   }

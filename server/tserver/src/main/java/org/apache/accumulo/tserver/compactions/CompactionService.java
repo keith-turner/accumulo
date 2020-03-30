@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.function.Consumer;
+
 import org.apache.accumulo.core.data.AbstractId;
 
 public interface CompactionService {
@@ -34,6 +36,7 @@ public interface CompactionService {
     }
   }
 
-  void compact(CompactionType type, Compactable compactable);
+  void compact(CompactionType type, Compactable compactable,
+      Consumer<Compactable> completionCallback);
 
 }

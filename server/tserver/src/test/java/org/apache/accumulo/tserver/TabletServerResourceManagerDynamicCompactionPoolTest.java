@@ -31,7 +31,6 @@ import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
-import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.conf.ServerConfigurationFactory;
 import org.junit.After;
@@ -116,7 +115,7 @@ public class TabletServerResourceManagerDynamicCompactionPoolTest {
     for (int i = 0; i < 10; i++) {
       TableId id = TableId.of("userTableBatch1_" + i);
       // TODO
-      //manager.executeMajorCompaction(new KeyExtent(id, null, null), new FakeCompaction(id));
+      // manager.executeMajorCompaction(new KeyExtent(id, null, null), new FakeCompaction(id));
     }
     waitForNumRunningToReach(3);
 
@@ -142,7 +141,7 @@ public class TabletServerResourceManagerDynamicCompactionPoolTest {
     for (int i = 0; i < 10; i++) {
       TableId id = TableId.of("userTableBatch2_" + i);
       // TODO
-      //manager.executeMajorCompaction(new KeyExtent(id, null, null), new FakeCompaction(id));
+      // manager.executeMajorCompaction(new KeyExtent(id, null, null), new FakeCompaction(id));
     }
     waitForNumRunningToReach(2);
 

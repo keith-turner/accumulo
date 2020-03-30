@@ -32,7 +32,7 @@ public class CompactionManager {
   private Iterable<Compactable> compactables;
   private Map<CompactionService.Id,CompactionService> services;
 
-  private LinkedBlockingQueue<Compactable> compactablesWithNewFiles = new LinkedBlockingQueue<>();
+  private LinkedBlockingQueue<Compactable> compactablesToCheck = new LinkedBlockingQueue<>();
 
   /*
    * private synchronized void printStats() { try {
@@ -88,12 +88,12 @@ public class CompactionManager {
           for (Compactable compactable : compactables) {
             compact(compactable);
             // TODO come up with a better way to link these
-            compactable.registerNewFilesCallback(compactablesWithNewFiles::add);
+            compactable.registerNewFilesCallback(compactablesToCheck::add);
           }
           lastCheckAllTime = System.nanoTime();
         } else {
           var compactable =
-              compactablesWithNewFiles.poll(maxTimeBetweenChecks - passed, TimeUnit.NANOSECONDS);
+              compactablesToCheck.poll(maxTimeBetweenChecks - passed, TimeUnit.NANOSECONDS);
           if (compactable != null) {
             // TODO only run system compaction?
             compact(compactable);
@@ -109,7 +109,8 @@ public class CompactionManager {
 
   private void compact(Compactable compactable) {
     for (CompactionType ctype : CompactionType.values()) {
-      services.get(compactable.getConfiguredService(ctype)).compact(ctype, compactable);
+      services.get(compactable.getConfiguredService(ctype)).compact(ctype, compactable,
+          compactablesToCheck::add);
     }
   }
 
@@ -119,7 +120,7 @@ public class CompactionManager {
   }
 
   public void compactableChanged(Compactable compactable) {
-    compactablesWithNewFiles.add(compactable);
+    compactablesToCheck.add(compactable);
   }
 
   public void start() {

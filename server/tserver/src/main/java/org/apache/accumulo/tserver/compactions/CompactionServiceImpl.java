@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
@@ -67,7 +68,8 @@ public class CompactionServiceImpl implements CompactionService {
   }
 
   @Override
-  public void compact(CompactionType type, Compactable compactable) {
+  public void compact(CompactionType type, Compactable compactable,
+      Consumer<Compactable> completionCallback) {
     // TODO may need to sync
     var files = compactable.getFiles(myId, type);
     if (files.isPresent()) {
@@ -78,12 +80,11 @@ public class CompactionServiceImpl implements CompactionService {
 
       if (reconcile(jobs, submitted)) {
         for (CompactionJob job : jobs) {
-          var sjob = executors.get(job.getExecutor()).submit(myId, job, compactable);
+          var sjob =
+              executors.get(job.getExecutor()).submit(myId, job, compactable, completionCallback);
           submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ArrayList<>()).add(sjob);
         }
       }
     }
-
   }
-
 }
