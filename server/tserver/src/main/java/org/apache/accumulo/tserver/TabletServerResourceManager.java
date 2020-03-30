@@ -105,9 +105,6 @@ public class TabletServerResourceManager {
   private static final Logger log = LoggerFactory.getLogger(TabletServerResourceManager.class);
 
   private final ExecutorService minorCompactionThreadPool;
-  private final ExecutorService majorCompactionThreadPool;
-  private final ExecutorService rootMajorCompactionThreadPool;
-  private final ExecutorService defaultMajorCompactionThreadPool;
   private final ExecutorService splitThreadPool;
   private final ExecutorService defaultSplitThreadPool;
   private final ExecutorService defaultMigrationPool;
@@ -384,13 +381,6 @@ public class TabletServerResourceManager {
     }
 
     minorCompactionThreadPool = createEs(Property.TSERV_MINC_MAXCONCURRENT, "minor compactor");
-
-    // make this thread pool have a priority queue... and execute tablets with the most
-    // files first!
-    majorCompactionThreadPool = createEs(Property.TSERV_MAJC_MAXCONCURRENT, "major compactor",
-        new CompactionQueue().asBlockingQueueOfRunnable());
-    rootMajorCompactionThreadPool = createEs(300, "md root major compactor");
-    defaultMajorCompactionThreadPool = createEs(300, "md major compactor");
 
     splitThreadPool = createEs();
     defaultSplitThreadPool = createEs(60, "md splitter");
@@ -896,11 +886,6 @@ public class TabletServerResourceManager {
     public TabletServerResourceManager getTabletServerResourceManager() {
       return TabletServerResourceManager.this;
     }
-
-    public void executeMajorCompaction(KeyExtent tablet, Runnable compactionTask) {
-      TabletServerResourceManager.this.executeMajorCompaction(tablet, compactionTask);
-    }
-
   }
 
   public void executeSplit(KeyExtent tablet, Runnable splitTask) {
@@ -912,16 +897,6 @@ public class TabletServerResourceManager {
       defaultSplitThreadPool.execute(splitTask);
     } else {
       splitThreadPool.execute(splitTask);
-    }
-  }
-
-  public void executeMajorCompaction(KeyExtent tablet, Runnable compactionTask) {
-    if (tablet.isRootTablet()) {
-      rootMajorCompactionThreadPool.execute(compactionTask);
-    } else if (tablet.isMeta()) {
-      defaultMajorCompactionThreadPool.execute(compactionTask);
-    } else {
-      majorCompactionThreadPool.execute(compactionTask);
     }
   }
 

@@ -38,6 +38,8 @@ public class TieredCompactionPlanner implements CompactionPlanner {
 
   @Override
   public CompactionPlan makePlan(CompactionType type, Files files, double cRatio) {
+    // TODO Property.TSERV_MAJC_THREAD_MAXOPEN
+
     // TODO only create if needed in an elegant way.
 
     Map<StoredTabletFile,DataFileValue> filesCopy = new HashMap<>(files.allFiles);

@@ -24,7 +24,6 @@ import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.tserver.MinorCompactionReason;
-import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.hadoop.fs.Path;
 import org.apache.htrace.Trace;
 import org.apache.htrace.TraceScope;
@@ -102,8 +101,6 @@ class MinorCompactionTask implements Runnable {
 
       if (tablet.needsSplit()) {
         tablet.getTabletServer().executeSplit(tablet);
-      } else {
-        tablet.initiateMajorCompaction(MajorCompactionReason.NORMAL);
       }
     } catch (Throwable t) {
       log.error("Unknown error during minor compaction for extent: " + tablet.getExtent(), t);

@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.function.Consumer;
 
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -63,4 +64,6 @@ public interface Compactable {
   CompactionService.Id getConfiguredService(CompactionType type);
 
   double getCompactionRatio();
+
+  void registerNewFilesCallback(Consumer<Compactable> callback);
 }

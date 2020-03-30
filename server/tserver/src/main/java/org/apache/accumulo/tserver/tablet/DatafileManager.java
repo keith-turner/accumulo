@@ -21,7 +21,6 @@ package org.apache.accumulo.tserver.tablet;
 import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -79,9 +78,6 @@ class DatafileManager {
   private final MapCounter<StoredTabletFile> fileScanReferenceCounts = new MapCounter<>();
   private long nextScanReservationId = 0;
   private boolean reservationsBlocked = false;
-
-  // TODO remove
-  private final Set<TabletFile> majorCompactingFiles = new HashSet<>();
 
   static void rename(VolumeManager fs, Path src, Path dst) throws IOException {
     if (!fs.rename(src, dst)) {
@@ -387,17 +383,6 @@ class DatafileManager {
     }
   }
 
-  public void reserveMajorCompactingFiles(Collection<StoredTabletFile> files) {
-    if (majorCompactingFiles.size() != 0)
-      throw new IllegalStateException("Major compacting files not empty " + majorCompactingFiles);
-
-    majorCompactingFiles.addAll(files);
-  }
-
-  public void clearMajorCompactingFile() {
-    majorCompactingFiles.clear();
-  }
-
   StoredTabletFile bringMajorCompactionOnline(Set<StoredTabletFile> oldDatafiles,
       TabletFile tmpDatafile, TabletFile newDatafile, Long compactionId, DataFileValue dfv)
       throws IOException {
@@ -437,16 +422,9 @@ class DatafileManager {
 
       datafileSizes.keySet().removeAll(oldDatafiles);
 
-      // atomically remove old files and add new file
-      for (StoredTabletFile oldDatafile : oldDatafiles) {
-        // TODO this can go away with merging minor compactions
-        majorCompactingFiles.remove(oldDatafile);
-      }
-
       if (dfv.getNumEntries() > 0) {
         datafileSizes.put(newFile, dfv);
         // could be used by a follow on compaction in a multipass compaction
-        majorCompactingFiles.add(newFile);
       }
 
       tablet.computeNumEntries();

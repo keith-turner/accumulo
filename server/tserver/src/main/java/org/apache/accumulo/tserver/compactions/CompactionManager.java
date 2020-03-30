@@ -19,6 +19,8 @@
 package org.apache.accumulo.tserver.compactions;
 
 import java.util.Map;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +31,8 @@ public class CompactionManager {
 
   private Iterable<Compactable> compactables;
   private Map<CompactionService.Id,CompactionService> services;
+
+  private LinkedBlockingQueue<Compactable> compactablesWithNewFiles = new LinkedBlockingQueue<>();
 
   /*
    * private synchronized void printStats() { try {
@@ -73,35 +77,49 @@ public class CompactionManager {
    * e.printStackTrace(); } } } catch (Exception e) { log.error("CMSF", e); } }
    */
   // TODO remove sync... its a hack for printStats
-  private synchronized void mainLoop() {
+  private void mainLoop() {
+    long lastCheckAllTime = System.nanoTime();
+    long maxTimeBetweenChecks = TimeUnit.SECONDS.toNanos(30); // TODO is this correct? TODO
+                                                              // configurable
     while (true) {
       try {
-        // TODO need a way for compactables to signal they have work
-        for (Compactable compactable : compactables) {
-          for (CompactionType ctype : CompactionType.values()) {
-            services.get(compactable.getConfiguredService(ctype)).compact(ctype, compactable);
+        long passed = System.nanoTime() - lastCheckAllTime;
+        if (passed >= maxTimeBetweenChecks) {
+          for (Compactable compactable : compactables) {
+            compact(compactable);
+            // TODO come up with a better way to link these
+            compactable.registerNewFilesCallback(compactablesWithNewFiles::add);
+          }
+          lastCheckAllTime = System.nanoTime();
+        } else {
+          var compactable =
+              compactablesWithNewFiles.poll(maxTimeBetweenChecks - passed, TimeUnit.NANOSECONDS);
+          if (compactable != null) {
+            // TODO only run system compaction?
+            compact(compactable);
           }
         }
+
       } catch (Exception e) {
         // TODO
         log.error("Loop failed ", e);
       }
+    }
+  }
 
-      try {
-        // TODO use sleep.. using wait because of sync
-        wait(3000);
-      } catch (InterruptedException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      }
-
-      // UtilWaitThread.sleep(3000);// TODO configurable
+  private void compact(Compactable compactable) {
+    for (CompactionType ctype : CompactionType.values()) {
+      services.get(compactable.getConfiguredService(ctype)).compact(ctype, compactable);
     }
   }
 
   public CompactionManager(Iterable<Compactable> compactables) {
     this.compactables = compactables;
     this.services = Map.of(CompactionService.Id.of("default"), new CompactionServiceImpl());
+  }
+
+  public void compactableChanged(Compactable compactable) {
+    compactablesWithNewFiles.add(compactable);
   }
 
   public void start() {

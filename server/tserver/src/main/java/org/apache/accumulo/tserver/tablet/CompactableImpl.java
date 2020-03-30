@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.function.Consumer;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
@@ -64,6 +65,7 @@ public class CompactableImpl implements Compactable {
   private final Tablet tablet;
 
   private Set<StoredTabletFile> compactingFiles = new HashSet<>();
+  private volatile boolean compactionRunning = false;
 
   // TODO would be better if this set were persistent
   private Set<StoredTabletFile> userFiles = new HashSet<>();
@@ -87,6 +89,8 @@ public class CompactableImpl implements Compactable {
   public CompactableImpl(Tablet tablet) {
     this.tablet = tablet;
   }
+
+  private volatile Consumer<Compactable> newFileCallback;
 
   // TODO this is a temporary hack and should be removed
 
@@ -133,6 +137,20 @@ public class CompactableImpl implements Compactable {
       // any candidates that were analyzed and found not needing a chop can be considered chopped
       choppedFiles.addAll(Sets.difference(chopCandidates, chopSelections));
     }
+
+  }
+
+  /**
+   * Tablet can use this to signal files were added.
+   */
+  void filesAdded() {
+    if (newFileCallback != null)
+      newFileCallback.accept(this);
+  }
+
+  @Override
+  public void registerNewFilesCallback(Consumer<Compactable> callback) {
+    this.newFileCallback = callback;
 
   }
 
@@ -373,6 +391,8 @@ public class CompactableImpl implements Compactable {
         compactingFiles.addAll(job.getFiles());
       else
         return; // TODO log an error?
+
+      compactionRunning = !compactingFiles.isEmpty();
     }
     // TODO only add if not in set!
     StoredTabletFile metaFile = null;
@@ -446,6 +466,7 @@ public class CompactableImpl implements Compactable {
     } finally {
       synchronized (this) {
         compactingFiles.removeAll(job.getFiles());
+        compactionRunning = !compactingFiles.isEmpty();
 
         // TODO this tracking feels a bit iffy
         if (metaFile != null) {
@@ -475,4 +496,8 @@ public class CompactableImpl implements Compactable {
     return 2;
   }
 
+  public boolean isMajorCompactionRunning() {
+    // this method intentionally not synchronized because its called by stats code.
+    return compactionRunning;
+  }
 }
