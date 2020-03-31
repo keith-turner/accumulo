@@ -36,10 +36,14 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.tserver.compactions.Compactable.Files;
 import org.apache.accumulo.tserver.compactions.CompactionServiceImpl.ServiceConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
 public class TieredCompactionPlanner implements CompactionPlanner {
+
+  private static Logger log = LoggerFactory.getLogger(TieredCompactionPlanner.class);
 
   private static class Executor {
     final String name;
@@ -75,39 +79,47 @@ public class TieredCompactionPlanner implements CompactionPlanner {
 
   @Override
   public CompactionPlan makePlan(CompactionType type, Files files, double cRatio) {
-    // TODO Property.TSERV_MAJC_THREAD_MAXOPEN
+    try {
+      // TODO Property.TSERV_MAJC_THREAD_MAXOPEN
 
-    // TODO only create if needed in an elegant way.
+      // TODO only create if needed in an elegant way.
 
-    Map<StoredTabletFile,DataFileValue> filesCopy = new HashMap<>(files.allFiles);
-    filesCopy.keySet().retainAll(files.candidates);
+      Map<StoredTabletFile,DataFileValue> filesCopy = new HashMap<>(files.allFiles);
+      filesCopy.keySet().retainAll(files.candidates);
 
-    // find minimum file size for running compactions
-    OptionalLong minCompacting =
-        files.compacting.stream().map(files.allFiles::get).mapToLong(DataFileValue::getSize).min();
+      // find minimum file size for running compactions
 
-    if (minCompacting.isPresent()) {
-      // This is done to ensure that compactions over time result in the mimimum number of files.
-      // See the gist for more info.
-      filesCopy = getSmallestFilesWithSumLessThan(filesCopy, minCompacting.getAsLong());
-    }
+      OptionalLong minCompacting = files.compacting.stream().map(files.allFiles::get)
+          .mapToLong(DataFileValue::getSize).min();
 
-    Set<StoredTabletFile> group = findMapFilesToCompact(filesCopy, cRatio);
+      if (minCompacting.isPresent()) {
+        // This is done to ensure that compactions over time result in the mimimum number of files.
+        // See the gist for more info.
+        filesCopy = getSmallestFilesWithSumLessThan(filesCopy, minCompacting.getAsLong());
+      }
 
-    if (group.isEmpty() && (type == CompactionType.USER || type == CompactionType.CHOP)) {
-      group = files.candidates;
-    }
+      Set<StoredTabletFile> group = findMapFilesToCompact(filesCopy, cRatio);
 
-    if (group.isEmpty()) {
-      return new CompactionPlan();
-    } else {
+      if (group.isEmpty() && (type == CompactionType.USER || type == CompactionType.CHOP)) {
+        group = files.candidates;
+      }
 
-      // TODO do we want to queue a job to an executor if we already have something running there??
-      // determine which executor to use based on the size of the files
-      String executor =
-          getExecutor(group.stream().mapToLong(file -> files.allFiles.get(file).getSize()).sum());
-      CompactionJob job = new CompactionJob(files.allFiles.size(), executor, group, type);
-      return new CompactionPlan(List.of(job));
+      if (group.isEmpty()) {
+        return new CompactionPlan();
+      } else {
+
+        // TODO do we want to queue a job to an executor if we already have something running
+        // there??
+        // determine which executor to use based on the size of the files
+        String executor =
+            getExecutor(group.stream().mapToLong(file -> files.allFiles.get(file).getSize()).sum());
+        CompactionJob job = new CompactionJob(files.allFiles.size(), executor, group, type);
+        return new CompactionPlan(List.of(job));
+      }
+
+    } catch (RuntimeException e) {
+      log.warn(" type:{} files:{} cRatio:{}", e);
+      throw e;
     }
   }
 

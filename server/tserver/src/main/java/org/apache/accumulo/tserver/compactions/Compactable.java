@@ -49,6 +49,12 @@ public interface Compactable {
       this.compacting = compacting;
     }
 
+    @Override
+    public String toString() {
+      return "Files [allFiles=" + allFiles + ", type=" + type + ", candidates=" + candidates
+          + ", compacting=" + compacting + "]";
+    }
+
   }
 
   TableId getTableId();
