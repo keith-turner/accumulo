@@ -334,6 +334,13 @@ public class CompactableImpl implements Compactable {
     var compactingCopy = Set.copyOf(compactingFiles);
     var files = tablet.getDatafiles();
 
+    if (!files.keySet().containsAll(compactingFiles)) {
+      // A compaction finished, so things are out of date. This can happen because this class and
+      // tablet have separate locks, its ok.
+      return Optional.of(new Compactable.Files(files, type, Set.of(),
+          Sets.intersection(compactingFiles, files.keySet())));
+    }
+
     switch (type) {
       case MAINTENANCE:
         switch (userStatus) {
