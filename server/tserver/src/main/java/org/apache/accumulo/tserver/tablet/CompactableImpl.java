@@ -287,6 +287,8 @@ public class CompactableImpl implements Compactable {
           userStatus = SpecialStatus.SELECTED;
           userFiles.addAll(selectedFiles);
         }
+
+        // TODO notify compaction manager to process this tablet!
       }
 
     } catch (Exception e) {

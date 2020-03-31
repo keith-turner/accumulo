@@ -88,8 +88,6 @@ public class CompactionManager {
     while (true) {
       try {
         long passed = System.nanoTime() - lastCheckAllTime;
-        log.debug("passed : {}  max : {} {}", passed, maxTimeBetweenChecks,
-            passed >= maxTimeBetweenChecks);
         if (passed >= maxTimeBetweenChecks) {
           for (Compactable compactable : compactables) {
             compact(compactable);

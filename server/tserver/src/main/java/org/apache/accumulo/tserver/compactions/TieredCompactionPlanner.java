@@ -79,6 +79,12 @@ public class TieredCompactionPlanner implements CompactionPlanner {
 
   @Override
   public CompactionPlan makePlan(CompactionType type, Files files, double cRatio) {
+    var plan = _makePlan(type, files, cRatio);
+    log.debug("makePlan({} {} {} -> {}", type, files, cRatio, plan);
+    return plan;
+  }
+
+  private CompactionPlan _makePlan(CompactionType type, Files files, double cRatio) {
     try {
       // TODO Property.TSERV_MAJC_THREAD_MAXOPEN
 
