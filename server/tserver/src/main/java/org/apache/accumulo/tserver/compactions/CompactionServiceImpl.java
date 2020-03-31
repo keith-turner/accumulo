@@ -31,6 +31,8 @@ import java.util.function.Consumer;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 
@@ -40,6 +42,8 @@ public class CompactionServiceImpl implements CompactionService {
   // TODO configurable
   private final Id myId = Id.of("default");
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
+
+  private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
 
   static class ExecutorConfig {
     String name;
@@ -106,6 +110,9 @@ public class CompactionServiceImpl implements CompactionService {
               executors.get(job.getExecutor()).submit(myId, job, compactable, completionCallback);
           submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ArrayList<>()).add(sjob);
         }
+      } else {
+
+        log.debug("Did not submit plan for {}", compactable.getExtent());
       }
     }
   }
