@@ -45,7 +45,7 @@ public class TieredCompactionPlanner implements CompactionPlanner {
     final String name;
     final Long maxSize;
 
-    public Executor(String name, long maxSize) {
+    public Executor(String name, Long maxSize) {
       Preconditions.checkArgument(maxSize > 0);
       this.name = Objects.requireNonNull(name);
       this.maxSize = maxSize;
@@ -63,8 +63,8 @@ public class TieredCompactionPlanner implements CompactionPlanner {
     List<Executor> tmpExec = new ArrayList<>();
 
     serviceConfig.executors.forEach(execCfg -> {
-      tmpExec.add(
-          new Executor(execCfg.name, ConfigurationTypeHelper.getMemoryAsBytes(execCfg.maxSize)));
+      tmpExec.add(new Executor(execCfg.name, execCfg.maxSize == null ? null
+          : ConfigurationTypeHelper.getMemoryAsBytes(execCfg.maxSize)));
     });
 
     Collections.sort(tmpExec, Comparator.comparing(Executor::getMaxSize,
