@@ -56,11 +56,15 @@ import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 
 public class CompactableImpl implements Compactable {
+
+  private static final Logger log = LoggerFactory.getLogger(CompactableImpl.class);
 
   private final Tablet tablet;
 
@@ -335,6 +339,9 @@ public class CompactableImpl implements Compactable {
     var files = tablet.getDatafiles();
 
     if (!files.keySet().containsAll(compactingFiles)) {
+      log.debug("Ignoring because compacting not a subset {} compacting:{} all:{}", getExtent(),
+          compactingFiles, files.keySet());
+
       // A compaction finished, so things are out of date. This can happen because this class and
       // tablet have separate locks, its ok.
       return Optional.of(new Compactable.Files(files, type, Set.of(),
