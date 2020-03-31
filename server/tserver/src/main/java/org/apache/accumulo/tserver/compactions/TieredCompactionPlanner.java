@@ -118,7 +118,7 @@ public class TieredCompactionPlanner implements CompactionPlanner {
       }
 
     } catch (RuntimeException e) {
-      log.warn(" type:{} files:{} cRatio:{}", e);
+      log.warn(" type:{} files:{} cRatio:{}", type, files, cRatio, e);
       throw e;
     }
   }
