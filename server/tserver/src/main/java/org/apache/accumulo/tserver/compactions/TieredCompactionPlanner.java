@@ -46,7 +46,7 @@ public class TieredCompactionPlanner implements CompactionPlanner {
     final Long maxSize;
 
     public Executor(String name, Long maxSize) {
-      Preconditions.checkArgument(maxSize > 0);
+      Preconditions.checkArgument(maxSize == null || maxSize > 0);
       this.name = Objects.requireNonNull(name);
       this.maxSize = maxSize;
     }
