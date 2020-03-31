@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -61,11 +63,11 @@ public class CompactionExecutor {
 
       try {
         if (status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
-          log.info("Running compaction for {} on {}", compactable.getExtent(),
+          log.info("Running compaction for {} on {}.{}", compactable.getExtent(), csid,
               getJob().getExecutor());
           compactable.compact(csid, getJob());
           completionCallback.accept(compactable);
-          log.info("Finished compaction for {} on {} files {}", compactable.getExtent(),
+          log.info("Finished compaction for {} on {}.{} files {}", compactable.getExtent(), csid,
               getJob().getExecutor(), getJob().getFiles().size());
         }
       } catch (Exception e) {
