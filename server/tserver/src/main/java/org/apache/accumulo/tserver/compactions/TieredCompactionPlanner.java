@@ -119,6 +119,7 @@ public class TieredCompactionPlanner implements CompactionPlanner {
         // determine which executor to use based on the size of the files
         String executor =
             getExecutor(group.stream().mapToLong(file -> files.allFiles.get(file).getSize()).sum());
+        // TODO include type in priority!
         CompactionJob job = new CompactionJob(files.allFiles.size(), executor, group, type);
         return new CompactionPlan(List.of(job));
       }
