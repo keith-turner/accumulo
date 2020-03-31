@@ -80,7 +80,11 @@ public class TieredCompactionPlanner implements CompactionPlanner {
   @Override
   public CompactionPlan makePlan(CompactionType type, Files files, double cRatio) {
     var plan = _makePlan(type, files, cRatio);
-    log.debug("makePlan({} {} {} -> {}", type, files, cRatio, plan);
+
+    long size = plan.getJobs().stream().flatMap(job -> job.getFiles().stream())
+        .map(files.allFiles::get).mapToLong(DataFileValue::getSize).sum();
+    // TODO remove?
+    log.debug("makePlan({} {} {} -> {} {}", type, files, cRatio, size, plan);
     return plan;
   }
 
@@ -119,6 +123,12 @@ public class TieredCompactionPlanner implements CompactionPlanner {
         // determine which executor to use based on the size of the files
         String executor =
             getExecutor(group.stream().mapToLong(file -> files.allFiles.get(file).getSize()).sum());
+
+        if (minCompacting.isPresent()) {
+          // TODO remove
+          log.info("Planning concurrent {} {}", executor, group);
+        }
+
         // TODO include type in priority!
         CompactionJob job = new CompactionJob(files.allFiles.size(), executor, group, type);
         return new CompactionPlan(List.of(job));
