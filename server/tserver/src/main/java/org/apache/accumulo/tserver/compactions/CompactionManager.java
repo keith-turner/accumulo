@@ -18,10 +18,14 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -114,9 +118,26 @@ public class CompactionManager {
     }
   }
 
-  public CompactionManager(Iterable<Compactable> compactables) {
+  public CompactionManager(Iterable<Compactable> compactables, AccumuloConfiguration config) {
     this.compactables = compactables;
-    this.services = Map.of(CompactionService.Id.of("default"), new CompactionServiceImpl());
+
+    Map<String,String> configs =
+        config.getAllPropertiesWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX);
+
+    Map<CompactionService.Id,CompactionService> tmpServices = new HashMap<>();
+
+    configs.forEach((prop, val) -> {
+      var suffix = prop.substring(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey().length());
+      String[] tokens = suffix.split("\\.", 2);
+      if (tokens[1].equals("config")) {
+        var cserv = new CompactionServiceImpl(val);
+        tmpServices.put(Id.of(tokens[0]), cserv);
+      } else {
+        // TODO
+      }
+    });
+
+    this.services = Map.copyOf(tmpServices);
   }
 
   public void compactableChanged(Compactable compactable) {

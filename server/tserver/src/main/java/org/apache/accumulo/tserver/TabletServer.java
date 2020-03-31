@@ -2816,7 +2816,7 @@ public class TabletServer extends AbstractServer {
         return Iterators.transform(onlineTablets.snapshot().values().iterator(),
             Tablet::asCompactable);
       }
-    }).start();
+    }, aconf).start();
 
     HostAndPort masterHost;
     while (!serverStopRequested) {

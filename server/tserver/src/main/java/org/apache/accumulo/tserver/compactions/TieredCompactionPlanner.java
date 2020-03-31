@@ -27,14 +27,51 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.Set;
 
+import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.tserver.compactions.Compactable.Files;
+import org.apache.accumulo.tserver.compactions.CompactionServiceImpl.ServiceConfig;
+
+import com.google.common.base.Preconditions;
 
 public class TieredCompactionPlanner implements CompactionPlanner {
+
+  private static class Executor {
+    final String name;
+    final Long maxSize;
+
+    public Executor(String name, long maxSize) {
+      Preconditions.checkArgument(maxSize > 0);
+      this.name = Objects.requireNonNull(name);
+      this.maxSize = maxSize;
+    }
+
+    Long getMaxSize() {
+      return maxSize;
+    }
+  }
+
+  private final List<Executor> executors;
+
+  public TieredCompactionPlanner(ServiceConfig serviceConfig) {
+
+    List<Executor> tmpExec = new ArrayList<>();
+
+    serviceConfig.executors.forEach(execCfg -> {
+      tmpExec.add(
+          new Executor(execCfg.name, ConfigurationTypeHelper.getMemoryAsBytes(execCfg.maxSize)));
+    });
+
+    Collections.sort(tmpExec, Comparator.comparing(Executor::getMaxSize,
+        Comparator.nullsLast(Comparator.naturalOrder())));
+
+    executors = List.copyOf(tmpExec);
+  }
 
   @Override
   public CompactionPlan makePlan(CompactionType type, Files files, double cRatio) {
@@ -143,17 +180,13 @@ public class TieredCompactionPlanner implements CompactionPlanner {
   }
 
   String getExecutor(long size) {
-    long meg = 1000000;
-
-    if (size < 10 * meg) {
-      return "small";
-    } else if (size < 100 * meg) {
-      return "medium";
-    } else if (size < 500 * meg) {
-      return "large";
-    } else {
-      return "huge";
+    for (Executor executor : executors) {
+      if (size < executor.maxSize)
+        return executor.name;
     }
+
+    // TODO is this best behavior? Could not compact when there is no executor to service that size
+    return executors.get(executors.size() - 1).name;
   }
 
   public static List<Entry<StoredTabletFile,DataFileValue>>

@@ -119,7 +119,7 @@ public class CompactionExecutor {
     // TODO may want to periodically clean queue
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
 
-    // TODO use code in TSRM to create pools
+    // TODO use code in TSRM to create pools.. and name threads
     executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS, queue);
 
   }

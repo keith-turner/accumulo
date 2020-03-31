@@ -21,6 +21,7 @@ package org.apache.accumulo.tserver.compactions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -31,17 +32,38 @@ import java.util.function.Consumer;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 
+import com.google.gson.Gson;
+
 public class CompactionServiceImpl implements CompactionService {
-  private final CompactionPlanner planner = new TieredCompactionPlanner();
+  private final CompactionPlanner planner;
   private final Map<String,CompactionExecutor> executors;
   // TODO configurable
   private final Id myId = Id.of("default");
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
 
-  public CompactionServiceImpl() {
-    this.executors = Map.of("small", new CompactionExecutor("small", 3), "medium",
-        new CompactionExecutor("medium", 3), "large", new CompactionExecutor("large", 3), "huge",
-        new CompactionExecutor("huge", 2));
+  static class ExecutorConfig {
+    String name;
+    String maxSize;
+    int numThreads;
+  }
+
+  static class ServiceConfig {
+    List<ExecutorConfig> executors;
+  }
+
+  public CompactionServiceImpl(String config) {
+    Gson gson = new Gson();
+    var serviceConfig = gson.fromJson(config, ServiceConfig.class);
+
+    Map<String,CompactionExecutor> tmpExecutors = new HashMap<>();
+    for (ExecutorConfig execConfig : serviceConfig.executors) {
+      tmpExecutors.put(execConfig.name,
+          new CompactionExecutor(execConfig.name, execConfig.numThreads));
+    }
+
+    this.executors = Map.copyOf(tmpExecutors);
+
+    this.planner = new TieredCompactionPlanner(serviceConfig);
   }
 
   private boolean reconcile(Collection<CompactionJob> jobs, List<SubmittedJob> submitted) {
@@ -70,7 +92,7 @@ public class CompactionServiceImpl implements CompactionService {
   @Override
   public void compact(CompactionType type, Compactable compactable,
       Consumer<Compactable> completionCallback) {
-    // TODO may need to sync
+    // TODO this could take a while... could run this in a thread pool
     var files = compactable.getFiles(myId, type);
     if (files.isPresent()) {
 
