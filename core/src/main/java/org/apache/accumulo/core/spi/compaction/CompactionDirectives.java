@@ -16,38 +16,26 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.core.client.admin.compaction;
-
-import java.net.URI;
-import java.util.Collection;
-import java.util.Map;
-
-import org.apache.accumulo.core.client.PluginEnvironment;
+package org.apache.accumulo.core.spi.compaction;
 
 /**
- * This class select which files a user compaction will compact.
+ * 
+ * @since 2.1.0
  */
-// TODO this could go in SPI
-public interface Selector {
+public interface CompactionDirectives {
 
-  public interface InitParamaters {
-    Map<String,String> getOptions();
+  String getService();
 
-    PluginEnvironment getEnvironment();
+  /**
+   * @since 2.1.0
+   */
+  public static interface Builder {
+    Builder setService(String service);
+
+    CompactionDirectives build();
   }
 
-  void init(InitParamaters iparams);
-
-  public interface SelectionParameters {
-    PluginEnvironment getEnvironment();
-
-    Collection<TabletFileInfo> getAvailableFiles();
+  public static Builder builder() {
+    return CompactionsDirectiveImpl.DEFAULT_BUILDER;
   }
-
-  public static class Selection {
-    // TODO builder
-    public Collection<URI> filesToCompact;
-  }
-
-  Selection select(SelectionParameters sparams);
 }

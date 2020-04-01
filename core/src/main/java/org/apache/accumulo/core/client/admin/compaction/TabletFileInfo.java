@@ -19,8 +19,14 @@
 package org.apache.accumulo.core.client.admin.compaction;
 
 import java.net.URI;
-import java.util.List;
 
-public class Selection {
-  List<URI> filesToCompact;
+public interface TabletFileInfo {
+  public URI getUri();
+
+  public long getEstimatedSize();
+
+  public long getEstimatedEntries();
+
+  // TODO get summaries
+  // TODO get iterators used to create
 }

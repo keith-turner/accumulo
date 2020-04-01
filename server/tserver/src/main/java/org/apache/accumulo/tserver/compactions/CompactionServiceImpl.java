@@ -37,6 +37,8 @@ import org.slf4j.LoggerFactory;
 import com.google.gson.Gson;
 
 public class CompactionServiceImpl implements CompactionService {
+  // TODO when user has a compaction strat configured at table, may want to have a planner that uses
+  // this to select files.
   private final CompactionPlanner planner;
   private final Map<String,CompactionExecutor> executors;
   // TODO configurable
