@@ -70,7 +70,7 @@ public class CompactionServiceImpl implements CompactionService {
     this.planner = new TieredCompactionPlanner(serviceConfig);
   }
 
-  private boolean reconcile(Collection<CompactionJob> jobs, List<SubmittedJob> submitted) {
+  private boolean reconcile(Collection<CompactionJob> jobs, List<SubmittedJob> submitted) {  
     for (SubmittedJob submittedJob : submitted) {
       if (submittedJob.getStatus() == Status.QUEUED) {
         // TODO this is O(M*N) unless set
@@ -85,8 +85,6 @@ public class CompactionServiceImpl implements CompactionService {
             return false;
           }
         }
-      } else {
-        // TODO remove from submitted jobs
       }
     }
 
@@ -103,7 +101,8 @@ public class CompactionServiceImpl implements CompactionService {
       var plan = planner.makePlan(type, files.get(), compactable.getCompactionRatio());
       Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
       List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
-
+      submitted.removeIf(sj -> sj.getStatus() != Status.QUEUED && sj.getStatus()!= Status.RUNNING);
+      
       if (reconcile(jobs, submitted)) {
         for (CompactionJob job : jobs) {
           var sjob =
@@ -111,7 +110,6 @@ public class CompactionServiceImpl implements CompactionService {
           submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ArrayList<>()).add(sjob);
         }
       } else {
-
         log.debug("Did not submit plan for {}", compactable.getExtent());
       }
     }
