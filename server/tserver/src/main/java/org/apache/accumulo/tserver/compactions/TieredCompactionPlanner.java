@@ -33,12 +33,15 @@ import java.util.Set;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.tserver.compactions.Compactable.Files;
 import org.apache.accumulo.tserver.compactions.CompactionServiceImpl.ServiceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMap.Builder;
 
 public class TieredCompactionPlanner implements CompactionPlanner {
 
@@ -77,21 +80,24 @@ public class TieredCompactionPlanner implements CompactionPlanner {
   }
 
   @Override
-  public CompactionPlan makePlan(CompactionType type, Files files, double cRatio) {
-    var plan = _makePlan(type, files, cRatio);
+  public CompactionPlan makePlan(CompactionKind kind, Files files, double cRatio) {
+    var plan = _makePlan(kind, files, cRatio);
 
     long size = plan.getJobs().stream().flatMap(job -> job.getFiles().stream())
         .map(files.allFiles::get).mapToLong(DataFileValue::getSize).sum();
     // TODO remove?
-    log.debug("makePlan({} {} {} -> {} {}", type, files, cRatio, size, plan);
+    log.debug("makePlan({} {} {} -> {} {}", kind, files, cRatio, size, plan);
     return plan;
   }
 
-  private CompactionPlan _makePlan(CompactionType type, Files files, double cRatio) {
+  private CompactionPlan _makePlan(CompactionKind kind, Files files, double cRatio) {
     try {
       // TODO Property.TSERV_MAJC_THREAD_MAXOPEN
 
-      // TODO only create if needed in an elegant way.
+      if (files.candidates.isEmpty()) {
+        // TODO constant
+        return new CompactionPlan();
+      }
 
       Map<StoredTabletFile,DataFileValue> filesCopy = new HashMap<>(files.allFiles);
       filesCopy.keySet().retainAll(files.candidates);
@@ -116,12 +122,13 @@ public class TieredCompactionPlanner implements CompactionPlanner {
         group = findMapFilesToCompact(filesCopy, cRatio);
 
         if (!Collections.disjoint(group, expectedFiles.keySet())) {
-          // file produced by running compaction will compact with existing files, so wait.
+          // file produced by running compaction will eventually compact with existing files, so
+          // wait.
           group = Set.of();
         }
       }
 
-      if (group.isEmpty() && (type == CompactionType.USER || type == CompactionType.CHOP)) {
+      if (group.isEmpty() && (kind == CompactionKind.USER || kind == CompactionKind.CHOP)) {
         group = files.candidates;
       }
 
@@ -141,12 +148,12 @@ public class TieredCompactionPlanner implements CompactionPlanner {
         }
 
         // TODO include type in priority!
-        CompactionJob job = new CompactionJob(files.allFiles.size(), executor, group, type);
+        CompactionJob job = new CompactionJob(files.allFiles.size(), executor, group, kind);
         return new CompactionPlan(List.of(job));
       }
 
     } catch (RuntimeException e) {
-      log.warn(" type:{} files:{} cRatio:{}", type, files, cRatio, e);
+      log.warn(" type:{} files:{} cRatio:{}", kind, files, cRatio, e);
       throw e;
     }
   }
@@ -155,16 +162,26 @@ public class TieredCompactionPlanner implements CompactionPlanner {
     // TODO need to know of sets of compacting files
     if (files.compacting.isEmpty())
       return Map.of();
-    StoredTabletFile stf =
-        new StoredTabletFile("hdfs://fake/accumulo/tables/adef/t-zzFAKEzz/FAKE-00001.rf");
-    DataFileValue newDfv = files.compacting.stream().map(files.allFiles::get)
-        .reduce((dfv1, dfv2) -> new DataFileValue(dfv1.getSize() + dfv2.getSize(),
-            dfv1.getNumEntries() + dfv2.getNumEntries()))
-        .get();
 
-    log.info("Expected {} -> {}", files, newDfv);
+    Builder<StoredTabletFile,DataFileValue> builder = ImmutableMap.builder();
+    int count = 0;
 
-    return Map.of(stf, newDfv);
+    for (Set<StoredTabletFile> compactingGroup : files.compacting) {
+      count++;
+      StoredTabletFile stf = new StoredTabletFile(
+          "hdfs://fake/accumulo/tables/adef/t-zzFAKEzz/FAKE-0000" + count + ".rf");
+      DataFileValue newDfv = compactingGroup.stream().map(files.allFiles::get)
+          .reduce((dfv1, dfv2) -> new DataFileValue(dfv1.getSize() + dfv2.getSize(),
+              dfv1.getNumEntries() + dfv2.getNumEntries()))
+          .get();
+      builder.put(stf, newDfv);
+    }
+
+    var expected = builder.build();
+
+    log.info("Expected {} -> {}", files, expected);
+
+    return expected;
   }
 
   /**

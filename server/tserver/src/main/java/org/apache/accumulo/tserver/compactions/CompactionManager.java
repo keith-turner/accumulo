@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,7 +113,7 @@ public class CompactionManager {
   }
 
   private void compact(Compactable compactable) {
-    for (CompactionType ctype : CompactionType.values()) {
+    for (CompactionKind ctype : CompactionKind.values()) {
       services.get(compactable.getConfiguredService(ctype)).compact(ctype, compactable,
           compactablesToCheck::add);
     }

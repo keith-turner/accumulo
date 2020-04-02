@@ -4,13 +4,13 @@ import java.util.Collection;
 import java.util.Map;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
-import org.apache.accumulo.core.client.admin.compaction.Selector.InitParamaters;
 
 /**
  * Compaction file output specification factory.
  * 
  * @since 2.1.0
  */
+// TODO Rename!
 public interface Compouter {
   /**
    * @since 2.1.0
@@ -42,5 +42,5 @@ public interface Compouter {
     public Map<String,String> tabletPropertyOverrides;
   }
 
-  Specifications specify(InitParamaters params);
+  Specifications specify(InputParameters params);
 }

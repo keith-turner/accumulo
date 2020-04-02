@@ -33,6 +33,8 @@ import java.util.function.Consumer;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -43,15 +45,20 @@ import org.apache.accumulo.core.master.thrift.TabletLoadState;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
+import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
+import org.apache.accumulo.core.spi.compaction.CompactionDispatcher.DispatchParameters;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.spi.compaction.CompactionService;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
+import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionJob;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
-import org.apache.accumulo.tserver.compactions.CompactionType;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
 import org.apache.hadoop.fs.FileSystem;
@@ -60,6 +67,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 
 public class CompactableImpl implements Compactable {
@@ -68,7 +76,8 @@ public class CompactableImpl implements Compactable {
 
   private final Tablet tablet;
 
-  private Set<StoredTabletFile> compactingFiles = new HashSet<>();
+  private Set<StoredTabletFile> allCompactingFiles = new HashSet<>();
+  private Collection<Set<StoredTabletFile>> compactingFileGroups = new HashSet<>();
   private volatile boolean compactionRunning = false;
 
   // TODO would be better if this set were persistent
@@ -90,18 +99,49 @@ public class CompactableImpl implements Compactable {
   private Selector selectionFunction;
   private long compactionId;
 
-  public CompactableImpl(Tablet tablet) {
-    this.tablet = tablet;
-  }
-
   private volatile Consumer<Compactable> newFileCallback;
-
-  // TODO this is a temporary hack and should be removed
-
-  private final Id myService = Id.of("default");
 
   public static interface Selector {
     Collection<StoredTabletFile> select(Map<StoredTabletFile,DataFileValue> files);
+  }
+
+  private Deriver<CompactionDispatcher> dispactDeriver;
+
+  public CompactableImpl(Tablet tablet) {
+    this.tablet = tablet;
+    this.dispactDeriver = tablet.getTableConfiguration().newDeriver(conf -> {
+      // TODO move to own method..
+      CompactionDispatcher newDispatcher = Property.createTableInstanceFromPropertyName(conf,
+          Property.TABLE_COMPACTION_DISPATCHER, CompactionDispatcher.class, null);
+
+      var builder = ImmutableMap.<String,String>builder();
+      conf.getAllPropertiesWithPrefix(Property.TABLE_COMPACTION_DISPATCHER_OPTS).forEach((k, v) -> {
+        String optKey = k.substring(Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey().length());
+        builder.put(optKey, v);
+      });
+
+      Map<String,String> opts = builder.build();
+
+      newDispatcher.init(new CompactionDispatcher.InitParameters() {
+        @Override
+        public TableId getTableId() {
+          return tablet.getExtent().getTableId();
+        }
+
+        @Override
+        public Map<String,String> getOptions() {
+          return opts;
+        }
+
+        @Override
+        public ServiceEnvironment getServiceEnv() {
+          return new ServiceEnvironmentImpl(tablet.getContext());
+        }
+      });
+
+      return newDispatcher;
+
+    });
   }
 
   void initiateChop() {
@@ -115,7 +155,7 @@ public class CompactableImpl implements Compactable {
 
         chopCandidates.addAll(tablet.getDatafiles().keySet());
         // any files currently compacting will be chopped
-        chopCandidates.removeAll(compactingFiles);
+        chopCandidates.removeAll(allCompactingFiles);
         chopCandidates.removeAll(choppedFiles);
 
       } else {
@@ -257,7 +297,7 @@ public class CompactableImpl implements Compactable {
 
   private void selectUserFiles() {
     synchronized (this) {
-      if (userStatus == SpecialStatus.NEW && compactingFiles.isEmpty()) {
+      if (userStatus == SpecialStatus.NEW && allCompactingFiles.isEmpty()) {
         userFiles.clear();
         userFiles.addAll(tablet.getDatafiles().keySet());
         userStatus = SpecialStatus.SELECTING;
@@ -304,7 +344,7 @@ public class CompactableImpl implements Compactable {
   }
 
   private synchronized void userCompactionCompleted(CompactionJob job, StoredTabletFile newFile) {
-    Preconditions.checkArgument(job.getType() == CompactionType.USER);
+    Preconditions.checkArgument(job.getType() == CompactionKind.USER);
     Preconditions.checkState(userFiles.containsAll(job.getFiles()));
     Preconditions.checkState(userStatus == SpecialStatus.SELECTED);
 
@@ -328,43 +368,47 @@ public class CompactableImpl implements Compactable {
   }
 
   @Override
-  public synchronized Optional<Files> getFiles(Id service, CompactionType type) {
+  public synchronized Optional<Files> getFiles(Id service, CompactionKind kind) {
     // TODO not consistently obtaing tablet state
-    if (tablet.isClosing() || tablet.isClosed() || !service.equals(myService))
+
+    if (tablet.isClosing() || tablet.isClosed() || !service.equals(getConfiguredService(kind)))
       return Optional.empty();
 
     // TODO get consistent snapshot of compacting files and existing files... race condition with
     // current hack
     // TODO check service
     // intentionally copy before getting snapshot of tablet files.
-    var compactingCopy = Set.copyOf(compactingFiles);
+
     var files = tablet.getDatafiles();
 
-    if (!files.keySet().containsAll(compactingFiles)) {
+    if (!files.keySet().containsAll(allCompactingFiles)) {
       log.debug("Ignoring because compacting not a subset {} compacting:{} all:{}", getExtent(),
-          compactingFiles, files.keySet());
+          compactingFileGroups, files.keySet());
 
       // A compaction finished, so things are out of date. This can happen because this class and
       // tablet have separate locks, its ok.
-      return Optional.of(new Compactable.Files(files, type, Set.of(),
-          Sets.intersection(compactingFiles, files.keySet())));
+      return Optional.of(new Compactable.Files(files, kind, Set.of(), Set.of()));
     }
 
-    switch (type) {
+    var allCompactingCopy = Set.copyOf(allCompactingFiles);
+    var compactingGroupsCopy = Set.copyOf(compactingFileGroups);
+
+    switch (kind) {
       case MAINTENANCE:
         switch (userStatus) {
           case NOT_ACTIVE:
-            return Optional.of(new Compactable.Files(files, type,
-                Sets.difference(files.keySet(), compactingCopy), compactingCopy));
+            return Optional.of(new Compactable.Files(files, kind,
+                Sets.difference(files.keySet(), allCompactingCopy), compactingGroupsCopy));
           case NEW:
           case SELECTING:
-            return Optional.of(new Compactable.Files(files, type, Set.of(), compactingCopy));
+            return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
           case SELECTED: {
             Set<StoredTabletFile> candidates = new HashSet<>(files.keySet());
-            candidates.removeAll(compactingCopy);
+            candidates.removeAll(allCompactingCopy);
             candidates.removeAll(userFiles);
             candidates = Collections.unmodifiableSet(candidates);
-            return Optional.of(new Compactable.Files(files, type, candidates, compactingCopy));
+            return Optional
+                .of(new Compactable.Files(files, kind, candidates, compactingGroupsCopy));
           }
           default:
             throw new AssertionError();
@@ -374,10 +418,10 @@ public class CompactableImpl implements Compactable {
           case NOT_ACTIVE:
           case NEW:
           case SELECTING:
-            return Optional.of(new Compactable.Files(files, type, Set.of(), compactingCopy));
+            return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
           case SELECTED:
-            return Optional
-                .of(new Compactable.Files(files, type, Set.copyOf(userFiles), compactingCopy));
+            return Optional.of(
+                new Compactable.Files(files, kind, Set.copyOf(userFiles), compactingGroupsCopy));
           default:
             throw new AssertionError();
         }
@@ -386,10 +430,10 @@ public class CompactableImpl implements Compactable {
           case NOT_ACTIVE:
           case NEW:
           case SELECTING:
-            return Optional.of(new Compactable.Files(files, type, Set.of(), compactingCopy));
+            return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
           case SELECTED:
-            return Optional
-                .of(new Compactable.Files(files, type, Set.copyOf(choppingFiles), compactingCopy));
+            return Optional.of(new Compactable.Files(files, kind, Set.copyOf(choppingFiles),
+                compactingGroupsCopy));
         }
       default:
         throw new AssertionError();
@@ -400,15 +444,17 @@ public class CompactableImpl implements Compactable {
   public void compact(Id service, CompactionJob job) {
 
     synchronized (this) {
-      if (!service.equals(myService))
+      if (!service.equals(getConfiguredService(job.getType())))
         return;
 
-      if (Collections.disjoint(compactingFiles, job.getFiles()))
-        compactingFiles.addAll(job.getFiles());
-      else
+      if (Collections.disjoint(allCompactingFiles, job.getFiles())) {
+        allCompactingFiles.addAll(job.getFiles());
+        compactingFileGroups.add(job.getFiles());
+      } else {
         return; // TODO log an error?
+      }
 
-      compactionRunning = !compactingFiles.isEmpty();
+      compactionRunning = !allCompactingFiles.isEmpty();
     }
     // TODO only add if not in set!
     StoredTabletFile metaFile = null;
@@ -467,7 +513,7 @@ public class CompactableImpl implements Compactable {
       synchronized (this) {
         // TODO this is really iffy in the face of failures!
         // TODO move metadata update to own method which can rollback changes after compaction
-        if (job.getType() == CompactionType.USER && userFiles.equals(job.getFiles())) {
+        if (job.getType() == CompactionKind.USER && userFiles.equals(job.getFiles())) {
           compactionId = this.compactionId;
         }
 
@@ -481,8 +527,9 @@ public class CompactableImpl implements Compactable {
       throw new RuntimeException(e);
     } finally {
       synchronized (this) {
-        compactingFiles.removeAll(job.getFiles());
-        compactionRunning = !compactingFiles.isEmpty();
+        allCompactingFiles.removeAll(job.getFiles());
+        compactingFileGroups.remove(job.getFiles()); // TODO check return true?
+        compactionRunning = !allCompactingFiles.isEmpty();
 
         // TODO this tracking feels a bit iffy
         if (metaFile != null) {
@@ -491,9 +538,9 @@ public class CompactableImpl implements Compactable {
         }
       }
 
-      if (job.getType() == CompactionType.USER && metaFile != null)
+      if (job.getType() == CompactionKind.USER && metaFile != null)
         userCompactionCompleted(job, metaFile);// TODO what if it failed?
-      else if (job.getType() == CompactionType.CHOP)
+      else if (job.getType() == CompactionKind.CHOP)
         chopCompactionCompleted(job);
       else
         selectUserFiles();
@@ -501,9 +548,37 @@ public class CompactableImpl implements Compactable {
   }
 
   @Override
-  public Id getConfiguredService(CompactionType type) {
+  public Id getConfiguredService(CompactionKind kind) {
+
+    var dispatcher = dispactDeriver.derive();
+
+    var directives = dispatcher.dispatch(new DispatchParameters() {
+
+      @Override
+      public ServiceEnvironment getServiceEnv() {
+        return new ServiceEnvironmentImpl(tablet.getContext());
+      }
+
+      @Override
+      public Map<String,String> getExecutionHints() {
+        // TODO
+        return Map.of();
+      }
+
+      @Override
+      public CompactionKind getCompactionKind() {
+        return kind;
+      }
+
+      @Override
+      public Map<String,CompactionService> getCompactionServices() {
+        // TODO
+        return Map.of();
+      }
+    });
+
     // TODO
-    return myService;
+    return Id.of(directives.getService());
   }
 
   @Override

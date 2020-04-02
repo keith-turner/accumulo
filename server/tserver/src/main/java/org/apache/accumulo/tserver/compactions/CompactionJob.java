@@ -22,20 +22,21 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.apache.accumulo.core.metadata.StoredTabletFile;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 
 public class CompactionJob {
 
   private final long priority;
   private final String executor;
   private final Set<StoredTabletFile> files;
-  private final CompactionType type;
+  private final CompactionKind kind;
 
   public CompactionJob(long priority, String executor, Set<StoredTabletFile> files,
-      CompactionType type) {
+      CompactionKind kind) {
     this.priority = priority;
     this.executor = executor;
-    this.files = files;
-    this.type = type;
+    this.files = Set.copyOf(files);
+    this.kind = kind;
   }
 
   public long getPriority() {
@@ -50,13 +51,13 @@ public class CompactionJob {
     return files;
   }
 
-  public CompactionType getType() {
-    return type;
+  public CompactionKind getType() {
+    return kind;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(priority, executor, files, type);
+    return Objects.hash(priority, executor, files, kind);
   }
 
   @Override
@@ -65,7 +66,7 @@ public class CompactionJob {
       CompactionJob ocj = (CompactionJob) o;
 
       return priority == ocj.priority && executor.equals(ocj.executor) && files.equals(ocj.files)
-          && type == ocj.type;
+          && kind == ocj.kind;
     }
 
     return false;
@@ -74,7 +75,7 @@ public class CompactionJob {
   @Override
   public String toString() {
     return "CompactionJob [priority=" + priority + ", executor=" + executor + ", files=" + files
-        + ", type=" + type + "]";
+        + ", type=" + kind + "]";
   }
 
 }

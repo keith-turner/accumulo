@@ -32,6 +32,7 @@ import org.apache.accumulo.core.file.rfile.RFile;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iteratorsImpl.system.DeletingIterator;
 import org.apache.accumulo.core.metadata.MetadataTable;
+import org.apache.accumulo.core.spi.compaction.SimpleCompactionDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanPrioritizer;
 import org.apache.accumulo.core.spi.scan.SimpleScanDispatcher;
@@ -656,6 +657,11 @@ public enum Property {
       "After a tablet has been idle (no mutations) for this time period it may have its "
           + "in-memory map flushed to disk in a minor compaction. There is no guarantee an idle "
           + "tablet will be compacted."),
+  TABLE_COMPACTION_DISPATCHER("table.compaction.dispatcher",
+      SimpleCompactionDispatcher.class.getName(), PropertyType.CLASSNAME, "TODO"),
+  TABLE_COMPACTION_DISPATCHER_OPTS("table.compaction.dispatcher.opts.", null, PropertyType.PREFIX,
+      "Options for the table compaction dispatcher"),
+
   TABLE_SCAN_DISPATCHER("table.scan.dispatcher", SimpleScanDispatcher.class.getName(),
       PropertyType.CLASSNAME,
       "This class is used to dynamically dispatch scans to configured scan executors.  Configured "

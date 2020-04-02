@@ -64,7 +64,7 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
   @Override
   public CompactionDirectives dispatch(DispatchParameters params) {
 
-    if (params.getCompactionType() == CompactionKind.USER) {
+    if (params.getCompactionKind() == CompactionKind.USER) {
       String hintType = params.getExecutionHints().get("compaction_type");
       if (hintType != null) {
         var userDirectives = userServices.get(hintType);
@@ -75,7 +75,7 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
         }
       }
     }
-    return services.get(params.getCompactionType());
+    return services.get(params.getCompactionKind());
   }
 
 }

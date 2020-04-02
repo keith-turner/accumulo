@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
+
 public interface CompactionPlanner {
-  CompactionPlan makePlan(CompactionType type, Compactable.Files files, double cRatio);
+  CompactionPlan makePlan(CompactionKind kind, Compactable.Files files, double cRatio);
 }

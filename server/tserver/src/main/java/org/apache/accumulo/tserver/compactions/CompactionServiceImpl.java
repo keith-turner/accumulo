@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,16 +95,17 @@ public class CompactionServiceImpl implements CompactionService {
   }
 
   @Override
-  public void compact(CompactionType type, Compactable compactable,
+  public void compact(CompactionKind kind, Compactable compactable,
       Consumer<Compactable> completionCallback) {
     // TODO this could take a while... could run this in a thread pool
-    var files = compactable.getFiles(myId, type);
+    var files = compactable.getFiles(myId, kind);
     if (files.isPresent()) {
 
-      var plan = planner.makePlan(type, files.get(), compactable.getCompactionRatio());
+      var plan = planner.makePlan(kind, files.get(), compactable.getCompactionRatio());
       Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
       List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
       if (!submitted.isEmpty()) {
+        // TODO only read status once
         submitted
             .removeIf(sj -> sj.getStatus() != Status.QUEUED && sj.getStatus() != Status.RUNNING);
       }

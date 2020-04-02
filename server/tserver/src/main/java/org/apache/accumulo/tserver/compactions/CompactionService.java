@@ -21,6 +21,7 @@ package org.apache.accumulo.tserver.compactions;
 import java.util.function.Consumer;
 
 import org.apache.accumulo.core.data.AbstractId;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 
 public interface CompactionService {
   public static class Id extends AbstractId<Id> {
@@ -36,7 +37,7 @@ public interface CompactionService {
     }
   }
 
-  void compact(CompactionType type, Compactable compactable,
+  void compact(CompactionKind kind, Compactable compactable,
       Consumer<Compactable> completionCallback);
 
 }
