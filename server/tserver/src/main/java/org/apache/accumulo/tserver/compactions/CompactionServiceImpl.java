@@ -29,6 +29,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
@@ -45,6 +47,7 @@ public class CompactionServiceImpl implements CompactionService {
   // TODO configurable
   private final Id myId = Id.of("default");
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
+  private int maxToCompact;
 
   private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
 
@@ -55,12 +58,17 @@ public class CompactionServiceImpl implements CompactionService {
   }
 
   static class ServiceConfig {
+    Integer maxFilesToCompact;
+    // TODO support max file size to compact option
     List<ExecutorConfig> executors;
   }
 
-  public CompactionServiceImpl(String config) {
+  public CompactionServiceImpl(String config, AccumuloConfiguration sysConfig) {
     Gson gson = new Gson();
     var serviceConfig = gson.fromJson(config, ServiceConfig.class);
+    // TODO have a config in json and fallback to this
+    this.maxToCompact = serviceConfig.maxFilesToCompact != null ? serviceConfig.maxFilesToCompact
+        : sysConfig.getCount(Property.TSERV_MAJC_THREAD_MAXOPEN);
 
     Map<String,CompactionExecutor> tmpExecutors = new HashMap<>();
     for (ExecutorConfig execConfig : serviceConfig.executors) {
@@ -101,7 +109,8 @@ public class CompactionServiceImpl implements CompactionService {
     var files = compactable.getFiles(myId, kind);
     if (files.isPresent()) {
 
-      var plan = planner.makePlan(kind, files.get(), compactable.getCompactionRatio());
+      var plan =
+          planner.makePlan(kind, files.get(), compactable.getCompactionRatio(), maxToCompact);
       Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
       List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
       if (!submitted.isEmpty()) {

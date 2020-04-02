@@ -21,5 +21,6 @@ package org.apache.accumulo.tserver.compactions;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 
 public interface CompactionPlanner {
-  CompactionPlan makePlan(CompactionKind kind, Compactable.Files files, double cRatio);
+  CompactionPlan makePlan(CompactionKind kind, Compactable.Files files, double cRatio,
+      int maxFilesToCompact);
 }

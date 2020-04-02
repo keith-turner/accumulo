@@ -80,8 +80,9 @@ public class TieredCompactionPlanner implements CompactionPlanner {
   }
 
   @Override
-  public CompactionPlan makePlan(CompactionKind kind, Files files, double cRatio) {
-    var plan = _makePlan(kind, files, cRatio);
+  public CompactionPlan makePlan(CompactionKind kind, Files files, double cRatio,
+      int maxFilesToCompact) {
+    var plan = _makePlan(kind, files, cRatio, maxFilesToCompact);
 
     long size = plan.getJobs().stream().flatMap(job -> job.getFiles().stream())
         .map(files.allFiles::get).mapToLong(DataFileValue::getSize).sum();
@@ -90,7 +91,8 @@ public class TieredCompactionPlanner implements CompactionPlanner {
     return plan;
   }
 
-  private CompactionPlan _makePlan(CompactionKind kind, Files files, double cRatio) {
+  private CompactionPlan _makePlan(CompactionKind kind, Files files, double cRatio,
+      int maxFilesToCompact) {
     try {
       // TODO Property.TSERV_MAJC_THREAD_MAXOPEN
 
@@ -104,7 +106,7 @@ public class TieredCompactionPlanner implements CompactionPlanner {
 
       Set<StoredTabletFile> group;
       if (files.compacting.isEmpty()) {
-        group = findMapFilesToCompact(filesCopy, cRatio);
+        group = findMapFilesToCompact(filesCopy, cRatio, maxFilesToCompact);
       } else {
         // This code determines if once the files compacting finish would they be included in a
         // compaction with the files smaller than them? If so, then wait for the running compaction
@@ -119,7 +121,7 @@ public class TieredCompactionPlanner implements CompactionPlanner {
 
         filesCopy.putAll(expectedFiles);
 
-        group = findMapFilesToCompact(filesCopy, cRatio);
+        group = findMapFilesToCompact(filesCopy, cRatio, maxFilesToCompact);
 
         if (!Collections.disjoint(group, expectedFiles.keySet())) {
           // file produced by running compaction will eventually compact with existing files, so
@@ -129,6 +131,8 @@ public class TieredCompactionPlanner implements CompactionPlanner {
       }
 
       if (group.isEmpty() && (kind == CompactionKind.USER || kind == CompactionKind.CHOP)) {
+        // TODO partition files using maxFilesToCompact, executors max sizes, and/or compaction
+        // ratio... user and chop could be partitioned differently
         group = files.candidates;
       }
 
@@ -190,8 +194,8 @@ public class TieredCompactionPlanner implements CompactionPlanner {
    * <p>
    * See https://gist.github.com/keith-turner/16125790c6ff0d86c67795a08d2c057f
    */
-  public static Set<StoredTabletFile>
-      findMapFilesToCompact(Map<StoredTabletFile,DataFileValue> files, double ratio) {
+  public static Set<StoredTabletFile> findMapFilesToCompact(
+      Map<StoredTabletFile,DataFileValue> files, double ratio, int maxFilesToCompact) {
     if (files.size() <= 1)
       return Collections.emptySet();
 
@@ -209,6 +213,10 @@ public class TieredCompactionPlanner implements CompactionPlanner {
 
       if (currSize * ratio < sum) {
         goodIndex = c;
+
+        if (goodIndex + 1 >= maxFilesToCompact)
+          break; // TODO old algorithm used to slide a window up when nothing found in smallest
+                 // files
 
         // look ahead to the next file to see if this a good stopping point
         if (c + 1 < sortedFiles.size()) {

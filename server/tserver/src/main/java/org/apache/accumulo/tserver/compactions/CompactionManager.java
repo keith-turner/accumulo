@@ -131,7 +131,7 @@ public class CompactionManager {
       var suffix = prop.substring(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey().length());
       String[] tokens = suffix.split("\\.", 2);
       if (tokens[1].equals("config")) {
-        var cserv = new CompactionServiceImpl(val);
+        var cserv = new CompactionServiceImpl(val, config);
         tmpServices.put(Id.of(tokens[0]), cserv);
       } else {
         // TODO
