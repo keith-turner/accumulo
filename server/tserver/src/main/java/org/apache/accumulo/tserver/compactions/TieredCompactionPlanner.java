@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.OptionalLong;
 import java.util.Set;
 
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
@@ -97,18 +96,30 @@ public class TieredCompactionPlanner implements CompactionPlanner {
       Map<StoredTabletFile,DataFileValue> filesCopy = new HashMap<>(files.allFiles);
       filesCopy.keySet().retainAll(files.candidates);
 
-      // find minimum file size for running compactions
+      Set<StoredTabletFile> group;
+      if (files.compacting.isEmpty()) {
+        group = findMapFilesToCompact(filesCopy, cRatio);
+      } else {
+        // This code determines if once the files compacting finish would they be included in a
+        // compaction with the files smaller than them? If so, then wait for the running compaction
+        // to complete.
 
-      OptionalLong minCompacting = files.compacting.stream().map(files.allFiles::get)
-          .mapToLong(DataFileValue::getSize).min();
+        // The set of files running compactions may produce
+        Map<StoredTabletFile,DataFileValue> expectedFiles = getExpected(files);
 
-      if (minCompacting.isPresent()) {
-        // This is done to ensure that compactions over time result in the mimimum number of files.
-        // See the gist for more info.
-        filesCopy = getSmallestFilesWithSumLessThan(filesCopy, minCompacting.getAsLong());
+        if (!Collections.disjoint(filesCopy.keySet(), expectedFiles.keySet())) {
+          throw new AssertionError();
+        }
+
+        filesCopy.putAll(expectedFiles);
+
+        group = findMapFilesToCompact(filesCopy, cRatio);
+
+        if (!Collections.disjoint(group, expectedFiles.keySet())) {
+          // file produced by running compaction will compact with existing files, so wait.
+          group = Set.of();
+        }
       }
-
-      Set<StoredTabletFile> group = findMapFilesToCompact(filesCopy, cRatio);
 
       if (group.isEmpty() && (type == CompactionType.USER || type == CompactionType.CHOP)) {
         group = files.candidates;
@@ -124,7 +135,7 @@ public class TieredCompactionPlanner implements CompactionPlanner {
         String executor =
             getExecutor(group.stream().mapToLong(file -> files.allFiles.get(file).getSize()).sum());
 
-        if (minCompacting.isPresent()) {
+        if (!files.compacting.isEmpty()) {
           // TODO remove
           log.info("Planning concurrent {} {}", executor, group);
         }
@@ -138,6 +149,22 @@ public class TieredCompactionPlanner implements CompactionPlanner {
       log.warn(" type:{} files:{} cRatio:{}", type, files, cRatio, e);
       throw e;
     }
+  }
+
+  private Map<StoredTabletFile,DataFileValue> getExpected(Files files) {
+    // TODO need to know of sets of compacting files
+    if (files.compacting.isEmpty())
+      return Map.of();
+    StoredTabletFile stf =
+        new StoredTabletFile("hdfs://fake/accumulo/tables/adef/t-zzFAKEzz/FAKE-00001.rf");
+    DataFileValue newDfv = files.compacting.stream().map(files.allFiles::get)
+        .reduce((dfv1, dfv2) -> new DataFileValue(dfv1.getSize() + dfv2.getSize(),
+            dfv1.getNumEntries() + dfv2.getNumEntries()))
+        .get();
+
+    log.info("Expected {} -> {}", files, newDfv);
+
+    return Map.of(stf, newDfv);
   }
 
   /**
@@ -185,27 +212,6 @@ public class TieredCompactionPlanner implements CompactionPlanner {
 
     return sortedFiles.subList(0, goodIndex + 1).stream()
         .map(Entry<StoredTabletFile,DataFileValue>::getKey).collect(toSet());
-  }
-
-  public static Map<StoredTabletFile,DataFileValue>
-      getSmallestFilesWithSumLessThan(Map<StoredTabletFile,DataFileValue> files, long cutoff) {
-    List<Entry<StoredTabletFile,DataFileValue>> sortedFiles = sortByFileSize(files);
-
-    HashMap<StoredTabletFile,DataFileValue> ret = new HashMap<>();
-
-    long sum = 0;
-
-    for (int index = 0; index < sortedFiles.size(); index++) {
-      var e = sortedFiles.get(index);
-      sum += e.getValue().getSize();
-
-      if (sum < cutoff)
-        ret.put(e.getKey(), e.getValue());
-      else
-        break;
-    }
-
-    return ret;
   }
 
   String getExecutor(long size) {
