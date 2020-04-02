@@ -860,6 +860,8 @@ public class TableOperationsImpl extends TableOperationsHelper {
       }
     }
 
+    // TODO test loading classes
+
     TableId tableId = Tables.getTableId(context, tableName);
 
     Text start = config.getStartRow();

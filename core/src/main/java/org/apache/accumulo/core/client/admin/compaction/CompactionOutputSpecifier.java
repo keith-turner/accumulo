@@ -10,8 +10,7 @@ import org.apache.accumulo.core.client.PluginEnvironment;
  * 
  * @since 2.1.0
  */
-// TODO Rename!
-public interface Compouter {
+public interface CompactionOutputSpecifier {
   /**
    * @since 2.1.0
    */

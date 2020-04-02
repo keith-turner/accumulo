@@ -18,12 +18,6 @@
  */
 package org.apache.accumulo.core.client.admin;
 
-import static java.util.Objects.requireNonNull;
-
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * Configuration object which describes how a Compaction is run. Configuration objects are dependent
  * upon the CompactionStrategy running insider the server. This class is used in conjunction with
@@ -33,10 +27,7 @@ import java.util.Map;
  * @deprecated since 2.1.0
  */
 @Deprecated
-public class CompactionStrategyConfig {
-  private String className;
-  private Map<String,String> options = Collections.emptyMap();
-
+public class CompactionStrategyConfig extends PluginConfig<CompactionStrategyConfig> {
   /**
    * @param className
    *          The name of a class that implements
@@ -44,49 +35,6 @@ public class CompactionStrategyConfig {
    *          tservers.
    */
   public CompactionStrategyConfig(String className) {
-    requireNonNull(className);
-    this.className = className;
-  }
-
-  /**
-   * @return the class name passed to the constructor.
-   */
-  public String getClassName() {
-    return className;
-  }
-
-  /**
-   * @param opts
-   *          The options that will be passed to the init() method of the compaction strategy when
-   *          its instantiated on a tserver. This method will copy the map. The default is an empty
-   *          map.
-   * @return this
-   */
-  public CompactionStrategyConfig setOptions(Map<String,String> opts) {
-    requireNonNull(opts);
-    this.options = new HashMap<>(opts);
-    return this;
-  }
-
-  /**
-   * @return The previously set options. Returns an unmodifiable map. The default is an empty map.
-   */
-  public Map<String,String> getOptions() {
-    return Collections.unmodifiableMap(options);
-  }
-
-  @Override
-  public int hashCode() {
-    return className.hashCode() + options.hashCode();
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (o instanceof CompactionStrategyConfig) {
-      CompactionStrategyConfig ocsc = (CompactionStrategyConfig) o;
-      return className.equals(ocsc.className) && options.equals(ocsc.options);
-    }
-
-    return false;
+    super(className);
   }
 }

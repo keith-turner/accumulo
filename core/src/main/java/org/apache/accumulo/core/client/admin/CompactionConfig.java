@@ -43,9 +43,9 @@ public class CompactionConfig {
   private boolean wait = true;
   private List<IteratorSetting> iterators = Collections.emptyList();
   private CompactionStrategyConfig compactionStrategy = DEFAULT_STRATEGY;
-  private Map<String,String> overrides;
   private Map<String,String> hints;
   private CompactionSelectorConfig selectorConfig;
+  private CompactionOutputSpecifierConfig cosc;
 
   /**
    * @param start
@@ -152,7 +152,7 @@ public class CompactionConfig {
   @Deprecated
   public CompactionConfig setCompactionStrategy(CompactionStrategyConfig csConfig) {
     requireNonNull(csConfig);
-    Preconditions.checkState(selectorConfig == null && overrides == null);
+    Preconditions.checkState(selectorConfig == null && cosc == null);
     this.compactionStrategy = csConfig;
     return this;
   }
@@ -207,16 +207,16 @@ public class CompactionConfig {
    *
    * @since 2.1.0
    */
-  public CompactionConfig setOutputOverrides(Map<String,String> overrides) {
+  public CompactionConfig setOutputSpecifier(CompactionOutputSpecifierConfig cosc) {
     Preconditions.checkState(compactionStrategy == null);
-    this.overrides = Map.copyOf(overrides);
+    this.cosc = cosc;
     return this;
   }
 
   /**
    * @since 2.1.0
    */
-  public Map<String,String> getOutputOverrides() {
-    return overrides;
+  public CompactionOutputSpecifierConfig getOutputSpecifier() {
+    return cosc;
   }
 }

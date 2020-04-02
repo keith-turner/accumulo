@@ -116,7 +116,6 @@ public class CompactionExecutor {
     var comparator = Comparator.comparingLong(CompactionExecutor::extractPriority)
         .thenComparingLong(CompactionExecutor::extractJobFiles).reversed();
 
-    // TODO may want to periodically clean queue
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
 
     // TODO use code in TSRM to create pools.. and name threads
