@@ -23,12 +23,14 @@ import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
 
 public class CompactionManager {
 
@@ -119,23 +121,35 @@ public class CompactionManager {
     }
   }
 
-  public CompactionManager(Iterable<Compactable> compactables, AccumuloConfiguration config) {
+  public CompactionManager(Iterable<Compactable> compactables, ServerContext ctx) {
     this.compactables = compactables;
 
     Map<String,String> configs =
-        config.getAllPropertiesWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX);
+        ctx.getConfiguration().getAllPropertiesWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX);
 
     Map<CompactionService.Id,CompactionService> tmpServices = new HashMap<>();
 
+    Map<String,String> planners = new HashMap<>();
+    Map<String,Map<String,String>> options = new HashMap<>();
+
     configs.forEach((prop, val) -> {
       var suffix = prop.substring(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey().length());
-      String[] tokens = suffix.split("\\.", 2);
-      if (tokens[1].equals("config")) {
-        var cserv = new CompactionServiceImpl(val, config);
-        tmpServices.put(Id.of(tokens[0]), cserv);
+      String[] tokens = suffix.split("\\.");
+      if (tokens[1].equals("opts")) {
+        Preconditions.checkArgument(tokens.length == 3);
+        options.computeIfAbsent(tokens[0], k -> new HashMap<>()).put(tokens[2], val);
+      } else if (tokens[1].equals("planner")) {
+        planners.put(tokens[0], val);
       } else {
         // TODO
       }
+    });
+
+    options.forEach((serviceName, serviceOptions) -> {
+      tmpServices.put(Id.of(serviceName),
+          new CompactionServiceImpl(serviceName,
+              planners.getOrDefault(serviceName, TieredCompactionPlanner.class.getName()),
+              serviceOptions, ctx));
     });
 
     this.services = Map.copyOf(tmpServices);

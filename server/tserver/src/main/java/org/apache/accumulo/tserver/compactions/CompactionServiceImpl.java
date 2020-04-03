@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -29,25 +30,28 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
-import org.apache.accumulo.core.conf.AccumuloConfiguration;
-import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.ServiceEnvironmentImpl;
+import org.apache.accumulo.tserver.compactions.CompactionPlanner.PlanningParameters;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.gson.Gson;
+import com.google.common.base.Preconditions;
 
 public class CompactionServiceImpl implements CompactionService {
   // TODO when user has a compaction strat configured at table, may want to have a planner that uses
   // this to select files.
   private final CompactionPlanner planner;
-  private final Map<String,CompactionExecutor> executors;
+  private final Map<CompactionExecutorId,CompactionExecutor> executors;
   // TODO configurable
   private final Id myId = Id.of("default");
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
-  private int maxToCompact;
 
   private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
 
@@ -63,22 +67,45 @@ public class CompactionServiceImpl implements CompactionService {
     List<ExecutorConfig> executors;
   }
 
-  public CompactionServiceImpl(String config, AccumuloConfiguration sysConfig) {
-    Gson gson = new Gson();
-    var serviceConfig = gson.fromJson(config, ServiceConfig.class);
-    // TODO have a config in json and fallback to this
-    this.maxToCompact = serviceConfig.maxFilesToCompact != null ? serviceConfig.maxFilesToCompact
-        : sysConfig.getCount(Property.TSERV_MAJC_THREAD_MAXOPEN);
+  public CompactionServiceImpl(String serviceName, String plannerClass,
+      Map<String,String> serviceOptions, ServerContext sctx) {
 
-    Map<String,CompactionExecutor> tmpExecutors = new HashMap<>();
-    for (ExecutorConfig execConfig : serviceConfig.executors) {
-      tmpExecutors.put(execConfig.name,
-          new CompactionExecutor(execConfig.name, execConfig.numThreads));
+    try {
+      planner =
+          ConfigurationTypeHelper.getClassInstance(null, plannerClass, CompactionPlanner.class);
+    } catch (IOException | ReflectiveOperationException e) {
+      throw new RuntimeException(e);
     }
 
-    this.executors = Map.copyOf(tmpExecutors);
+    Map<CompactionExecutorId,CompactionExecutor> tmpExecutors = new HashMap<>();
 
-    this.planner = new TieredCompactionPlanner(serviceConfig);
+    planner.init(new CompactionPlanner.InitParameters() {
+
+      @Override
+      public ServiceEnvironment getServiceEnvironment() {
+        return new ServiceEnvironmentImpl(sctx);
+      }
+
+      @Override
+      public Map<String,String> getOptions() {
+        return serviceOptions;
+      }
+
+      @Override
+      public ExecutorManager getExecutorManager() {
+        return new ExecutorManager() {
+          @Override
+          public CompactionExecutorId createExecutor(String executorName, int threads) {
+            var ceid = new CompactionExecutorId(serviceName + "." + executorName);
+            Preconditions.checkState(!tmpExecutors.containsKey(ceid));
+            tmpExecutors.put(ceid, new CompactionExecutor(executorName, threads));
+            return ceid;
+          }
+        };
+      }
+    });
+
+    this.executors = Map.copyOf(tmpExecutors);
   }
 
   private boolean reconcile(Collection<CompactionJob> jobs, List<SubmittedJob> submitted) {
@@ -107,10 +134,50 @@ public class CompactionServiceImpl implements CompactionService {
       Consumer<Compactable> completionCallback) {
     // TODO this could take a while... could run this in a thread pool
     var files = compactable.getFiles(myId, kind);
-    if (files.isPresent()) {
+    if (files.isPresent() && !files.get().candidates.isEmpty()) {
+      PlanningParameters params = new PlanningParameters() {
 
-      var plan =
-          planner.makePlan(kind, files.get(), compactable.getCompactionRatio(), maxToCompact);
+        @Override
+        public TableId getTableId() {
+          return compactable.getTableId();
+        }
+
+        @Override
+        public ServiceEnvironment getServiceEnvironment() {
+          // TODO Auto-generated method stub
+          return null;
+        }
+
+        @Override
+        public double getRatio() {
+          return compactable.getCompactionRatio();
+        }
+
+        @Override
+        public CompactionKind getKind() {
+          return kind;
+        }
+
+        @Override
+        public Collection<Collection<CompactableFile>> getCompacting() {
+          // TODO Auto-generated method stub
+          return null;
+        }
+
+        @Override
+        public Collection<CompactableFile> getCandidates() {
+          // TODO Auto-generated method stub
+          return null;
+        }
+
+        @Override
+        public Collection<CompactableFile> getAll() {
+          // TODO Auto-generated method stub
+          return null;
+        }
+      };
+
+      var plan = planner.makePlan(params);
       Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
       List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
       if (!submitted.isEmpty()) {

@@ -18,12 +18,14 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Map;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -38,17 +40,31 @@ public interface Compactable {
 
   public static class Files {
 
-    public final Map<StoredTabletFile,DataFileValue> allFiles;
+    public final Collection<CompactableFile> allFiles;
     public final CompactionKind kind;
-    public final Set<StoredTabletFile> candidates;
-    public final Collection<Set<StoredTabletFile>> compacting;
+    public final Collection<CompactableFile> candidates;
+    public final Collection<Collection<CompactableFile>> compacting;
 
     public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionKind kind,
         Set<StoredTabletFile> candidates, Collection<Set<StoredTabletFile>> compacting) {
-      this.allFiles = allFiles;
+
+      // TODO can the copies be avoided.?
+
+      this.allFiles = Collections.unmodifiableSet(allFiles.entrySet().stream()
+          .map(entry -> new CompactableFileImpl(entry.getKey(), entry.getValue()))
+          .collect(Collectors.toSet()));
       this.kind = kind;
-      this.candidates = candidates;
-      this.compacting = compacting;
+      this.candidates = Collections.unmodifiableSet(candidates.stream()
+          .map(stf -> new CompactableFileImpl(stf, allFiles.get(stf))).collect(Collectors.toSet()));
+      Collection<Collection<CompactableFile>> compactingTmp = new ArrayList<>();
+
+      compacting.forEach(cf -> {
+        compactingTmp.add(Collections
+            .unmodifiableSet(cf.stream().map(stf -> new CompactableFileImpl(stf, allFiles.get(stf)))
+                .collect(Collectors.toSet())));
+      });
+
+      this.compacting = Collections.unmodifiableCollection(compactingTmp);
     }
 
     @Override

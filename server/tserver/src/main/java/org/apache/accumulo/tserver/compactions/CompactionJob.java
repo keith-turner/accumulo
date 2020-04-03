@@ -18,21 +18,21 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
 
-import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 
 public class CompactionJob {
 
   private final long priority;
-  private final String executor;
-  private final Set<StoredTabletFile> files;
+  private final CompactionExecutorId executor;
+  private final Set<CompactableFile> files;
   private final CompactionKind kind;
 
-  public CompactionJob(long priority, String executor, Set<StoredTabletFile> files,
-      CompactionKind kind) {
+  public CompactionJob(long priority, CompactionExecutorId executor,
+      Collection<CompactableFile> files, CompactionKind kind) {
     this.priority = priority;
     this.executor = executor;
     this.files = Set.copyOf(files);
@@ -43,11 +43,11 @@ public class CompactionJob {
     return priority;
   }
 
-  public String getExecutor() {
+  public CompactionExecutorId getExecutor() {
     return executor;
   }
 
-  public Set<StoredTabletFile> getFiles() {
+  public Set<CompactableFile> getFiles() {
     return files;
   }
 

@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
@@ -57,6 +58,7 @@ import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compactions.Compactable;
+import org.apache.accumulo.tserver.compactions.CompactableFileImpl;
 import org.apache.accumulo.tserver.compactions.CompactionJob;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
@@ -215,13 +217,13 @@ public class CompactableImpl implements Compactable {
     }
   }
 
-  private void chopCompactionCompleted(CompactionJob job) {
+  private void chopCompactionCompleted(Set<StoredTabletFile> jobFiles) {
     boolean markChopped = false;
     synchronized (this) {
       Preconditions.checkState(chopStatus == SpecialStatus.SELECTED);
-      Preconditions.checkState(choppingFiles.containsAll(job.getFiles()));
+      Preconditions.checkState(choppingFiles.containsAll(jobFiles));
 
-      choppingFiles.removeAll(job.getFiles());
+      choppingFiles.removeAll(jobFiles);
 
       if (choppingFiles.isEmpty()) {
         chopStatus = SpecialStatus.NOT_ACTIVE;
@@ -343,12 +345,13 @@ public class CompactableImpl implements Compactable {
 
   }
 
-  private synchronized void userCompactionCompleted(CompactionJob job, StoredTabletFile newFile) {
+  private synchronized void userCompactionCompleted(CompactionJob job,
+      Set<StoredTabletFile> jobFiles, StoredTabletFile newFile) {
     Preconditions.checkArgument(job.getType() == CompactionKind.USER);
-    Preconditions.checkState(userFiles.containsAll(job.getFiles()));
+    Preconditions.checkState(userFiles.containsAll(jobFiles));
     Preconditions.checkState(userStatus == SpecialStatus.SELECTED);
 
-    userFiles.removeAll(job.getFiles());
+    userFiles.removeAll(jobFiles);
 
     if (userFiles.isEmpty()) {
       userStatus = SpecialStatus.NOT_ACTIVE;
@@ -443,13 +446,16 @@ public class CompactableImpl implements Compactable {
   @Override
   public void compact(Id service, CompactionJob job) {
 
+    Set<StoredTabletFile> jobFiles = job.getFiles().stream()
+        .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
+
     synchronized (this) {
       if (!service.equals(getConfiguredService(job.getType())))
         return;
 
-      if (Collections.disjoint(allCompactingFiles, job.getFiles())) {
-        allCompactingFiles.addAll(job.getFiles());
-        compactingFileGroups.add(job.getFiles());
+      if (Collections.disjoint(allCompactingFiles, jobFiles)) {
+        allCompactingFiles.addAll(jobFiles);
+        compactingFileGroups.add(jobFiles);
       } else {
         return; // TODO log an error?
       }
@@ -489,7 +495,7 @@ public class CompactableImpl implements Compactable {
 
       SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
       HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
-      job.getFiles().forEach(file -> compactFiles.put((StoredTabletFile) file, allFiles.get(file)));
+      jobFiles.forEach(file -> compactFiles.put((StoredTabletFile) file, allFiles.get(file)));
 
       // TODO this is done outside of sync block
       boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
@@ -513,7 +519,7 @@ public class CompactableImpl implements Compactable {
       synchronized (this) {
         // TODO this is really iffy in the face of failures!
         // TODO move metadata update to own method which can rollback changes after compaction
-        if (job.getType() == CompactionKind.USER && userFiles.equals(job.getFiles())) {
+        if (job.getType() == CompactionKind.USER && userFiles.equals(jobFiles)) {
           compactionId = this.compactionId;
         }
 
@@ -527,21 +533,21 @@ public class CompactableImpl implements Compactable {
       throw new RuntimeException(e);
     } finally {
       synchronized (this) {
-        allCompactingFiles.removeAll(job.getFiles());
-        compactingFileGroups.remove(job.getFiles()); // TODO check return true?
+        allCompactingFiles.removeAll(jobFiles);
+        compactingFileGroups.remove(jobFiles); // TODO check return true?
         compactionRunning = !allCompactingFiles.isEmpty();
 
         // TODO this tracking feels a bit iffy
         if (metaFile != null) {
           choppedFiles.add(metaFile);
-          choppedFiles.removeAll(job.getFiles());
+          choppedFiles.removeAll(jobFiles);
         }
       }
 
       if (job.getType() == CompactionKind.USER && metaFile != null)
-        userCompactionCompleted(job, metaFile);// TODO what if it failed?
+        userCompactionCompleted(job, jobFiles, metaFile);// TODO what if it failed?
       else if (job.getType() == CompactionKind.CHOP)
-        chopCompactionCompleted(job);
+        chopCompactionCompleted(jobFiles);
       else
         selectUserFiles();
     }

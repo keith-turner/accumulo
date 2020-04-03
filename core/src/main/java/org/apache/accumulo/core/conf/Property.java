@@ -416,12 +416,12 @@ public enum Property {
       "The maximum number of concurrent major compactions for a tablet server"),
   TSERV_COMPACTION_SERVICE_PREFIX("tserver.compaction.service.", null, PropertyType.PREFIX, ""),
   // TODO Property type json?
-  TSERV_COMPACTION_SERVICE_DEFAULT("tserver.compaction.service.default.config",
-      "{'executors':[" + "{'name':'tiny','maxSize':'8M','numThreads':3},"
+  TSERV_COMPACTION_SERVICE_DEFAULT_EXECUTORS("tserver.compaction.service.default.opts.executors",
+      "[{'name':'tiny','maxSize':'8M','numThreads':3},"
           + "{'name':'small','maxSize':'32M','numThreads':3},"
           + "{'name':'medium','maxSize':'128M','numThreads':3},"
           + "{'name':'large','maxSize':'512M','numThreads':3},"
-          + "{'name':'huge','numThreads':3}]}".replaceAll("'", "\""),
+          + "{'name':'huge','numThreads':3}]".replaceAll("'", "\""),
       PropertyType.STRING, ""),
   TSERV_MAJC_THROUGHPUT("tserver.compaction.major.throughput", "0B", PropertyType.BYTES,
       "Maximum number of bytes to read or write per second over all major"

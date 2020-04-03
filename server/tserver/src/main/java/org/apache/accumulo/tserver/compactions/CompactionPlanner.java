@@ -18,9 +18,42 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.Collection;
+import java.util.Map;
+
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 
 public interface CompactionPlanner {
-  CompactionPlan makePlan(CompactionKind kind, Compactable.Files files, double cRatio,
-      int maxFilesToCompact);
+
+  public interface InitParameters {
+    ServiceEnvironment getServiceEnvironment();
+
+    Map<String,String> getOptions();
+
+    ExecutorManager getExecutorManager();
+  }
+
+  public void init(InitParameters params);
+
+  public interface PlanningParameters {
+
+    TableId getTableId();
+
+    ServiceEnvironment getServiceEnvironment();
+
+    CompactionKind getKind();
+
+    double getRatio();
+
+    Collection<CompactableFile> getAll();
+
+    Collection<CompactableFile> getCandidates();
+
+    Collection<Collection<CompactableFile>> getCompacting();
+
+  }
+
+  CompactionPlan makePlan(PlanningParameters params);
 }
