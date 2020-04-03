@@ -45,7 +45,7 @@ public class CompactionConfig {
   private CompactionStrategyConfig compactionStrategy = DEFAULT_STRATEGY;
   private Map<String,String> hints;
   private CompactionSelectorConfig selectorConfig;
-  private CompactionOutputSpecifierConfig cosc;
+  private CompactionConfigurerConfig cosc;
 
   /**
    * @param start
@@ -207,7 +207,7 @@ public class CompactionConfig {
    *
    * @since 2.1.0
    */
-  public CompactionConfig setOutputSpecifier(CompactionOutputSpecifierConfig cosc) {
+  public CompactionConfig setOutputSpecifier(CompactionConfigurerConfig cosc) {
     Preconditions.checkState(compactionStrategy == null);
     this.cosc = cosc;
     return this;
@@ -216,7 +216,7 @@ public class CompactionConfig {
   /**
    * @since 2.1.0
    */
-  public CompactionOutputSpecifierConfig getOutputSpecifier() {
+  public CompactionConfigurerConfig getOutputSpecifier() {
     return cosc;
   }
 }

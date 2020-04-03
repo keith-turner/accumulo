@@ -6,11 +6,11 @@ import java.util.Map;
 import org.apache.accumulo.core.client.PluginEnvironment;
 
 /**
- * Compaction file output specification factory.
+ * Enables dynamically overriding of configuration used to create the output file for a compaction.
  * 
  * @since 2.1.0
  */
-public interface CompactionOutputSpecifier {
+public interface CompactionConfigurer {
   /**
    * @since 2.1.0
    */
@@ -36,10 +36,10 @@ public interface CompactionOutputSpecifier {
    * 
    * @since 2.1.0
    */
-  public class Specifications {
+  public class Overrides {
     // TODO builder
     public Map<String,String> tabletPropertyOverrides;
   }
 
-  Specifications specify(InputParameters params);
+  Overrides override(InputParameters params);
 }
