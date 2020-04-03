@@ -34,10 +34,15 @@ import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
+import org.apache.accumulo.core.spi.compaction.CompactableFile;
+import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
+import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
+import org.apache.accumulo.core.spi.compaction.ExecutorManager;
+import org.apache.accumulo.core.spi.compaction.CompactionPlanner.PlanningParameters;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
-import org.apache.accumulo.tserver.compactions.CompactionPlanner.PlanningParameters;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,7 +101,7 @@ public class CompactionServiceImpl implements CompactionService {
         return new ExecutorManager() {
           @Override
           public CompactionExecutorId createExecutor(String executorName, int threads) {
-            var ceid = new CompactionExecutorId(serviceName + "." + executorName);
+            var ceid = CompactionExecutorId.of(serviceName + "." + executorName);
             Preconditions.checkState(!tmpExecutors.containsKey(ceid));
             tmpExecutors.put(ceid, new CompactionExecutor(executorName, threads));
             return ceid;

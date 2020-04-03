@@ -30,7 +30,12 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.spi.compaction.CompactableFile;
+import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
+import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.spi.compaction.CompactionPlan;
+import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

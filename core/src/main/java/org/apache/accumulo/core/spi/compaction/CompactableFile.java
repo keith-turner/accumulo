@@ -16,26 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.tserver.compactions;
+package org.apache.accumulo.core.spi.compaction;
 
-import org.apache.accumulo.core.spi.compaction.CompactionJob;
+import java.net.URI;
 
-public abstract class SubmittedJob {
-  private final CompactionJob job;
+import org.apache.accumulo.core.metadata.CompactableFileImpl;
 
-  public enum Status {
-    RUNNING, QUEUED, COMPLETE, FAILED, CANCELED
+public interface CompactableFile {
+  public URI getUri();
+
+  public long getEstimatedSize();
+
+  public long getEstimatedEntries();
+
+  static CompactableFile create(URI uri, long estimatedSize, long estimatedEntries) {
+    return new CompactableFileImpl(uri, estimatedSize, estimatedEntries);
   }
 
-  public SubmittedJob(CompactionJob job) {
-    this.job = job;
-  }
-
-  public CompactionJob getJob() {
-    return job;
-  }
-
-  public abstract Status getStatus();
-
-  public abstract boolean cancel(Status status);
 }

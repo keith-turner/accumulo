@@ -16,29 +16,18 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.tserver.compactions;
+package org.apache.accumulo.core.spi.compaction;
 
-import java.util.Collection;
-import java.util.List;
+import org.apache.accumulo.core.data.AbstractId;
 
-public class CompactionPlan {
+public class CompactionExecutorId extends AbstractId<CompactionExecutorId> {
+  private static final long serialVersionUID = 1L;
 
-  private final Collection<CompactionJob> jobs;
-
-  public CompactionPlan() {
-    this.jobs = List.of();
+  private CompactionExecutorId(String canonical) {
+    super(canonical);
   }
 
-  public CompactionPlan(Collection<CompactionJob> jobs) {
-    this.jobs = List.copyOf(jobs);
-  }
-
-  public Collection<CompactionJob> getJobs() {
-    return jobs;
-  }
-
-  @Override
-  public String toString() {
-    return "jobs: " + jobs;
+  public static CompactionExecutorId of(String canonical) {
+    return new CompactionExecutorId(canonical);
   }
 }

@@ -16,9 +16,29 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.tserver.compactions;
+package org.apache.accumulo.core.spi.compaction;
 
-// TODO reconcile merge with MajorCompactionReason
-public enum CompactionType {
-  MAINTENANCE, USER, CHOP
+import java.util.Collection;
+import java.util.List;
+
+public class CompactionPlan {
+
+  private final Collection<CompactionJob> jobs;
+
+  public CompactionPlan() {
+    this.jobs = List.of();
+  }
+
+  public CompactionPlan(Collection<CompactionJob> jobs) {
+    this.jobs = List.copyOf(jobs);
+  }
+
+  public Collection<CompactionJob> getJobs() {
+    return jobs;
+  }
+
+  @Override
+  public String toString() {
+    return "jobs: " + jobs;
+  }
 }
