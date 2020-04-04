@@ -57,6 +57,7 @@ public class CompactableFileImpl implements CompactableFile {
     return storedTabletFile;
   }
 
+  @Override
   public boolean equals(Object o) {
     if (o instanceof CompactableFileImpl) {
       var ocfi = (CompactableFileImpl) o;
@@ -65,5 +66,10 @@ public class CompactableFileImpl implements CompactableFile {
     }
 
     return false;
+  }
+
+  @Override
+  public int hashCode() {
+    return storedTabletFile.hashCode();
   }
 }

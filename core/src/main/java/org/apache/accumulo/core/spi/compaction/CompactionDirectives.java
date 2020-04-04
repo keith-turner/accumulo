@@ -19,7 +19,7 @@
 package org.apache.accumulo.core.spi.compaction;
 
 /**
- * 
+ *
  * @since 2.1.0
  */
 public interface CompactionDirectives {

@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.tserver.compactions;
+package org.apache.accumulo.core.spi.compaction;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -30,21 +30,19 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.spi.compaction.CompactableFile;
-import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
-import org.apache.accumulo.core.spi.compaction.CompactionJob;
-import org.apache.accumulo.core.spi.compaction.CompactionKind;
-import org.apache.accumulo.core.spi.compaction.CompactionPlan;
-import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 
-public class TieredCompactionPlanner implements CompactionPlanner {
+/**
+ * Finds the largest set of small files to compact.
+ */
 
-  private static Logger log = LoggerFactory.getLogger(TieredCompactionPlanner.class);
+public class LarsmaCompactionPlanner implements CompactionPlanner {
+
+  private static Logger log = LoggerFactory.getLogger(LarsmaCompactionPlanner.class);
 
   public static class ExecutorConfig {
     String name;

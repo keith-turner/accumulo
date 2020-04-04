@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
@@ -148,7 +149,7 @@ public class CompactionManager {
     options.forEach((serviceName, serviceOptions) -> {
       tmpServices.put(Id.of(serviceName),
           new CompactionServiceImpl(serviceName,
-              planners.getOrDefault(serviceName, TieredCompactionPlanner.class.getName()),
+              planners.getOrDefault(serviceName, LarsmaCompactionPlanner.class.getName()),
               serviceOptions, ctx));
     });
 

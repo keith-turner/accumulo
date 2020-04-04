@@ -26,7 +26,7 @@ import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import com.google.common.base.Preconditions;
 
 /**
- * 
+ *
  * @since 2.1.0
  */
 public interface CompactionDispatcher {

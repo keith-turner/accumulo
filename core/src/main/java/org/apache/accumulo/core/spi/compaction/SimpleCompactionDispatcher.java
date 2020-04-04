@@ -22,7 +22,7 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * 
+ *
  * {@code table.compaction.dispatcher.opts.service[.user[.<user type>]|maintenance|chop]=<service>}
  *
  */

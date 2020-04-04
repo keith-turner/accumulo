@@ -25,7 +25,7 @@ import org.apache.accumulo.core.client.PluginEnvironment;
 
 /**
  * Enables dynamically overriding of configuration used to create the output file for a compaction.
- * 
+ *
  * @since 2.1.0
  */
 public interface CompactionConfigurer {
@@ -51,7 +51,7 @@ public interface CompactionConfigurer {
 
   /**
    * Specifies how the output file should be created for a compaction.
-   * 
+   *
    * @since 2.1.0
    */
   public class Overrides {

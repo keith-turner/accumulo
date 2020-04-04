@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 
+ *
  * @since 2.1.0
  */
 abstract class PluginConfig<T extends PluginConfig<T>> {

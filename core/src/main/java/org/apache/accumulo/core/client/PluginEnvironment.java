@@ -40,7 +40,7 @@ public interface PluginEnvironment {
 
     /**
      * TODO document
-     * 
+     *
      * @since 2.1.0
      */
     boolean isSet(String key);
