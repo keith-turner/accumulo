@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +47,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
   public static class ExecutorConfig {
     String name;
-    Long maxSize;
+    String maxSize;
     int numThreads;
   }
 
@@ -78,8 +79,9 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     for (ExecutorConfig executorConfig : execConfigs) {
       var ceid = params.getExecutorManager().createExecutor(executorConfig.name,
           executorConfig.numThreads);
-      tmpExec.add(new Executor(ceid, executorConfig.maxSize));
-
+      Long maxSize = executorConfig.maxSize == null ? null
+          : ConfigurationTypeHelper.getFixedMemoryAsBytes(executorConfig.maxSize);
+      tmpExec.add(new Executor(ceid, maxSize));
     }
 
     Collections.sort(tmpExec, Comparator.comparing(Executor::getMaxSize,
