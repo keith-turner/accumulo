@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
@@ -39,7 +40,7 @@ public class CompactionExecutor {
 
   private PriorityBlockingQueue<Runnable> queue;
   private ThreadPoolExecutor executor;
-  private final String name;
+  private final CompactionExecutorId ceid;
   private AtomicLong cancelCount = new AtomicLong();
 
   private class CompactionTask extends SubmittedJob implements Runnable {
@@ -62,12 +63,11 @@ public class CompactionExecutor {
 
       try {
         if (status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
-          log.info("Running compaction for {} on {}.{}", compactable.getExtent(), csid,
-              getJob().getExecutor());
+          log.info("Running compaction for {} on {}", compactable.getExtent(), ceid);
           compactable.compact(csid, getJob());
           completionCallback.accept(compactable);
-          log.info("Finished compaction for {} on {}.{} files {}", compactable.getExtent(), csid,
-              getJob().getExecutor(), getJob().getFiles().size());
+          log.info("Finished compaction for {} on {} files {}", compactable.getExtent(), ceid,
+              getJob().getFiles().size());
         }
       } catch (Exception e) {
         log.warn("Compaction failed for {} on {}", compactable.getExtent(), getJob(), e);
@@ -112,8 +112,8 @@ public class CompactionExecutor {
     return ((CompactionTask) r).getJob().getFiles().size();
   }
 
-  CompactionExecutor(String name, int threads) {
-    this.name = name;
+  CompactionExecutor(CompactionExecutorId ceid, int threads) {
+    this.ceid = ceid;
     var comparator = Comparator.comparingLong(CompactionExecutor::extractPriority)
         .thenComparingLong(CompactionExecutor::extractJobFiles).reversed();
 
@@ -126,13 +126,9 @@ public class CompactionExecutor {
 
   public SubmittedJob submit(CompactionService.Id csid, CompactionJob job, Compactable compactable,
       Consumer<Compactable> completionCallback) {
-    Preconditions.checkArgument(job.getExecutor().equals(getName()));
+    Preconditions.checkArgument(job.getExecutor().equals(ceid));
     var ctask = new CompactionTask(job, compactable, csid, completionCallback);
     executor.execute(ctask);
     return ctask;
-  }
-
-  public String getName() {
-    return name;
   }
 }

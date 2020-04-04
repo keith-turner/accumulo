@@ -103,7 +103,7 @@ public class CompactionServiceImpl implements CompactionService {
           public CompactionExecutorId createExecutor(String executorName, int threads) {
             var ceid = CompactionExecutorId.of(serviceName + "." + executorName);
             Preconditions.checkState(!tmpExecutors.containsKey(ceid));
-            tmpExecutors.put(ceid, new CompactionExecutor(executorName, threads));
+            tmpExecutors.put(ceid, new CompactionExecutor(ceid, threads));
             return ceid;
           }
         };
