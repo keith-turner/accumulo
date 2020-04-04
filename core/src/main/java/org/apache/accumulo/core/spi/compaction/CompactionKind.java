@@ -19,5 +19,5 @@
 package org.apache.accumulo.core.spi.compaction;
 
 public enum CompactionKind {
-  MAINTENANCE, USER, CHOP
+  MAINTENANCE, MAINTENANCE_COMPATABILITY, USER, CHOP
 }
