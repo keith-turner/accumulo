@@ -165,20 +165,17 @@ public class CompactionServiceImpl implements CompactionService {
 
         @Override
         public Collection<Collection<CompactableFile>> getCompacting() {
-          // TODO Auto-generated method stub
-          return null;
+          return files.get().compacting;
         }
 
         @Override
         public Collection<CompactableFile> getCandidates() {
-          // TODO Auto-generated method stub
-          return null;
+          return files.get().candidates;
         }
 
         @Override
         public Collection<CompactableFile> getAll() {
-          // TODO Auto-generated method stub
-          return null;
+          return files.get().allFiles;
         }
       };
 
