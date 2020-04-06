@@ -51,9 +51,7 @@ import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.clientImpl.DurabilityImpl;
 import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
-import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
-import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.constraints.Violations;
 import org.apache.accumulo.core.data.ByteSequence;
@@ -117,8 +115,6 @@ import org.apache.accumulo.tserver.TabletStatsKeeper;
 import org.apache.accumulo.tserver.TabletStatsKeeper.Operation;
 import org.apache.accumulo.tserver.TooManyFilesException;
 import org.apache.accumulo.tserver.TservConstraintEnv;
-import org.apache.accumulo.tserver.compaction.CompactionPlan;
-import org.apache.accumulo.tserver.compaction.WriteParameters;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.constraints.ConstraintChecker;
 import org.apache.accumulo.tserver.log.DfsLogger;
@@ -1546,31 +1542,6 @@ public class Tablet {
       return false;
     }
     return findSplitRow(getDatafileManager().getFiles()) != null;
-  }
-
-  protected static AccumuloConfiguration createCompactionConfiguration(TableConfiguration base,
-      CompactionPlan plan) {
-    if (plan == null || plan.writeParameters == null) {
-      return base;
-    }
-    WriteParameters p = plan.writeParameters;
-    ConfigurationCopy result = new ConfigurationCopy(base);
-    if (p.getHdfsBlockSize() > 0) {
-      result.set(Property.TABLE_FILE_BLOCK_SIZE, "" + p.getHdfsBlockSize());
-    }
-    if (p.getBlockSize() > 0) {
-      result.set(Property.TABLE_FILE_COMPRESSED_BLOCK_SIZE, "" + p.getBlockSize());
-    }
-    if (p.getIndexBlockSize() > 0) {
-      result.set(Property.TABLE_FILE_COMPRESSED_BLOCK_SIZE_INDEX, "" + p.getIndexBlockSize());
-    }
-    if (p.getCompressType() != null) {
-      result.set(Property.TABLE_FILE_COMPRESSION_TYPE, p.getCompressType());
-    }
-    if (p.getReplication() != 0) {
-      result.set(Property.TABLE_FILE_REPLICATION, "" + p.getReplication());
-    }
-    return result;
   }
 
   public KeyExtent getExtent() {
