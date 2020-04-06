@@ -20,8 +20,8 @@ package org.apache.accumulo.core.metadata;
 
 import java.net.URI;
 
+import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
-import org.apache.accumulo.core.spi.compaction.CompactableFile;
 
 public class CompactableFileImpl implements CompactableFile {
 
@@ -71,5 +71,13 @@ public class CompactableFileImpl implements CompactableFile {
   @Override
   public int hashCode() {
     return storedTabletFile.hashCode();
+  }
+
+  public static StoredTabletFile toStoredTabletFile(CompactableFile cf) {
+    if (cf instanceof CompactableFileImpl) {
+      return ((CompactableFileImpl) cf).storedTabletFile;
+    } else {
+      throw new IllegalArgumentException("Can not convert " + cf.getClass());
+    }
   }
 }

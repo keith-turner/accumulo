@@ -22,6 +22,8 @@ import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
 
+import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
+
 public class CompactionJob {
 
   private final long priority;

@@ -29,6 +29,7 @@ import java.util.Map;
  * @since 2.1.0
  */
 abstract class PluginConfig<T extends PluginConfig<T>> {
+
   private String className;
   private Map<String,String> options = Collections.emptyMap();
 
@@ -83,6 +84,11 @@ abstract class PluginConfig<T extends PluginConfig<T>> {
     }
 
     return false;
+  }
+
+  @Override
+  public String toString() {
+    return "[className=" + className + ", options=" + options + "]";
   }
 
 }

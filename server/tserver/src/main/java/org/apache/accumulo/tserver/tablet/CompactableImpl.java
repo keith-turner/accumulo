@@ -33,8 +33,18 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.client.PluginEnvironment;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
+import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
+import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
+import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
+import org.apache.accumulo.core.client.admin.compaction.Selector;
+import org.apache.accumulo.core.client.admin.compaction.Selector.InitParamaters;
+import org.apache.accumulo.core.client.admin.compaction.Selector.Selection;
+import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
+import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
@@ -47,6 +57,7 @@ import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher.DispatchParameters;
@@ -58,7 +69,9 @@ import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.util.MetadataTableUtil;
+import org.apache.accumulo.tserver.compaction.CompactionStrategy;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
+import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
@@ -69,6 +82,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 
@@ -100,12 +115,9 @@ public class CompactableImpl implements Compactable {
 
   private Selector selectionFunction;
   private long compactionId;
+  private CompactionConfig compactionConfig;
 
   private volatile Consumer<Compactable> newFileCallback;
-
-  public static interface Selector {
-    Collection<StoredTabletFile> select(Map<StoredTabletFile,DataFileValue> files);
-  }
 
   private Deriver<CompactionDispatcher> dispactDeriver;
 
@@ -275,7 +287,8 @@ public class CompactableImpl implements Compactable {
   /**
    * Tablet calls this signal a user compaction should run
    */
-  void initiateUserCompaction(long compactionId, Selector selectionFunction) {
+  void initiateUserCompaction(long compactionId, CompactionConfig compactionConfig) {
+
     synchronized (this) {
 
       if (userStatus == SpecialStatus.NOT_ACTIVE) {
@@ -285,7 +298,7 @@ public class CompactableImpl implements Compactable {
         Preconditions.checkState(chopStatus == SpecialStatus.NOT_ACTIVE);
         userStatus = SpecialStatus.NEW;
         userFiles.clear();
-        this.selectionFunction = selectionFunction;
+        this.compactionConfig = compactionConfig;
         this.compactionId = compactionId;
       } else {
         // TODO
@@ -294,7 +307,6 @@ public class CompactableImpl implements Compactable {
     }
 
     selectUserFiles();
-
   }
 
   private void selectUserFiles() {
@@ -309,8 +321,16 @@ public class CompactableImpl implements Compactable {
     }
 
     try {
-      // run selection outside of sync
-      var selectedFiles = selectionFunction.select(tablet.getDatafiles());
+      Set<StoredTabletFile> selectedFiles;
+
+      if (!UserCompactionUtils.isDefault(compactionConfig.getCompactionStrategy())) {
+        selectedFiles =
+            selectFiles(tablet.getDatafiles(), compactionConfig.getCompactionStrategy());
+      } else if (!UserCompactionUtils.isDefault(compactionConfig.getSelector())) {
+        selectedFiles = selectFiles(tablet.getDatafiles(), compactionConfig.getSelector());
+      } else {
+        selectedFiles = tablet.getDatafiles().keySet();
+      }
 
       if (selectedFiles.isEmpty()) {
 
@@ -343,6 +363,88 @@ public class CompactableImpl implements Compactable {
       e.printStackTrace();
     }
 
+  }
+
+  private Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> datafiles,
+      CompactionSelectorConfig selectorConfig) {
+
+    // TODO how are exceptions handled
+    Selector selector = newInstance(selectorConfig.getClassName(), Selector.class);
+    selector.init(new InitParamaters() {
+
+      @Override
+      public Map<String,String> getOptions() {
+        return selectorConfig.getOptions();
+      }
+
+      @Override
+      public PluginEnvironment getEnvironment() {
+        return new ServiceEnvironmentImpl(tablet.getContext());
+      }
+    });
+
+    Selection selection = selector.select(new Selector.SelectionParameters() {
+
+      @Override
+      public PluginEnvironment getEnvironment() {
+        return new ServiceEnvironmentImpl(tablet.getContext());
+      }
+
+      @Override
+      public Collection<CompactableFile> getAvailableFiles() {
+        // TODO Auto-generated method stub
+        return Collections2.transform(datafiles.entrySet(),
+            e -> new CompactableFileImpl(e.getKey(), e.getValue()));
+      }
+    });
+
+    return selection.filesToCompact.stream().map(CompactableFileImpl::toStoredTabletFile)
+        .collect(Collectors.toSet());
+  }
+
+  private <T> T newInstance(String className, Class<T> baseClass) {
+    String context = tablet.getTableConfiguration().get(Property.TABLE_CLASSPATH);
+    try {
+      return ConfigurationTypeHelper.getClassInstance(context, className, baseClass);
+    } catch (IOException | ReflectiveOperationException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> datafiles,
+      CompactionStrategyConfig csc) {
+
+    var trsm = tablet.getTabletResources().getTabletServerResourceManager();
+
+    BlockCache sc = trsm.getSummaryCache();
+    BlockCache ic = trsm.getIndexCache();
+    Cache<String,Long> fileLenCache = trsm.getFileLenCache();
+    MajorCompactionRequest request = new MajorCompactionRequest(tablet.getExtent(),
+        MajorCompactionReason.USER, tablet.getTabletServer().getFileSystem(),
+        tablet.getTableConfiguration(), sc, ic, fileLenCache, tablet.getContext());
+
+    request.setFiles(datafiles);
+
+    // TODO switch compaction strat from using StoredTabletFile
+    CompactionStrategy strategy = newInstance(csc.getClassName(), CompactionStrategy.class);
+    strategy.init(csc.getOptions());
+
+    try {
+      if (strategy.shouldCompact(request)) {
+        strategy.gatherInformation(request);
+        var plan = strategy.getCompactionPlan(request);
+        if (!plan.deleteFiles.isEmpty()) {
+          // TODO support
+          throw new UnsupportedOperationException(
+              "Dropping files using compaction strategy is not supported " + csc);
+        }
+        return Set.copyOf(plan.inputFiles);
+      }
+    } catch (IOException e) {
+      // TODO ensure this is handled well
+      throw new UncheckedIOException(e);
+    }
+    return Collections.emptySet();
   }
 
   private synchronized void userCompactionCompleted(CompactionJob job,
@@ -495,7 +597,7 @@ public class CompactableImpl implements Compactable {
 
       SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
       HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
-      jobFiles.forEach(file -> compactFiles.put((StoredTabletFile) file, allFiles.get(file)));
+      jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
 
       // TODO this is done outside of sync block
       boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());

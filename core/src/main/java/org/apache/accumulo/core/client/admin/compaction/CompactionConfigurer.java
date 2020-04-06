@@ -44,7 +44,7 @@ public interface CompactionConfigurer {
    * @since 2.1.0
    */
   public interface InputParameters {
-    public Collection<TabletFileInfo> getInputFiles();
+    public Collection<CompactableFile> getInputFiles();
 
     PluginEnvironment getEnvironment();
   }

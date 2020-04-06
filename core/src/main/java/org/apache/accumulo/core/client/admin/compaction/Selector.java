@@ -18,7 +18,6 @@
  */
 package org.apache.accumulo.core.client.admin.compaction;
 
-import java.net.URI;
 import java.util.Collection;
 import java.util.Map;
 
@@ -41,12 +40,12 @@ public interface Selector {
   public interface SelectionParameters {
     PluginEnvironment getEnvironment();
 
-    Collection<TabletFileInfo> getAvailableFiles();
+    Collection<CompactableFile> getAvailableFiles();
   }
 
   public static class Selection {
     // TODO builder
-    public Collection<URI> filesToCompact;
+    public Collection<CompactableFile> filesToCompact;
   }
 
   Selection select(SelectionParameters sparams);

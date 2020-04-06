@@ -20,13 +20,17 @@ package org.apache.accumulo.core.client.admin.compaction;
 
 import java.net.URI;
 
-public interface TabletFileInfo {
+import org.apache.accumulo.core.metadata.CompactableFileImpl;
+
+public interface CompactableFile {
   public URI getUri();
 
   public long getEstimatedSize();
 
   public long getEstimatedEntries();
 
-  // TODO get summaries
-  // TODO get iterators used to create
+  static CompactableFile create(URI uri, long estimatedSize, long estimatedEntries) {
+    return new CompactableFileImpl(uri, estimatedSize, estimatedEntries);
+  }
+
 }

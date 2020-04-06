@@ -27,7 +27,6 @@ import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -48,9 +47,10 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Durability;
-import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.clientImpl.DurabilityImpl;
 import org.apache.accumulo.core.clientImpl.Tables;
+import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
@@ -81,7 +81,6 @@ import org.apache.accumulo.core.protobuf.ProtobufUtil;
 import org.apache.accumulo.core.replication.ReplicationConfigurationUtil;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.ColumnVisibility;
-import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.scan.ScanDirectives;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
@@ -97,7 +96,6 @@ import org.apache.accumulo.server.fs.VolumeChooserEnvironmentImpl;
 import org.apache.accumulo.server.fs.VolumeUtil;
 import org.apache.accumulo.server.fs.VolumeUtil.TabletFiles;
 import org.apache.accumulo.server.master.state.TServerInstance;
-import org.apache.accumulo.server.master.tableOps.UserCompactionConfig;
 import org.apache.accumulo.server.problems.ProblemReport;
 import org.apache.accumulo.server.problems.ProblemReports;
 import org.apache.accumulo.server.problems.ProblemType;
@@ -120,9 +118,6 @@ import org.apache.accumulo.tserver.TabletStatsKeeper.Operation;
 import org.apache.accumulo.tserver.TooManyFilesException;
 import org.apache.accumulo.tserver.TservConstraintEnv;
 import org.apache.accumulo.tserver.compaction.CompactionPlan;
-import org.apache.accumulo.tserver.compaction.CompactionStrategy;
-import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
-import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.constraints.ConstraintChecker;
@@ -142,7 +137,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
-import com.google.common.cache.Cache;
 import com.google.common.collect.ImmutableSet;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -1013,7 +1007,7 @@ public class Tablet {
     }
   }
 
-  public Pair<Long,UserCompactionConfig> getCompactionID() throws NoNodeException {
+  public Pair<Long,CompactionConfig> getCompactionID() throws NoNodeException {
     try {
       String zTablePath = Constants.ZROOT + "/" + tabletServer.getInstanceID() + Constants.ZTABLES
           + "/" + extent.getTableId() + Constants.ZTABLE_COMPACT_ID;
@@ -1022,7 +1016,7 @@ public class Tablet {
           new String(context.getZooReaderWriter().getData(zTablePath, null), UTF_8).split(",");
       long compactID = Long.parseLong(tokens[0]);
 
-      UserCompactionConfig compactionConfig = new UserCompactionConfig();
+      CompactionConfig overlappingConfig = null;
 
       if (tokens.length > 1) {
         Hex hex = new Hex();
@@ -1030,19 +1024,18 @@ public class Tablet {
             new ByteArrayInputStream(hex.decode(tokens[1].split("=")[1].getBytes(UTF_8)));
         DataInputStream dis = new DataInputStream(bais);
 
-        compactionConfig.readFields(dis);
+        var compactionConfig = UserCompactionUtils.decodeCompactionConfig(dis);
 
         KeyExtent ke = new KeyExtent(extent.getTableId(), compactionConfig.getEndRow(),
             compactionConfig.getStartRow());
 
-        if (!ke.overlaps(extent)) {
-          // only use iterators if compaction range overlaps
-          compactionConfig = new UserCompactionConfig();
+        if (ke.overlaps(extent)) {
+          overlappingConfig = compactionConfig;
         }
       }
 
-      return new Pair<>(compactID, compactionConfig);
-    } catch (IOException | InterruptedException | DecoderException | NumberFormatException e) {
+      return new Pair<>(compactID, overlappingConfig);
+    } catch (InterruptedException | DecoderException | NumberFormatException e) {
       throw new RuntimeException("Exception on " + extent + " getting compaction ID", e);
     } catch (KeeperException ke) {
       if (ke instanceof NoNodeException) {
@@ -2090,26 +2083,7 @@ public class Tablet {
     compactable.initiateChop();
   }
 
-  private CompactionStrategy createCompactionStrategy(CompactionStrategyConfig strategyConfig) {
-    String context = tableConfiguration.get(Property.TABLE_CLASSPATH);
-    String clazzName = strategyConfig.getClassName();
-    try {
-      Class<? extends CompactionStrategy> clazz;
-      if (context != null && !context.equals("")) {
-        clazz = AccumuloVFSClassLoader.getContextManager().loadClass(context, clazzName,
-            CompactionStrategy.class);
-      } else {
-        clazz = AccumuloVFSClassLoader.loadClass(clazzName, CompactionStrategy.class);
-      }
-      CompactionStrategy strategy = clazz.getDeclaredConstructor().newInstance();
-      strategy.init(strategyConfig.getOptions());
-      return strategy;
-    } catch (Exception e) {
-      throw new RuntimeException("Error creating compaction strategy on " + extent, e);
-    }
-  }
-
-  public void compactAll(long compactionId, UserCompactionConfig compactionConfig) {
+  public void compactAll(long compactionId, CompactionConfig compactionConfig) {
 
     boolean shouldInitiate = false;
 
@@ -2143,34 +2117,7 @@ public class Tablet {
 
     // TODO may need to record in sync block that we are initiating
     if (shouldInitiate) {
-      CompactionStrategyConfig strategyConfig = compactionConfig.getCompactionStrategy();
-      CompactionStrategy strategy = createCompactionStrategy(strategyConfig);
-
-      // do not call this while holding tablet lock, could cause deadlock
-      compactable.initiateUserCompaction(compactionId, tabletFiles -> {
-
-        BlockCache sc = tabletResources.getTabletServerResourceManager().getSummaryCache();
-        BlockCache ic = tabletResources.getTabletServerResourceManager().getIndexCache();
-        Cache<String,Long> fileLenCache =
-            tabletResources.getTabletServerResourceManager().getFileLenCache();
-        MajorCompactionRequest request = new MajorCompactionRequest(extent,
-            MajorCompactionReason.USER, getTabletServer().getFileSystem(), tableConfiguration, sc,
-            ic, fileLenCache, context);
-
-        request.setFiles(tabletFiles);
-
-        try {
-          if (strategy.shouldCompact(request)) {
-            strategy.gatherInformation(request);
-            var plan = strategy.getCompactionPlan(request);
-            return plan.inputFiles;
-          }
-        } catch (IOException e) {
-          // TODO ensure this is handled well
-          throw new UncheckedIOException(e);
-        }
-        return Collections.emptySet();
-      });
+      compactable.initiateUserCompaction(compactionId, compactionConfig);
     }
   }
 

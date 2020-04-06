@@ -21,12 +21,12 @@ package org.apache.accumulo.core.client.admin;
 import static java.util.Objects.requireNonNull;
 import static org.apache.accumulo.core.clientImpl.CompactionStrategyConfigUtil.DEFAULT_STRATEGY;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.hadoop.io.Text;
 
 import com.google.common.base.Preconditions;
@@ -37,6 +37,7 @@ import com.google.common.base.Preconditions;
  * @since 1.7.0
  */
 public class CompactionConfig {
+
   private Text start = null;
   private Text end = null;
   private boolean flush = true;
@@ -44,8 +45,8 @@ public class CompactionConfig {
   private List<IteratorSetting> iterators = Collections.emptyList();
   private CompactionStrategyConfig compactionStrategy = DEFAULT_STRATEGY;
   private Map<String,String> hints;
-  private CompactionSelectorConfig selectorConfig;
-  private CompactionConfigurerConfig cosc;
+  private CompactionSelectorConfig selectorConfig = UserCompactionUtils.DEFAULT_CSC;
+  private CompactionConfigurerConfig configurerConfig = UserCompactionUtils.DEFAULT_CCC;
 
   /**
    * @param start
@@ -130,7 +131,7 @@ public class CompactionConfig {
    * @return this
    */
   public CompactionConfig setIterators(List<IteratorSetting> iterators) {
-    this.iterators = new ArrayList<>(iterators);
+    this.iterators = List.copyOf(iterators);
     return this;
   }
 
@@ -152,7 +153,9 @@ public class CompactionConfig {
   @Deprecated
   public CompactionConfig setCompactionStrategy(CompactionStrategyConfig csConfig) {
     requireNonNull(csConfig);
-    Preconditions.checkState(selectorConfig == null && cosc == null);
+    Preconditions.checkArgument(!csConfig.getClassName().isBlank());
+    Preconditions.checkState(
+        selectorConfig.getClassName().isEmpty() && configurerConfig.getClassName().isEmpty());
     this.compactionStrategy = csConfig;
     return this;
   }
@@ -172,9 +175,10 @@ public class CompactionConfig {
    * @return this;
    * @since 2.1.0
    */
-  public CompactionConfig setSelector(CompactionSelectorConfig csConfig) {
-    Preconditions.checkState(compactionStrategy == null);
-    this.selectorConfig = requireNonNull(csConfig);
+  public CompactionConfig setSelector(CompactionSelectorConfig selectorConfig) {
+    Preconditions.checkState(compactionStrategy.getClassName().isEmpty());
+    Preconditions.checkArgument(!selectorConfig.getClassName().isBlank());
+    this.selectorConfig = requireNonNull(selectorConfig);
     return this;
   }
 
@@ -189,7 +193,7 @@ public class CompactionConfig {
    * @since 2.1.0
    */
   public CompactionConfig setExecutionHints(Map<String,String> hints) {
-    Preconditions.checkState(compactionStrategy == null);
+    Preconditions.checkState(compactionStrategy.getClassName().isEmpty());
     this.hints = Map.copyOf(hints);
     return this;
   }
@@ -207,16 +211,16 @@ public class CompactionConfig {
    *
    * @since 2.1.0
    */
-  public CompactionConfig setOutputSpecifier(CompactionConfigurerConfig cosc) {
-    Preconditions.checkState(compactionStrategy == null);
-    this.cosc = cosc;
+  public CompactionConfig setConfigurer(CompactionConfigurerConfig configurerConfig) {
+    Preconditions.checkState(compactionStrategy.getClassName().isEmpty());
+    this.configurerConfig = configurerConfig;
     return this;
   }
 
   /**
    * @since 2.1.0
    */
-  public CompactionConfigurerConfig getOutputSpecifier() {
-    return cosc;
+  public CompactionConfigurerConfig getConfigurer() {
+    return configurerConfig;
   }
 }
