@@ -20,6 +20,9 @@ package org.apache.accumulo.core.spi.compaction;
 
 import org.apache.accumulo.core.data.AbstractId;
 
+/**
+ * @since 2.1.0
+ */
 public class CompactionExecutorId extends AbstractId<CompactionExecutorId> {
   private static final long serialVersionUID = 1L;
 

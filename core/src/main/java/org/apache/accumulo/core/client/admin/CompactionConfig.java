@@ -148,9 +148,11 @@ public class CompactionConfig {
    *          configures the strategy that will be used by each tablet to select files. If no
    *          strategy is set, then all files will be compacted.
    * @return this
-   * @deprecated since 2.1.0
+   * @deprecated since 2.1.0 use {@link #setSelector(CompactionSelectorConfig)} and
+   *             {@link #setConfigurer(CompactionConfigurerConfig)} instead. See
+   *             {@link CompactionStrategyConfig} for details about why this was deprecated.
    */
-  @Deprecated
+  @Deprecated(since = "2.1.0", forRemoval = true)
   public CompactionConfig setCompactionStrategy(CompactionStrategyConfig csConfig) {
     requireNonNull(csConfig);
     Preconditions.checkArgument(!csConfig.getClassName().isBlank());
@@ -166,7 +168,7 @@ public class CompactionConfig {
    *         compacts all files.
    * @deprecated since 2.1.0
    */
-  @Deprecated
+  @Deprecated(since = "2.1.0", forRemoval = true)
   public CompactionStrategyConfig getCompactionStrategy() {
     return compactionStrategy;
   }

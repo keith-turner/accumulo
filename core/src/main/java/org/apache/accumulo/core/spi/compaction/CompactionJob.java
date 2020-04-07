@@ -24,6 +24,11 @@ import java.util.Set;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 
+/**
+ * Describes what files to compact and where to compact them.
+ *
+ * @since 2.1.0
+ */
 public class CompactionJob {
 
   private final long priority;

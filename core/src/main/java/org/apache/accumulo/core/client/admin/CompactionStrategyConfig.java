@@ -24,9 +24,15 @@ package org.apache.accumulo.core.client.admin;
  * {@link CompactionConfig}.
  *
  * @since 1.7.0
- * @deprecated since 2.1.0
+ * @deprecated since 2.1.0 CompactionStrategies were deprecated for multiple reasons. First, they do
+ *             not support the new compaction execution model. Second, they bind selection and
+ *             output file configuration into a single entity when users need to configure these
+ *             independently. Third, they use internal Accumulo types and ensuring their stability
+ *             requires manual effort that may never happen. Fourth, writing a correct compaction
+ *             strategy was exceedingly difficult as it required knowledge of internal tablet server
+ *             synchronization in order to avoid causing scans to hang.
  */
-@Deprecated
+@Deprecated(since = "2.1.0", forRemoval = true)
 public class CompactionStrategyConfig extends PluginConfig<CompactionStrategyConfig> {
   /**
    * @param className

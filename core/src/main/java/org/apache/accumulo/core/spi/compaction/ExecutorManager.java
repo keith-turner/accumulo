@@ -18,6 +18,10 @@
  */
 package org.apache.accumulo.core.spi.compaction;
 
+/**
+ * @since 2.1.0
+ * @see CompactionPlanner#init(org.apache.accumulo.core.spi.compaction.CompactionPlanner.InitParameters)
+ */
 public interface ExecutorManager {
   public CompactionExecutorId createExecutor(String name, int threads);
 }

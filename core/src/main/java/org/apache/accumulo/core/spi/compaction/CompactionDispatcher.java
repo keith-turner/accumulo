@@ -26,6 +26,7 @@ import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import com.google.common.base.Preconditions;
 
 /**
+ * Can be configured per table to dispatch compactions for a table to different compaction services.
  *
  * @since 2.1.0
  */

@@ -39,7 +39,9 @@ import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 
 /**
- * Finds the largest set of small files to compact.
+ * Finds the largest set of small files that meet the compactio ratio to compact.
+ *
+ * @since 2.1.0
  */
 
 public class LarsmaCompactionPlanner implements CompactionPlanner {
@@ -176,6 +178,9 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     }
   }
 
+  /**
+   * @return the expected files sizes for sets of compacting files.
+   */
   private Set<CompactableFile> getExpected(Collection<Collection<CompactableFile>> compacting) {
 
     Set<CompactableFile> expected = new HashSet<>();

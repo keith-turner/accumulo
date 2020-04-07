@@ -25,6 +25,11 @@ import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 
+/**
+ * Plans compaction work for a compaction service.
+ *
+ * @since 2.1.0
+ */
 public interface CompactionPlanner {
 
   public interface InitParameters {

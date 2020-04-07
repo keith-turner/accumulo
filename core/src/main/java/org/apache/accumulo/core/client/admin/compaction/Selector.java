@@ -26,6 +26,8 @@ import org.apache.accumulo.core.client.PluginEnvironment;
 
 /**
  * This class select which files a user compaction will compact.
+ *
+ * @since 2.1.0
  */
 // TODO this could go in SPI
 public interface Selector {

@@ -21,6 +21,11 @@ package org.apache.accumulo.core.spi.compaction;
 import java.util.Collection;
 import java.util.List;
 
+/**
+ *
+ * @since 2.1.0
+ * @see CompactionPlanner
+ */
 public class CompactionPlan {
 
   private final Collection<CompactionJob> jobs;
