@@ -544,7 +544,7 @@ public class CompactableImpl implements Compactable {
       }
 
       @Override
-      public Map<String,CompactionService> getCompactionServices() {
+      public Map<CompactionServiceId,CompactionService> getCompactionServices() {
         // TODO
         return Map.of();
       }

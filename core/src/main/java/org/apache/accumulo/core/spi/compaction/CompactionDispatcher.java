@@ -70,8 +70,7 @@ public interface CompactionDispatcher {
     /**
      * @return the currently configured compaction services
      */
-    // TODO use compaction service ID type
-    Map<String,CompactionService> getCompactionServices();
+    Map<CompactionServiceId,CompactionService> getCompactionServices();
 
     ServiceEnvironment getServiceEnv();
 
