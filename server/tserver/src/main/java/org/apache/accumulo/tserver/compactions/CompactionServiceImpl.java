@@ -40,6 +40,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.CompactionPlanner.PlanningParameters;
+import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.ExecutorManager;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
@@ -54,8 +55,7 @@ public class CompactionServiceImpl implements CompactionService {
   // this to select files.
   private final CompactionPlanner planner;
   private final Map<CompactionExecutorId,CompactionExecutor> executors;
-  // TODO configurable
-  private final Id myId = Id.of("default");
+  private final CompactionServiceId myId;
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
 
   private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
@@ -74,6 +74,8 @@ public class CompactionServiceImpl implements CompactionService {
 
   public CompactionServiceImpl(String serviceName, String plannerClass,
       Map<String,String> serviceOptions, ServerContext sctx) {
+
+    this.myId = CompactionServiceId.of(serviceName);
 
     try {
       planner =

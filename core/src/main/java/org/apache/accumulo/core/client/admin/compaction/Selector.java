@@ -20,6 +20,7 @@ package org.apache.accumulo.core.client.admin.compaction;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
 
@@ -44,8 +45,15 @@ public interface Selector {
   }
 
   public static class Selection {
-    // TODO builder
-    public Collection<CompactableFile> filesToCompact;
+    private final Collection<CompactableFile> filesToCompact;
+
+    public Selection(Collection<CompactableFile> filesToCompact) {
+      this.filesToCompact = Set.copyOf(filesToCompact);
+    }
+
+    public Collection<CompactableFile> getFilesToCompact() {
+      return filesToCompact;
+    }
   }
 
   Selection select(SelectionParameters sparams);

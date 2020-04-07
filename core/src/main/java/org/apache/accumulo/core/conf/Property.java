@@ -32,6 +32,7 @@ import org.apache.accumulo.core.file.rfile.RFile;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iteratorsImpl.system.DeletingIterator;
 import org.apache.accumulo.core.metadata.MetadataTable;
+import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.SimpleCompactionDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanPrioritizer;
@@ -415,7 +416,8 @@ public enum Property {
   TSERV_MAJC_MAXCONCURRENT("tserver.compaction.major.concurrent.max", "3", PropertyType.COUNT,
       "The maximum number of concurrent major compactions for a tablet server"),
   TSERV_COMPACTION_SERVICE_PREFIX("tserver.compaction.service.", null, PropertyType.PREFIX, ""),
-  // TODO Property type json?
+  TSERV_COMPACTION_SERVICE_DEFAULT_PLANNER("tserver.compaction.service.default.planner",
+      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
   TSERV_COMPACTION_SERVICE_DEFAULT_EXECUTORS("tserver.compaction.service.default.opts.executors",
       "[{'name':'tiny','maxSize':'8M','numThreads':3},"
           + "{'name':'small','maxSize':'32M','numThreads':3},"

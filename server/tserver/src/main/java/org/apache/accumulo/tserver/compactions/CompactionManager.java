@@ -25,9 +25,9 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
 import org.apache.accumulo.server.ServerContext;
-import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,49 +38,49 @@ public class CompactionManager {
   private static final Logger log = LoggerFactory.getLogger(CompactionManager.class);
 
   private Iterable<Compactable> compactables;
-  private Map<CompactionService.Id,CompactionService> services;
+  private Map<CompactionServiceId,CompactionService> services;
 
   private LinkedBlockingQueue<Compactable> compactablesToCheck = new LinkedBlockingQueue<>();
 
   /*
    * private synchronized void printStats() { try {
-   * 
+   *
    * Map<String,Integer> epos = Map.of("small", 1, "medium", 3, "large", 5, "huge", 7);
-   * 
+   *
    * String[] columns = {"not compacting", "small running", "small queued", "medium running",
    * "medium queued", "large running", "large queued", "huge running", "huge queued"};
-   * 
+   *
    * while (true) {
-   * 
+   *
    * List<Compactable> sortedCompactables = new ArrayList<Compactable>();
    * compactables.forEach(sortedCompactables::add); sortedCompactables.removeIf( c ->
    * c.getExtent().isMeta() || c.getExtent().getTableId().canonical().equals("+rep") ||
    * c.getExtent().getTableId().canonical().equals("1")); Collections.sort(sortedCompactables,
    * Comparator.comparing(CompactionManager::getEndrow,
    * Comparator.nullsLast(Comparator.naturalOrder())));
-   * 
+   *
    * int[][] data = new int[sortedCompactables.size()][]; String[] rows = new
    * String[sortedCompactables.size()];
-   * 
+   *
    * for (int i = 0; i < sortedCompactables.size(); i++) { int r = i; var compactable =
    * sortedCompactables.get(r);
-   * 
+   *
    * rows[r] = compactable.getExtent().getEndRow() + "";
-   * 
+   *
    * data[r] = new int[columns.length];
-   * 
+   *
    * submittedJobs.row(compactable.getExtent()).values().forEach(sjob -> { var status =
    * sjob.getStatus();
-   * 
+   *
    * if (status == Status.QUEUED || status == Status.RUNNING) { int pos =
    * epos.get(sjob.getJob().getExecutor()); if (status == Status.QUEUED) pos++; data[r][pos] =
    * sjob.getJob().getFiles().size(); } });
-   * 
+   *
    * data[r][0] = compactable.getFiles().size(); }
-   * 
+   *
    * if (rows.length > 0) { System.out.println("Compaction stats : " + new Date());
    * System.out.println(new PrintableTable(columns, rows, data).toString()); }
-   * 
+   *
    * try { wait(1000); } catch (InterruptedException e) { // TODO Auto-generated catch block
    * e.printStackTrace(); } } } catch (Exception e) { log.error("CMSF", e); } }
    */
@@ -128,7 +128,7 @@ public class CompactionManager {
     Map<String,String> configs =
         ctx.getConfiguration().getAllPropertiesWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX);
 
-    Map<CompactionService.Id,CompactionService> tmpServices = new HashMap<>();
+    Map<CompactionServiceId,CompactionService> tmpServices = new HashMap<>();
 
     Map<String,String> planners = new HashMap<>();
     Map<String,Map<String,String>> options = new HashMap<>();
@@ -147,7 +147,7 @@ public class CompactionManager {
     });
 
     options.forEach((serviceName, serviceOptions) -> {
-      tmpServices.put(Id.of(serviceName),
+      tmpServices.put(CompactionServiceId.of(serviceName),
           new CompactionServiceImpl(serviceName,
               planners.getOrDefault(serviceName, LarsmaCompactionPlanner.class.getName()),
               serviceOptions, ctx));

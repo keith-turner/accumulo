@@ -24,13 +24,15 @@ package org.apache.accumulo.core.spi.compaction;
  */
 public interface CompactionDirectives {
 
-  String getService();
+  CompactionServiceId getService();
 
   /**
    * @since 2.1.0
    */
   public static interface Builder {
-    Builder setService(String service);
+    Builder setService(CompactionServiceId service);
+
+    Builder setService(String compactionServiceId);
 
     CompactionDirectives build();
   }

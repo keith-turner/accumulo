@@ -51,7 +51,7 @@ public class CompactionJob {
     return files;
   }
 
-  public CompactionKind getType() {
+  public CompactionKind getKind() {
     return kind;
   }
 

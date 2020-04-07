@@ -28,7 +28,7 @@ import java.util.function.Consumer;
 
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
-import org.apache.accumulo.tserver.compactions.CompactionService.Id;
+import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,10 +47,10 @@ public class CompactionExecutor {
 
     private AtomicReference<Status> status = new AtomicReference<>(Status.QUEUED);
     private Compactable compactable;
-    private Id csid;
+    private CompactionServiceId csid;
     private Consumer<Compactable> completionCallback;
 
-    public CompactionTask(CompactionJob job, Compactable compactable, CompactionService.Id csid,
+    public CompactionTask(CompactionJob job, Compactable compactable, CompactionServiceId csid,
         Consumer<Compactable> completionCallback) {
       super(job);
       this.compactable = compactable;
@@ -124,7 +124,7 @@ public class CompactionExecutor {
 
   }
 
-  public SubmittedJob submit(CompactionService.Id csid, CompactionJob job, Compactable compactable,
+  public SubmittedJob submit(CompactionServiceId csid, CompactionJob job, Compactable compactable,
       Consumer<Compactable> completionCallback) {
     Preconditions.checkArgument(job.getExecutor().equals(ceid));
     var ctask = new CompactionTask(job, compactable, csid, completionCallback);

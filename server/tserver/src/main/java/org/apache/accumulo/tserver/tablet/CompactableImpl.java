@@ -33,62 +33,39 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.IteratorSetting;
-import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
-import org.apache.accumulo.core.client.admin.CompactionConfigurerConfig;
-import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
-import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
-import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
-import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
-import org.apache.accumulo.core.client.admin.compaction.Selector;
-import org.apache.accumulo.core.client.admin.compaction.Selector.InitParamaters;
-import org.apache.accumulo.core.client.admin.compaction.Selector.Selection;
 import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
-import org.apache.accumulo.core.conf.ConfigurationCopy;
-import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.file.FileOperations;
-import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.master.thrift.TabletLoadState;
 import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
-import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher.DispatchParameters;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionService;
-import org.apache.accumulo.core.util.Pair;
+import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
-import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.util.MetadataTableUtil;
-import org.apache.accumulo.tserver.compaction.CompactionStrategy;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
-import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
 import org.apache.accumulo.tserver.compactions.Compactable;
-import org.apache.accumulo.tserver.compactions.CompactionService.Id;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
-import com.google.common.cache.Cache;
-import com.google.common.collect.Collections2;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 
 public class CompactableImpl implements Compactable {
@@ -128,39 +105,7 @@ public class CompactableImpl implements Compactable {
 
   public CompactableImpl(Tablet tablet) {
     this.tablet = tablet;
-    this.dispactDeriver = tablet.getTableConfiguration().newDeriver(conf -> {
-      // TODO move to own method..
-      CompactionDispatcher newDispatcher = Property.createTableInstanceFromPropertyName(conf,
-          Property.TABLE_COMPACTION_DISPATCHER, CompactionDispatcher.class, null);
-
-      var builder = ImmutableMap.<String,String>builder();
-      conf.getAllPropertiesWithPrefix(Property.TABLE_COMPACTION_DISPATCHER_OPTS).forEach((k, v) -> {
-        String optKey = k.substring(Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey().length());
-        builder.put(optKey, v);
-      });
-
-      Map<String,String> opts = builder.build();
-
-      newDispatcher.init(new CompactionDispatcher.InitParameters() {
-        @Override
-        public TableId getTableId() {
-          return tablet.getExtent().getTableId();
-        }
-
-        @Override
-        public Map<String,String> getOptions() {
-          return opts;
-        }
-
-        @Override
-        public ServiceEnvironment getServiceEnv() {
-          return new ServiceEnvironmentImpl(tablet.getContext());
-        }
-      });
-
-      return newDispatcher;
-
-    });
+    this.dispactDeriver = CompactableUtils.createDispatcher(tablet);
   }
 
   void initiateChop() {
@@ -227,8 +172,8 @@ public class CompactableImpl implements Compactable {
 
   private Set<StoredTabletFile> selectChopFiles(Set<StoredTabletFile> chopCandidates) {
     try {
-      var firstAndLastKeys = getFirstAndLastKeys(chopCandidates);
-      return findChopFiles(getExtent(), firstAndLastKeys, chopCandidates);
+      var firstAndLastKeys = CompactableUtils.getFirstAndLastKeys(tablet, chopCandidates);
+      return CompactableUtils.findChopFiles(getExtent(), firstAndLastKeys, chopCandidates);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -250,43 +195,6 @@ public class CompactableImpl implements Compactable {
 
     if (markChopped)
       markChopped();
-  }
-
-  private Map<StoredTabletFile,Pair<Key,Key>> getFirstAndLastKeys(Set<StoredTabletFile> allFiles)
-      throws IOException {
-    final Map<StoredTabletFile,Pair<Key,Key>> result = new HashMap<>();
-    final FileOperations fileFactory = FileOperations.getInstance();
-    final VolumeManager fs = tablet.getTabletServer().getFileSystem();
-    for (StoredTabletFile file : allFiles) {
-      FileSystem ns = fs.getFileSystemByPath(file.getPath());
-      try (FileSKVIterator openReader = fileFactory.newReaderBuilder()
-          .forFile(file.getPathStr(), ns, ns.getConf(), tablet.getContext().getCryptoService())
-          .withTableConfiguration(tablet.getTableConfiguration()).seekToBeginning().build()) {
-        Key first = openReader.getFirstKey();
-        Key last = openReader.getLastKey();
-        result.put(file, new Pair<>(first, last));
-      }
-    }
-    return result;
-  }
-
-  Set<StoredTabletFile> findChopFiles(KeyExtent extent,
-      Map<StoredTabletFile,Pair<Key,Key>> firstAndLastKeys, Collection<StoredTabletFile> allFiles) {
-    Set<StoredTabletFile> result = new HashSet<>();
-
-    for (StoredTabletFile file : allFiles) {
-      Pair<Key,Key> pair = firstAndLastKeys.get(file);
-      Key first = pair.getFirst();
-      Key last = pair.getSecond();
-      // If first and last are null, it's an empty file. Add it to the compact set so it goes
-      // away.
-      if ((first == null && last == null) || (first != null && !extent.contains(first.getRow()))
-          || (last != null && !extent.contains(last.getRow()))) {
-        result.add(file);
-      }
-
-    }
-    return result;
   }
 
   /**
@@ -329,11 +237,16 @@ public class CompactableImpl implements Compactable {
     try {
       Set<StoredTabletFile> selectedFiles;
 
+      WriteParameters wp = null;
+
       if (!UserCompactionUtils.isDefault(compactionConfig.getCompactionStrategy())) {
-        selectedFiles =
-            selectFiles(tablet.getDatafiles(), compactionConfig.getCompactionStrategy());
+        var plan = CompactableUtils.selectFiles(tablet, tablet.getDatafiles(),
+            compactionConfig.getCompactionStrategy());
+        wp = plan.writeParameters;
+        selectedFiles = Set.copyOf(plan.inputFiles);
       } else if (!UserCompactionUtils.isDefault(compactionConfig.getSelector())) {
-        selectedFiles = selectFiles(tablet.getDatafiles(), compactionConfig.getSelector());
+        selectedFiles = CompactableUtils.selectFiles(tablet, tablet.getDatafiles(),
+            compactionConfig.getSelector());
       } else {
         selectedFiles = tablet.getDatafiles().keySet();
       }
@@ -354,6 +267,7 @@ public class CompactableImpl implements Compactable {
         synchronized (this) {
           userStatus = SpecialStatus.SELECTED;
           userFiles.addAll(selectedFiles);
+          userWriteParams = wp;
         }
 
         // TODO notify compaction manager to process this tablet!
@@ -371,159 +285,9 @@ public class CompactableImpl implements Compactable {
 
   }
 
-  private Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> datafiles,
-      CompactionSelectorConfig selectorConfig) {
-
-    // TODO how are exceptions handled
-    Selector selector = newInstance(selectorConfig.getClassName(), Selector.class);
-    selector.init(new InitParamaters() {
-
-      @Override
-      public Map<String,String> getOptions() {
-        return selectorConfig.getOptions();
-      }
-
-      @Override
-      public PluginEnvironment getEnvironment() {
-        return new ServiceEnvironmentImpl(tablet.getContext());
-      }
-    });
-
-    Selection selection = selector.select(new Selector.SelectionParameters() {
-
-      @Override
-      public PluginEnvironment getEnvironment() {
-        return new ServiceEnvironmentImpl(tablet.getContext());
-      }
-
-      @Override
-      public Collection<CompactableFile> getAvailableFiles() {
-        // TODO Auto-generated method stub
-        return Collections2.transform(datafiles.entrySet(),
-            e -> new CompactableFileImpl(e.getKey(), e.getValue()));
-      }
-    });
-
-    return selection.filesToCompact.stream().map(CompactableFileImpl::toStoredTabletFile)
-        .collect(Collectors.toSet());
-  }
-
-  private <T> T newInstance(String className, Class<T> baseClass) {
-    String context = tablet.getTableConfiguration().get(Property.TABLE_CLASSPATH);
-    try {
-      return ConfigurationTypeHelper.getClassInstance(context, className, baseClass);
-    } catch (IOException | ReflectiveOperationException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  private AccumuloConfiguration createCompactionConfiguration(Set<CompactableFile> files,
-      AccumuloConfiguration tableConfig, CompactionConfigurerConfig cfg) {
-    CompactionConfigurer configurer = newInstance(cfg.getClassName(), CompactionConfigurer.class);
-
-    configurer.init(new CompactionConfigurer.InitParamaters() {
-      @Override
-      public Map<String,String> getOptions() {
-        return cfg.getOptions();
-      }
-
-      @Override
-      public PluginEnvironment getEnvironment() {
-        return new ServiceEnvironmentImpl(tablet.getContext());
-      }
-    });
-
-    var overrides = configurer.override(new CompactionConfigurer.InputParameters() {
-      @Override
-      public Collection<CompactableFile> getInputFiles() {
-        return files;
-      }
-
-      @Override
-      public PluginEnvironment getEnvironment() {
-        return new ServiceEnvironmentImpl(tablet.getContext());
-      }
-    });
-
-    if (overrides.tabletPropertyOverrides.isEmpty()) {
-      return tableConfig;
-    }
-
-    ConfigurationCopy result = new ConfigurationCopy(tableConfig);
-    overrides.tabletPropertyOverrides.forEach(result::set);
-    return result;
-  }
-
-  private static AccumuloConfiguration createCompactionConfiguration(AccumuloConfiguration base,
-      WriteParameters p) {
-    if (p == null)
-      return base;
-
-    ConfigurationCopy result = new ConfigurationCopy(base);
-    if (p.getHdfsBlockSize() > 0) {
-      result.set(Property.TABLE_FILE_BLOCK_SIZE, "" + p.getHdfsBlockSize());
-    }
-    if (p.getBlockSize() > 0) {
-      result.set(Property.TABLE_FILE_COMPRESSED_BLOCK_SIZE, "" + p.getBlockSize());
-    }
-    if (p.getIndexBlockSize() > 0) {
-      result.set(Property.TABLE_FILE_COMPRESSED_BLOCK_SIZE_INDEX, "" + p.getIndexBlockSize());
-    }
-    if (p.getCompressType() != null) {
-      result.set(Property.TABLE_FILE_COMPRESSION_TYPE, p.getCompressType());
-    }
-    if (p.getReplication() != 0) {
-      result.set(Property.TABLE_FILE_REPLICATION, "" + p.getReplication());
-    }
-    return result;
-  }
-
-  private Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> datafiles,
-      CompactionStrategyConfig csc) {
-
-    var trsm = tablet.getTabletResources().getTabletServerResourceManager();
-
-    BlockCache sc = trsm.getSummaryCache();
-    BlockCache ic = trsm.getIndexCache();
-    Cache<String,Long> fileLenCache = trsm.getFileLenCache();
-    MajorCompactionRequest request = new MajorCompactionRequest(tablet.getExtent(),
-        MajorCompactionReason.USER, tablet.getTabletServer().getFileSystem(),
-        tablet.getTableConfiguration(), sc, ic, fileLenCache, tablet.getContext());
-
-    request.setFiles(datafiles);
-
-    // TODO switch compaction strat from using StoredTabletFile
-    CompactionStrategy strategy = newInstance(csc.getClassName(), CompactionStrategy.class);
-    strategy.init(csc.getOptions());
-
-    try {
-      if (strategy.shouldCompact(request)) {
-        strategy.gatherInformation(request);
-        var plan = strategy.getCompactionPlan(request);
-        if (!plan.deleteFiles.isEmpty()) {
-          // TODO support
-          throw new UnsupportedOperationException(
-              "Dropping files using compaction strategy is not supported " + csc);
-        }
-
-        if (plan.writeParameters != null) {
-          synchronized (this) {
-            Preconditions.checkState(userStatus == SpecialStatus.SELECTING);
-            this.userWriteParams = plan.writeParameters;
-          }
-        }
-        return Set.copyOf(plan.inputFiles);
-      }
-    } catch (IOException e) {
-      // TODO ensure this is handled well
-      throw new UncheckedIOException(e);
-    }
-    return Collections.emptySet();
-  }
-
   private synchronized void userCompactionCompleted(CompactionJob job,
       Set<StoredTabletFile> jobFiles, StoredTabletFile newFile) {
-    Preconditions.checkArgument(job.getType() == CompactionKind.USER);
+    Preconditions.checkArgument(job.getKind() == CompactionKind.USER);
     Preconditions.checkState(userFiles.containsAll(jobFiles));
     Preconditions.checkState(userStatus == SpecialStatus.SELECTED);
 
@@ -547,7 +311,7 @@ public class CompactableImpl implements Compactable {
   }
 
   @Override
-  public synchronized Optional<Files> getFiles(Id service, CompactionKind kind) {
+  public synchronized Optional<Files> getFiles(CompactionServiceId service, CompactionKind kind) {
     // TODO not consistently obtaing tablet state
 
     if (tablet.isClosing() || tablet.isClosed() || !service.equals(getConfiguredService(kind)))
@@ -620,7 +384,7 @@ public class CompactableImpl implements Compactable {
   }
 
   @Override
-  public void compact(Id service, CompactionJob job) {
+  public void compact(CompactionServiceId service, CompactionJob job) {
 
     Set<StoredTabletFile> jobFiles = job.getFiles().stream()
         .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
@@ -629,7 +393,7 @@ public class CompactableImpl implements Compactable {
     CompactionConfig compactionConfig;
 
     synchronized (this) {
-      if (!service.equals(getConfiguredService(job.getType())))
+      if (!service.equals(getConfiguredService(job.getKind())))
         return;
 
       if (Collections.disjoint(allCompactingFiles, jobFiles)) {
@@ -670,8 +434,7 @@ public class CompactableImpl implements Compactable {
         }
       };
 
-      // TODO
-      int reason = MajorCompactionReason.NORMAL.ordinal();
+      int reason = MajorCompactionReason.from(job.getKind()).ordinal();
 
       AccumuloConfiguration tableConfig = tablet.getTableConfiguration();
 
@@ -692,11 +455,11 @@ public class CompactableImpl implements Compactable {
       if (tablet.isClosing() || tablet.isClosed())
         return;
 
-      if (job.getType() == CompactionKind.USER) {
+      if (job.getKind() == CompactionKind.USER) {
         if (params != null) {
-          tableConfig = createCompactionConfiguration(tableConfig, params);
+          tableConfig = CompactableUtils.createCompactionConfiguration(tableConfig, params);
         } else if (!UserCompactionUtils.isDefault(compactionConfig.getConfigurer())) {
-          tableConfig = createCompactionConfiguration(job.getFiles(), tableConfig,
+          tableConfig = CompactableUtils.createCompactionConfiguration(tablet, job.getFiles(),
               compactionConfig.getConfigurer());
         }
       }
@@ -710,7 +473,7 @@ public class CompactableImpl implements Compactable {
       synchronized (this) {
         // TODO this is really iffy in the face of failures!
         // TODO move metadata update to own method which can rollback changes after compaction
-        if (job.getType() == CompactionKind.USER && userFiles.equals(jobFiles)) {
+        if (job.getKind() == CompactionKind.USER && userFiles.equals(jobFiles)) {
           compactionId = this.compactionId;
         }
 
@@ -735,9 +498,9 @@ public class CompactableImpl implements Compactable {
         }
       }
 
-      if (job.getType() == CompactionKind.USER && metaFile != null)
+      if (job.getKind() == CompactionKind.USER && metaFile != null)
         userCompactionCompleted(job, jobFiles, metaFile);// TODO what if it failed?
-      else if (job.getType() == CompactionKind.CHOP)
+      else if (job.getKind() == CompactionKind.CHOP)
         chopCompactionCompleted(jobFiles);
       else
         selectUserFiles();
@@ -745,9 +508,23 @@ public class CompactableImpl implements Compactable {
   }
 
   @Override
-  public Id getConfiguredService(CompactionKind kind) {
+  public CompactionServiceId getConfiguredService(CompactionKind kind) {
 
     var dispatcher = dispactDeriver.derive();
+
+    Map<String,String> tmpHints = Map.of();
+
+    if (kind == CompactionKind.USER) {
+      synchronized (this) {
+        if (userStatus != SpecialStatus.NOT_ACTIVE) {
+          tmpHints = compactionConfig.getExecutionHints();
+        } else {
+          // TODO is this expected??
+        }
+      }
+    }
+
+    var hints = tmpHints;
 
     var directives = dispatcher.dispatch(new DispatchParameters() {
 
@@ -758,8 +535,7 @@ public class CompactableImpl implements Compactable {
 
       @Override
       public Map<String,String> getExecutionHints() {
-        // TODO
-        return Map.of();
+        return hints;
       }
 
       @Override
@@ -775,7 +551,7 @@ public class CompactableImpl implements Compactable {
     });
 
     // TODO
-    return Id.of(directives.getService());
+    return directives.getService();
   }
 
   @Override

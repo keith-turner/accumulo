@@ -20,23 +20,9 @@ package org.apache.accumulo.tserver.compactions;
 
 import java.util.function.Consumer;
 
-import org.apache.accumulo.core.data.AbstractId;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 
 public interface CompactionService {
-  public static class Id extends AbstractId<Id> {
-
-    private static final long serialVersionUID = 1L;
-
-    private Id(String id) {
-      super(id);
-    }
-
-    public static Id of(String canonical) {
-      return new Id(canonical);
-    }
-  }
-
   void compact(CompactionKind kind, Compactable compactable,
       Consumer<Compactable> completionCallback);
 

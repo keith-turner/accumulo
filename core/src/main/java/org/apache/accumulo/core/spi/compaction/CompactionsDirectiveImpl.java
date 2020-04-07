@@ -31,26 +31,30 @@ import com.google.common.base.Preconditions;
 class CompactionsDirectiveImpl implements Builder, CompactionDirectives {
 
   private static final CompactionDirectives DEFAULT =
-      new CompactionsDirectiveImpl().setService("default").build();
+      new CompactionsDirectiveImpl().setService(CompactionServiceId.of("default")).build();
 
   static final Builder DEFAULT_BUILDER = new Builder() {
     @Override
-    public Builder setService(String service) {
+    public Builder setService(CompactionServiceId service) {
       return new CompactionsDirectiveImpl().setService(service);
+    }
+
+    @Override
+    public Builder setService(String compactionServiceId) {
+      return new CompactionsDirectiveImpl().setService(compactionServiceId);
     }
 
     @Override
     public CompactionDirectives build() {
       return DEFAULT;
     }
-
   };
 
   boolean built = false;
-  private String service;
+  private CompactionServiceId service;
 
   @Override
-  public Builder setService(String service) {
+  public Builder setService(CompactionServiceId service) {
     Objects.requireNonNull(service);
     Preconditions.checkState(!built);
     this.service = service;
@@ -58,7 +62,12 @@ class CompactionsDirectiveImpl implements Builder, CompactionDirectives {
   }
 
   @Override
-  public String getService() {
+  public Builder setService(String compactionServiceId) {
+    return setService(CompactionServiceId.of(compactionServiceId));
+  }
+
+  @Override
+  public CompactionServiceId getService() {
     Preconditions.checkState(built);
     return service;
   }
