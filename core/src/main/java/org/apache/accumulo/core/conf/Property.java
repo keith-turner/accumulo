@@ -1214,7 +1214,8 @@ public enum Property {
             || key.startsWith(Property.TABLE_ARBITRARY_PROP_PREFIX.getKey())
             || key.startsWith(TABLE_SAMPLER_OPTS.getKey())
             || key.startsWith(TABLE_SUMMARIZER_PREFIX.getKey())
-            || key.startsWith(TABLE_SCAN_DISPATCHER_OPTS.getKey())));
+            || key.startsWith(TABLE_SCAN_DISPATCHER_OPTS.getKey())
+            || key.startsWith(TABLE_COMPACTION_DISPATCHER_OPTS.getKey())));
   }
 
   private static final EnumSet<Property> fixedProperties =
