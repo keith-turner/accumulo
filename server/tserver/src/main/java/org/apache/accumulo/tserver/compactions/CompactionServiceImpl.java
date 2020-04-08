@@ -60,18 +60,6 @@ public class CompactionServiceImpl implements CompactionService {
 
   private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
 
-  static class ExecutorConfig {
-    String name;
-    String maxSize;
-    int numThreads;
-  }
-
-  static class ServiceConfig {
-    Integer maxFilesToCompact;
-    // TODO support max file size to compact option
-    List<ExecutorConfig> executors;
-  }
-
   public CompactionServiceImpl(String serviceName, String plannerClass,
       Map<String,String> serviceOptions, ServerContext sctx) {
 
@@ -113,6 +101,8 @@ public class CompactionServiceImpl implements CompactionService {
     });
 
     this.executors = Map.copyOf(tmpExecutors);
+
+    log.debug("Created new compaction service id:{} executors:{}", myId, executors.keySet());
   }
 
   private boolean reconcile(Collection<CompactionJob> jobs, List<SubmittedJob> submitted) {

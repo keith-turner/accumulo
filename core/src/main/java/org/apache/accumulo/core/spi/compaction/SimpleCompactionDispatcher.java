@@ -21,6 +21,8 @@ package org.apache.accumulo.core.spi.compaction;
 import java.util.EnumMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+
 /**
  *
  * {@code table.compaction.dispatcher.opts.service[.user[.<user type>]|maintenance|chop]=<service>}
@@ -31,6 +33,9 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
 
   private Map<CompactionKind,CompactionDirectives> services;
   private Map<String,CompactionDirectives> userServices;
+
+  private static final Logger log =
+      org.slf4j.LoggerFactory.getLogger(SimpleCompactionDispatcher.class);
 
   @Override
   public void init(InitParameters params) {
@@ -59,6 +64,8 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
         userServices.put(type, CompactionDirectives.builder().setService(v).build());
       }
     });
+
+    log.debug("services:{} userServices:{}", services, userServices);
   }
 
   @Override

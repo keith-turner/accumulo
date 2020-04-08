@@ -78,4 +78,8 @@ class CompactionsDirectiveImpl implements Builder, CompactionDirectives {
     return this;
   }
 
+  @Override
+  public String toString() {
+    return "service=" + service;
+  }
 }
