@@ -92,7 +92,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
     executors = List.copyOf(tmpExec);
 
-    // TODO max files to compact and max file size
+    // TODO Check for multiple null
 
     if (params.getOptions().containsKey("maxFilesPerCompaction")) {
       this.maxFilesToCompact = Integer.parseInt(params.getOptions().get("maxFilesPerCompaction"));
@@ -118,9 +118,12 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
       Set<CompactableFile> filesCopy = new HashSet<>(params.getCandidates());
 
+      long maxSizeToCompact = getMaxSizeToCompact(params.getKind());
+
       Collection<CompactableFile> group;
       if (params.getCompacting().isEmpty()) {
-        group = findMapFilesToCompact(filesCopy, params.getRatio(), maxFilesToCompact);
+        group = findMapFilesToCompact(filesCopy, params.getRatio(), maxFilesToCompact,
+            maxSizeToCompact);
       } else {
         // This code determines if once the files compacting finish would they be included in a
         // compaction with the files smaller than them? If so, then wait for the running compaction
@@ -135,7 +138,8 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
         filesCopy.addAll(expectedFiles);
 
-        group = findMapFilesToCompact(filesCopy, params.getRatio(), maxFilesToCompact);
+        group = findMapFilesToCompact(filesCopy, params.getRatio(), maxFilesToCompact,
+            maxSizeToCompact);
 
         if (!Collections.disjoint(group, expectedFiles)) {
           // file produced by running compaction will eventually compact with existing files, so
@@ -178,6 +182,15 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     }
   }
 
+  private long getMaxSizeToCompact(CompactionKind kind) {
+    if (kind == CompactionKind.MAINTENANCE) {
+      Long max = executors.get(executors.size() - 1).maxSize;
+      if (max == null)
+        max = Long.MAX_VALUE;
+    }
+    return Long.MAX_VALUE;
+  }
+
   /**
    * @return the expected files sizes for sets of compacting files.
    */
@@ -210,7 +223,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
    * See https://gist.github.com/keith-turner/16125790c6ff0d86c67795a08d2c057f
    */
   public static Collection<CompactableFile> findMapFilesToCompact(Set<CompactableFile> files,
-      double ratio, int maxFilesToCompact) {
+      double ratio, int maxFilesToCompact, long maxSizeToCompact) {
     if (files.size() <= 1)
       return Collections.emptySet();
 
@@ -225,6 +238,9 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     for (int c = 1; c < sortedFiles.size(); c++) {
       long currSize = sortedFiles.get(c).getEstimatedSize();
       sum += currSize;
+
+      if (sum > maxSizeToCompact)
+        break;
 
       if (currSize * ratio < sum) {
         goodIndex = c;
