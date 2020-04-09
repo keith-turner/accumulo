@@ -78,8 +78,6 @@ public interface CompactionDispatcher {
     CompactionKind getCompactionKind();
 
     Map<String,String> getExecutionHints();
-
-    // TODO execution hints
   }
 
   /**

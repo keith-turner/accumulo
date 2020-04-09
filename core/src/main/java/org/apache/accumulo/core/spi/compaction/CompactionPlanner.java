@@ -37,6 +37,8 @@ public interface CompactionPlanner {
 
     Map<String,String> getOptions();
 
+    String getFullyQualifiedOption(String key);
+
     ExecutorManager getExecutorManager();
   }
 

@@ -92,19 +92,25 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
     executors = List.copyOf(tmpExec);
 
-    // TODO Check for multiple null
-
-    if (params.getOptions().containsKey("maxFilesPerCompaction")) {
-      this.maxFilesToCompact = Integer.parseInt(params.getOptions().get("maxFilesPerCompaction"));
-    } else if (params.getServiceEnvironment().getConfiguration()
-        .isSet(Property.TSERV_MAJC_THREAD_MAXOPEN.getKey())) {
-      // TODO log warning
-      this.maxFilesToCompact = Integer.parseInt(params.getServiceEnvironment().getConfiguration()
-          .get(Property.TSERV_MAJC_THREAD_MAXOPEN.getKey()));
-    } else {
-      this.maxFilesToCompact = 10; // TODO
+    if (executors.stream().filter(e -> e.getMaxSize() == null).count() > 1) {
+      throw new IllegalArgumentException(
+          "Can only have one executor w/o a maxSize. " + params.getOptions().get("executors"));
     }
 
+    String fqo = params.getFullyQualifiedOption("maxFilesPerCompaction");
+
+    if (!params.getServiceEnvironment().getConfiguration().isSet(fqo)
+        && params.getServiceEnvironment().getConfiguration()
+            .isSet(Property.TSERV_MAJC_THREAD_MAXOPEN.getKey())) {
+      log.warn("The property " + Property.TSERV_MAJC_THREAD_MAXOPEN.getKey()
+          + " was set, it is deperecated.  Set the " + fqo + " option instead.");
+      this.maxFilesToCompact =
+          this.maxFilesToCompact = Integer.parseInt(params.getServiceEnvironment()
+              .getConfiguration().get(Property.TSERV_MAJC_THREAD_MAXOPEN.getKey()));
+    } else {
+      this.maxFilesToCompact =
+          Integer.parseInt(params.getOptions().getOrDefault("maxFilesPerCompaction", "30"));
+    }
   }
 
   @Override
@@ -158,9 +164,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
       if (group.isEmpty()) {
         return new CompactionPlan();
       } else {
-
-        // TODO do we want to queue a job to an executor if we already have something running
-        // there??
         // determine which executor to use based on the size of the files
         var ceid = getExecutor(group.stream().mapToLong(CompactableFile::getEstimatedSize).sum());
 
@@ -230,6 +233,9 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     // sort files from smallest to largest. So position 0 has the smallest file.
     List<CompactableFile> sortedFiles = sortByFileSize(files);
 
+    int larsmaIndex = -1;
+    long larsmaSum = Long.MIN_VALUE;
+
     // index into sortedFiles, everything at and below this index is a good set of files to compact
     int goodIndex = -1;
 
@@ -248,27 +254,25 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         if (goodIndex + 1 >= maxFilesToCompact)
           break; // TODO old algorithm used to slide a window up when nothing found in smallest
                  // files
-
-        // look ahead to the next file to see if this a good stopping point
-        if (c + 1 < sortedFiles.size()) {
-          long nextSize = sortedFiles.get(c + 1).getEstimatedSize();
-          boolean nextMeetsCR = nextSize * ratio < nextSize + sum;
-
-          // TODO reconsider sum < nexSize check... could do stronger check to look ahead and see if
-          // less files would be produced than top down
-          if (!nextMeetsCR && sum < nextSize) {
-            // These two conditions indicate the largest set of small files to compact was found, so
-            // stop looking.
-            break;
-          }
+      } else if (c - 1 == goodIndex) {
+        if (larsmaIndex == -1 || larsmaSum > sortedFiles.get(goodIndex).getEstimatedSize()) {
+          larsmaIndex = goodIndex;
+          larsmaSum = sum - currSize;
+        } else {
+          break;
         }
       }
     }
 
-    if (goodIndex == -1)
+    if (sortedFiles.size() - 1 == goodIndex
+        && (larsmaIndex == -1 || larsmaSum > sortedFiles.get(goodIndex).getEstimatedSize())) {
+      larsmaIndex = goodIndex;
+    }
+
+    if (larsmaIndex == -1)
       return Collections.emptySet();
 
-    return sortedFiles.subList(0, goodIndex + 1);
+    return sortedFiles.subList(0, larsmaIndex + 1);
   }
 
   CompactionExecutorId getExecutor(long size) {

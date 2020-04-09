@@ -32,6 +32,7 @@ import java.util.function.Consumer;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
@@ -97,6 +98,11 @@ public class CompactionServiceImpl implements CompactionService {
             return ceid;
           }
         };
+      }
+
+      @Override
+      public String getFullyQualifiedOption(String key) {
+        return Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey() + serviceName + ".opts." + key;
       }
     });
 
