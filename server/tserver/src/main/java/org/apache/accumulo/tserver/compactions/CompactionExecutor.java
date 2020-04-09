@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -26,9 +27,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,6 +61,11 @@ public class CompactionExecutor {
       this.completionCallback = completionCallback;
     }
 
+    private String getSize(Collection<CompactableFile> files) {
+      long sum = files.stream().mapToLong(CompactableFile::getEstimatedSize).sum();
+      return FileUtils.byteCountToDisplaySize(sum);
+    }
+
     @Override
     public void run() {
 
@@ -66,8 +74,8 @@ public class CompactionExecutor {
           log.info("Running compaction for {} on {}", compactable.getExtent(), ceid);
           compactable.compact(csid, getJob());
           completionCallback.accept(compactable);
-          log.info("Finished compaction for {} on {} files {}", compactable.getExtent(), ceid,
-              getJob().getFiles().size());
+          log.info("Finished compaction for {} on {} files {} size {}", compactable.getExtent(),
+              ceid, getJob().getFiles().size(), getSize(getJob().getFiles()));
         }
       } catch (Exception e) {
         log.warn("Compaction failed for {} on {}", compactable.getExtent(), getJob(), e);
