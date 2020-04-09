@@ -80,4 +80,9 @@ public class CompactableFileImpl implements CompactableFile {
       throw new IllegalArgumentException("Can not convert " + cf.getClass());
     }
   }
+
+  @Override
+  public String toString() {
+    return "[" + storedTabletFile + ", " + dataFileValue + "]";
+  }
 }
