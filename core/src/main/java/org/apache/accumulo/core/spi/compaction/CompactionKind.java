@@ -19,6 +19,8 @@
 package org.apache.accumulo.core.spi.compaction;
 
 /**
+ * TODO reconcile with CompactionReason
+ *
  * @since 2.1.0
  */
 public enum CompactionKind {

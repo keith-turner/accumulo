@@ -196,12 +196,12 @@ public class CompactableUtils {
       }
     });
 
-    if (overrides.tabletPropertyOverrides.isEmpty()) {
+    if (overrides.getOverrides().isEmpty()) {
       return tablet.getTableConfiguration();
     }
 
     ConfigurationCopy result = new ConfigurationCopy(tablet.getTableConfiguration());
-    overrides.tabletPropertyOverrides.forEach(result::set);
+    overrides.getOverrides().forEach(result::set);
     return result;
   }
 
@@ -256,7 +256,6 @@ public class CompactableUtils {
 
   static Deriver<CompactionDispatcher> createDispatcher(Tablet tablet) {
     return tablet.getTableConfiguration().newDeriver(conf -> {
-      // TODO move to own method..
       CompactionDispatcher newDispatcher = Property.createTableInstanceFromPropertyName(conf,
           Property.TABLE_COMPACTION_DISPATCHER, CompactionDispatcher.class, null);
 

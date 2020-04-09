@@ -56,7 +56,18 @@ public interface CompactionConfigurer {
    */
   public class Overrides {
     // TODO builder
-    public Map<String,String> tabletPropertyOverrides;
+    private final Map<String,String> tablePropertyOverrides;
+
+    public Overrides(Map<String,String> tablePropertyOverrides) {
+      this.tablePropertyOverrides = tablePropertyOverrides;
+    }
+
+    /**
+     * @return Table properties to override.
+     */
+    public Map<String,String> getOverrides() {
+      return tablePropertyOverrides;
+    }
   }
 
   Overrides override(InputParameters params);

@@ -254,6 +254,8 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
           long nextSize = sortedFiles.get(c + 1).getEstimatedSize();
           boolean nextMeetsCR = nextSize * ratio < nextSize + sum;
 
+          // TODO reconsider sum < nexSize check... could do stronger check to look ahead and see if
+          // less files would be produced than top down
           if (!nextMeetsCR && sum < nextSize) {
             // These two conditions indicate the largest set of small files to compact was found, so
             // stop looking.
