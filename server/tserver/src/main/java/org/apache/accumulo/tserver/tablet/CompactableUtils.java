@@ -182,6 +182,11 @@ public class CompactableUtils {
       public PluginEnvironment getEnvironment() {
         return new ServiceEnvironmentImpl(tablet.getContext());
       }
+
+      @Override
+      public TableId getTableId() {
+        return tablet.getExtent().getTableId();
+      }
     });
 
     var overrides = configurer.override(new CompactionConfigurer.InputParameters() {
@@ -193,6 +198,11 @@ public class CompactableUtils {
       @Override
       public PluginEnvironment getEnvironment() {
         return new ServiceEnvironmentImpl(tablet.getContext());
+      }
+
+      @Override
+      public TableId getTableId() {
+        return tablet.getExtent().getTableId();
       }
     });
 

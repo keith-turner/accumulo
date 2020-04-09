@@ -84,6 +84,8 @@ import org.apache.accumulo.core.client.admin.Locations;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.SummaryRetriever;
 import org.apache.accumulo.core.client.admin.TableOperations;
+import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
+import org.apache.accumulo.core.client.admin.compaction.Selector;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.Summary;
@@ -849,17 +851,30 @@ public class TableOperationsImpl extends TableOperationsHelper {
     }
 
     // Make sure the specified compaction strategy exists on a tabletserver
-    final String compactionStrategyName = config.getCompactionStrategy().getClassName();
-    if (!CompactionStrategyConfigUtil.DEFAULT_STRATEGY.getClassName()
-        .equals(compactionStrategyName)) {
-      if (!testClassLoad(tableName, compactionStrategyName,
+    if (!UserCompactionUtils.isDefault(config.getCompactionStrategy())) {
+      if (!testClassLoad(tableName, config.getCompactionStrategy().getClassName(),
           "org.apache.accumulo.tserver.compaction.CompactionStrategy")) {
-        throw new AccumuloException(
-            "TabletServer could not load CompactionStrategy class " + compactionStrategyName);
+        throw new AccumuloException("TabletServer could not load CompactionStrategy class "
+            + config.getCompactionStrategy().getClassName());
       }
     }
 
-    // TODO test loading classes
+    if (!UserCompactionUtils.isDefault(config.getConfigurer())) {
+      if (!testClassLoad(tableName, config.getConfigurer().getClassName(),
+          CompactionConfigurer.class.getName())) {
+        throw new AccumuloException(
+            "TabletServer could not load " + CompactionConfigurer.class.getSimpleName() + " class "
+                + config.getConfigurer().getClassName());
+      }
+    }
+
+    if (!UserCompactionUtils.isDefault(config.getSelector())) {
+      if (!testClassLoad(tableName, config.getSelector().getClassName(),
+          Selector.class.getName())) {
+        throw new AccumuloException("TabletServer could not load " + Selector.class.getSimpleName()
+            + " class " + config.getSelector().getClassName());
+      }
+    }
 
     TableId tableId = Tables.getTableId(context, tableName);
 

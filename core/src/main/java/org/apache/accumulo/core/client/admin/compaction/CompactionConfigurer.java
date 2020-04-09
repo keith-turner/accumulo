@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.Map;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
+import org.apache.accumulo.core.data.TableId;
 
 /**
  * Enables dynamically overriding of configuration used to create the output file for a compaction.
@@ -33,6 +34,8 @@ public interface CompactionConfigurer {
    * @since 2.1.0
    */
   public interface InitParamaters {
+    TableId getTableId();
+
     Map<String,String> getOptions();
 
     PluginEnvironment getEnvironment();
@@ -44,6 +47,8 @@ public interface CompactionConfigurer {
    * @since 2.1.0
    */
   public interface InputParameters {
+    TableId getTableId();
+
     public Collection<CompactableFile> getInputFiles();
 
     PluginEnvironment getEnvironment();
@@ -55,7 +60,6 @@ public interface CompactionConfigurer {
    * @since 2.1.0
    */
   public class Overrides {
-    // TODO builder
     private final Map<String,String> tablePropertyOverrides;
 
     public Overrides(Map<String,String> tablePropertyOverrides) {
