@@ -44,7 +44,7 @@ public class CompactionConfig {
   private boolean wait = true;
   private List<IteratorSetting> iterators = Collections.emptyList();
   private CompactionStrategyConfig compactionStrategy = DEFAULT_STRATEGY;
-  private Map<String,String> hints;
+  private Map<String,String> hints = Map.of();
   private CompactionSelectorConfig selectorConfig = UserCompactionUtils.DEFAULT_CSC;
   private CompactionConfigurerConfig configurerConfig = UserCompactionUtils.DEFAULT_CCC;
 
