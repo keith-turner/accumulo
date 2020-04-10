@@ -365,9 +365,13 @@ public class CompactableImpl implements Compactable {
           case NEW:
           case SELECTING:
             return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
-          case SELECTED:
-            return Optional.of(
-                new Compactable.Files(files, kind, Set.copyOf(userFiles), compactingGroupsCopy));
+          case SELECTED: {
+            Set<StoredTabletFile> candidates = new HashSet<>(userFiles);
+            candidates.removeAll(allCompactingFiles);
+            candidates = Collections.unmodifiableSet(candidates);
+            return Optional
+                .of(new Compactable.Files(files, kind, candidates, compactingGroupsCopy));
+          }
           default:
             throw new AssertionError();
         }
@@ -377,7 +381,7 @@ public class CompactableImpl implements Compactable {
           case NEW:
           case SELECTING:
             return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
-          case SELECTED:
+          case SELECTED: // TODO remove compacting files?
             return Optional.of(new Compactable.Files(files, kind, Set.copyOf(choppingFiles),
                 compactingGroupsCopy));
         }
