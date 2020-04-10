@@ -369,9 +369,9 @@ public class CompactableImpl implements Compactable {
             Set<StoredTabletFile> candidates = new HashSet<>(userFiles);
             candidates.removeAll(allCompactingFiles);
             candidates = Collections.unmodifiableSet(candidates);
-            if(!files.keySet().containsAll(candidates)) {
-              //TODO remove... or adapt.. was placed for debugging
-              log.error("user compaction files not in all files {} {}",candidates, files.keySet());
+            if (!files.keySet().containsAll(candidates)) {
+              // TODO remove... or adapt.. was placed for debugging
+              log.error("user compaction files not in all files {} {}", candidates, files.keySet());
             }
 
             return Optional
@@ -407,6 +407,47 @@ public class CompactableImpl implements Compactable {
     synchronized (this) {
       if (!service.equals(getConfiguredService(job.getKind())))
         return;
+
+      // TODO check chop status??
+
+      switch (userStatus) {
+        case NEW:
+        case SELECTING:
+          return;
+        case SELECTED: {
+          if (job.getKind() == CompactionKind.USER) {
+            if (!userFiles.containsAll(jobFiles)) {
+              log.error("Ignoring user compaction that does not contain selected files {} {}",
+                  userFiles, jobFiles);
+              return;
+            }
+          } else {
+            if (!Collections.disjoint(userFiles, jobFiles)) {
+              log.debug("Ingoring compaction that overlaps with user files {} {} {} {}",
+                  getExtent(), job.getKind(), Sets.intersection(userFiles, jobFiles));
+              return;
+            }
+          }
+          break;
+        }
+        case NOT_ACTIVE:
+          // this is ok
+          break;
+        default:
+          throw new AssertionError();
+      }
+
+      if (userStatus == SpecialStatus.SELECTED) {
+        if (job.getKind() == CompactionKind.USER) {
+
+        } else {
+          if (!Collections.disjoint(userFiles, jobFiles)) {
+            log.debug("Ingoring compaction that overlaps with user files {} {} {} {}", getExtent(),
+                job.getKind(), Sets.intersection(userFiles, jobFiles));
+            return;
+          }
+        }
+      }
 
       if (Collections.disjoint(allCompactingFiles, jobFiles)) {
         allCompactingFiles.addAll(jobFiles);
