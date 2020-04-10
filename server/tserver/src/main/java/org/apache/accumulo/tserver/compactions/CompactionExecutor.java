@@ -74,8 +74,9 @@ public class CompactionExecutor {
           log.info("Running compaction for {} on {}", compactable.getExtent(), ceid);
           compactable.compact(csid, getJob());
           completionCallback.accept(compactable);
-          log.info("Finished compaction for {} on {} files {} size {}", compactable.getExtent(),
-              ceid, getJob().getFiles().size(), getSize(getJob().getFiles()));
+          // TODO debug?
+          log.info("Finished compaction for {} on {} files {} size {} {}", compactable.getExtent(),
+              ceid, getJob().getFiles().size(), getSize(getJob().getFiles()), getJob().getKind());
         }
       } catch (Exception e) {
         log.warn("Compaction failed for {} on {}", compactable.getExtent(), getJob(), e);
