@@ -1027,6 +1027,7 @@ public class Tablet {
 
         if (ke.overlaps(extent)) {
           overlappingConfig = compactionConfig;
+          //TODO remove
           log.info("Compaction config does ovelap {} {}", ke, extent);
         } else {
           //TODO remove
