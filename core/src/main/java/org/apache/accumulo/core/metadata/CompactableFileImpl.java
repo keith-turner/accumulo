@@ -19,6 +19,7 @@
 package org.apache.accumulo.core.metadata;
 
 import java.net.URI;
+import java.util.Objects;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
@@ -34,8 +35,8 @@ public class CompactableFileImpl implements CompactableFile {
   }
 
   public CompactableFileImpl(StoredTabletFile storedTabletFile, DataFileValue dataFileValue) {
-    this.storedTabletFile = storedTabletFile;
-    this.dataFileValue = dataFileValue;
+    this.storedTabletFile = Objects.requireNonNull(storedTabletFile);
+    this.dataFileValue = Objects.requireNonNull(dataFileValue);
   }
 
   @Override
