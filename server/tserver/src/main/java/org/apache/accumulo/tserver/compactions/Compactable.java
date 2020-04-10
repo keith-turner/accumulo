@@ -18,7 +18,6 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
@@ -47,10 +46,10 @@ public interface Compactable {
     public final Collection<CompactableFile> allFiles;
     public final CompactionKind kind;
     public final Collection<CompactableFile> candidates;
-    public final Collection<Collection<CompactableFile>> compacting;
+    public final Collection<CompactionJob> compacting;
 
     public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionKind kind,
-        Set<StoredTabletFile> candidates, Collection<Set<StoredTabletFile>> compacting) {
+        Set<StoredTabletFile> candidates, Collection<CompactionJob> running) {
 
       // TODO can the copies be avoided.?
 
@@ -60,15 +59,8 @@ public interface Compactable {
       this.kind = kind;
       this.candidates = Collections.unmodifiableSet(candidates.stream()
           .map(stf -> new CompactableFileImpl(stf, allFiles.get(stf))).collect(Collectors.toSet()));
-      Collection<Collection<CompactableFile>> compactingTmp = new ArrayList<>();
 
-      compacting.forEach(cf -> {
-        compactingTmp.add(Collections
-            .unmodifiableSet(cf.stream().map(stf -> new CompactableFileImpl(stf, allFiles.get(stf)))
-                .collect(Collectors.toSet())));
-      });
-
-      this.compacting = Collections.unmodifiableCollection(compactingTmp);
+      this.compacting = Set.copyOf(running);
     }
 
     @Override

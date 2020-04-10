@@ -127,7 +127,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
       long maxSizeToCompact = getMaxSizeToCompact(params.getKind());
 
       Collection<CompactableFile> group;
-      if (params.getCompacting().isEmpty()) {
+      if (params.getRunningCompactions().isEmpty()) {
         group = findMapFilesToCompact(filesCopy, params.getRatio(), maxFilesToCompact,
             maxSizeToCompact);
       } else {
@@ -136,7 +136,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         // to complete.
 
         // The set of files running compactions may produce
-        var expectedFiles = getExpected(params.getCompacting());
+        var expectedFiles = getExpected(params.getRunningCompactions());
 
         if (!Collections.disjoint(filesCopy, expectedFiles)) {
           throw new AssertionError();
@@ -154,8 +154,13 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         }
       }
 
-      if (group.isEmpty()
-          && (params.getKind() == CompactionKind.USER || params.getKind() == CompactionKind.CHOP)) {
+      if (group.isEmpty() && params.getKind() == CompactionKind.USER
+          && params.getRunningCompactions().stream()
+              .filter(job -> job.getKind() == CompactionKind.USER).count() == 0) {
+        group = params.getCandidates();
+      }
+
+      if (group.isEmpty() && params.getKind() == CompactionKind.CHOP) {
         // TODO partition files using maxFilesToCompact, executors max sizes, and/or compaction
         // ratio... user and chop could be partitioned differently
         group = params.getCandidates();
@@ -167,7 +172,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         // determine which executor to use based on the size of the files
         var ceid = getExecutor(group.stream().mapToLong(CompactableFile::getEstimatedSize).sum());
 
-        if (!params.getCompacting().isEmpty()) {
+        if (!params.getRunningCompactions().isEmpty()) {
           // TODO remove
           log.info("Planning concurrent {} {}", ceid, group);
         }
@@ -197,15 +202,15 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
   /**
    * @return the expected files sizes for sets of compacting files.
    */
-  private Set<CompactableFile> getExpected(Collection<Collection<CompactableFile>> compacting) {
+  private Set<CompactableFile> getExpected(Collection<CompactionJob> compacting) {
 
     Set<CompactableFile> expected = new HashSet<>();
 
     int count = 0;
 
-    for (Collection<CompactableFile> compactingGroup : compacting) {
+    for (CompactionJob job : compacting) {
       count++;
-      long size = compactingGroup.stream().mapToLong(CompactableFile::getEstimatedSize).sum();
+      long size = job.getFiles().stream().mapToLong(CompactableFile::getEstimatedSize).sum();
       try {
         expected.add(CompactableFile.create(
             new URI("hdfs://fake/accumulo/tables/adef/t-zzFAKEzz/FAKE-0000" + count + ".rf"), size,

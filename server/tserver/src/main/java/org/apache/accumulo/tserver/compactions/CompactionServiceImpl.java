@@ -162,7 +162,7 @@ public class CompactionServiceImpl implements CompactionService {
         }
 
         @Override
-        public Collection<Collection<CompactableFile>> getCompacting() {
+        public Collection<CompactionJob> getRunningCompactions() {
           return files.get().compacting;
         }
 

@@ -58,7 +58,10 @@ public interface CompactionPlanner {
 
     Collection<CompactableFile> getCandidates();
 
-    Collection<Collection<CompactableFile>> getCompacting();
+    /**
+     * @return jobs that are currently running
+     */
+    Collection<CompactionJob> getRunningCompactions();
 
   }
 

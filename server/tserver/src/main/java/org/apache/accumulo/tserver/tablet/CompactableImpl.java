@@ -76,7 +76,7 @@ public class CompactableImpl implements Compactable {
   private final Tablet tablet;
 
   private Set<StoredTabletFile> allCompactingFiles = new HashSet<>();
-  private Collection<Set<StoredTabletFile>> compactingFileGroups = new HashSet<>();
+  private Set<CompactionJob> runnningJobs = new HashSet<>();
   private volatile boolean compactionRunning = false;
 
   // TODO would be better if this set were persistent
@@ -337,9 +337,7 @@ public class CompactableImpl implements Compactable {
     var files = tablet.getDatafiles();
 
     if (!files.keySet().containsAll(allCompactingFiles)) {
-      log.debug("Ignoring because compacting not a subset {} compacting:{} all:{}", getExtent(),
-          Collections2.transform(compactingFileGroups, this::asFileNames),
-          asFileNames(files.keySet()));
+      log.debug("Ignoring because compacting not a subset {}", getExtent());
 
       // A compaction finished, so things are out of date. This can happen because this class and
       // tablet have separate locks, its ok.
@@ -347,24 +345,23 @@ public class CompactableImpl implements Compactable {
     }
 
     var allCompactingCopy = Set.copyOf(allCompactingFiles);
-    var compactingGroupsCopy = Set.copyOf(compactingFileGroups);
+    var runningJobsCopy = Set.copyOf(runnningJobs);
 
     switch (kind) {
       case SYSTEM:
         switch (userStatus) {
           case NOT_ACTIVE:
             return Optional.of(new Compactable.Files(files, kind,
-                Sets.difference(files.keySet(), allCompactingCopy), compactingGroupsCopy));
+                Sets.difference(files.keySet(), allCompactingCopy), runningJobsCopy));
           case NEW:
           case SELECTING:
-            return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
+            return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
           case SELECTED: {
             Set<StoredTabletFile> candidates = new HashSet<>(files.keySet());
             candidates.removeAll(allCompactingCopy);
             candidates.removeAll(userFiles);
             candidates = Collections.unmodifiableSet(candidates);
-            return Optional
-                .of(new Compactable.Files(files, kind, candidates, compactingGroupsCopy));
+            return Optional.of(new Compactable.Files(files, kind, candidates, runningJobsCopy));
           }
           default:
             throw new AssertionError();
@@ -374,7 +371,7 @@ public class CompactableImpl implements Compactable {
           case NOT_ACTIVE:
           case NEW:
           case SELECTING:
-            return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
+            return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
           case SELECTED: {
             Set<StoredTabletFile> candidates = new HashSet<>(userFiles);
             candidates.removeAll(allCompactingFiles);
@@ -383,9 +380,8 @@ public class CompactableImpl implements Compactable {
               // TODO remove... or adapt.. was placed for debugging
               log.error("user compaction files not in all files {} {}", candidates, files.keySet());
             }
-
             return Optional
-                .of(new Compactable.Files(files, kind, candidates, compactingGroupsCopy));
+                .of(new Compactable.Files(files, kind, Set.copyOf(userFiles), runningJobsCopy));
           }
           default:
             throw new AssertionError();
@@ -395,10 +391,10 @@ public class CompactableImpl implements Compactable {
           case NOT_ACTIVE:
           case NEW:
           case SELECTING:
-            return Optional.of(new Compactable.Files(files, kind, Set.of(), compactingGroupsCopy));
+            return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
           case SELECTED: // TODO remove compacting files?
-            return Optional.of(new Compactable.Files(files, kind, Set.copyOf(choppingFiles),
-                compactingGroupsCopy));
+            return Optional
+                .of(new Compactable.Files(files, kind, Set.copyOf(choppingFiles), runningJobsCopy));
         }
       default:
         throw new AssertionError();
@@ -464,7 +460,7 @@ public class CompactableImpl implements Compactable {
 
       if (Collections.disjoint(allCompactingFiles, jobFiles)) {
         allCompactingFiles.addAll(jobFiles);
-        compactingFileGroups.add(jobFiles);
+        runnningJobs.add(job);
       } else {
         return; // TODO log an error?
       }
@@ -554,7 +550,7 @@ public class CompactableImpl implements Compactable {
     } finally {
       synchronized (this) {
         allCompactingFiles.removeAll(jobFiles);
-        compactingFileGroups.remove(jobFiles); // TODO check return true?
+        runnningJobs.remove(job); // TODO check return true?
         compactionRunning = !allCompactingFiles.isEmpty();
 
         // TODO this tracking feels a bit iffy
