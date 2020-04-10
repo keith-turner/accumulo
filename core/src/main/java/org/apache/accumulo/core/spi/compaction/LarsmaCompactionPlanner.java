@@ -186,7 +186,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
   }
 
   private long getMaxSizeToCompact(CompactionKind kind) {
-    if (kind == CompactionKind.MAINTENANCE) {
+    if (kind == CompactionKind.SYSTEM) {
       Long max = executors.get(executors.size() - 1).maxSize;
       if (max == null)
         max = Long.MAX_VALUE;

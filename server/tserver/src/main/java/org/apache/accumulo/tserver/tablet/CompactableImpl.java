@@ -272,7 +272,7 @@ public class CompactableImpl implements Compactable {
           userStatus = SpecialStatus.SELECTED;
           userFiles.addAll(selectedFiles);
           userWriteParams = wp;
-          log.debug("User compaction status changed {} {}", getExtent(), userStatus,
+          log.debug("User compaction status changed {} {} {}", getExtent(), userStatus,
               asFileNames(userFiles));
         }
 
@@ -338,7 +338,8 @@ public class CompactableImpl implements Compactable {
 
     if (!files.keySet().containsAll(allCompactingFiles)) {
       log.debug("Ignoring because compacting not a subset {} compacting:{} all:{}", getExtent(),
-          compactingFileGroups, files.keySet());
+          Collections2.transform(compactingFileGroups, this::asFileNames),
+          asFileNames(files.keySet()));
 
       // A compaction finished, so things are out of date. This can happen because this class and
       // tablet have separate locks, its ok.
@@ -349,7 +350,7 @@ public class CompactableImpl implements Compactable {
     var compactingGroupsCopy = Set.copyOf(compactingFileGroups);
 
     switch (kind) {
-      case MAINTENANCE:
+      case SYSTEM:
         switch (userStatus) {
           case NOT_ACTIVE:
             return Optional.of(new Compactable.Files(files, kind,
@@ -435,8 +436,8 @@ public class CompactableImpl implements Compactable {
             }
           } else {
             if (!Collections.disjoint(userFiles, jobFiles)) {
-              log.debug("Ingoring compaction that overlaps with user files {} {} {} {}",
-                  getExtent(), job.getKind(), asFileNames(Sets.intersection(userFiles, jobFiles)));
+              log.debug("Ingoring compaction that overlaps with user files {} {} {}", getExtent(),
+                  job.getKind(), asFileNames(Sets.intersection(userFiles, jobFiles)));
               return;
             }
           }

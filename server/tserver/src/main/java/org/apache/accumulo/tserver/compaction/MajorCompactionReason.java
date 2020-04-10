@@ -30,7 +30,7 @@ public enum MajorCompactionReason {
     switch (ck) {
       case CHOP:
         return CHOP;
-      case MAINTENANCE:
+      case SYSTEM:
         return NORMAL;
       case USER:
         return USER;
