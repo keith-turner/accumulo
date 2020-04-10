@@ -204,6 +204,9 @@ public class CompactableImpl implements Compactable {
 
     synchronized (this) {
 
+      //TODO remove??
+      log.info("initiateUserCompaction({},{}", compactionId, compactionConfig);
+
       if (userStatus == SpecialStatus.NOT_ACTIVE) {
         // chop and user compactions should be mutually exclusive... except for canceled compactions
         // and delayed threads/rpcs...
