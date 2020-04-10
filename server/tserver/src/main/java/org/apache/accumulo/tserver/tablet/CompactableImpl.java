@@ -66,6 +66,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.Sets;
 
 public class CompactableImpl implements Compactable {
@@ -204,9 +205,6 @@ public class CompactableImpl implements Compactable {
 
     synchronized (this) {
 
-      // TODO remove??
-      log.info("initiateUserCompaction({},{}", compactionId, compactionConfig);
-
       if (userStatus == SpecialStatus.NOT_ACTIVE) {
         // chop and user compactions should be mutually exclusive... except for canceled compactions
         // and delayed threads/rpcs...
@@ -216,6 +214,8 @@ public class CompactableImpl implements Compactable {
         userFiles.clear();
         this.compactionConfig = compactionConfig;
         this.compactionId = compactionId;
+        // TODO config
+        log.debug("User compaction status changed {} {}", getExtent(), userStatus);
       } else {
         // TODO
         return;
@@ -229,9 +229,9 @@ public class CompactableImpl implements Compactable {
     synchronized (this) {
       if (userStatus == SpecialStatus.NEW && allCompactingFiles.isEmpty()) {
         userFiles.clear();
-        userFiles.addAll(tablet.getDatafiles().keySet());
         userStatus = SpecialStatus.SELECTING;
         userWriteParams = null;
+        log.debug("User compaction status changed {} {}", getExtent(), userStatus);
       } else {
         return;
       }
@@ -265,12 +265,15 @@ public class CompactableImpl implements Compactable {
 
         synchronized (this) {
           userStatus = SpecialStatus.NOT_ACTIVE;
+          log.debug("User compaction status changed {} {}", getExtent(), userStatus);
         }
       } else {
         synchronized (this) {
           userStatus = SpecialStatus.SELECTED;
           userFiles.addAll(selectedFiles);
           userWriteParams = wp;
+          log.debug("User compaction status changed {} {}", getExtent(), userStatus,
+              asFileNames(userFiles));
         }
 
         // TODO notify compaction manager to process this tablet!
@@ -279,13 +282,16 @@ public class CompactableImpl implements Compactable {
     } catch (Exception e) {
       synchronized (this) {
         userStatus = SpecialStatus.NEW;
+        log.error("Failed to select user compaction files {}", getExtent(), e);
+        log.debug("User compaction status changed {} {}", getExtent(), userStatus);
         userFiles.clear();
       }
-
-      // TODO
-      e.printStackTrace();
     }
 
+  }
+
+  private Collection<String> asFileNames(Set<StoredTabletFile> files) {
+    return Collections2.transform(files, StoredTabletFile::getFileName);
   }
 
   private synchronized void userCompactionCompleted(CompactionJob job,
@@ -298,8 +304,11 @@ public class CompactableImpl implements Compactable {
 
     if (userFiles.isEmpty()) {
       userStatus = SpecialStatus.NOT_ACTIVE;
+      log.debug("User compaction status changed {} {}", getExtent(), userStatus);
     } else {
       userFiles.add(newFile);
+      log.debug("Compacted subset of user files {} {} -> {}", getExtent(), asFileNames(jobFiles),
+          newFile.getFileName());
     }
   }
 
@@ -413,18 +422,21 @@ public class CompactableImpl implements Compactable {
       switch (userStatus) {
         case NEW:
         case SELECTING:
+          log.debug(
+              "Ignoring compaction because files are being selected for user compaction {} {}",
+              getExtent(), job);
           return;
         case SELECTED: {
           if (job.getKind() == CompactionKind.USER) {
             if (!userFiles.containsAll(jobFiles)) {
-              log.error("Ignoring user compaction that does not contain selected files {} {}",
-                  userFiles, jobFiles);
+              log.error("Ignoring user compaction that does not contain selected files {} {} {}",
+                  getExtent(), asFileNames(userFiles), asFileNames(jobFiles));
               return;
             }
           } else {
             if (!Collections.disjoint(userFiles, jobFiles)) {
               log.debug("Ingoring compaction that overlaps with user files {} {} {} {}",
-                  getExtent(), job.getKind(), Sets.intersection(userFiles, jobFiles));
+                  getExtent(), job.getKind(), asFileNames(Sets.intersection(userFiles, jobFiles)));
               return;
             }
           }
