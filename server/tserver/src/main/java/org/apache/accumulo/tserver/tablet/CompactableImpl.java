@@ -369,6 +369,11 @@ public class CompactableImpl implements Compactable {
             Set<StoredTabletFile> candidates = new HashSet<>(userFiles);
             candidates.removeAll(allCompactingFiles);
             candidates = Collections.unmodifiableSet(candidates);
+            if(!files.keySet().containsAll(candidates)) {
+              //TODO remove... or adapt.. was placed for debugging
+              log.error("user compaction files not in all files {} {}",candidates, files.keySet());
+            }
+
             return Optional
                 .of(new Compactable.Files(files, kind, candidates, compactingGroupsCopy));
           }
