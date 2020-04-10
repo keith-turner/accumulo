@@ -1027,13 +1027,12 @@ public class Tablet {
 
         if (ke.overlaps(extent)) {
           overlappingConfig = compactionConfig;
-          //TODO remove
-          log.info("Compaction config does ovelap {} {}", ke, extent);
-        } else {
-          //TODO remove
-          log.info("Compaction config does not overlap {} {}", ke, extent);
         }
       }
+
+      // TODO
+      if (overlappingConfig == null)
+        overlappingConfig = new CompactionConfig(); // no config present, set to default
 
       return new Pair<>(compactID, overlappingConfig);
     } catch (InterruptedException | DecoderException | NumberFormatException e) {

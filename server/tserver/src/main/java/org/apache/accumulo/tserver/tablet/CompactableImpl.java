@@ -204,7 +204,7 @@ public class CompactableImpl implements Compactable {
 
     synchronized (this) {
 
-      //TODO remove??
+      // TODO remove??
       log.info("initiateUserCompaction({},{}", compactionId, compactionConfig);
 
       if (userStatus == SpecialStatus.NOT_ACTIVE) {
