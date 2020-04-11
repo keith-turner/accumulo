@@ -504,6 +504,8 @@ public class CompactableImpl implements Compactable {
       HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
       jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
 
+      // TODO for user compactions, on last round of files can drop deletes if all files were
+      // selected during selection... does not matter the files came later...
       // TODO this is done outside of sync block
       boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
 
