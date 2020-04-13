@@ -30,7 +30,7 @@ import org.apache.accumulo.core.client.PluginEnvironment;
  * @since 2.1.0
  */
 // TODO this could go in SPI
-public interface Selector {
+public interface CompactionSelector {
 
   public interface InitParamaters {
     Map<String,String> getOptions();

@@ -27,8 +27,12 @@ import com.google.common.base.Preconditions;
 
 /**
  * Can be configured per table to dispatch compactions for a table to different compaction services.
+ * For a given table the dispatcher can choose a different compaction service for each kind of
+ * compaction. For example, user and chop compactions could be dispatched to service_A while system
+ * compactions are dispatched to service_B.
  *
  * @since 2.1.0
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public interface CompactionDispatcher {
   /**

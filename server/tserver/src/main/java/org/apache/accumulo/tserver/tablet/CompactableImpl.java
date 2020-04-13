@@ -104,6 +104,8 @@ public class CompactableImpl implements Compactable {
 
   private WriteParameters userWriteParams;
 
+  private boolean userSelectedAll = false;
+
   public CompactableImpl(Tablet tablet) {
     this.tablet = tablet;
     this.dispactDeriver = CompactableUtils.createDispatcher(tablet);
@@ -212,6 +214,7 @@ public class CompactableImpl implements Compactable {
         Preconditions.checkState(chopStatus == SpecialStatus.NOT_ACTIVE);
         userStatus = SpecialStatus.NEW;
         userFiles.clear();
+        userSelectedAll = false;
         this.compactionConfig = compactionConfig;
         this.compactionId = compactionId;
         // TODO config
@@ -242,16 +245,18 @@ public class CompactableImpl implements Compactable {
 
       WriteParameters wp = null;
 
+      var allFiles = tablet.getDatafiles();
+
       if (!UserCompactionUtils.isDefault(compactionConfig.getCompactionStrategy())) {
-        var plan = CompactableUtils.selectFiles(tablet, tablet.getDatafiles(),
+        var plan = CompactableUtils.selectFiles(tablet, allFiles,
             compactionConfig.getCompactionStrategy());
         wp = plan.writeParameters;
         selectedFiles = Set.copyOf(plan.inputFiles);
       } else if (!UserCompactionUtils.isDefault(compactionConfig.getSelector())) {
-        selectedFiles = CompactableUtils.selectFiles(tablet, tablet.getDatafiles(),
-            compactionConfig.getSelector());
+        selectedFiles =
+            CompactableUtils.selectFiles(tablet, allFiles, compactionConfig.getSelector());
       } else {
-        selectedFiles = tablet.getDatafiles().keySet();
+        selectedFiles = allFiles.keySet();
       }
 
       if (selectedFiles.isEmpty()) {
@@ -268,10 +273,13 @@ public class CompactableImpl implements Compactable {
           log.debug("User compaction status changed {} {}", getExtent(), userStatus);
         }
       } else {
+        var allSelected = allFiles.keySet().equals(selectedFiles);
+
         synchronized (this) {
           userStatus = SpecialStatus.SELECTED;
           userFiles.addAll(selectedFiles);
           userWriteParams = wp;
+          userSelectedAll = allSelected;
           log.debug("User compaction status changed {} {} {}", getExtent(), userStatus,
               asFileNames(userFiles));
         }
@@ -409,6 +417,7 @@ public class CompactableImpl implements Compactable {
 
     WriteParameters params;
     CompactionConfig compactionConfig;
+    boolean propogateDeletesForUser = true;
 
     synchronized (this) {
       if (!service.equals(getConfiguredService(job.getKind())))
@@ -447,10 +456,10 @@ public class CompactableImpl implements Compactable {
       }
 
       if (userStatus == SpecialStatus.SELECTED) {
-        if (job.getKind() == CompactionKind.USER) {
-
-        } else {
+        if (job.getKind() != CompactionKind.USER) {
           if (!Collections.disjoint(userFiles, jobFiles)) {
+            // This is not a bug, a compaction could have been queued before the file were selected
+            // and now its attempting to run and needs to be ignored.
             log.debug("Ingoring compaction that overlaps with user files {} {} {} {}", getExtent(),
                 job.getKind(), Sets.intersection(userFiles, jobFiles));
             return;
@@ -469,6 +478,12 @@ public class CompactableImpl implements Compactable {
 
       params = userWriteParams;
       compactionConfig = this.compactionConfig;
+
+      if (job.getKind() == CompactionKind.USER && userSelectedAll
+          && jobFiles.containsAll(userFiles)) {
+        propogateDeletesForUser = false;
+      }
+
     }
     // TODO only add if not in set!
     StoredTabletFile metaFile = null;
@@ -504,10 +519,16 @@ public class CompactableImpl implements Compactable {
       HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
       jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
 
-      // TODO for user compactions, on last round of files can drop deletes if all files were
-      // selected during selection... does not matter the files came later...
-      // TODO this is done outside of sync block
       boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
+
+      if (job.getKind() == CompactionKind.USER) {
+        propogateDeletes = propogateDeletesForUser;
+      } else {
+        // TODO if any compaction job contains all of the files at its time of creation, then should
+        // probably not propogate
+        // TODO this is done outside of sync block
+        propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
+      }
 
       TabletFile newFile = tablet.getNextMapFilename(!propogateDeletes ? "A" : "C");
       TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));

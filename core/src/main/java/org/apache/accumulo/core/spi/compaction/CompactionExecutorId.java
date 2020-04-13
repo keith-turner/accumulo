@@ -21,7 +21,11 @@ package org.apache.accumulo.core.spi.compaction;
 import org.apache.accumulo.core.data.AbstractId;
 
 /**
+ * A unique identifier for a a compaction executor that a {@link CompactionPlanner} can schedule
+ * compactions on using a {@link CompactionJob}.
+ *
  * @since 2.1.0
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public class CompactionExecutorId extends AbstractId<CompactionExecutorId> {
   private static final long serialVersionUID = 1L;

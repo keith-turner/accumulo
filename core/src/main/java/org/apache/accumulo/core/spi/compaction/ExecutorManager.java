@@ -19,9 +19,16 @@
 package org.apache.accumulo.core.spi.compaction;
 
 /**
+ * Offered to a Compaction Planner at initialization time so it can request executors.
+ *
+ *
  * @since 2.1.0
  * @see CompactionPlanner#init(org.apache.accumulo.core.spi.compaction.CompactionPlanner.InitParameters)
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public interface ExecutorManager {
+  /**
+   * Create a thread pool executor within a compaction service.
+   */
   public CompactionExecutorId createExecutor(String name, int threads);
 }

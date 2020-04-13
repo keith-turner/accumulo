@@ -22,7 +22,13 @@ import java.net.URI;
 
 import org.apache.accumulo.core.metadata.CompactableFileImpl;
 
+/**
+ * @since 2.1.0
+ */
 public interface CompactableFile {
+
+  public String getFileName();
+
   public URI getUri();
 
   public long getEstimatedSize();

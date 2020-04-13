@@ -29,6 +29,7 @@ import org.apache.accumulo.core.spi.common.ServiceEnvironment;
  * Plans compaction work for a compaction service.
  *
  * @since 2.1.0
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public interface CompactionPlanner {
 
@@ -54,8 +55,15 @@ public interface CompactionPlanner {
 
     double getRatio();
 
+    /**
+     * @return the set of all files a tablet has.
+     */
     Collection<CompactableFile> getAll();
 
+    /**
+     * @return the set of files that could be compacted depending on what {@link #getKind()}
+     *         returns.
+     */
     Collection<CompactableFile> getCandidates();
 
     /**
@@ -65,5 +73,35 @@ public interface CompactionPlanner {
 
   }
 
+  /**
+   * <p>
+   * Plan what work a compaction service should do. The kind of compaction returned by
+   * {@link PlanningParameters#getKind()} determines what must be done with the files returned by
+   * {@link PlanningParameters#getCandidates()}. The following are the expectations for the
+   * candidates for each kind.
+   *
+   * <ul>
+   * <li>{@link CompactionKind#SYSTEM} The planner is not required to do anything with the
+   * candidates and can choose to compact zero or more of them. The candidates may represent a
+   * subset of all the files in the case where a user compaction is in progress or other compactions
+   * are running.
+   * <li>{@link CompactionKind#USER} The planner is required to eventually compact all candidates.
+   * Its ok to return a compaction plan that compacts a subset. When the planner compacts a subset,
+   * it will eventually be called again later. When it is called later the candidates will contain
+   * the files it did not compact and the results of any previous compactions it scheduled. The
+   * planner must eventually compact all of the files in the candidate set down to a single file.
+   * The compaction service will keep calling the planner until it does.
+   * <li>{@link CompactionKind#CHOP} The planner is required to eventually compact all candidates.
+   * One major difference with USER compactions is this kind is not required to compact all files to
+   * a single file. It is ok to return a compaction plan that compacts a subset of the candidates.
+   * When the planner compacts a subset, it will eventually be called later. When it is called later
+   * the candidates will contain the files it did not compact.
+   * </ul>
+   *
+   * <p>
+   * When a planner returns a compactions plan, task will be queued on executors. Previously queued
+   * task that do not match the latest plan are removed. The planner is called periodically,
+   * whenever a new file is added, and whenever a compaction finishes.
+   */
   CompactionPlan makePlan(PlanningParameters params);
 }

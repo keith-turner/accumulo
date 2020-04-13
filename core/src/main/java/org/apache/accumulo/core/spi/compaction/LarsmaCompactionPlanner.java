@@ -39,9 +39,10 @@ import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 
 /**
- * Finds the largest set of small files that meet the compactio ratio to compact.
+ * Finds the largest set of small files that meet the compaction ratio to compact.
  *
  * @since 2.1.0
+ * @see org.apache.accumulo.core.spi.compaction
  */
 
 public class LarsmaCompactionPlanner implements CompactionPlanner {
@@ -157,6 +158,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
       if (group.isEmpty() && params.getKind() == CompactionKind.USER
           && params.getRunningCompactions().stream()
               .filter(job -> job.getKind() == CompactionKind.USER).count() == 0) {
+        //TODO consider max files to compact
         group = params.getCandidates();
       }
 

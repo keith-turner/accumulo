@@ -19,11 +19,16 @@
 package org.apache.accumulo.core.spi.compaction;
 
 /**
+ * The directions of a {@link CompactionDispatcher}
  *
  * @since 2.1.0
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public interface CompactionDirectives {
 
+  /**
+   * @return The service where a compaction should run.
+   */
   CompactionServiceId getService();
 
   /**

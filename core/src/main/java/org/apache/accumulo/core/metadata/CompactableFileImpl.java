@@ -45,6 +45,11 @@ public class CompactableFileImpl implements CompactableFile {
   }
 
   @Override
+  public String getFileName() {
+    return storedTabletFile.getFileName();
+  }
+
+  @Override
   public long getEstimatedSize() {
     return dataFileValue.getSize();
   }

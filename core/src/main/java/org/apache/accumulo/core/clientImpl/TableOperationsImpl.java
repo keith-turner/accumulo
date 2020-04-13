@@ -85,7 +85,7 @@ import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.SummaryRetriever;
 import org.apache.accumulo.core.client.admin.TableOperations;
 import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
-import org.apache.accumulo.core.client.admin.compaction.Selector;
+import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.Summary;
@@ -870,8 +870,8 @@ public class TableOperationsImpl extends TableOperationsHelper {
 
     if (!UserCompactionUtils.isDefault(config.getSelector())) {
       if (!testClassLoad(tableName, config.getSelector().getClassName(),
-          Selector.class.getName())) {
-        throw new AccumuloException("TabletServer could not load " + Selector.class.getSimpleName()
+          CompactionSelector.class.getName())) {
+        throw new AccumuloException("TabletServer could not load " + CompactionSelector.class.getSimpleName()
             + " class " + config.getSelector().getClassName());
       }
     }

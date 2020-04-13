@@ -25,9 +25,10 @@ import java.util.Set;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 
 /**
- * Describes what files to compact and where to compact them.
+ * An immutable object that describes what files to compact and where to compact them.
  *
  * @since 2.1.0
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public class CompactionJob {
 
@@ -48,14 +49,23 @@ public class CompactionJob {
     return priority;
   }
 
+  /**
+   * @return The executor to run the job.
+   */
   public CompactionExecutorId getExecutor() {
     return executor;
   }
 
+  /**
+   * @return The files to compact
+   */
   public Set<CompactableFile> getFiles() {
     return files;
   }
 
+  /**
+   * @return The kind of compaction this is.
+   */
   public CompactionKind getKind() {
     return kind;
   }

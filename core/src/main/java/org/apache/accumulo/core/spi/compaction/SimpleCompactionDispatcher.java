@@ -27,6 +27,7 @@ import org.slf4j.Logger;
  *
  * {@code table.compaction.dispatcher.opts.service[.user[.<user type>]|maintenance|chop]=<service>}
  *
+ * @see org.apache.accumulo.core.spi.compaction
  */
 
 public class SimpleCompactionDispatcher implements CompactionDispatcher {

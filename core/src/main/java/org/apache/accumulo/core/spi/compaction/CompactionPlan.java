@@ -25,6 +25,7 @@ import java.util.List;
  *
  * @since 2.1.0
  * @see CompactionPlanner
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public class CompactionPlan {
 

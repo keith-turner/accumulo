@@ -34,8 +34,8 @@ import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
 import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
-import org.apache.accumulo.core.client.admin.compaction.Selector;
-import org.apache.accumulo.core.client.admin.compaction.Selector.Selection;
+import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
+import org.apache.accumulo.core.client.admin.compaction.CompactionSelector.Selection;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
@@ -230,9 +230,9 @@ public class CompactableUtils {
       CompactionSelectorConfig selectorConfig) {
 
     // TODO how are exceptions handled
-    Selector selector =
-        newInstance(tablet.getTableConfiguration(), selectorConfig.getClassName(), Selector.class);
-    selector.init(new Selector.InitParamaters() {
+    CompactionSelector selector =
+        newInstance(tablet.getTableConfiguration(), selectorConfig.getClassName(), CompactionSelector.class);
+    selector.init(new CompactionSelector.InitParamaters() {
 
       @Override
       public Map<String,String> getOptions() {
@@ -245,7 +245,7 @@ public class CompactableUtils {
       }
     });
 
-    Selection selection = selector.select(new Selector.SelectionParameters() {
+    Selection selection = selector.select(new CompactionSelector.SelectionParameters() {
 
       @Override
       public PluginEnvironment getEnvironment() {

@@ -22,7 +22,19 @@ package org.apache.accumulo.core.spi.compaction;
  * TODO reconcile with CompactionReason
  *
  * @since 2.1.0
+ * @see org.apache.accumulo.core.spi.compaction
  */
 public enum CompactionKind {
-  SYSTEM, USER, CHOP
+  /**
+   * A system initiated compaction.
+   */
+  SYSTEM,
+  /**
+   * A user initiated compaction.
+   */
+  USER,
+  /**
+   * A compaction executed prior to merging tablets.
+   */
+  CHOP
 }
