@@ -230,8 +230,8 @@ public class CompactableUtils {
       CompactionSelectorConfig selectorConfig) {
 
     // TODO how are exceptions handled
-    CompactionSelector selector =
-        newInstance(tablet.getTableConfiguration(), selectorConfig.getClassName(), CompactionSelector.class);
+    CompactionSelector selector = newInstance(tablet.getTableConfiguration(),
+        selectorConfig.getClassName(), CompactionSelector.class);
     selector.init(new CompactionSelector.InitParamaters() {
 
       @Override

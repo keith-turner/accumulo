@@ -871,8 +871,9 @@ public class TableOperationsImpl extends TableOperationsHelper {
     if (!UserCompactionUtils.isDefault(config.getSelector())) {
       if (!testClassLoad(tableName, config.getSelector().getClassName(),
           CompactionSelector.class.getName())) {
-        throw new AccumuloException("TabletServer could not load " + CompactionSelector.class.getSimpleName()
-            + " class " + config.getSelector().getClassName());
+        throw new AccumuloException(
+            "TabletServer could not load " + CompactionSelector.class.getSimpleName() + " class "
+                + config.getSelector().getClassName());
       }
     }
 

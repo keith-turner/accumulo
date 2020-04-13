@@ -158,7 +158,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
       if (group.isEmpty() && params.getKind() == CompactionKind.USER
           && params.getRunningCompactions().stream()
               .filter(job -> job.getKind() == CompactionKind.USER).count() == 0) {
-        //TODO consider max files to compact
+        // TODO consider max files to compact
         group = params.getCandidates();
       }
 
