@@ -85,12 +85,12 @@ public interface CompactionPlanner {
    * candidates and can choose to compact zero or more of them. The candidates may represent a
    * subset of all the files in the case where a user compaction is in progress or other compactions
    * are running.
-   * <li>{@link CompactionKind#USER} The planner is required to eventually compact all candidates.
-   * Its ok to return a compaction plan that compacts a subset. When the planner compacts a subset,
-   * it will eventually be called again later. When it is called later the candidates will contain
-   * the files it did not compact and the results of any previous compactions it scheduled. The
-   * planner must eventually compact all of the files in the candidate set down to a single file.
-   * The compaction service will keep calling the planner until it does.
+   * <li>{@link CompactionKind#USER} and {@link CompactionKind#SELECTED} The planner is required to
+   * eventually compact all candidates. Its ok to return a compaction plan that compacts a subset.
+   * When the planner compacts a subset, it will eventually be called again later. When it is called
+   * later the candidates will contain the files it did not compact and the results of any previous
+   * compactions it scheduled. The planner must eventually compact all of the files in the candidate
+   * set down to a single file. The compaction service will keep calling the planner until it does.
    * <li>{@link CompactionKind#CHOP} The planner is required to eventually compact all candidates.
    * One major difference with USER compactions is this kind is not required to compact all files to
    * a single file. It is ok to return a compaction plan that compacts a subset of the candidates.

@@ -21,14 +21,17 @@ package org.apache.accumulo.tserver.tablet;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.CompactionConfigurerConfig;
 import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
 import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
@@ -36,6 +39,9 @@ import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector.Selection;
+import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
+import org.apache.accumulo.core.client.summary.Summary;
+import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
@@ -52,14 +58,22 @@ import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.summary.Gatherer;
+import org.apache.accumulo.core.summary.SummarizerFactory;
+import org.apache.accumulo.core.summary.SummaryCollection;
+import org.apache.accumulo.core.summary.SummaryReader;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.fs.VolumeManager;
+import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compaction.CompactionPlan;
 import org.apache.accumulo.tserver.compaction.CompactionStrategy;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
+import org.apache.accumulo.tserver.tablet.CompactableImpl.CompactionDriver;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 
 import com.google.common.cache.Cache;
@@ -168,6 +182,21 @@ public class CompactableUtils {
   }
 
   static AccumuloConfiguration createCompactionConfiguration(Tablet tablet,
+      Set<CompactableFile> files) {
+    var tconf = tablet.getTableConfiguration();
+
+    var configurorClass = tconf.get(Property.TABLE_COMPACTION_CONFIGUROR);
+    if (configurorClass == null || configurorClass.isBlank()) {
+      return tconf;
+    }
+
+    var opts = getOptsMap(tconf, Property.TABLE_COMPACTION_CONFIGUROR_OPTS);
+
+    return createCompactionConfiguration(tablet, files,
+        new CompactionConfigurerConfig(configurorClass).setOptions(opts));
+  }
+
+  static AccumuloConfiguration createCompactionConfiguration(Tablet tablet,
       Set<CompactableFile> files, CompactionConfigurerConfig cfg) {
     CompactionConfigurer configurer = CompactableUtils.newInstance(tablet.getTableConfiguration(),
         cfg.getClassName(), CompactionConfigurer.class);
@@ -258,10 +287,43 @@ public class CompactableUtils {
         return Collections2.transform(datafiles.entrySet(),
             e -> new CompactableFileImpl(e.getKey(), e.getValue()));
       }
+
+      @Override
+      public Collection<Summary> getSummaries(Collection<CompactableFile> files,
+          Predicate<SummarizerConfiguration> summarySelector) {
+
+        var context = tablet.getContext();
+        var tsrm = tablet.getTabletResources().getTabletServerResourceManager();
+
+        SummaryCollection sc = new SummaryCollection();
+        SummarizerFactory factory = new SummarizerFactory(tablet.getTableConfiguration());
+        for (CompactableFile cf : files) {
+          var file = CompactableFileImpl.toStoredTabletFile(cf);
+          FileSystem fs = context.getVolumeManager().getFileSystemByPath(file.getPath());
+          Configuration conf = context.getHadoopConf();
+          SummaryCollection fsc = SummaryReader
+              .load(fs, conf, factory, file.getPath(), summarySelector, tsrm.getSummaryCache(),
+                  tsrm.getIndexCache(), tsrm.getFileLenCache(), context.getCryptoService())
+              .getSummaries(Collections.singletonList(new Gatherer.RowRange(tablet.getExtent())));
+          sc.merge(fsc, factory);
+        }
+
+        return sc.getSummaries();
+      }
     });
 
     return selection.getFilesToCompact().stream().map(CompactableFileImpl::toStoredTabletFile)
         .collect(Collectors.toSet());
+  }
+
+  static Map<String,String> getOptsMap(AccumuloConfiguration conf, Property prefix) {
+    var builder = ImmutableMap.<String,String>builder();
+    conf.getAllPropertiesWithPrefix(prefix).forEach((k, v) -> {
+      String optKey = k.substring(prefix.getKey().length());
+      builder.put(optKey, v);
+    });
+
+    return builder.build();
   }
 
   static Deriver<CompactionDispatcher> createDispatcher(Tablet tablet) {
@@ -269,13 +331,7 @@ public class CompactableUtils {
       CompactionDispatcher newDispatcher = Property.createTableInstanceFromPropertyName(conf,
           Property.TABLE_COMPACTION_DISPATCHER, CompactionDispatcher.class, null);
 
-      var builder = ImmutableMap.<String,String>builder();
-      conf.getAllPropertiesWithPrefix(Property.TABLE_COMPACTION_DISPATCHER_OPTS).forEach((k, v) -> {
-        String optKey = k.substring(Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey().length());
-        builder.put(optKey, v);
-      });
-
-      Map<String,String> opts = builder.build();
+      Map<String,String> opts = getOptsMap(conf, Property.TABLE_COMPACTION_DISPATCHER_OPTS);
 
       newDispatcher.init(new CompactionDispatcher.InitParameters() {
         @Override
@@ -297,5 +353,130 @@ public class CompactableUtils {
       return newDispatcher;
 
     });
+  }
+
+  public static CompactionDriver getDriver(CompactionKind kind, Tablet tablet, Long compactionId,
+      CompactionConfig compactionConfig) {
+    if (kind == CompactionKind.USER) {
+
+      return new CompactionDriver() {
+
+        private WriteParameters wp;
+
+        @Override
+        public Set<StoredTabletFile>
+            selectFiles(SortedMap<StoredTabletFile,DataFileValue> allFiles) {
+
+          Set<StoredTabletFile> selectedFiles;
+
+          if (!UserCompactionUtils.isDefault(compactionConfig.getCompactionStrategy())) {
+            var plan = CompactableUtils.selectFiles(tablet, allFiles,
+                compactionConfig.getCompactionStrategy());
+            this.wp = plan.writeParameters;
+            selectedFiles = Set.copyOf(plan.inputFiles);
+          } else if (!UserCompactionUtils.isDefault(compactionConfig.getSelector())) {
+            selectedFiles =
+                CompactableUtils.selectFiles(tablet, allFiles, compactionConfig.getSelector());
+          } else {
+            selectedFiles = allFiles.keySet();
+          }
+
+          if (selectedFiles.isEmpty()) {
+            // TODO seems like this should be set after the metadata update.. was before in the
+            // exisitng
+            // code
+            tablet.setLastCompactionID(compactionId);
+
+            MetadataTableUtil.updateTabletCompactID(tablet.getExtent(), compactionId,
+                tablet.getTabletServer().getContext(), tablet.getTabletServer().getLock());
+          }
+
+          return selectedFiles;
+        }
+
+        @Override
+        public AccumuloConfiguration override(AccumuloConfiguration conf,
+            Set<CompactableFile> files) {
+          if (!UserCompactionUtils.isDefault(compactionConfig.getConfigurer())) {
+            return createCompactionConfiguration(tablet, files, compactionConfig.getConfigurer());
+          } else if (!UserCompactionUtils.isDefault(compactionConfig.getCompactionStrategy())
+              && wp != null) {
+            return createCompactionConfiguration(conf, wp);
+          }
+
+          return null;
+        }
+      };
+    } else if (kind == CompactionKind.SELECTOR) {
+      var tconf = tablet.getTableConfiguration();
+      var selectorClassName = tconf.get(Property.TABLE_COMPACTION_SELECTOR);
+
+      CompactionSelectorConfig cselCfg = null;
+
+      if (selectorClassName != null && !selectorClassName.isBlank()) {
+        var opts = getOptsMap(tconf, Property.TABLE_COMPACTION_SELECTOR_OPTS);
+        cselCfg = new CompactionSelectorConfig(selectorClassName).setOptions(opts);
+      }
+
+      CompactionSelectorConfig cselCfg2 = cselCfg;
+
+      CompactionStrategyConfig stratCfg = null;
+
+      if (cselCfg == null && tconf.isPropertySet(Property.TABLE_COMPACTION_STRATEGY, true)) {
+        // TODO log warning
+        var stratClassName = tconf.get(Property.TABLE_COMPACTION_STRATEGY);
+        var opts = getOptsMap(tconf, Property.TABLE_COMPACTION_STRATEGY_PREFIX);
+
+        stratCfg = new CompactionStrategyConfig(stratClassName).setOptions(opts);
+      }
+
+      CompactionStrategyConfig stratCfg2 = stratCfg;
+
+      if (cselCfg == null && stratCfg == null) {
+        return null;
+      }
+
+      return new CompactionDriver() {
+
+        private WriteParameters wp;
+
+        @Override
+        public Set<StoredTabletFile>
+            selectFiles(SortedMap<StoredTabletFile,DataFileValue> allFiles) {
+          if (cselCfg2 != null)
+            return CompactableUtils.selectFiles(tablet, allFiles, cselCfg2);
+          else {
+            var plan = CompactableUtils.selectFiles(tablet, allFiles, stratCfg2);
+            this.wp = plan.writeParameters;
+            return Set.copyOf(plan.inputFiles);
+          }
+        }
+
+        @Override
+        public AccumuloConfiguration override(AccumuloConfiguration conf,
+            Set<CompactableFile> files) {
+          if (wp != null) {
+            return createCompactionConfiguration(conf, wp);
+          }
+
+          return null;
+        }
+      };
+
+    }
+
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  public static AccumuloConfiguration getCompactionConfig(CompactionKind kind, Tablet tablet,
+      CompactionDriver driver, Set<CompactableFile> files) {
+    if (kind == CompactionKind.USER || kind == CompactionKind.SELECTOR) {
+      var oconf = driver.override(tablet.getTableConfiguration(), files);
+      if (oconf != null)
+        return oconf;
+    }
+
+    return createCompactionConfiguration(tablet, files);
   }
 }

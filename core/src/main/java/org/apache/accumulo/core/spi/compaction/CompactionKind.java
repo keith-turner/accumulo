@@ -26,11 +26,15 @@ package org.apache.accumulo.core.spi.compaction;
  */
 public enum CompactionKind {
   /**
-   * A system initiated compaction.
+   * A system initiated routine compaction.
    */
   SYSTEM,
   /**
-   * A user initiated compaction.
+   * Set of files selected by a CompactionSelector or CompactionStrategy configured for a table.
+   */
+  SELECTOR,
+  /**
+   * A user initiated a one time compaction using an Accumulo client.
    */
   USER,
   /**

@@ -39,7 +39,8 @@ import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 
 /**
- * Finds the largest set of small files that meet the compaction ratio to compact.
+ * Finds the largest continuous set of small files that meet the compaction ratio and do not prevent
+ * future compactions.
  *
  * @since 2.1.0
  * @see org.apache.accumulo.core.spi.compaction
@@ -243,7 +244,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     int larsmaIndex = -1;
     long larsmaSum = Long.MIN_VALUE;
 
-    // index into sortedFiles, everything at and below this index is a good set of files to compact
+    // index into sortedFiles, everything at and below this index meets the compaction ratio
     int goodIndex = -1;
 
     long sum = sortedFiles.get(0).getEstimatedSize();
@@ -262,6 +263,9 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
           break; // TODO old algorithm used to slide a window up when nothing found in smallest
                  // files
       } else if (c - 1 == goodIndex) {
+        // The previous file met the compaction ratio, but the current file does not. So all of the
+        // previous files are candidates. However we must ensure that any candidate set produces a
+        // file smaller than the next largest file in the next candidate set.
         if (larsmaIndex == -1 || larsmaSum > sortedFiles.get(goodIndex).getEstimatedSize()) {
           larsmaIndex = goodIndex;
           larsmaSum = sum - currSize;

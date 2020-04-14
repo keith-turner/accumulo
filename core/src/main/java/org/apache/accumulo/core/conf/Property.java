@@ -641,6 +641,7 @@ public enum Property {
           + " running a major compaction. When adjusting this property you may want to"
           + " also adjust table.file.max. Want to avoid the situation where only"
           + " merging minor compactions occur."),
+  @Deprecated(since = "2.1.0", forRemoval = true)
   TABLE_MAJC_COMPACTALL_IDLETIME("table.compaction.major.everything.idle", "1h",
       PropertyType.TIMEDURATION,
       "After a tablet has been idle (no mutations) for this time period it may"
@@ -664,7 +665,12 @@ public enum Property {
       SimpleCompactionDispatcher.class.getName(), PropertyType.CLASSNAME, "TODO"),
   TABLE_COMPACTION_DISPATCHER_OPTS("table.compaction.dispatcher.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction dispatcher"),
-
+  TABLE_COMPACTION_SELECTOR("table.compaction.selector", "", PropertyType.CLASSNAME, "TODO"),
+  TABLE_COMPACTION_SELECTOR_OPTS("table.compaction.selector.opts.", null, PropertyType.PREFIX,
+      "Options for the table compaction dispatcher"),
+  TABLE_COMPACTION_CONFIGUROR("table.compaction.configuror", "", PropertyType.CLASSNAME, "TODO"),
+  TABLE_COMPACTION_CONFIGUROR_OPTS("table.compaction.configuror.opts.", null, PropertyType.PREFIX,
+      "Options for the table compaction configuror"),
   TABLE_SCAN_DISPATCHER("table.scan.dispatcher", SimpleScanDispatcher.class.getName(),
       PropertyType.CLASSNAME,
       "This class is used to dynamically dispatch scans to configured scan executors.  Configured "
@@ -801,9 +807,11 @@ public enum Property {
       PropertyType.STRING, "The ScanInterpreter class to apply on scan arguments in the shell"),
   TABLE_CLASSPATH("table.classpath.context", "", PropertyType.STRING,
       "Per table classpath context"),
+  @Deprecated(since = "2.1.0", forRemoval = true)
   TABLE_COMPACTION_STRATEGY("table.majc.compaction.strategy",
       "org.apache.accumulo.tserver.compaction.DefaultCompactionStrategy", PropertyType.CLASSNAME,
       "A customizable major compaction strategy."),
+  @Deprecated(since = "2.1.0", forRemoval = true)
   TABLE_COMPACTION_STRATEGY_PREFIX("table.majc.compaction.strategy.opts.", null,
       PropertyType.PREFIX,
       "Properties in this category are used to configure the compaction strategy."),

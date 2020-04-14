@@ -21,8 +21,11 @@ package org.apache.accumulo.core.client.admin.compaction;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
+import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
+import org.apache.accumulo.core.client.summary.Summary;
 
 /**
  * This class select which files a user compaction will compact.
@@ -44,6 +47,10 @@ public interface CompactionSelector {
     PluginEnvironment getEnvironment();
 
     Collection<CompactableFile> getAvailableFiles();
+
+    Collection<Summary> getSummaries(Collection<CompactableFile> files,
+        Predicate<SummarizerConfiguration> summarySelector);
+
   }
 
   public static class Selection {

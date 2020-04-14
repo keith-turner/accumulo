@@ -25,7 +25,8 @@ import org.slf4j.Logger;
 
 /**
  *
- * {@code table.compaction.dispatcher.opts.service[.user[.<user type>]|maintenance|chop]=<service>}
+ * {@code table.compaction.dispatcher.opts.service[.user[.<user type>]|selected|maintenance|chop]=
+ * <service>}
  *
  * @see org.apache.accumulo.core.spi.compaction
  */

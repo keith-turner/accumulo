@@ -841,6 +841,7 @@ public class TabletServerResourceManager {
           return false;
         }
       }
+      // TODO remove this
       CompactionStrategy strategy = Property.createTableInstanceFromPropertyName(tableConf,
           Property.TABLE_COMPACTION_STRATEGY, CompactionStrategy.class,
           new DefaultCompactionStrategy());
