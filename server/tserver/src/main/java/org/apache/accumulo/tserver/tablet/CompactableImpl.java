@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -40,11 +39,9 @@ import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.master.thrift.TabletLoadState;
 import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
-import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
@@ -53,14 +50,10 @@ import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionService;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
-import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.util.MetadataTableUtil;
-import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
-import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
-import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -425,6 +418,7 @@ public class CompactableImpl implements Compactable {
     Long compactionId = null;
     boolean propogateDeletesForSelected = true;
     CompactionDriver driver;
+    List<IteratorSetting> iters = List.of();
 
     synchronized (this) {
       if (!service.equals(getConfiguredService(job.getKind())))
@@ -489,73 +483,17 @@ public class CompactableImpl implements Compactable {
         compactionId = this.compactionId;
       }
 
+      if (job.getKind() == CompactionKind.USER) {
+        iters = compactionConfig.getIterators();
+      }
+
       driver = this.driver;
     }
     // TODO only add if not in set!
     StoredTabletFile metaFile = null;
     try {
-      CompactionEnv cenv = new CompactionEnv() {
-        @Override
-        public boolean isCompactionEnabled() {
-          // TODO check for service change????
-          return !tablet.isClosing();
-        }
-
-        @Override
-        public IteratorScope getIteratorScope() {
-          return IteratorScope.majc;
-        }
-
-        @Override
-        public RateLimiter getReadLimiter() {
-          return tablet.getTabletServer().getMajorCompactionReadLimiter();
-        }
-
-        @Override
-        public RateLimiter getWriteLimiter() {
-          return tablet.getTabletServer().getMajorCompactionWriteLimiter();
-        }
-      };
-
-      int reason = MajorCompactionReason.from(job.getKind()).ordinal();
-
-      AccumuloConfiguration tableConfig =
-          CompactableUtils.getCompactionConfig(job.getKind(), tablet, driver, job.getFiles());
-
-      SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
-      HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
-      jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
-
-      boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
-
-      if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
-        propogateDeletes = propogateDeletesForSelected;
-      } else {
-        // TODO if any compaction job contains all of the files at its time of creation, then should
-        // probably not propogate
-        // TODO this is done outside of sync block
-        propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
-      }
-
-      TabletFile newFile = tablet.getNextMapFilename(!propogateDeletes ? "A" : "C");
-      TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));
-
-      // TODO user iters
-      List<IteratorSetting> iters = List.of();
-
-      // check as late as possible
-      if (tablet.isClosing() || tablet.isClosed())
-        return;
-
-      Compactor compactor = new Compactor(tablet.getContext(), tablet, compactFiles, null,
-          compactTmpName, propogateDeletes, cenv, iters, reason, tableConfig);
-
-      var mcs = compactor.call();
-
-      metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(compactFiles.keySet(),
-          compactTmpName, newFile, compactionId,
-          new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
-
+      metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId,
+          propogateDeletesForSelected, driver, iters);
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {

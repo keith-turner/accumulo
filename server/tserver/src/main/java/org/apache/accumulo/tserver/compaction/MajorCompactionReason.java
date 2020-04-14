@@ -31,6 +31,7 @@ public enum MajorCompactionReason {
       case CHOP:
         return CHOP;
       case SYSTEM:
+      case SELECTOR:
         return NORMAL;
       case USER:
         return USER;
