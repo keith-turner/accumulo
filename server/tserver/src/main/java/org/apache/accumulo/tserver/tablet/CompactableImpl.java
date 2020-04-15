@@ -110,6 +110,7 @@ public class CompactableImpl implements Compactable {
     Set<StoredTabletFile> getFilesToDrop();
 
     AccumuloConfiguration override(AccumuloConfiguration conf, Set<CompactableFile> files);
+
   }
 
   public CompactableImpl(Tablet tablet) {

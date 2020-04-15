@@ -133,7 +133,7 @@ public class CompactableUtils {
     return result;
   }
 
-  static CompactionPlan selectFiles(Tablet tablet,
+  static CompactionPlan selectFiles(CompactionKind kind, Tablet tablet,
       SortedMap<StoredTabletFile,DataFileValue> datafiles, CompactionStrategyConfig csc) {
 
     var trsm = tablet.getTabletResources().getTabletServerResourceManager();
@@ -142,7 +142,7 @@ public class CompactableUtils {
     BlockCache ic = trsm.getIndexCache();
     Cache<String,Long> fileLenCache = trsm.getFileLenCache();
     MajorCompactionRequest request = new MajorCompactionRequest(tablet.getExtent(),
-        MajorCompactionReason.USER, tablet.getTabletServer().getFileSystem(),
+        MajorCompactionReason.from(kind), tablet.getTabletServer().getFileSystem(),
         tablet.getTableConfiguration(), sc, ic, fileLenCache, tablet.getContext());
 
     request.setFiles(datafiles);
@@ -390,7 +390,8 @@ public class CompactableUtils {
         filesToDrop = Set.of();
         return CompactableUtils.selectFiles(tablet, allFiles, cselCfg2);
       } else {
-        var plan = CompactableUtils.selectFiles(tablet, allFiles, stratCfg2);
+        var plan =
+            CompactableUtils.selectFiles(CompactionKind.SELECTOR, tablet, allFiles, stratCfg2);
         this.wp = plan.writeParameters;
         filesToDrop = Set.copyOf(plan.deleteFiles);
         return Set.copyOf(plan.inputFiles);
@@ -433,7 +434,7 @@ public class CompactableUtils {
       Set<StoredTabletFile> selectedFiles;
 
       if (!UserCompactionUtils.isDefault(compactionConfig.getCompactionStrategy())) {
-        var plan = CompactableUtils.selectFiles(tablet, allFiles,
+        var plan = CompactableUtils.selectFiles(CompactionKind.USER, tablet, allFiles,
             compactionConfig.getCompactionStrategy());
         this.wp = plan.writeParameters;
         selectedFiles = Set.copyOf(plan.inputFiles);
