@@ -84,6 +84,8 @@ import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
@@ -91,6 +93,8 @@ import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableMap;
 
 public class CompactableUtils {
+
+  private static final Logger log = LoggerFactory.getLogger(CompactableUtils.class);
 
   public static Map<StoredTabletFile,Pair<Key,Key>> getFirstAndLastKeys(Tablet tablet,
       Set<StoredTabletFile> allFiles) throws IOException {
@@ -152,6 +156,10 @@ public class CompactableUtils {
       if (strategy.shouldCompact(request)) {
         strategy.gatherInformation(request);
         var plan = strategy.getCompactionPlan(request);
+
+        log.debug("Selected files using compaction strategy {} {} {} {}",
+            strategy.getClass().getSimpleName(), csc.getOptions(), plan.inputFiles,
+            plan.deleteFiles);
 
         plan.validate(datafiles.keySet());
 
