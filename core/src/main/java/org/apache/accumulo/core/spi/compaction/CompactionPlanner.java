@@ -72,6 +72,9 @@ public interface CompactionPlanner {
     Collection<CompactionJob> getRunningCompactions();
 
     /**
+     * TODO confirm old code would compact whatever the strategy returned in a single compaction...
+     * also was this done for user and table compactions.
+     *
      * @return true if all candidates must be compacted in a single compaction.
      */
     boolean requiresSingleCompaction();

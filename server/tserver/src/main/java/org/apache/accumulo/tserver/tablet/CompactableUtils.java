@@ -518,7 +518,7 @@ public class CompactableUtils {
 
   static StoredTabletFile compact(Tablet tablet, CompactionJob job, Set<StoredTabletFile> jobFiles,
       Long compactionId, boolean propogateDeletesForSelected,
-      CompactableImpl.CompactionHelper driver, List<IteratorSetting> iters)
+      CompactableImpl.CompactionHelper helper, List<IteratorSetting> iters)
       throws IOException, CompactionCanceledException {
     StoredTabletFile metaFile;
     CompactionEnv cenv = new CompactionEnv() {
@@ -547,19 +547,21 @@ public class CompactableUtils {
     int reason = MajorCompactionReason.from(job.getKind()).ordinal();
 
     AccumuloConfiguration tableConfig =
-        getCompactionConfig(job.getKind(), tablet, driver, job.getFiles());
+        getCompactionConfig(job.getKind(), tablet, helper, job.getFiles());
 
     SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
     HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
     jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
 
-    // TODO this approach will only drop files when there are files to compact... I think this is
-    // what old code did
-    driver.getFilesToDrop().forEach(f -> {
-      if (allFiles.containsKey(f)) {
-        compactFiles.put(f, allFiles.get(f));
-      }
-    });
+    if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
+      // TODO this approach will only drop files when there are files to compact... I think this is
+      // what old code did
+      helper.getFilesToDrop().forEach(f -> {
+        if (allFiles.containsKey(f)) {
+          compactFiles.put(f, allFiles.get(f));
+        }
+      });
+    }
 
     boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
 
