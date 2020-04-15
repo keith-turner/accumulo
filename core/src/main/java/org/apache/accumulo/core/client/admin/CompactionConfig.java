@@ -195,7 +195,8 @@ public class CompactionConfig {
    * @since 2.1.0
    */
   public CompactionConfig setExecutionHints(Map<String,String> hints) {
-    Preconditions.checkState(compactionStrategy.getClassName().isEmpty());
+    if (!hints.isEmpty())
+      Preconditions.checkState(compactionStrategy.getClassName().isEmpty());
     this.hints = Map.copyOf(hints);
     return this;
   }
