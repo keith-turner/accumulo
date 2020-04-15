@@ -124,6 +124,13 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         return new CompactionPlan();
       }
 
+      if (params.requiresSingleCompaction()) {
+        var ceid = getExecutor(params.getCandidates());
+        CompactionJob job = new CompactionJob(params.getAll().size(), ceid, params.getCandidates(),
+            params.getKind());
+        return new CompactionPlan(List.of(job));
+      }
+
       Set<CompactableFile> filesCopy = new HashSet<>(params.getCandidates());
 
       long maxSizeToCompact = getMaxSizeToCompact(params.getKind());
@@ -173,7 +180,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         return new CompactionPlan();
       } else {
         // determine which executor to use based on the size of the files
-        var ceid = getExecutor(group.stream().mapToLong(CompactableFile::getEstimatedSize).sum());
+        var ceid = getExecutor(group);
 
         if (!params.getRunningCompactions().isEmpty()) {
           // TODO remove
@@ -286,7 +293,10 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     return sortedFiles.subList(0, larsmaIndex + 1);
   }
 
-  CompactionExecutorId getExecutor(long size) {
+  CompactionExecutorId getExecutor(Collection<CompactableFile> files) {
+
+    long size = files.stream().mapToLong(CompactableFile::getEstimatedSize).sum();
+
     for (Executor executor : executors) {
       if (size < executor.maxSize)
         return executor.ceid;

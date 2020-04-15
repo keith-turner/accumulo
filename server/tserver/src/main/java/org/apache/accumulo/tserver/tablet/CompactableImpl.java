@@ -351,7 +351,11 @@ public class CompactableImpl implements Compactable {
       var runningJobsCopy = Set.copyOf(runnningJobs);
 
       switch (kind) {
-        case SYSTEM:
+        case SYSTEM: {
+          if (tablet.getTableConfiguration().isPropertySet(Property.TABLE_COMPACTION_STRATEGY,
+              true))
+            return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
+
           switch (selectStatus) {
             case NOT_ACTIVE:
               return Optional.of(new Compactable.Files(files, kind,
@@ -369,6 +373,7 @@ public class CompactableImpl implements Compactable {
             default:
               throw new AssertionError();
           }
+        }
         case SELECTOR:
           // intentional fall through
         case USER:
@@ -379,13 +384,16 @@ public class CompactableImpl implements Compactable {
               return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
             case SELECTED: {
               if (selectKind == kind) {
+                boolean requireSingle =
+                    kind == CompactionKind.SELECTOR && tablet.getTableConfiguration()
+                        .isPropertySet(Property.TABLE_COMPACTION_STRATEGY, true);
                 Set<StoredTabletFile> candidates = new HashSet<>(selectedFiles);
                 candidates.removeAll(allCompactingFiles);
                 candidates = Collections.unmodifiableSet(candidates);
                 Preconditions.checkState(files.keySet().containsAll(candidates),
                     "selected files not in all files %s %s", candidates, files.keySet());
-                return Optional.of(
-                    new Compactable.Files(files, kind, Set.copyOf(selectedFiles), runningJobsCopy));
+                return Optional.of(new Compactable.Files(files, kind, Set.copyOf(selectedFiles),
+                    runningJobsCopy, requireSingle));
               } else {
                 return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
               }

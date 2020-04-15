@@ -71,6 +71,11 @@ public interface CompactionPlanner {
      */
     Collection<CompactionJob> getRunningCompactions();
 
+    /**
+     * @return true if all candidates must be compacted in a single compaction.
+     */
+    boolean requiresSingleCompaction();
+
   }
 
   /**
