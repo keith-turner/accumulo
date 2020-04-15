@@ -98,6 +98,8 @@ public class CompactableImpl implements Compactable {
   public static interface CompactionHelper {
     Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> allFiles);
 
+    Collection<StoredTabletFile> getFilesToDrop();
+
     AccumuloConfiguration override(AccumuloConfiguration conf, Set<CompactableFile> files);
   }
 

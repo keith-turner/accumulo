@@ -85,6 +85,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
+import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableMap;
@@ -151,11 +152,8 @@ public class CompactableUtils {
       if (strategy.shouldCompact(request)) {
         strategy.gatherInformation(request);
         var plan = strategy.getCompactionPlan(request);
-        if (!plan.deleteFiles.isEmpty()) {
-          // TODO support
-          throw new UnsupportedOperationException(
-              "Dropping files using compaction strategy is not supported " + csc);
-        }
+
+        plan.validate(datafiles.keySet());
 
         return plan;
       }
@@ -369,6 +367,7 @@ public class CompactableUtils {
     private final CompactionStrategyConfig stratCfg2;
     private final Tablet tablet;
     private WriteParameters wp;
+    private Collection<StoredTabletFile> filesToDrop;
 
     private TableCompactionHelper(CompactionSelectorConfig cselCfg2,
         CompactionStrategyConfig stratCfg2, Tablet tablet) {
@@ -379,11 +378,13 @@ public class CompactableUtils {
 
     @Override
     public Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> allFiles) {
-      if (cselCfg2 != null)
+      if (cselCfg2 != null) {
+        filesToDrop = Set.of();
         return CompactableUtils.selectFiles(tablet, allFiles, cselCfg2);
-      else {
+      } else {
         var plan = CompactableUtils.selectFiles(tablet, allFiles, stratCfg2);
         this.wp = plan.writeParameters;
+        filesToDrop = Set.copyOf(plan.deleteFiles);
         return Set.copyOf(plan.inputFiles);
       }
     }
@@ -396,6 +397,12 @@ public class CompactableUtils {
 
       return null;
     }
+
+    @Override
+    public Collection<StoredTabletFile> getFilesToDrop() {
+      Preconditions.checkState(filesToDrop != null);
+      return filesToDrop;
+    }
   }
 
   private static final class UserCompactionHelper implements CompactionHelper {
@@ -403,6 +410,7 @@ public class CompactableUtils {
     private final Tablet tablet;
     private final Long compactionId;
     private WriteParameters wp;
+    private Collection<StoredTabletFile> filesToDrop;
 
     private UserCompactionHelper(CompactionConfig compactionConfig, Tablet tablet,
         Long compactionId) {
@@ -421,11 +429,14 @@ public class CompactableUtils {
             compactionConfig.getCompactionStrategy());
         this.wp = plan.writeParameters;
         selectedFiles = Set.copyOf(plan.inputFiles);
+        filesToDrop = Set.copyOf(plan.deleteFiles);
       } else if (!UserCompactionUtils.isDefault(compactionConfig.getSelector())) {
         selectedFiles =
             CompactableUtils.selectFiles(tablet, allFiles, compactionConfig.getSelector());
+        filesToDrop = Set.of();
       } else {
         selectedFiles = allFiles.keySet();
+        filesToDrop = Set.of();
       }
 
       if (selectedFiles.isEmpty()) {
@@ -451,6 +462,12 @@ public class CompactableUtils {
       }
 
       return null;
+    }
+
+    @Override
+    public Collection<StoredTabletFile> getFilesToDrop() {
+      Preconditions.checkState(filesToDrop != null);
+      return filesToDrop;
     }
   }
 
@@ -535,6 +552,14 @@ public class CompactableUtils {
     SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
     HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
     jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
+
+    // TODO this approach will only drop files when there are files to compact... I think this is
+    // what old code did
+    driver.getFilesToDrop().forEach(f -> {
+      if (allFiles.containsKey(f)) {
+        compactFiles.put(f, allFiles.get(f));
+      }
+    });
 
     boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
 
