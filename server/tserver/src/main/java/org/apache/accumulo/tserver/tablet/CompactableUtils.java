@@ -78,7 +78,7 @@ import org.apache.accumulo.tserver.compaction.CompactionStrategy;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
-import org.apache.accumulo.tserver.tablet.CompactableImpl.CompactionDriver;
+import org.apache.accumulo.tserver.tablet.CompactableImpl.CompactionHelper;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionCanceledException;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
 import org.apache.hadoop.conf.Configuration;
@@ -364,13 +364,13 @@ public class CompactableUtils {
     });
   }
 
-  private static final class TableCompactionDriver implements CompactionDriver {
+  private static final class TableCompactionHelper implements CompactionHelper {
     private final CompactionSelectorConfig cselCfg2;
     private final CompactionStrategyConfig stratCfg2;
     private final Tablet tablet;
     private WriteParameters wp;
 
-    private TableCompactionDriver(CompactionSelectorConfig cselCfg2,
+    private TableCompactionHelper(CompactionSelectorConfig cselCfg2,
         CompactionStrategyConfig stratCfg2, Tablet tablet) {
       this.cselCfg2 = cselCfg2;
       this.stratCfg2 = stratCfg2;
@@ -398,13 +398,13 @@ public class CompactableUtils {
     }
   }
 
-  private static final class UserCompactionDriver implements CompactionDriver {
+  private static final class UserCompactionHelper implements CompactionHelper {
     private final CompactionConfig compactionConfig;
     private final Tablet tablet;
     private final Long compactionId;
     private WriteParameters wp;
 
-    private UserCompactionDriver(CompactionConfig compactionConfig, Tablet tablet,
+    private UserCompactionHelper(CompactionConfig compactionConfig, Tablet tablet,
         Long compactionId) {
       this.compactionConfig = compactionConfig;
       this.tablet = tablet;
@@ -454,10 +454,10 @@ public class CompactableUtils {
     }
   }
 
-  public static CompactionDriver getDriver(CompactionKind kind, Tablet tablet, Long compactionId,
+  public static CompactionHelper getHelper(CompactionKind kind, Tablet tablet, Long compactionId,
       CompactionConfig compactionConfig) {
     if (kind == CompactionKind.USER) {
-      return new UserCompactionDriver(compactionConfig, tablet, compactionId);
+      return new UserCompactionHelper(compactionConfig, tablet, compactionId);
     } else if (kind == CompactionKind.SELECTOR) {
       var tconf = tablet.getTableConfiguration();
       var selectorClassName = tconf.get(Property.TABLE_COMPACTION_SELECTOR);
@@ -480,7 +480,7 @@ public class CompactableUtils {
       }
 
       if (cselCfg != null || stratCfg != null) {
-        return new TableCompactionDriver(cselCfg, stratCfg, tablet);
+        return new TableCompactionHelper(cselCfg, stratCfg, tablet);
       }
     }
 
@@ -489,7 +489,7 @@ public class CompactableUtils {
   }
 
   public static AccumuloConfiguration getCompactionConfig(CompactionKind kind, Tablet tablet,
-      CompactionDriver driver, Set<CompactableFile> files) {
+      CompactionHelper driver, Set<CompactableFile> files) {
     if (kind == CompactionKind.USER || kind == CompactionKind.SELECTOR) {
       var oconf = driver.override(tablet.getTableConfiguration(), files);
       if (oconf != null)
@@ -501,7 +501,7 @@ public class CompactableUtils {
 
   static StoredTabletFile compact(Tablet tablet, CompactionJob job, Set<StoredTabletFile> jobFiles,
       Long compactionId, boolean propogateDeletesForSelected,
-      CompactableImpl.CompactionDriver driver, List<IteratorSetting> iters)
+      CompactableImpl.CompactionHelper driver, List<IteratorSetting> iters)
       throws IOException, CompactionCanceledException {
     StoredTabletFile metaFile;
     CompactionEnv cenv = new CompactionEnv() {

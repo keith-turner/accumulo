@@ -90,12 +90,12 @@ public class CompactableImpl implements Compactable {
   private SpecialStatus selectStatus = SpecialStatus.NOT_ACTIVE;
   private CompactionKind selectKind = null;
   private boolean selectedAll = false;
-  private CompactionDriver driver = null;
+  private CompactionHelper chelper = null;
   private Long compactionId;
   private CompactionConfig compactionConfig;
   private volatile Consumer<Compactable> newFileCallback;
 
-  public static interface CompactionDriver {
+  public static interface CompactionHelper {
     Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> allFiles);
 
     AccumuloConfiguration override(AccumuloConfiguration conf, Set<CompactableFile> files);
@@ -216,9 +216,9 @@ public class CompactableImpl implements Compactable {
     Preconditions.checkArgument(kind == CompactionKind.USER || kind == CompactionKind.SELECTOR);
 
     // TODO optimize this
-    var driver = CompactableUtils.getDriver(kind, tablet, compactionId, compactionConfig);
+    var localHelper = CompactableUtils.getHelper(kind, tablet, compactionId, compactionConfig);
 
-    if (driver == null)
+    if (localHelper == null)
       return;
 
     synchronized (this) {
@@ -230,7 +230,7 @@ public class CompactableImpl implements Compactable {
         selectKind = kind;
         selectedFiles.clear();
         selectedAll = false;
-        this.driver = driver;
+        this.chelper = localHelper;
         this.compactionId = compactionId;
         this.compactionConfig = compactionConfig;
         // TODO config
@@ -246,13 +246,13 @@ public class CompactableImpl implements Compactable {
 
   private void selectFiles() {
 
-    CompactionDriver driver;
+    CompactionHelper localHelper;
 
     synchronized (this) {
       if (selectStatus == SpecialStatus.NEW && allCompactingFiles.isEmpty()) {
         selectedFiles.clear();
         selectStatus = SpecialStatus.SELECTING;
-        driver = this.driver;
+        localHelper = this.chelper;
         log.debug("User compaction status changed {} {}", getExtent(), selectStatus);
       } else {
         return;
@@ -261,7 +261,7 @@ public class CompactableImpl implements Compactable {
 
     try {
       var allFiles = tablet.getDatafiles();
-      Set<StoredTabletFile> selectingFiles = driver.selectFiles(allFiles);
+      Set<StoredTabletFile> selectingFiles = localHelper.selectFiles(allFiles);
 
       if (selectingFiles.isEmpty()) {
         synchronized (this) {
@@ -425,7 +425,7 @@ public class CompactableImpl implements Compactable {
 
     Long compactionId = null;
     boolean propogateDeletesForSelected = true;
-    CompactionDriver driver;
+    CompactionHelper localHelper;
     List<IteratorSetting> iters = List.of();
 
     synchronized (this) {
@@ -495,13 +495,13 @@ public class CompactableImpl implements Compactable {
         iters = compactionConfig.getIterators();
       }
 
-      driver = this.driver;
+      localHelper = this.chelper;
     }
     // TODO only add if not in set!
     StoredTabletFile metaFile = null;
     try {
       metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId,
-          propogateDeletesForSelected, driver, iters);
+          propogateDeletesForSelected, localHelper, iters);
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {
