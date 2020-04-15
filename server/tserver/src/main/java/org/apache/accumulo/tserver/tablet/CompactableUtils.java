@@ -367,7 +367,7 @@ public class CompactableUtils {
     private final CompactionStrategyConfig stratCfg2;
     private final Tablet tablet;
     private WriteParameters wp;
-    private Collection<StoredTabletFile> filesToDrop;
+    private Set<StoredTabletFile> filesToDrop;
 
     private TableCompactionHelper(CompactionSelectorConfig cselCfg2,
         CompactionStrategyConfig stratCfg2, Tablet tablet) {
@@ -399,7 +399,7 @@ public class CompactableUtils {
     }
 
     @Override
-    public Collection<StoredTabletFile> getFilesToDrop() {
+    public Set<StoredTabletFile> getFilesToDrop() {
       Preconditions.checkState(filesToDrop != null);
       return filesToDrop;
     }
@@ -410,7 +410,7 @@ public class CompactableUtils {
     private final Tablet tablet;
     private final Long compactionId;
     private WriteParameters wp;
-    private Collection<StoredTabletFile> filesToDrop;
+    private Set<StoredTabletFile> filesToDrop;
 
     private UserCompactionHelper(CompactionConfig compactionConfig, Tablet tablet,
         Long compactionId) {
@@ -465,7 +465,7 @@ public class CompactableUtils {
     }
 
     @Override
-    public Collection<StoredTabletFile> getFilesToDrop() {
+    public Set<StoredTabletFile> getFilesToDrop() {
       Preconditions.checkState(filesToDrop != null);
       return filesToDrop;
     }
@@ -553,16 +553,6 @@ public class CompactableUtils {
     HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
     jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
 
-    if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
-      // TODO this approach will only drop files when there are files to compact... I think this is
-      // what old code did
-      helper.getFilesToDrop().forEach(f -> {
-        if (allFiles.containsKey(f)) {
-          compactFiles.put(f, allFiles.get(f));
-        }
-      });
-    }
-
     boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
 
     if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
@@ -581,6 +571,16 @@ public class CompactableUtils {
         compactTmpName, propogateDeletes, cenv, iters, reason, tableConfig);
 
     var mcs = compactor.call();
+
+    if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
+      // TODO this approach will only drop files when there are files to compact... I think this is
+      // what old code did
+      helper.getFilesToDrop().forEach(f -> {
+        if (allFiles.containsKey(f)) {
+          compactFiles.put(f, allFiles.get(f));
+        }
+      });
+    }
 
     metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(compactFiles.keySet(),
         compactTmpName, newFile, compactionId,

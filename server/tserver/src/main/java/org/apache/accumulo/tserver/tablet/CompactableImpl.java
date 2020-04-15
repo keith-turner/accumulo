@@ -61,6 +61,12 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Sets;
 
+/**
+ * This class exists between compaction services and tablets and tracks state related to compactions
+ * for a tablet. This class was written to mainly contain code related to tracking files, state, and
+ * synchronization. All other code was placed in {@link CompactableUtils} inorder to make this class
+ * easier to analyze.
+ */
 public class CompactableImpl implements Compactable {
 
   private static final Logger log = LoggerFactory.getLogger(CompactableImpl.class);
@@ -95,10 +101,13 @@ public class CompactableImpl implements Compactable {
   private CompactionConfig compactionConfig;
   private volatile Consumer<Compactable> newFileCallback;
 
+  // This interface exists for two purposes. First it allows abstraction of new and old
+  // implementations for user pluggable file selection code. Second it facilitates placing code
+  // outside of this class.
   public static interface CompactionHelper {
     Set<StoredTabletFile> selectFiles(SortedMap<StoredTabletFile,DataFileValue> allFiles);
 
-    Collection<StoredTabletFile> getFilesToDrop();
+    Set<StoredTabletFile> getFilesToDrop();
 
     AccumuloConfiguration override(AccumuloConfiguration conf, Set<CompactableFile> files);
   }
@@ -236,7 +245,7 @@ public class CompactableImpl implements Compactable {
         this.compactionId = compactionId;
         this.compactionConfig = compactionConfig;
         // TODO config
-        log.debug("User compaction status changed {} {}", getExtent(), selectStatus);
+        log.debug("Selected compaction status changed {} {}", getExtent(), selectStatus);
       } else {
         return;
       }
@@ -255,7 +264,7 @@ public class CompactableImpl implements Compactable {
         selectedFiles.clear();
         selectStatus = SpecialStatus.SELECTING;
         localHelper = this.chelper;
-        log.debug("User compaction status changed {} {}", getExtent(), selectStatus);
+        log.debug("Selected compaction status changed {} {}", getExtent(), selectStatus);
       } else {
         return;
       }
@@ -268,16 +277,17 @@ public class CompactableImpl implements Compactable {
       if (selectingFiles.isEmpty()) {
         synchronized (this) {
           selectStatus = SpecialStatus.NOT_ACTIVE;
-          log.debug("User compaction status changed {} {}", getExtent(), selectStatus);
+          log.debug("Selected compaction status changed {} {}", getExtent(), selectStatus);
         }
       } else {
-        var allSelected = allFiles.keySet().equals(selectingFiles);
+        var allSelected =
+            allFiles.keySet().equals(Sets.union(selectingFiles, localHelper.getFilesToDrop()));
         synchronized (this) {
           selectStatus = SpecialStatus.SELECTED;
           selectedFiles.addAll(selectingFiles);
           selectedAll = allSelected;
-          log.debug("User compaction status changed {} {} {}", getExtent(), selectStatus,
-              asFileNames(selectedFiles));
+          log.debug("Selected compaction status changed {} {} {} {}", getExtent(), selectStatus,
+              selectedAll, asFileNames(selectedFiles));
         }
 
         // TODO notify compaction manager to process this tablet!
@@ -287,7 +297,7 @@ public class CompactableImpl implements Compactable {
       synchronized (this) {
         selectStatus = SpecialStatus.NEW;
         log.error("Failed to select user compaction files {}", getExtent(), e);
-        log.debug("User compaction status changed {} {}", getExtent(), selectStatus);
+        log.debug("Selected compaction status changed {} {}", getExtent(), selectStatus);
         selectedFiles.clear();
       }
     }
@@ -309,7 +319,7 @@ public class CompactableImpl implements Compactable {
 
     if (selectedFiles.isEmpty()) {
       selectStatus = SpecialStatus.NOT_ACTIVE;
-      log.debug("User compaction status changed {} {}", getExtent(), selectStatus);
+      log.debug("Selected compaction status changed {} {}", getExtent(), selectStatus);
     } else {
       selectedFiles.add(newFile);
       log.debug("Compacted subset of selected files {} {} -> {}", getExtent(),
@@ -403,7 +413,7 @@ public class CompactableImpl implements Compactable {
             default:
               throw new AssertionError();
           }
-        case CHOP:
+        case CHOP: // TODO analyze how this interacts with selected compactions
           switch (chopStatus) {
             case NOT_ACTIVE:
             case NEW:
