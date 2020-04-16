@@ -251,9 +251,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
   /**
    * Find the largest set of small files to compact.
-   *
-   * <p>
-   * See https://gist.github.com/keith-turner/16125790c6ff0d86c67795a08d2c057f
    */
   public static Collection<CompactableFile> findMapFilesToCompact(Set<CompactableFile> files,
       double ratio, int maxFilesToCompact, long maxSizeToCompact) {

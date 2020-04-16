@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.core.spi.compaction;
 
+import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
+
 /**
  * TODO reconcile with CompactionReason
  *
@@ -30,7 +32,8 @@ public enum CompactionKind {
    */
   SYSTEM,
   /**
-   * Set of files selected by a CompactionSelector or CompactionStrategy configured for a table.
+   * Set of files selected by a {@link CompactionSelector} or CompactionStrategy configured for a
+   * table.
    */
   SELECTOR,
   /**

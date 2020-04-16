@@ -410,22 +410,34 @@ public enum Property {
       "The maximum number of concurrent tablet migrations for a tablet server"),
   TSERV_MAJC_DELAY("tserver.compaction.major.delay", "30s", PropertyType.TIMEDURATION,
       "Time a tablet server will sleep between checking which tablets need compaction."),
-  @Deprecated(since = "2.1.0", forRemoval = true)
-  TSERV_MAJC_THREAD_MAXOPEN("tserver.compaction.major.thread.files.open.max", "10",
-      PropertyType.COUNT, "Max number of RFiles a major compaction thread can open at once. "),
-  @Deprecated(since = "2.1.0", forRemoval = true)
-  TSERV_MAJC_MAXCONCURRENT("tserver.compaction.major.concurrent.max", "3", PropertyType.COUNT,
-      "The maximum number of concurrent major compactions for a tablet server"),
   TSERV_COMPACTION_SERVICE_PREFIX("tserver.compaction.service.", null, PropertyType.PREFIX, ""),
   TSERV_COMPACTION_SERVICE_DEFAULT_PLANNER("tserver.compaction.service.default.planner",
       LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
+  TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN("tserver.compaction.service.default.opts.maxOpen", "30",
+      PropertyType.COUNT, "The maximum number of files a compaction will open"),
   TSERV_COMPACTION_SERVICE_DEFAULT_EXECUTORS("tserver.compaction.service.default.opts.executors",
       "[{'name':'tiny','maxSize':'8M','numThreads':3},"
           + "{'name':'small','maxSize':'32M','numThreads':3},"
           + "{'name':'medium','maxSize':'128M','numThreads':3},"
           + "{'name':'large','maxSize':'512M','numThreads':3},"
           + "{'name':'huge','numThreads':3}]".replaceAll("'", "\""),
-      PropertyType.STRING, ""),
+      PropertyType.STRING,
+      "Json configuration for muliple executors.  Each executor has a name, number of threads and "
+          + "optional max size. Only compactions where the sum of the input file sizes is smaller than"
+          + " the max size will run on an executor.  One executor can have no max size and it will run"
+          + " everything that is too large for the other executors.  If all executors have a max size,"
+          + " the system compactions will only run for compactions smaller than the largest max size. "
+          + "User and selector compactions will always run, even if there is not executor for their "
+          + "size.  If a user or selector compaction exceeds all max sizes, then it will run on the "
+          + "largest."),
+  @Deprecated(since = "2.1.0", forRemoval = true)
+  @ReplacedBy(property = Property.TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN)
+  TSERV_MAJC_THREAD_MAXOPEN("tserver.compaction.major.thread.files.open.max", "10",
+      PropertyType.COUNT, "Max number of RFiles a major compaction thread can open at once. "),
+  @Deprecated(since = "2.1.0", forRemoval = true)
+  @ReplacedBy(property = Property.TSERV_COMPACTION_SERVICE_DEFAULT_EXECUTORS)
+  TSERV_MAJC_MAXCONCURRENT("tserver.compaction.major.concurrent.max", "3", PropertyType.COUNT,
+      "The maximum number of concurrent major compactions for a tablet server"),
   TSERV_MAJC_THROUGHPUT("tserver.compaction.major.throughput", "0B", PropertyType.BYTES,
       "Maximum number of bytes to read or write per second over all major"
           + " compactions on a TabletServer, or 0B for unlimited."),
@@ -662,15 +674,28 @@ public enum Property {
           + "in-memory map flushed to disk in a minor compaction. There is no guarantee an idle "
           + "tablet will be compacted."),
   TABLE_COMPACTION_DISPATCHER("table.compaction.dispatcher",
-      SimpleCompactionDispatcher.class.getName(), PropertyType.CLASSNAME, "TODO"),
+      SimpleCompactionDispatcher.class.getName(), PropertyType.CLASSNAME,
+      "A configurable dispatcher that decides what comaction service a table should use."),
   TABLE_COMPACTION_DISPATCHER_OPTS("table.compaction.dispatcher.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction dispatcher"),
-  TABLE_COMPACTION_SELECTOR("table.compaction.selector", "", PropertyType.CLASSNAME, "TODO"),
+  TABLE_COMPACTION_SELECTOR("table.compaction.selector", "", PropertyType.CLASSNAME,
+      "A configurable selector for a table that can periodically select file for mandatory compaction, even if the files do not meet the compaction ratio."),
   TABLE_COMPACTION_SELECTOR_OPTS("table.compaction.selector.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction dispatcher"),
-  TABLE_COMPACTION_CONFIGUROR("table.compaction.configuror", "", PropertyType.CLASSNAME, "TODO"),
+  TABLE_COMPACTION_CONFIGUROR("table.compaction.configuror", "", PropertyType.CLASSNAME,
+      "A plugin that can dynamically configure compaction output files based on input files."),
   TABLE_COMPACTION_CONFIGUROR_OPTS("table.compaction.configuror.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction configuror"),
+  @Deprecated(since = "2.1.0", forRemoval = true)
+  @ReplacedBy(property = TABLE_COMPACTION_SELECTOR)
+  TABLE_COMPACTION_STRATEGY("table.majc.compaction.strategy",
+      "org.apache.accumulo.tserver.compaction.DefaultCompactionStrategy", PropertyType.CLASSNAME,
+      "A customizable major compaction strategy."),
+  @Deprecated(since = "2.1.0", forRemoval = true)
+  @ReplacedBy(property = TABLE_COMPACTION_SELECTOR_OPTS)
+  TABLE_COMPACTION_STRATEGY_PREFIX("table.majc.compaction.strategy.opts.", null,
+      PropertyType.PREFIX,
+      "Properties in this category are used to configure the compaction strategy."),
   TABLE_SCAN_DISPATCHER("table.scan.dispatcher", SimpleScanDispatcher.class.getName(),
       PropertyType.CLASSNAME,
       "This class is used to dynamically dispatch scans to configured scan executors.  Configured "
@@ -807,14 +832,6 @@ public enum Property {
       PropertyType.STRING, "The ScanInterpreter class to apply on scan arguments in the shell"),
   TABLE_CLASSPATH("table.classpath.context", "", PropertyType.STRING,
       "Per table classpath context"),
-  @Deprecated(since = "2.1.0", forRemoval = true)
-  TABLE_COMPACTION_STRATEGY("table.majc.compaction.strategy",
-      "org.apache.accumulo.tserver.compaction.DefaultCompactionStrategy", PropertyType.CLASSNAME,
-      "A customizable major compaction strategy."),
-  @Deprecated(since = "2.1.0", forRemoval = true)
-  TABLE_COMPACTION_STRATEGY_PREFIX("table.majc.compaction.strategy.opts.", null,
-      PropertyType.PREFIX,
-      "Properties in this category are used to configure the compaction strategy."),
   TABLE_REPLICATION("table.replication", "false", PropertyType.BOOLEAN,
       "Is replication enabled for the given table"),
   TABLE_REPLICATION_TARGET("table.replication.target.", null, PropertyType.PREFIX,

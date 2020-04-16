@@ -21,12 +21,44 @@ package org.apache.accumulo.core.spi.compaction;
 import java.util.EnumMap;
 import java.util.Map;
 
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.slf4j.Logger;
 
 /**
+ * Dispatcher that supports simple configuration for making tables use compaction services. By
+ * default it dispatches to a compction service named default.
  *
- * {@code table.compaction.dispatcher.opts.service[.user[.<user type>]|selected|maintenance|chop]=
+ * <p>
+ * The following schema is supported for configration options.
+ *
+ * <p>
+ * {@code table.compaction.dispatcher.opts.service[.user[.<user type>]|selected|system|chop]=
  * <service>}
+ *
+ * <p>
+ * The following configuration will make a table use compaction service cs9 for user compactions,
+ * service cs4 for chop compactions, and service cs7 for everything else.
+ *
+ * <p>
+ * {@code
+ *   table.compaction.dispatcher.opts.service=cs7
+ *   table.compaction.dispatcher.opts.service.user=cs9
+ *   table.compaction.dispatcher.opts.service.chop=cs4
+ * }
+ *
+ * <p>
+ * Compactions started using the client API are called user compactions and can set execution hints
+ * using {@link CompactionConfig#setExecutionHints(Map)}. Hints of the form
+ * {@code compaction_type=<user type>} can be used by this dispatcher. For example the following
+ * will use service cs2 when the hint {@code compaction_type=urgent} is seen, service cs3 when hint
+ * {@code compaction_type=trifling}, everything else uses cs9.
+ *
+ * <p>
+ * {@code
+ *   table.compaction.dispatcher.opts.service=cs9
+ *   table.compaction.dispatcher.opts.service.user.urgent=cs2
+ *   table.compaction.dispatcher.opts.service.user.trifling=cs3
+ * }
  *
  * @see org.apache.accumulo.core.spi.compaction
  */
