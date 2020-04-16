@@ -397,16 +397,13 @@ public class CompactableImpl implements Compactable {
               return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
             case SELECTED: {
               if (selectKind == kind) {
-                boolean requireSingle =
-                    kind == CompactionKind.SELECTOR && tablet.getTableConfiguration()
-                        .isPropertySet(Property.TABLE_COMPACTION_STRATEGY, true);
                 Set<StoredTabletFile> candidates = new HashSet<>(selectedFiles);
                 candidates.removeAll(allCompactingFiles);
                 candidates = Collections.unmodifiableSet(candidates);
                 Preconditions.checkState(files.keySet().containsAll(candidates),
                     "selected files not in all files %s %s", candidates, files.keySet());
-                return Optional.of(new Compactable.Files(files, kind, Set.copyOf(selectedFiles),
-                    runningJobsCopy, requireSingle));
+                return Optional.of(
+                    new Compactable.Files(files, kind, Set.copyOf(selectedFiles), runningJobsCopy));
               } else {
                 return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
               }

@@ -124,13 +124,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         return new CompactionPlan();
       }
 
-      if (params.requiresSingleCompaction()) {
-        var ceid = getExecutor(params.getCandidates());
-        CompactionJob job = new CompactionJob(params.getAll().size(), ceid, params.getCandidates(),
-            params.getKind());
-        return new CompactionPlan(List.of(job));
-      }
-
       Set<CompactableFile> filesCopy = new HashSet<>(params.getCandidates());
 
       long maxSizeToCompact = getMaxSizeToCompact(params.getKind());
@@ -163,17 +156,20 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         }
       }
 
-      if (group.isEmpty() && params.getKind() == CompactionKind.USER
+      if (group.isEmpty()
+          && (params.getKind() == CompactionKind.USER
+              || params.getKind() == CompactionKind.SELECTOR)
           && params.getRunningCompactions().stream()
-              .filter(job -> job.getKind() == CompactionKind.USER).count() == 0) {
-        // TODO consider max files to compact
-        group = params.getCandidates();
+              .filter(job -> job.getKind() == params.getKind()).count() == 0) {
+        // TODO could partition files by executor sizes, however would need to do this in optimal
+        // way.. not as easy as chop because need to result in a single file
+        group = findMaximalRequiredSetToCompact(params.getCandidates(), maxFilesToCompact);
       }
 
       if (group.isEmpty() && params.getKind() == CompactionKind.CHOP) {
-        // TODO partition files using maxFilesToCompact, executors max sizes, and/or compaction
-        // ratio... user and chop could be partitioned differently
-        group = params.getCandidates();
+        // TODO since chop compactions do not have to result in a single file, could partition files
+        // by executors sizes
+        group = findMaximalRequiredSetToCompact(params.getCandidates(), maxFilesToCompact);
       }
 
       if (group.isEmpty()) {
@@ -232,6 +228,25 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     }
 
     return expected;
+  }
+
+  public static Collection<CompactableFile>
+      findMaximalRequiredSetToCompact(Collection<CompactableFile> files, int maxFilesToCompact) {
+
+    if (files.size() <= maxFilesToCompact)
+      return files;
+
+    // TODO could reuse sorted files
+    List<CompactableFile> sortedFiles = sortByFileSize(files);
+
+    int numToCompact = maxFilesToCompact;
+
+    if (sortedFiles.size() > maxFilesToCompact && sortedFiles.size() < 2 * maxFilesToCompact) {
+      // on the second to last compaction pass, compact the minimum amount of files possible
+      numToCompact = sortedFiles.size() - maxFilesToCompact + 1;
+    }
+
+    return sortedFiles.subList(0, numToCompact);
   }
 
   /**

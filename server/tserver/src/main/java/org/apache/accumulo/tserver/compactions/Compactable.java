@@ -47,11 +47,9 @@ public interface Compactable {
     public final CompactionKind kind;
     public final Collection<CompactableFile> candidates;
     public final Collection<CompactionJob> compacting;
-    public final boolean requiresSingleCompaction;
 
     public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionKind kind,
-        Set<StoredTabletFile> candidates, Collection<CompactionJob> running,
-        boolean requireSingleCompaction) {
+        Set<StoredTabletFile> candidates, Collection<CompactionJob> running) {
 
       // TODO can the copies be avoided.?
 
@@ -63,19 +61,12 @@ public interface Compactable {
           .map(stf -> new CompactableFileImpl(stf, allFiles.get(stf))).collect(Collectors.toSet()));
 
       this.compacting = Set.copyOf(running);
-      this.requiresSingleCompaction = requireSingleCompaction;
-    }
-
-    public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionKind kind,
-        Set<StoredTabletFile> candidates, Collection<CompactionJob> running) {
-      this(allFiles, kind, candidates, running, false);
     }
 
     @Override
     public String toString() {
       return "Files [allFiles=" + allFiles + ", kind=" + kind + ", candidates=" + candidates
-          + ", compacting=" + compacting + ", requiresSingleCompaction=" + requiresSingleCompaction
-          + "]";
+          + ", compacting=" + compacting + "]";
     }
 
   }

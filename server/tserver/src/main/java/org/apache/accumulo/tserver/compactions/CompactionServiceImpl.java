@@ -175,11 +175,6 @@ public class CompactionServiceImpl implements CompactionService {
         public Collection<CompactableFile> getAll() {
           return files.get().allFiles;
         }
-
-        @Override
-        public boolean requiresSingleCompaction() {
-          return files.get().requiresSingleCompaction;
-        }
       };
 
       var plan = planner.makePlan(params);
