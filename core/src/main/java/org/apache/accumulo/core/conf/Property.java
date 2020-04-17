@@ -422,14 +422,7 @@ public enum Property {
           + "{'name':'large','maxSize':'512M','numThreads':3},"
           + "{'name':'huge','numThreads':3}]".replaceAll("'", "\""),
       PropertyType.STRING,
-      "Json configuration for muliple executors.  Each executor has a name, number of threads and "
-          + "optional max size. Only compactions where the sum of the input file sizes is smaller than"
-          + " the max size will run on an executor.  One executor can have no max size and it will run"
-          + " everything that is too large for the other executors.  If all executors have a max size,"
-          + " the system compactions will only run for compactions smaller than the largest max size. "
-          + "User and selector compactions will always run, even if there is not executor for their "
-          + "size.  If a user or selector compaction exceeds all max sizes, then it will run on the "
-          + "largest."),
+      "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
   @Deprecated(since = "2.1.0", forRemoval = true)
   @ReplacedBy(property = Property.TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN)
   TSERV_MAJC_THREAD_MAXOPEN("tserver.compaction.major.thread.files.open.max", "10",
@@ -679,7 +672,8 @@ public enum Property {
   TABLE_COMPACTION_DISPATCHER_OPTS("table.compaction.dispatcher.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction dispatcher"),
   TABLE_COMPACTION_SELECTOR("table.compaction.selector", "", PropertyType.CLASSNAME,
-      "A configurable selector for a table that can periodically select file for mandatory compaction, even if the files do not meet the compaction ratio."),
+      "A configurable selector for a table that can periodically select file for mandatory "
+          + "compaction, even if the files do not meet the compaction ratio."),
   TABLE_COMPACTION_SELECTOR_OPTS("table.compaction.selector.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction dispatcher"),
   TABLE_COMPACTION_CONFIGUROR("table.compaction.configuror", "", PropertyType.CLASSNAME,
