@@ -684,7 +684,7 @@ public enum Property {
   @ReplacedBy(property = TABLE_COMPACTION_SELECTOR)
   TABLE_COMPACTION_STRATEGY("table.majc.compaction.strategy",
       "org.apache.accumulo.tserver.compaction.DefaultCompactionStrategy", PropertyType.CLASSNAME,
-      "A customizable major compaction strategy."),
+      "Deprecated since 2.1.0 See {% jlink -f org.apache.accumulo.core.spi.compaction}"),
   @Deprecated(since = "2.1.0", forRemoval = true)
   @ReplacedBy(property = TABLE_COMPACTION_SELECTOR_OPTS)
   TABLE_COMPACTION_STRATEGY_PREFIX("table.majc.compaction.strategy.opts.", null,

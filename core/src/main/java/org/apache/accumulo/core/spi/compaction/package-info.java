@@ -55,11 +55,14 @@
  * files because there are too many deletes. See
  * {@link org.apache.accumulo.core.client.admin.compaction.CompactionSelector}</li>
  * <li><b>Compaction Configurer</b> A pluggable component that can optionally be configured per
- * table to dynamically configure file output settings. This support use cases like user snappy for
+ * table to dynamically configure file output settings. This support use cases like using snappy for
  * small files and gzip for large files. See
  * {@link org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer}</li>
  * <li><b>Compaction Strategy</b> A deprecated pluggable component replaced by the Selector and
- * Configurer. If configured it will be used.
+ * Configurer. If configured it will be used. Users should migrate away from this because it does
+ * not fit well into the new execution modes, is hard to use correctly, uses internal Accumulo types
+ * and is difficult to keep stable, and may result in suboptimal compactions when used with the new
+ * execution model as its assumptions may be based on the old model.
  * </ul>
  * </li>
  * </ul>

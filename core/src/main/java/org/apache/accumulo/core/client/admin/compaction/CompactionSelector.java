@@ -28,7 +28,8 @@ import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.Summary;
 
 /**
- * This class select which files a user compaction will compact.
+ * This class select which files a user compaction will compact. It can also be configured per table
+ * to periodically select files to compact.
  *
  * @since 2.1.0
  */
