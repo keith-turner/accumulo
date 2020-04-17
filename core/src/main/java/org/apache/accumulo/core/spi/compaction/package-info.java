@@ -23,7 +23,7 @@
  * a plugin.
  *
  * <p>
- * <img src="doc-files/compaction-spi-design.png"/>
+ * <img src="doc-files/compaction-spi-design.png" alt="Compaction design diagram">
  *
  * <p>
  * The following is a desciption of each functional component.
