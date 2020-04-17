@@ -99,7 +99,8 @@ public interface CompactionPlanner {
    * <p>
    * For a chop compaction assume the following happens.
    * <ol>
-   * <li>The candidate set passed to makePlan contains the files {@code [F1,F2,F3,F4]} and kind is CHOP
+   * <li>The candidate set passed to makePlan contains the files {@code [F1,F2,F3,F4]} and kind is
+   * CHOP
    * <li>The planner returns a job to compact files {@code [F1,F2]} on executor E1
    * <li>The compaction runs compacting {@code [F1,F2]} into file {@code [F5]}
    * </ol>
@@ -112,7 +113,8 @@ public interface CompactionPlanner {
    * For a user and selector compaction assume the same thing happens, it will result in a slightly
    * different outcome.
    * <ol>
-   * <li>The candidate set passed to makePlan contains the files {@code [F1,F2,F3,F4]} and kind is USER
+   * <li>The candidate set passed to makePlan contains the files {@code [F1,F2,F3,F4]} and kind is
+   * USER
    * <li>The planner returns a job to compact files {@code [F1,F2]} on executor E1
    * <li>The compaction runs compacting {@code [F1,F2]} into file {@code [F5]}
    * </ol>
