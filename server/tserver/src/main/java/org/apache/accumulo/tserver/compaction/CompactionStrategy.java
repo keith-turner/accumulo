@@ -42,7 +42,9 @@ import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
  * is going to be different from the one used in the compaction thread.
  *
  * @deprecated since 2.1.0 use {@link CompactionSelector}, {@link CompactionConfigurer}, and
- *             {@link CompactionPlanner} instead.
+ *             {@link CompactionPlanner} instead. See
+ *             {@link org.apache.accumulo.core.client.admin.CompactionStrategyConfig} for more
+ *             information about why this was deprecated.
  * @see org.apache.accumulo.core.spi.compaction
  */
 @Deprecated(since = "2.1.0", forRemoval = true)

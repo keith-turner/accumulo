@@ -63,10 +63,8 @@
  * small files and gzip for large files. See
  * {@link org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer}</li>
  * <li><b>Compaction Strategy</b> A deprecated pluggable component replaced by the Selector and
- * Configurer. If configured it will be used. Users should migrate away from this because it does
- * not fit well into the new execution modes, is hard to use correctly, uses internal Accumulo types
- * and is difficult to keep stable, and may result in suboptimal compactions when used with the new
- * execution model as its assumptions may be based on the old model.
+ * Configurer. See {@link org.apache.accumulo.core.client.admin.CompactionStrategyConfig} for more
+ * information about why this was deprecated.
  * </ul>
  * </li>
  * </ul>
