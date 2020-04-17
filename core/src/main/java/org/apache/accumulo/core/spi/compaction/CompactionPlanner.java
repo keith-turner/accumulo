@@ -80,19 +80,18 @@ public interface CompactionPlanner {
    * candidates for each kind.
    *
    * <ul>
-   * <li>{@link org.apache.accumulo.core.spi.compaction.CompactionKind#SYSTEM} The planner is not
+   * <li>CompactionKind.SYSTEM The planner is not
    * required to do anything with the candidates and can choose to compact zero or more of them. The
    * candidates may represent a subset of all the files in the case where a user compaction is in
    * progress or other compactions are running.
-   * <li>{@link org.apache.accumulo.core.spi.compaction.CompactionKind#USER} and
-   * {@link org.apache.accumulo.core.spi.compaction.CompactionKind#SELECTED} The planner is required
+   * <li>CompactionKind.USER and CompactionKind.SELECTED. The planner is required
    * to eventually compact all candidates. Its ok to return a compaction plan that compacts a
    * subset. When the planner compacts a subset, it will eventually be called again later. When it
    * is called later the candidates will contain the files it did not compact and the results of any
    * previous compactions it scheduled. The planner must eventually compact all of the files in the
    * candidate set down to a single file. The compaction service will keep calling the planner until
    * it does.
-   * <li>{@link org.apache.accumulo.core.spi.compaction.CompactionKind#CHOP} The planner is required
+   * <li>CompactionKind.CHOP. The planner is required
    * to eventually compact all candidates. One major difference with USER compactions is this kind
    * is not required to compact all files to a single file. It is ok to return a compaction plan
    * that compacts a subset of the candidates. When the planner compacts a subset, it will
@@ -104,6 +103,8 @@ public interface CompactionPlanner {
    * When a planner returns a compactions plan, task will be queued on executors. Previously queued
    * task that do not match the latest plan are removed. The planner is called periodically,
    * whenever a new file is added, and whenever a compaction finishes.
+   *
+   * @see CompactionKind
    */
   CompactionPlan makePlan(PlanningParameters params);
 }
