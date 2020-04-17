@@ -31,9 +31,9 @@
  * <ul>
  * <li><b>Compaction Manager</b> A non pluggable component within the tablet server that brings all
  * other components together. The manager will route compactables to compaction services. For each
- * kind of compaction, an individual compactible will be routed to a single compaction for service.
- * For example its possible that compactable C1 is routed to service S1 for user compactions and
- * service S2 for system compactions.
+ * kind of compaction, an individual compactible will be routed to a single compaction service. For
+ * example its possible that compactable C1 is routed to service S1 for user compactions and service
+ * S2 for system compactions.
  * <ul>
  * <li><b>Compaction Service</b> A non pluggable component that compacts tablets. One or more of
  * these are created based on user configuration. Users can assign a table to a compaction service.
@@ -41,7 +41,9 @@
  * <ul>
  * <li><b>Compaction Planner</b> A pluggable component that can be configured by users when they
  * configure a compaction service. It makes decisions about which files to compact on which
- * executors. See {@link org.apache.accumulo.core.spi.compaction.CompactionPlanner}
+ * executors. See {@link org.apache.accumulo.core.spi.compaction.CompactionPlanner},
+ * {@link org.apache.accumulo.core.spi.compaction.CompactionPlanner#makePlan(org.apache.accumulo.core.spi.compaction.CompactionPlanner.PlanningParameters)},
+ * and {@link org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner}
  * <li><b>Compaction Executor</b> A non pluggable component that executes compactions using multiple
  * threads and has a priority queue.</li>
  * </ul>

@@ -51,9 +51,9 @@ import com.google.gson.Gson;
  * where each object has the fields: name, maxSize, and numThreads. The maxSize field determine the
  * maximum size of compaction that will run on an executor. The maxSize field can have a suffix of
  * K,M,G for kilobytes, megabytes, or gigabytes. One executor can have no max size and it will run
- * everything that is too large for the other executors. If all executors have a max size,the system
- * compactions will only run for compactions smaller than the largest max size. User, chop, and
- * selector compactions will always run, even if there is not executor for their size. These
+ * everything that is too large for the other executors. If all executors have a max size, then
+ * system compactions will only run for compactions smaller than the largest max size. User, chop,
+ * and selector compactions will always run, even if there is no executor for their size. These
  * compaction will run on the executor with the largest max size. The value for this field should
  * look like
  * {@code [{"name":"executor1","maxSize":"100M","numThreads":3},{"name":"executor2","maxSize":"500M","numThreads":3},{"executor3":"huge","numThreads":3}]}.
