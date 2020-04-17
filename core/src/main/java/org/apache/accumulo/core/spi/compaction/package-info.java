@@ -57,11 +57,11 @@
  * service a table should use for different kinds of compactions. This is configurable by users per
  * table. See {@link org.apache.accumulo.core.spi.compaction.CompactionDispatcher}</li>
  * <li><b>Compaction Selector</b> A pluggable component that can optionally be configured per table
- * to periodically select files to compact. This support use cases like periodically compacting all
+ * to periodically select files to compact. This supports use cases like periodically compacting all
  * files because there are too many deletes. See
  * {@link org.apache.accumulo.core.client.admin.compaction.CompactionSelector}</li>
  * <li><b>Compaction Configurer</b> A pluggable component that can optionally be configured per
- * table to dynamically configure file output settings. This support use cases like using snappy for
+ * table to dynamically configure file output settings. This supports use cases like using snappy for
  * small files and gzip for large files. See
  * {@link org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer}</li>
  * <li><b>Compaction Strategy</b> A deprecated pluggable component replaced by the Selector and
