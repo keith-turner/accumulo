@@ -57,6 +57,7 @@ public class CompactionServiceImpl implements CompactionService {
   private final Map<CompactionExecutorId,CompactionExecutor> executors;
   private final CompactionServiceId myId;
   private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
+  private ServerContext serverCtx;
 
   private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
 
@@ -64,6 +65,7 @@ public class CompactionServiceImpl implements CompactionService {
       Map<String,String> serviceOptions, ServerContext sctx) {
 
     this.myId = CompactionServiceId.of(serviceName);
+    this.serverCtx = sctx;
 
     try {
       planner =
@@ -146,8 +148,7 @@ public class CompactionServiceImpl implements CompactionService {
 
         @Override
         public ServiceEnvironment getServiceEnvironment() {
-          // TODO Auto-generated method stub
-          return null;
+          return new ServiceEnvironmentImpl(serverCtx);
         }
 
         @Override

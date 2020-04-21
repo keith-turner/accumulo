@@ -298,7 +298,6 @@ public class CompactableUtils {
 
       @Override
       public Collection<CompactableFile> getAvailableFiles() {
-        // TODO Auto-generated method stub
         return Collections2.transform(datafiles.entrySet(),
             e -> new CompactableFileImpl(e.getKey(), e.getValue()));
       }
@@ -449,8 +448,7 @@ public class CompactableUtils {
       }
 
       if (selectedFiles.isEmpty()) {
-        // TODO seems like this should be set after the metadata update.. was before in the
-        // exisitng
+        // TODO seems like this should be set after the metadata update.. was before in the exisitng
         // code
         tablet.setLastCompactionID(compactionId);
 
@@ -510,7 +508,6 @@ public class CompactableUtils {
       }
     }
 
-    // TODO Auto-generated method stub
     return null;
   }
 
@@ -569,7 +566,6 @@ public class CompactableUtils {
     } else {
       // TODO if any compaction job contains all of the files at its time of creation, then should
       // probably not propogate
-      // TODO this is done outside of sync block
       propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
     }
 

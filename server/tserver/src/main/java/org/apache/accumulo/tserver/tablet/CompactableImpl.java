@@ -80,10 +80,10 @@ public class CompactableImpl implements Compactable {
   // TODO would be better if this set were persistent
   private Set<StoredTabletFile> selectedFiles = new HashSet<>();
 
-  private Set<StoredTabletFile> choppingFiles = new HashSet<>();
+  private Set<StoredTabletFile> allFilesWhenChopStarted = new HashSet<>();
 
   // track files produced by compactions of this tablet, those are considered chopped
-  private Set<StoredTabletFile> choppedFiles = new HashSet<>();
+  private Set<StoredTabletFile> choppedFiles = new HashSet<>(); // TODO add minor compacted files
   private SpecialStatus chopStatus = SpecialStatus.NOT_ACTIVE;
 
   // status of special compactions
@@ -119,57 +119,60 @@ public class CompactableImpl implements Compactable {
   }
 
   void initiateChop() {
-    Set<StoredTabletFile> chopCandidates = new HashSet<>();
+
+    // TODO avoid work
+    Set<StoredTabletFile> allFiles = tablet.getDatafiles().keySet();
+    Set<StoredTabletFile> filesToExamine = new HashSet<>(allFiles);
+
     synchronized (this) {
       if (chopStatus == SpecialStatus.NOT_ACTIVE) {
-        // TODO may want to do nothing instead of throw exception
-        Preconditions.checkState(selectStatus == SpecialStatus.NOT_ACTIVE);
         chopStatus = SpecialStatus.SELECTING;
-        choppingFiles.clear();
-
-        chopCandidates.addAll(tablet.getDatafiles().keySet());
-        // any files currently compacting will be chopped
-        chopCandidates.removeAll(allCompactingFiles);
-        chopCandidates.removeAll(choppedFiles);
-
+        filesToExamine.removeAll(choppedFiles);
+        filesToExamine.removeAll(allCompactingFiles);
       } else {
-        // TODO
         return;
       }
     }
 
-    Set<StoredTabletFile> chopSelections = selectChopFiles(chopCandidates);
-    if (chopSelections.isEmpty()) {
-      markChopped();
-    }
+    Set<StoredTabletFile> unchoppedFiles = selectChopFiles(filesToExamine);
 
     synchronized (this) {
       Preconditions.checkState(chopStatus == SpecialStatus.SELECTING);
-      if (chopSelections.isEmpty()) {
-        chopStatus = SpecialStatus.NOT_ACTIVE;
-      } else {
-        chopStatus = SpecialStatus.SELECTED;
-        choppingFiles.addAll(chopSelections);
-      }
-
-      // any candidates that were analyzed and found not needing a chop can be considered chopped
-      choppedFiles.addAll(Sets.difference(chopCandidates, chopSelections));
+      choppedFiles.addAll(Sets.difference(filesToExamine, unchoppedFiles));
+      chopStatus = SpecialStatus.SELECTED;
+      this.allFilesWhenChopStarted.clear();
+      this.allFilesWhenChopStarted.addAll(allFiles);
     }
 
+    checkifChopComplete(tablet.getDatafiles().keySet());
   }
 
-  /**
-   * Tablet can use this to signal files were added.
-   */
-  void filesAdded() {
-    if (newFileCallback != null)
-      newFileCallback.accept(this);
+  private synchronized Set<StoredTabletFile> getFilesToChop(Set<StoredTabletFile> allFiles) {
+    Preconditions.checkState(chopStatus == SpecialStatus.SELECTED);
+    var copy = new HashSet<>(allFilesWhenChopStarted);
+    copy.retainAll(allFiles);
+    copy.removeAll(choppedFiles);
+    return copy;
   }
 
-  @Override
-  public void registerNewFilesCallback(Consumer<Compactable> callback) {
-    this.newFileCallback = callback;
+  private void checkifChopComplete(Set<StoredTabletFile> allFiles) {
 
+    boolean completed = false;
+
+    synchronized (this) {
+      if (chopStatus == SpecialStatus.SELECTED) {
+        if (getFilesToChop(allFiles).isEmpty()) {
+          chopStatus = SpecialStatus.NOT_ACTIVE;
+          completed = true;
+        }
+      }
+
+      choppedFiles.retainAll(allFiles);
+    }
+
+    if (completed) {
+      markChopped();
+    }
   }
 
   private void markChopped() {
@@ -189,24 +192,18 @@ public class CompactableImpl implements Compactable {
     }
   }
 
-  private void chopCompactionCompleted(Set<StoredTabletFile> jobFiles) {
-    boolean markChopped = false;
-    synchronized (this) {
-      Preconditions.checkState(chopStatus == SpecialStatus.SELECTED);
-      Preconditions.checkState(choppingFiles.containsAll(jobFiles));
+  /**
+   * Tablet can use this to signal files were added.
+   */
+  void filesAdded() {
+    if (newFileCallback != null)
+      newFileCallback.accept(this);
+  }
 
-      // TODO need to consider compacting files
+  @Override
+  public void registerNewFilesCallback(Consumer<Compactable> callback) {
+    this.newFileCallback = callback;
 
-      choppingFiles.removeAll(jobFiles);
-
-      if (choppingFiles.isEmpty()) {
-        chopStatus = SpecialStatus.NOT_ACTIVE;
-        markChopped = true;
-      }
-    }
-
-    if (markChopped)
-      markChopped();
   }
 
   /**
@@ -227,6 +224,8 @@ public class CompactableImpl implements Compactable {
       CompactionConfig compactionConfig) {
     Preconditions.checkArgument(kind == CompactionKind.USER || kind == CompactionKind.SELECTOR);
 
+    // TODO limit the frequency of this call taking action
+
     // TODO optimize this
     var localHelper = CompactableUtils.getHelper(kind, tablet, compactionId, compactionConfig);
 
@@ -237,7 +236,6 @@ public class CompactableImpl implements Compactable {
       if (selectStatus == SpecialStatus.NOT_ACTIVE || (kind == CompactionKind.USER
           && selectKind == CompactionKind.SELECTOR
           && runnningJobs.stream().noneMatch(job -> job.getKind() == CompactionKind.SELECTOR))) {
-        // TODO check chop status
         selectStatus = SpecialStatus.NEW;
         selectKind = kind;
         selectedFiles.clear();
@@ -411,16 +409,25 @@ public class CompactableImpl implements Compactable {
             default:
               throw new AssertionError();
           }
-        case CHOP: // TODO analyze how this interacts with selected compactions
+        case CHOP: {
           switch (chopStatus) {
             case NOT_ACTIVE:
             case NEW:
             case SELECTING:
               return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
-            case SELECTED: // TODO remove compacting files?
-              return Optional.of(
-                  new Compactable.Files(files, kind, Set.copyOf(choppingFiles), runningJobsCopy));
+            case SELECTED: {
+              if (selectStatus == SpecialStatus.NEW || selectStatus == SpecialStatus.SELECTING)
+                return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
+
+              var filesToChop = getFilesToChop(files.keySet());
+              filesToChop.removeAll(allCompactingFiles);
+              filesToChop = Collections.unmodifiableSet(filesToChop);
+              if (selectStatus == SpecialStatus.SELECTED)
+                filesToChop.removeAll(selectedFiles);
+              return Optional.of(new Compactable.Files(files, kind, filesToChop, runningJobsCopy));
+            }
           }
+        }
         default:
           throw new AssertionError();
       }
@@ -441,8 +448,6 @@ public class CompactableImpl implements Compactable {
     synchronized (this) {
       if (!service.equals(getConfiguredService(job.getKind())))
         return;
-
-      // TODO check chop status??
 
       switch (selectStatus) {
         case NEW:
@@ -487,7 +492,7 @@ public class CompactableImpl implements Compactable {
         allCompactingFiles.addAll(jobFiles);
         runnningJobs.add(job);
       } else {
-        return; // TODO log an error?
+        return;
       }
 
       compactionRunning = !allCompactingFiles.isEmpty();
@@ -507,7 +512,7 @@ public class CompactableImpl implements Compactable {
 
       localHelper = this.chelper;
     }
-    // TODO only add if not in set!
+
     StoredTabletFile metaFile = null;
     try {
       metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId,
@@ -520,18 +525,16 @@ public class CompactableImpl implements Compactable {
         runnningJobs.remove(job); // TODO check return true?
         compactionRunning = !allCompactingFiles.isEmpty();
 
-        // TODO this tracking feels a bit iffy
         if (metaFile != null) {
           choppedFiles.add(metaFile);
-          choppedFiles.removeAll(jobFiles);
         }
       }
+
+      checkifChopComplete(tablet.getDatafiles().keySet());
 
       if ((job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR)
           && metaFile != null)
         selectedCompactionCompleted(job, jobFiles, metaFile);// TODO what if it failed?
-      else if (job.getKind() == CompactionKind.CHOP)
-        chopCompactionCompleted(jobFiles);
       else
         selectFiles();
     }

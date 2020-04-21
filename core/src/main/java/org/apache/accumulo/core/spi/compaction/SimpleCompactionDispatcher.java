@@ -73,8 +73,6 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
 
   @Override
   public void init(InitParameters params) {
-    // TODO precompute hint types
-
     services = new EnumMap<>(CompactionKind.class);
 
     var defaultService = CompactionDirectives.builder().build();
