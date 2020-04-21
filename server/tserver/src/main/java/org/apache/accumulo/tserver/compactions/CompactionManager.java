@@ -27,7 +27,9 @@ import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
+import org.apache.accumulo.core.util.NamingThreadFactory;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.tserver.TabletServerResourceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,10 +44,11 @@ public class CompactionManager {
 
   private LinkedBlockingQueue<Compactable> compactablesToCheck = new LinkedBlockingQueue<>();
 
+  private long maxTimeBetweenChecks;
+
   private void mainLoop() {
     long lastCheckAllTime = System.nanoTime();
-    long maxTimeBetweenChecks = TimeUnit.SECONDS.toNanos(30); // TODO is this correct? TODO
-                                                              // configurable
+
     while (true) {
       try {
         long passed = System.nanoTime() - lastCheckAllTime;
@@ -60,7 +63,6 @@ public class CompactionManager {
           var compactable =
               compactablesToCheck.poll(maxTimeBetweenChecks - passed, TimeUnit.NANOSECONDS);
           if (compactable != null) {
-            // TODO only run system compaction?
             compact(compactable);
           }
         }
@@ -79,7 +81,8 @@ public class CompactionManager {
     }
   }
 
-  public CompactionManager(Iterable<Compactable> compactables, ServerContext ctx) {
+  public CompactionManager(Iterable<Compactable> compactables, ServerContext ctx,
+      TabletServerResourceManager resourceManager) {
     this.compactables = compactables;
 
     Map<String,String> configs =
@@ -107,10 +110,12 @@ public class CompactionManager {
       tmpServices.put(CompactionServiceId.of(serviceName),
           new CompactionServiceImpl(serviceName,
               planners.getOrDefault(serviceName, LarsmaCompactionPlanner.class.getName()),
-              serviceOptions, ctx));
+              serviceOptions, ctx, resourceManager));
     });
 
     this.services = Map.copyOf(tmpServices);
+
+    this.maxTimeBetweenChecks = ctx.getConfiguration().getTimeInMillis(Property.TSERV_MAJC_DELAY);
   }
 
   public void compactableChanged(Compactable compactable) {
@@ -118,12 +123,7 @@ public class CompactionManager {
   }
 
   public void start() {
-    // TODO deamon thread
-    // TODO stop method
-    log.info("Started compaction manager");
-    new Thread(() -> mainLoop()).start();
-
-    // TODO remove
-    // new Thread(() -> printStats()).start();
+    log.debug("Started compaction manager");
+    new NamingThreadFactory("Compaction Manager").newThread(() -> mainLoop()).start();
   }
 }

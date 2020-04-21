@@ -338,7 +338,6 @@ public class CompactableImpl implements Compactable {
 
   @Override
   public Optional<Files> getFiles(CompactionServiceId service, CompactionKind kind) {
-    // TODO not consistently obtaing tablet state
 
     if (tablet.isClosing() || tablet.isClosed() || !service.equals(getConfiguredService(kind)))
       return Optional.empty();
@@ -583,7 +582,6 @@ public class CompactableImpl implements Compactable {
       }
     });
 
-    // TODO
     return directives.getService();
   }
 

@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
+import org.apache.accumulo.core.compaction.CompactionJobPrioritizer;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.slf4j.Logger;
@@ -203,9 +204,8 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
           log.info("Planning concurrent {} {}", ceid, group);
         }
 
-        // TODO include type in priority!
         CompactionJob job =
-            new CompactionJob(params.getAll().size(), ceid, group, params.getKind());
+            new CompactionJob(createPriority(params), ceid, group, params.getKind());
         return new CompactionPlan(List.of(job));
       }
 
@@ -214,6 +214,10 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
       log.warn("params:{}", params, e);
       throw e;
     }
+  }
+
+  private static long createPriority(PlanningParameters params) {
+    return CompactionJobPrioritizer.createPriority(params.getKind(), params.getAll().size());
   }
 
   private long getMaxSizeToCompact(CompactionKind kind) {

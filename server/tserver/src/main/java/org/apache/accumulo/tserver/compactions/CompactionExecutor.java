@@ -20,17 +20,18 @@ package org.apache.accumulo.tserver.compactions;
 
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.PriorityBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
+import org.apache.accumulo.core.compaction.CompactionJobPrioritizer;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
+import org.apache.accumulo.tserver.TabletServerResourceManager;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +43,7 @@ public class CompactionExecutor {
   private static final Logger log = LoggerFactory.getLogger(CompactionExecutor.class);
 
   private PriorityBlockingQueue<Runnable> queue;
-  private ThreadPoolExecutor executor;
+  private ExecutorService executor;
   private final CompactionExecutorId ceid;
   private AtomicLong cancelCount = new AtomicLong();
 
@@ -113,24 +114,14 @@ public class CompactionExecutor {
 
   }
 
-  private static long extractPriority(Runnable r) {
-    return ((CompactionTask) r).getJob().getPriority();
-  }
-
-  private static long extractJobFiles(Runnable r) {
-    return ((CompactionTask) r).getJob().getFiles().size();
-  }
-
-  CompactionExecutor(CompactionExecutorId ceid, int threads) {
+  CompactionExecutor(CompactionExecutorId ceid, int threads, TabletServerResourceManager tsrm) {
     this.ceid = ceid;
-    var comparator = Comparator.comparingLong(CompactionExecutor::extractPriority)
-        .thenComparingLong(CompactionExecutor::extractJobFiles).reversed();
+    var comparator = Comparator.comparing(r -> ((CompactionTask) r).getJob(),
+        CompactionJobPrioritizer.JOB_COMPARATOR);
 
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
 
-    // TODO use code in TSRM to create pools.. and name threads
-    executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS, queue);
-
+    executor = tsrm.createCompactionExecutor(ceid, threads, queue);
   }
 
   public SubmittedJob submit(CompactionServiceId csid, CompactionJob job, Compactable compactable,

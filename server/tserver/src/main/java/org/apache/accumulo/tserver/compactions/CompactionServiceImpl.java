@@ -45,6 +45,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.ExecutorManager;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
+import org.apache.accumulo.tserver.TabletServerResourceManager;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +63,7 @@ public class CompactionServiceImpl implements CompactionService {
   private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
 
   public CompactionServiceImpl(String serviceName, String plannerClass,
-      Map<String,String> serviceOptions, ServerContext sctx) {
+      Map<String,String> serviceOptions, ServerContext sctx, TabletServerResourceManager tsrm) {
 
     this.myId = CompactionServiceId.of(serviceName);
     this.serverCtx = sctx;
@@ -95,7 +96,7 @@ public class CompactionServiceImpl implements CompactionService {
           public CompactionExecutorId createExecutor(String executorName, int threads) {
             var ceid = CompactionExecutorId.of(serviceName + "." + executorName);
             Preconditions.checkState(!tmpExecutors.containsKey(ceid));
-            tmpExecutors.put(ceid, new CompactionExecutor(ceid, threads));
+            tmpExecutors.put(ceid, new CompactionExecutor(ceid, threads, tsrm));
             return ceid;
           }
         };
