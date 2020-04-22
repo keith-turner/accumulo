@@ -33,7 +33,6 @@ import org.apache.accumulo.core.client.summary.Summary;
  *
  * @since 2.1.0
  */
-// TODO this could go in SPI
 public interface CompactionSelector {
 
   public interface InitParamaters {

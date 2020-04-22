@@ -79,6 +79,11 @@ public interface CompactionPlanner {
      *         Otherwise this will return an immutable empty map.
      */
     Map<String,String> getExecutionHints();
+
+    /**
+     * @return A compaction plan builder that must be used to create a compaction plan.
+     */
+    CompactionPlan.Builder createPlanBuilder();
   }
 
   /**

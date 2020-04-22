@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.accumulo.core.compaction;
+package org.apache.accumulo.core.util.compaction;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -41,7 +41,7 @@ public class CompactionPrioritizerTest {
       files.add(CompactableFile
           .create(URI.create("hdfs://foonn/accumulo/tables/5/" + tablet + "/" + i + ".rf"), 4, 4));
     }
-    return new CompactionJob(CompactionJobPrioritizer.createPriority(kind, totalFiles),
+    return new CompactionJobImpl(CompactionJobPrioritizer.createPriority(kind, totalFiles),
         CompactionExecutorId.of("test"), files, kind);
   }
 

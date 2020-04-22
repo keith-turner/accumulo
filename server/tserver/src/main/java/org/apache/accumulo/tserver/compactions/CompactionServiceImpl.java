@@ -39,10 +39,12 @@ import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.spi.compaction.CompactionPlan;
 import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.CompactionPlanner.PlanningParameters;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.ExecutorManager;
+import org.apache.accumulo.core.util.compaction.CompactionPlanImpl;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.tserver.TabletServerResourceManager;
@@ -184,10 +186,19 @@ public class CompactionServiceImpl implements CompactionService {
           else
             return Map.of();
         }
+
+        @Override
+        public CompactionPlan.Builder createPlanBuilder() {
+          return new CompactionPlanImpl.BuilderImpl(kind);
+        }
       };
 
       var plan = planner.makePlan(params);
       Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
+      if (jobs.removeIf(job -> job.getKind() != kind)) {
+        log.warn("Planner {} is returning wrong job kind {}", planner.getClass().getName(), kind);
+      }
+
       List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
       if (!submitted.isEmpty()) {
         // TODO only read status once

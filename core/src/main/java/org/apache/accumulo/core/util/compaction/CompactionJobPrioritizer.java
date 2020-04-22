@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.accumulo.core.compaction;
+package org.apache.accumulo.core.util.compaction;
 
 import java.util.Comparator;
 

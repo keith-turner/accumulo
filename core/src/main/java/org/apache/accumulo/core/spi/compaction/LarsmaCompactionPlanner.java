@@ -30,9 +30,9 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
-import org.apache.accumulo.core.compaction.CompactionJobPrioritizer;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.util.compaction.CompactionJobPrioritizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -142,7 +142,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
       if (params.getCandidates().isEmpty()) {
         // TODO should not even be called in this case
-        return new CompactionPlan();
+        return params.createPlanBuilder().build();
       }
 
       Set<CompactableFile> filesCopy = new HashSet<>(params.getCandidates());
@@ -194,7 +194,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
       }
 
       if (group.isEmpty()) {
-        return new CompactionPlan();
+        return params.createPlanBuilder().build();
       } else {
         // determine which executor to use based on the size of the files
         var ceid = getExecutor(group);
@@ -204,9 +204,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
           log.info("Planning concurrent {} {}", ceid, group);
         }
 
-        CompactionJob job =
-            new CompactionJob(createPriority(params), ceid, group, params.getKind());
-        return new CompactionPlan(List.of(job));
+        return params.createPlanBuilder().addJob(createPriority(params), ceid, group).build();
       }
 
     } catch (RuntimeException e) {
