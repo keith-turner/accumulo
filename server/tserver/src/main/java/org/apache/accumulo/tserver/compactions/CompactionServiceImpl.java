@@ -176,6 +176,14 @@ public class CompactionServiceImpl implements CompactionService {
         public Collection<CompactableFile> getAll() {
           return files.get().allFiles;
         }
+
+        @Override
+        public Map<String,String> getExecutionHints() {
+          if (kind == CompactionKind.USER)
+            return files.get().executionHints;
+          else
+            return Map.of();
+        }
       };
 
       var plan = planner.makePlan(params);

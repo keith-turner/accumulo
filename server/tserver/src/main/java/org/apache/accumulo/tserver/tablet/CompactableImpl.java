@@ -399,8 +399,11 @@ public class CompactableImpl implements Compactable {
                 candidates = Collections.unmodifiableSet(candidates);
                 Preconditions.checkState(files.keySet().containsAll(candidates),
                     "selected files not in all files %s %s", candidates, files.keySet());
-                return Optional.of(
-                    new Compactable.Files(files, kind, Set.copyOf(selectedFiles), runningJobsCopy));
+                Map<String,String> hints = Map.of();
+                if (kind == CompactionKind.USER)
+                  hints = compactionConfig.getExecutionHints();
+                return Optional.of(new Compactable.Files(files, kind, Set.copyOf(selectedFiles),
+                    runningJobsCopy, hints));
               } else {
                 return Optional.of(new Compactable.Files(files, kind, Set.of(), runningJobsCopy));
               }
