@@ -109,8 +109,6 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
         var userDirectives = userServices.get(hintType);
         if (userDirectives != null) {
           return userDirectives;
-        } else {
-          // TODO
         }
       }
     }

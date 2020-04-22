@@ -58,7 +58,6 @@ public interface Compactable {
     public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionKind kind,
         Set<StoredTabletFile> candidates, Collection<CompactionJob> running,
         Map<String,String> executionHints) {
-      // TODO can the copies be avoided.?
 
       this.allFiles = Collections.unmodifiableSet(allFiles.entrySet().stream()
           .map(entry -> new CompactableFileImpl(entry.getKey(), entry.getValue()))

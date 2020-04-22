@@ -141,7 +141,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     try {
 
       if (params.getCandidates().isEmpty()) {
-        // TODO should not even be called in this case
         return params.createPlanBuilder().build();
       }
 
@@ -182,13 +181,15 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
               || params.getKind() == CompactionKind.SELECTOR)
           && params.getRunningCompactions().stream()
               .filter(job -> job.getKind() == params.getKind()).count() == 0) {
-        // TODO could partition files by executor sizes, however would need to do this in optimal
+        // TODO ISSUE could partition files by executor sizes, however would need to do this in
+        // optimal
         // way.. not as easy as chop because need to result in a single file
         group = findMaximalRequiredSetToCompact(params.getCandidates(), maxFilesToCompact);
       }
 
       if (group.isEmpty() && params.getKind() == CompactionKind.CHOP) {
-        // TODO since chop compactions do not have to result in a single file, could partition files
+        // TODO ISSUE since chop compactions do not have to result in a single file, could partition
+        // files
         // by executors sizes
         group = findMaximalRequiredSetToCompact(params.getCandidates(), maxFilesToCompact);
       }
@@ -258,7 +259,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     if (files.size() <= maxFilesToCompact)
       return files;
 
-    // TODO could reuse sorted files
     List<CompactableFile> sortedFiles = sortByFileSize(files);
 
     int numToCompact = maxFilesToCompact;
@@ -336,7 +336,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         return executor.ceid;
     }
 
-    // TODO is this best behavior? Could not compact when there is no executor to service that size
     return executors.get(executors.size() - 1).ceid;
   }
 

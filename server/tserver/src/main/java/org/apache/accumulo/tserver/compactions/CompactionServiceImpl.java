@@ -55,7 +55,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Preconditions;
 
 public class CompactionServiceImpl implements CompactionService {
-  // TODO move rate limiters to the compaction service level.
+  // TODO ISSUE move rate limiters to the compaction service level.
   private final CompactionPlanner planner;
   private final Map<CompactionExecutorId,CompactionExecutor> executors;
   private final CompactionServiceId myId;
@@ -64,6 +64,7 @@ public class CompactionServiceImpl implements CompactionService {
 
   private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
 
+  // TODO ISSUE change thread pool sizes if compaction service config changes
   public CompactionServiceImpl(String serviceName, String plannerClass,
       Map<String,String> serviceOptions, ServerContext sctx, TabletServerResourceManager tsrm) {
 
@@ -115,16 +116,17 @@ public class CompactionServiceImpl implements CompactionService {
     log.debug("Created new compaction service id:{} executors:{}", myId, executors.keySet());
   }
 
-  private boolean reconcile(Collection<CompactionJob> jobs, List<SubmittedJob> submitted) {
+  private boolean reconcile(Set<CompactionJob> jobs, List<SubmittedJob> submitted) {
     for (SubmittedJob submittedJob : submitted) {
-      if (submittedJob.getStatus() == Status.QUEUED) {
-        // TODO this is O(M*N) unless set
+      // only read status once to avoid race conditions since multiple compares are done
+      var status = submittedJob.getStatus();
+      if (status == Status.QUEUED) {
         if (!jobs.remove(submittedJob.getJob())) {
           if (!submittedJob.cancel(Status.QUEUED)) {
             return false;
           }
         }
-      } else if (submittedJob.getStatus() == Status.RUNNING) {
+      } else if (status == Status.RUNNING) {
         for (CompactionJob job : jobs) {
           if (!Collections.disjoint(submittedJob.getJob().getFiles(), job.getFiles())) {
             return false;
@@ -202,8 +204,11 @@ public class CompactionServiceImpl implements CompactionService {
       List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
       if (!submitted.isEmpty()) {
         // TODO only read status once
-        submitted
-            .removeIf(sj -> sj.getStatus() != Status.QUEUED && sj.getStatus() != Status.RUNNING);
+        submitted.removeIf(sj -> {
+          // to avoid race conditions, only read status once and use local var for the two compares
+          var status = sj.getStatus();
+          return status != Status.QUEUED && status != Status.RUNNING;
+        });
       }
 
       if (reconcile(jobs, submitted)) {

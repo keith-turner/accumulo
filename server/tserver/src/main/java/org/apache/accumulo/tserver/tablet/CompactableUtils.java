@@ -147,7 +147,6 @@ public class CompactableUtils {
 
     request.setFiles(datafiles);
 
-    // TODO switch compaction strat from using StoredTabletFile
     CompactionStrategy strategy = CompactableUtils.newInstance(tablet.getTableConfiguration(),
         csc.getClassName(), CompactionStrategy.class);
     strategy.init(csc.getOptions());
