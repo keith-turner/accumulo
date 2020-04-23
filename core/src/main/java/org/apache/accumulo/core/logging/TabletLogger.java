@@ -24,13 +24,17 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Collections2;
 
 /**
  * This class contains source for logs messages about a tablets internal state, like its location,
@@ -99,9 +103,36 @@ public class TabletLogger {
     }
   }
 
-  public static void compacted(KeyExtent extent, Collection<? extends TabletFile> inputs,
-      TabletFile output) {
-    fileLog.debug("Compacted {} created {} from {}", extent, output, inputs);
+  /**
+   * Lazily converts TableFile to file names. The lazy part is really important because when it is
+   * not called with log.isDebugEnabled().
+   *
+   * @return
+   */
+  private static Collection<String> asFileNames(Collection<? extends TabletFile> files) {
+    return Collections2.transform(files, TabletFile::getFileName);
+  }
+
+  public static void selected(KeyExtent extent, CompactionKind kind,
+      Collection<? extends TabletFile> inputs) {
+    fileLog.trace("{} changed compaction selection set for {} new set {}", extent, kind,
+        asFileNames(inputs));
+  }
+
+  public static void compacting(KeyExtent extent, CompactionKind kind,
+      Collection<? extends TabletFile> inputs, CompactionConfig config) {
+    if (config == null) {
+      fileLog.trace("Compacting {} for {} from {}", extent, kind, asFileNames(inputs));
+    } else {
+      fileLog.trace("Compacting {} for {} from {} config {}", extent, kind, asFileNames(inputs),
+          config);
+    }
+  }
+
+  public static void compacted(KeyExtent extent, CompactionKind kind,
+      Collection<? extends TabletFile> inputs, TabletFile output) {
+    fileLog.debug("Compacted {} for {} created {} from {}", extent, kind, output,
+        asFileNames(inputs));
   }
 
   public static void flushed(KeyExtent extent, TabletFile newDatafile) {

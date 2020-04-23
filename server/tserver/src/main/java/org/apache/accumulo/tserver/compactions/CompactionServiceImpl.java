@@ -143,83 +143,87 @@ public class CompactionServiceImpl implements CompactionService {
       Consumer<Compactable> completionCallback) {
     // TODO this could take a while... could run this in a thread pool
     var files = compactable.getFiles(myId, kind);
-    if (files.isPresent() && !files.get().candidates.isEmpty()) {
-      PlanningParameters params = new PlanningParameters() {
 
-        @Override
-        public TableId getTableId() {
-          return compactable.getTableId();
-        }
+    if (files.isEmpty() || files.get().candidates.isEmpty())
+      return;
 
-        @Override
-        public ServiceEnvironment getServiceEnvironment() {
-          return new ServiceEnvironmentImpl(serverCtx);
-        }
+    PlanningParameters params = new PlanningParameters() {
 
-        @Override
-        public double getRatio() {
-          return compactable.getCompactionRatio();
-        }
-
-        @Override
-        public CompactionKind getKind() {
-          return kind;
-        }
-
-        @Override
-        public Collection<CompactionJob> getRunningCompactions() {
-          return files.get().compacting;
-        }
-
-        @Override
-        public Collection<CompactableFile> getCandidates() {
-          return files.get().candidates;
-        }
-
-        @Override
-        public Collection<CompactableFile> getAll() {
-          return files.get().allFiles;
-        }
-
-        @Override
-        public Map<String,String> getExecutionHints() {
-          if (kind == CompactionKind.USER)
-            return files.get().executionHints;
-          else
-            return Map.of();
-        }
-
-        @Override
-        public CompactionPlan.Builder createPlanBuilder() {
-          return new CompactionPlanImpl.BuilderImpl(kind);
-        }
-      };
-
-      var plan = planner.makePlan(params);
-      Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
-      if (jobs.removeIf(job -> job.getKind() != kind)) {
-        log.warn("Planner {} is returning wrong job kind {}", planner.getClass().getName(), kind);
+      @Override
+      public TableId getTableId() {
+        return compactable.getTableId();
       }
 
-      List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
-      if (!submitted.isEmpty()) {
-        // TODO only read status once
-        submitted.removeIf(sj -> {
-          // to avoid race conditions, only read status once and use local var for the two compares
-          var status = sj.getStatus();
-          return status != Status.QUEUED && status != Status.RUNNING;
-        });
+      @Override
+      public ServiceEnvironment getServiceEnvironment() {
+        return new ServiceEnvironmentImpl(serverCtx);
       }
 
-      if (reconcile(jobs, submitted)) {
-        for (CompactionJob job : jobs) {
-          var sjob =
-              executors.get(job.getExecutor()).submit(myId, job, compactable, completionCallback);
-          submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ArrayList<>()).add(sjob);
-        }
-      } else {
-        log.debug("Did not submit plan for {}", compactable.getExtent());
+      @Override
+      public double getRatio() {
+        return compactable.getCompactionRatio();
       }
+
+      @Override
+      public CompactionKind getKind() {
+        return kind;
+      }
+
+      @Override
+      public Collection<CompactionJob> getRunningCompactions() {
+        return files.get().compacting;
+      }
+
+      @Override
+      public Collection<CompactableFile> getCandidates() {
+        return files.get().candidates;
+      }
+
+      @Override
+      public Collection<CompactableFile> getAll() {
+        return files.get().allFiles;
+      }
+
+      @Override
+      public Map<String,String> getExecutionHints() {
+        if (kind == CompactionKind.USER)
+          return files.get().executionHints;
+        else
+          return Map.of();
+      }
+
+      @Override
+      public CompactionPlan.Builder createPlanBuilder() {
+        return new CompactionPlanImpl.BuilderImpl(kind);
+      }
+    };
+
+    var plan = planner.makePlan(params);
+
+    Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
+    if (jobs.removeIf(job -> job.getKind() != kind)) {
+      log.warn("Planner {} is returning wrong job kind {}", planner.getClass().getName(), kind);
+    }
+
+    List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
+    submitted.removeIf(sj -> {
+      // to avoid race conditions, only read status once and use local var for the two compares
+      var status = sj.getStatus();
+      return status != Status.QUEUED && status != Status.RUNNING;
+    });
+
+    if (reconcile(jobs, submitted)) {
+      for (CompactionJob job : jobs) {
+        var sjob =
+            executors.get(job.getExecutor()).submit(myId, job, compactable, completionCallback);
+        submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ArrayList<>()).add(sjob);
+      }
+
+      log.trace("Submitted compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
+          myId, files, plan);
+    } else {
+      log.trace("Did not submit compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
+          myId, files, plan);
     }
   }
 }

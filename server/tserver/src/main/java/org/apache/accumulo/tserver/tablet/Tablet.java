@@ -791,12 +791,11 @@ public class Tablet {
       }
 
       try (TraceScope span = Trace.startSpan("bringOnline")) {
-        getDatafileManager().bringMinorCompactionOnline(tmpDatafile, newDatafile,
+        var storedFile = getDatafileManager().bringMinorCompactionOnline(tmpDatafile, newDatafile,
             new DataFileValue(stats.getFileSize(), stats.getEntriesWritten()), commitSession,
             flushId);
+        compactable.filesAdded(true, List.of(storedFile));
       }
-
-      compactable.filesAdded();
 
       return new DataFileValue(stats.getFileSize(), stats.getEntriesWritten());
     } catch (Exception | Error e) {
@@ -1813,13 +1812,13 @@ public class Tablet {
     try {
       tabletServer.updateBulkImportState(files, BulkImportState.LOADING);
 
-      getDatafileManager().importMapFiles(tid, entries, setTime);
+      var storedTabletFile = getDatafileManager().importMapFiles(tid, entries, setTime);
       lastMapFileImportTime = System.currentTimeMillis();
 
       if (needsSplit()) {
         getTabletServer().executeSplit(this);
       } else {
-        compactable.filesAdded();
+        compactable.filesAdded(false, storedTabletFile);
       }
     } finally {
       synchronized (this) {

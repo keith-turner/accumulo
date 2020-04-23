@@ -45,24 +45,22 @@ public interface Compactable {
   public static class Files {
 
     public final Collection<CompactableFile> allFiles;
-    public final CompactionKind kind;
     public final Collection<CompactableFile> candidates;
     public final Collection<CompactionJob> compacting;
     public final Map<String,String> executionHints;
 
-    public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionKind kind,
+    public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles,
         Set<StoredTabletFile> candidates, Collection<CompactionJob> running) {
-      this(allFiles, kind, candidates, running, Map.of());
+      this(allFiles, candidates, running, Map.of());
     }
 
-    public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles, CompactionKind kind,
+    public Files(SortedMap<StoredTabletFile,DataFileValue> allFiles,
         Set<StoredTabletFile> candidates, Collection<CompactionJob> running,
         Map<String,String> executionHints) {
 
       this.allFiles = Collections.unmodifiableSet(allFiles.entrySet().stream()
           .map(entry -> new CompactableFileImpl(entry.getKey(), entry.getValue()))
           .collect(Collectors.toSet()));
-      this.kind = kind;
       this.candidates = Collections.unmodifiableSet(candidates.stream()
           .map(stf -> new CompactableFileImpl(stf, allFiles.get(stf))).collect(Collectors.toSet()));
 
@@ -72,8 +70,8 @@ public interface Compactable {
 
     @Override
     public String toString() {
-      return "Files [allFiles=" + allFiles + ", kind=" + kind + ", candidates=" + candidates
-          + ", compacting=" + compacting + "]";
+      return "Files [allFiles=" + allFiles + ", candidates=" + candidates + ", compacting="
+          + compacting + "]";
     }
 
   }
