@@ -486,9 +486,6 @@ public abstract class AccumuloConfiguration implements Iterable<Entry<String,Str
       RefCount<T> rc = refref.get();
 
       if (rc == null || rc.count != uc) {
-        // TODO remove
-        log.debug("Deriving {}", uc);
-
         T newObj = converter.apply(AccumuloConfiguration.this);
 
         // very important to record the update count that was obtained before recomputing.

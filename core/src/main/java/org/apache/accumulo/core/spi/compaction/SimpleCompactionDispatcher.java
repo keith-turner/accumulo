@@ -96,9 +96,6 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
         userServices.put(type, CompactionDirectives.builder().setService(v).build());
       }
     });
-
-    // TODO remove
-    log.debug("services:{} userServices:{}", services, userServices);
   }
 
   @Override
