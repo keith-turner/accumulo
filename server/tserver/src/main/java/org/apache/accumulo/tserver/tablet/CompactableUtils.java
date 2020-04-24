@@ -46,7 +46,6 @@ import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.Summary;
 import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
-import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
@@ -64,8 +63,6 @@ import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.spi.cache.BlockCache;
-import org.apache.accumulo.core.spi.common.ServiceEnvironment;
-import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.summary.Gatherer;
@@ -94,7 +91,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.collect.Collections2;
-import com.google.common.collect.ImmutableMap;
 
 public class CompactableUtils {
 
@@ -208,7 +204,7 @@ public class CompactableUtils {
       return tconf;
     }
 
-    var opts = getOptsMap(tconf, Property.TABLE_COMPACTION_CONFIGUROR_OPTS);
+    var opts = tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_CONFIGUROR_OPTS);
 
     return createCompactionConfiguration(tablet, files,
         new CompactionConfigurerConfig(configurorClass).setOptions(opts));
@@ -359,45 +355,6 @@ public class CompactableUtils {
         .collect(Collectors.toSet());
   }
 
-  static Map<String,String> getOptsMap(AccumuloConfiguration conf, Property prefix) {
-    var builder = ImmutableMap.<String,String>builder();
-    conf.getAllPropertiesWithPrefix(prefix).forEach((k, v) -> {
-      String optKey = k.substring(prefix.getKey().length());
-      builder.put(optKey, v);
-    });
-
-    return builder.build();
-  }
-
-  static Deriver<CompactionDispatcher> createDispatcher(Tablet tablet) {
-    return tablet.getTableConfiguration().newDeriver(conf -> {
-      CompactionDispatcher newDispatcher = Property.createTableInstanceFromPropertyName(conf,
-          Property.TABLE_COMPACTION_DISPATCHER, CompactionDispatcher.class, null);
-
-      Map<String,String> opts = getOptsMap(conf, Property.TABLE_COMPACTION_DISPATCHER_OPTS);
-
-      newDispatcher.init(new CompactionDispatcher.InitParameters() {
-        @Override
-        public TableId getTableId() {
-          return tablet.getExtent().getTableId();
-        }
-
-        @Override
-        public Map<String,String> getOptions() {
-          return opts;
-        }
-
-        @Override
-        public ServiceEnvironment getServiceEnv() {
-          return new ServiceEnvironmentImpl(tablet.getContext());
-        }
-      });
-
-      return newDispatcher;
-
-    });
-  }
-
   private static final class TableCompactionHelper implements CompactionHelper {
     private final CompactionSelectorConfig cselCfg2;
     private final CompactionStrategyConfig stratCfg2;
@@ -518,7 +475,8 @@ public class CompactableUtils {
       CompactionSelectorConfig cselCfg = null;
 
       if (selectorClassName != null && !selectorClassName.isBlank()) {
-        var opts = getOptsMap(tconf, Property.TABLE_COMPACTION_SELECTOR_OPTS);
+        var opts =
+            tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_SELECTOR_OPTS);
         cselCfg = new CompactionSelectorConfig(selectorClassName).setOptions(opts);
       }
 
@@ -527,7 +485,8 @@ public class CompactableUtils {
       if (cselCfg == null && tconf.isPropertySet(Property.TABLE_COMPACTION_STRATEGY, true)) {
         // TODO log warning
         var stratClassName = tconf.get(Property.TABLE_COMPACTION_STRATEGY);
-        var opts = getOptsMap(tconf, Property.TABLE_COMPACTION_STRATEGY_PREFIX);
+        var opts =
+            tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_STRATEGY_PREFIX);
 
         stratCfg = new CompactionStrategyConfig(stratClassName).setOptions(opts);
       }

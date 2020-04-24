@@ -34,7 +34,6 @@ import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
-import org.apache.accumulo.core.conf.AccumuloConfiguration.Deriver;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -44,7 +43,6 @@ import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
-import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher.DispatchParameters;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
@@ -91,8 +89,6 @@ public class CompactableImpl implements Compactable {
     NEW, SELECTING, SELECTED, NOT_ACTIVE
   }
 
-  private Deriver<CompactionDispatcher> dispactDeriver;
-
   private SpecialStatus selectStatus = SpecialStatus.NOT_ACTIVE;
   private CompactionKind selectKind = null;
   private boolean selectedAll = false;
@@ -116,7 +112,6 @@ public class CompactableImpl implements Compactable {
 
   public CompactableImpl(Tablet tablet, CompactionManager manager) {
     this.tablet = tablet;
-    this.dispactDeriver = CompactableUtils.createDispatcher(tablet);
     this.manager = manager;
   }
 
@@ -561,7 +556,7 @@ public class CompactableImpl implements Compactable {
   @Override
   public CompactionServiceId getConfiguredService(CompactionKind kind) {
 
-    var dispatcher = dispactDeriver.derive();
+    var dispatcher = tablet.getTableConfiguration().getCompactionDispatcher();
 
     Map<String,String> tmpHints = Map.of();
 
