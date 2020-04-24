@@ -213,11 +213,13 @@ public class CompactionServiceImpl implements CompactionService {
     }
 
     List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
-    submitted.removeIf(sj -> {
-      // to avoid race conditions, only read status once and use local var for the two compares
-      var status = sj.getStatus();
-      return status != Status.QUEUED && status != Status.RUNNING;
-    });
+    if (!submitted.isEmpty()) {
+      submitted.removeIf(sj -> {
+        // to avoid race conditions, only read status once and use local var for the two compares
+        var status = sj.getStatus();
+        return status != Status.QUEUED && status != Status.RUNNING;
+      });
+    }
 
     if (reconcile(jobs, submitted)) {
       for (CompactionJob job : jobs) {
