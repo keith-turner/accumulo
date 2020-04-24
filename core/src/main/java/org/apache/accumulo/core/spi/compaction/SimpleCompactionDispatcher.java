@@ -98,7 +98,7 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
     });
 
     // TODO remove
-    log.debug("services:{} userServices:{}", services, userServices, new Exception());
+    log.debug("services:{} userServices:{}", services, userServices);
   }
 
   @Override
