@@ -130,11 +130,11 @@ public class TabletLogger {
   public static void compacting(KeyExtent extent, CompactionJob job, CompactionConfig config) {
     if (fileLog.isTraceEnabled()) {
       if (config == null) {
-        fileLog.trace("Compacting {} for {} from {} {}", extent, job.getKind(),
-            getSize(job.getFiles()), asFileNames(job.getFiles()));
+        fileLog.trace("Compacting {} for {} from {} size {}", extent, job.getKind(),
+            asFileNames(job.getFiles()), getSize(job.getFiles()));
       } else {
-        fileLog.trace("Compacting {} for {} from {} {} config {}", extent, job.getKind(),
-            getSize(job.getFiles()), asFileNames(job.getFiles()), config);
+        fileLog.trace("Compacting {} for {} from {} size {} config {}", extent, job.getKind(),
+            asFileNames(job.getFiles()), getSize(job.getFiles()), config);
       }
     }
   }

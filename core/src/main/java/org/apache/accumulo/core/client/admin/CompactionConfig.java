@@ -24,6 +24,7 @@ import static org.apache.accumulo.core.clientImpl.CompactionStrategyConfigUtil.D
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
@@ -225,5 +226,36 @@ public class CompactionConfig {
    */
   public CompactionConfigurerConfig getConfigurer() {
     return configurerConfig;
+  }
+
+  private String append(StringBuilder sb, String prefix, BooleanSupplier test, String name,
+      Object val) {
+    if (test.getAsBoolean()) {
+      sb.append(prefix);
+      sb.append(name);
+      sb.append("=");
+      sb.append(val);
+      return ", ";
+    }
+    return prefix;
+  }
+
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("[");
+    var prefix = append(sb, "", () -> start != null, "start", start);
+    prefix = append(sb, prefix, () -> end != null, "end", end);
+    prefix = append(sb, prefix, () -> !flush, "flush", flush);
+    prefix = append(sb, prefix, () -> !wait, "wait", wait);
+    prefix = append(sb, prefix, () -> !iterators.isEmpty(), "iterators", iterators);
+    prefix = append(sb, prefix, () -> !UserCompactionUtils.isDefault(compactionStrategy),
+        "strategy", compactionStrategy);
+    prefix = append(sb, prefix, () -> !UserCompactionUtils.isDefault(selectorConfig), "selector",
+        selectorConfig);
+    prefix = append(sb, prefix, () -> !UserCompactionUtils.isDefault(configurerConfig),
+        "configurer", configurerConfig);
+    sb.append("]");
+    return sb.toString();
   }
 }

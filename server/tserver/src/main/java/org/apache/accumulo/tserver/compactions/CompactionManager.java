@@ -72,6 +72,8 @@ public class CompactionManager {
           var compactable =
               compactablesToCheck.poll(maxTimeBetweenChecks - passed, TimeUnit.NANOSECONDS);
           if (compactable != null) {
+            // TODO remove
+            log.debug("processing changed compactable {} ", compactable.getExtent());
             last = compactable;
             compact(compactable);
           }
@@ -138,6 +140,8 @@ public class CompactionManager {
   }
 
   public void compactableChanged(Compactable compactable) {
+    // TODO remove
+    log.debug("Compactable changed {} ", compactable.getExtent());
     compactablesToCheck.add(compactable);
   }
 
