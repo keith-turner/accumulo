@@ -28,7 +28,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.IteratorSetting;
@@ -49,11 +48,12 @@ import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher.DispatchParameters;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
-import org.apache.accumulo.core.spi.compaction.CompactionService;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
+import org.apache.accumulo.core.spi.compaction.CompactionServices;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compactions.Compactable;
+import org.apache.accumulo.tserver.compactions.CompactionManager;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,7 +78,6 @@ public class CompactableImpl implements Compactable {
   private Set<CompactionJob> runnningJobs = new HashSet<>();
   private volatile boolean compactionRunning = false;
 
-  // TODO would be better if this set were persistent
   private Set<StoredTabletFile> selectedFiles = new HashSet<>();
 
   private Set<StoredTabletFile> allFilesWhenChopStarted = new HashSet<>();
@@ -100,7 +99,8 @@ public class CompactableImpl implements Compactable {
   private CompactionHelper chelper = null;
   private Long compactionId;
   private CompactionConfig compactionConfig;
-  private volatile Consumer<Compactable> newFileCallback;
+
+  private CompactionManager manager;
 
   // This interface exists for two purposes. First it allows abstraction of new and old
   // implementations for user pluggable file selection code. Second it facilitates placing code
@@ -114,14 +114,14 @@ public class CompactableImpl implements Compactable {
 
   }
 
-  public CompactableImpl(Tablet tablet) {
+  public CompactableImpl(Tablet tablet, CompactionManager manager) {
     this.tablet = tablet;
     this.dispactDeriver = CompactableUtils.createDispatcher(tablet);
+    this.manager = manager;
   }
 
   void initiateChop() {
 
-    // TODO avoid work
     Set<StoredTabletFile> allFiles = tablet.getDatafiles().keySet();
     Set<StoredTabletFile> filesToExamine = new HashSet<>(allFiles);
 
@@ -183,7 +183,7 @@ public class CompactableImpl implements Compactable {
   }
 
   private void markChopped() {
-    // TODO work into compaction mutation
+    // TODO ISSUE work into compaction mutation
     MetadataTableUtil.chopped(tablet.getTabletServer().getContext(), getExtent(),
         tablet.getTabletServer().getLock());
     tablet.getTabletServer()
@@ -209,14 +209,7 @@ public class CompactableImpl implements Compactable {
       }
     }
 
-    if (newFileCallback != null)
-      newFileCallback.accept(this);
-  }
-
-  @Override
-  public void registerNewFilesCallback(Consumer<Compactable> callback) {
-    this.newFileCallback = callback;
-
+    manager.compactableChanged(this);
   }
 
   /**
@@ -256,7 +249,6 @@ public class CompactableImpl implements Compactable {
         this.chelper = localHelper;
         this.compactionId = compactionId;
         this.compactionConfig = compactionConfig;
-        // TODO config
         log.trace("Selected compaction status changed {} {}", getExtent(), selectStatus);
       } else {
         return;
@@ -303,7 +295,7 @@ public class CompactableImpl implements Compactable {
           TabletLogger.selected(getExtent(), selectKind, selectedFiles);
         }
 
-        // TODO notify compaction manager to process this tablet!
+        manager.compactableChanged(this);
       }
 
     } catch (Exception e) {
@@ -547,8 +539,8 @@ public class CompactableImpl implements Compactable {
       throw new RuntimeException(e);
     } finally {
       synchronized (this) {
-        allCompactingFiles.removeAll(jobFiles);
-        runnningJobs.remove(job); // TODO check return true?
+        Preconditions.checkState(allCompactingFiles.removeAll(jobFiles));
+        Preconditions.checkState(runnningJobs.remove(job));
         compactionRunning = !allCompactingFiles.isEmpty();
 
         if (metaFile != null) {
@@ -577,8 +569,6 @@ public class CompactableImpl implements Compactable {
       synchronized (this) {
         if (selectStatus != SpecialStatus.NOT_ACTIVE && selectKind == CompactionKind.USER) {
           tmpHints = compactionConfig.getExecutionHints();
-        } else {
-          // TODO is this expected??
         }
       }
     }
@@ -603,9 +593,8 @@ public class CompactableImpl implements Compactable {
       }
 
       @Override
-      public Map<CompactionServiceId,CompactionService> getCompactionServices() {
-        // TODO
-        return Map.of();
+      public CompactionServices getCompactionServices() {
+        return manager.getServices();
       }
     });
 

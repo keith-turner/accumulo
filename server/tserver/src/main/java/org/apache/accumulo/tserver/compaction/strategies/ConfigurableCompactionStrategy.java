@@ -205,7 +205,6 @@ public class ConfigurableCompactionStrategy implements CompactionSelector, Compa
   @Override
   public void init(
       org.apache.accumulo.core.client.admin.compaction.CompactionSelector.InitParamaters iparams) {
-    // TODO Auto-generated method stub
     boolean selectNoSummary = false;
     boolean selectExtraSummary = false;
 

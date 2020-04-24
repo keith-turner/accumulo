@@ -54,7 +54,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-public class CompactionServiceImpl implements CompactionService {
+public class CompactionServiceImpl {
   // TODO ISSUE move rate limiters to the compaction service level.
   private final CompactionPlanner planner;
   private final Map<CompactionExecutorId,CompactionExecutor> executors;
@@ -138,7 +138,6 @@ public class CompactionServiceImpl implements CompactionService {
     return true;
   }
 
-  @Override
   public void compact(CompactionKind kind, Compactable compactable,
       Consumer<Compactable> completionCallback) {
     // TODO ISSUE this could take a while... could run this in a thread pool
@@ -228,8 +227,10 @@ public class CompactionServiceImpl implements CompactionService {
         submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ArrayList<>()).add(sjob);
       }
 
-      log.trace("Submitted compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
-          myId, files, plan);
+      if (!jobs.isEmpty()) {
+        log.trace("Submitted compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
+            myId, files, plan);
+      }
     } else {
       log.trace("Did not submit compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
           myId, files, plan);

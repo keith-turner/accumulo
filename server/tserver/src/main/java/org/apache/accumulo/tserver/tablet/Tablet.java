@@ -430,7 +430,7 @@ public class Tablet {
       removeOldTemporaryFiles();
     }
 
-    this.compactable = new CompactableImpl(this);
+    this.compactable = new CompactableImpl(this, tabletServer.getCompactionManager());
   }
 
   public ServerContext getContext() {

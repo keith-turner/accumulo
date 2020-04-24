@@ -20,12 +20,14 @@ package org.apache.accumulo.tserver.compactions;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
+import org.apache.accumulo.core.spi.compaction.CompactionServices;
 import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
 import org.apache.accumulo.core.util.NamingThreadFactory;
 import org.apache.accumulo.fate.util.Retry;
@@ -39,7 +41,7 @@ public class CompactionManager {
   private static final Logger log = LoggerFactory.getLogger(CompactionManager.class);
 
   private Iterable<Compactable> compactables;
-  private Map<CompactionServiceId,CompactionService> services;
+  private Map<CompactionServiceId,CompactionServiceImpl> services;
 
   private LinkedBlockingQueue<Compactable> compactablesToCheck = new LinkedBlockingQueue<>();
 
@@ -64,8 +66,6 @@ public class CompactionManager {
           for (Compactable compactable : compactables) {
             last = compactable;
             compact(compactable);
-            // TODO come up with a better way to link these
-            compactable.registerNewFilesCallback(compactablesToCheck::add);
           }
           lastCheckAllTime = System.nanoTime();
         } else {
@@ -108,7 +108,7 @@ public class CompactionManager {
     Map<String,String> configs =
         ctx.getConfiguration().getAllPropertiesWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX);
 
-    Map<CompactionServiceId,CompactionService> tmpServices = new HashMap<>();
+    Map<CompactionServiceId,CompactionServiceImpl> tmpServices = new HashMap<>();
 
     Map<String,String> planners = new HashMap<>();
     Map<String,Map<String,String>> options = new HashMap<>();
@@ -144,5 +144,14 @@ public class CompactionManager {
   public void start() {
     log.debug("Started compaction manager");
     new NamingThreadFactory("Compaction Manager").newThread(() -> mainLoop()).start();
+  }
+
+  public CompactionServices getServices() {
+    return new CompactionServices() {
+      @Override
+      public Set<CompactionServiceId> getIds() {
+        return services.keySet();
+      }
+    };
   }
 }

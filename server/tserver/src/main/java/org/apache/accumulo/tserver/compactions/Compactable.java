@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
@@ -89,6 +88,4 @@ public interface Compactable {
   CompactionServiceId getConfiguredService(CompactionKind kind);
 
   double getCompactionRatio();
-
-  void registerNewFilesCallback(Consumer<Compactable> callback);
 }
