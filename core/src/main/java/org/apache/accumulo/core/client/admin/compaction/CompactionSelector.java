@@ -20,12 +20,18 @@ package org.apache.accumulo.core.client.admin.compaction;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.Summary;
+import org.apache.accumulo.core.data.Key;
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
+import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 
 /**
  * This class select which files a user compaction will compact. It can also be configured per table
@@ -37,6 +43,8 @@ public interface CompactionSelector {
 
   public interface InitParamaters {
     Map<String,String> getOptions();
+
+    TableId getTableId();
 
     PluginEnvironment getEnvironment();
   }
@@ -50,6 +58,11 @@ public interface CompactionSelector {
 
     Collection<Summary> getSummaries(Collection<CompactableFile> files,
         Predicate<SummarizerConfiguration> summarySelector);
+
+    TableId getTableId();
+
+    Optional<SortedKeyValueIterator<Key,Value>> getSample(CompactableFile cf,
+        SamplerConfigurationImpl sc);
 
   }
 

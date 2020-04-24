@@ -536,12 +536,12 @@ public class CompactableImpl implements Compactable {
     StoredTabletFile metaFile = null;
     try {
 
-      TabletLogger.compacting(getExtent(), job.getKind(), jobFiles, localCompactionCfg);
+      TabletLogger.compacting(getExtent(), job, localCompactionCfg);
 
       metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId,
           propogateDeletesForSelected, localHelper, iters);
 
-      TabletLogger.compacted(getExtent(), job.getKind(), jobFiles, metaFile);
+      TabletLogger.compacted(getExtent(), job, metaFile);
 
     } catch (Exception e) {
       throw new RuntimeException(e);

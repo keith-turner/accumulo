@@ -28,6 +28,8 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
+import org.apache.accumulo.core.client.admin.CompactionConfigurerConfig;
+import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
 import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
 import org.apache.accumulo.core.compaction.CompactionSettings;
 import org.apache.accumulo.shell.Shell;
@@ -165,10 +167,16 @@ public class CompactCommand extends TableOperation {
     }
 
     if (configurableCompactOpt.size() > 0) {
-      CompactionStrategyConfig csc = new CompactionStrategyConfig(
+      CompactionSelectorConfig selectorCfg = new CompactionSelectorConfig(
           "org.apache.accumulo.tserver.compaction.strategies.ConfigurableCompactionStrategy");
-      csc.setOptions(configurableCompactOpt);
-      compactionConfig.setCompactionStrategy(csc);
+      selectorCfg.setOptions(configurableCompactOpt);
+
+      CompactionConfigurerConfig configurerConfig = new CompactionConfigurerConfig(
+          "org.apache.accumulo.tserver.compaction.strategies.ConfigurableCompactionStrategy");
+      configurerConfig.setOptions(configurableCompactOpt);
+
+      compactionConfig.setSelector(selectorCfg);
+      compactionConfig.setConfigurer(configurerConfig);
     }
 
     return super.execute(fullCommand, cl, shellState);

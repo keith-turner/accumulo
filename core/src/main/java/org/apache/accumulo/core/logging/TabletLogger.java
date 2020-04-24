@@ -25,12 +25,15 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.client.admin.CompactionConfig;
+import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,36 +106,42 @@ public class TabletLogger {
     }
   }
 
+  private static String getSize(Collection<CompactableFile> files) {
+    long sum = files.stream().mapToLong(CompactableFile::getEstimatedSize).sum();
+    return FileUtils.byteCountToDisplaySize(sum);
+  }
+
   /**
    * Lazily converts TableFile to file names. The lazy part is really important because when it is
    * not called with log.isDebugEnabled().
    *
    * @return
    */
-  private static Collection<String> asFileNames(Collection<? extends TabletFile> files) {
-    return Collections2.transform(files, TabletFile::getFileName);
+  private static Collection<String> asFileNames(Collection<CompactableFile> files) {
+    return Collections2.transform(files, CompactableFile::getFileName);
   }
 
   public static void selected(KeyExtent extent, CompactionKind kind,
       Collection<? extends TabletFile> inputs) {
     fileLog.trace("{} changed compaction selection set for {} new set {}", extent, kind,
-        asFileNames(inputs));
+        Collections2.transform(inputs, TabletFile::getFileName));
   }
 
-  public static void compacting(KeyExtent extent, CompactionKind kind,
-      Collection<? extends TabletFile> inputs, CompactionConfig config) {
-    if (config == null) {
-      fileLog.trace("Compacting {} for {} from {}", extent, kind, asFileNames(inputs));
-    } else {
-      fileLog.trace("Compacting {} for {} from {} config {}", extent, kind, asFileNames(inputs),
-          config);
+  public static void compacting(KeyExtent extent, CompactionJob job, CompactionConfig config) {
+    if (fileLog.isTraceEnabled()) {
+      if (config == null) {
+        fileLog.trace("Compacting {} for {} from {} {}", extent, job.getKind(),
+            getSize(job.getFiles()), asFileNames(job.getFiles()));
+      } else {
+        fileLog.trace("Compacting {} for {} from {} {} config {}", extent, job.getKind(),
+            getSize(job.getFiles()), asFileNames(job.getFiles()), config);
+      }
     }
   }
 
-  public static void compacted(KeyExtent extent, CompactionKind kind,
-      Collection<? extends TabletFile> inputs, TabletFile output) {
-    fileLog.debug("Compacted {} for {} created {} from {}", extent, kind, output,
-        asFileNames(inputs));
+  public static void compacted(KeyExtent extent, CompactionJob job, TabletFile output) {
+    fileLog.debug("Compacted {} for {} created {} from {}", extent, job.getKind(), output,
+        asFileNames(job.getFiles()));
   }
 
   public static void flushed(KeyExtent extent, TabletFile newDatafile) {

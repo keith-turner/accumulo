@@ -413,27 +413,29 @@ public enum Property {
   TSERV_COMPACTION_SERVICE_PREFIX("tserver.compaction.service.", null, PropertyType.PREFIX, ""),
   TSERV_COMPACTION_SERVICE_ROOT_PLANNER("tserver.compaction.service.root.planner",
       LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
-  TSERV_COMPACTION_SERVICE_ROOT_MAX_OPEN("tserver.compaction.service.root.opts.maxOpen", "30",
-      PropertyType.COUNT, "The maximum number of files a compaction will open"),
-  TSERV_COMPACTION_SERVICE_ROOT_EXECUTORS("tserver.compaction.service.root.opts.executors",
+  TSERV_COMPACTION_SERVICE_ROOT_MAX_OPEN("tserver.compaction.service.root.planner.opts.maxOpen",
+      "30", PropertyType.COUNT, "The maximum number of files a compaction will open"),
+  TSERV_COMPACTION_SERVICE_ROOT_EXECUTORS("tserver.compaction.service.root.planner.opts.executors",
       "[{'name':'small','maxSize':'32M','numThreads':1},"
           + "{'name':'huge','numThreads':1}]".replaceAll("'", "\""),
       PropertyType.STRING,
       "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
   TSERV_COMPACTION_SERVICE_META_PLANNER("tserver.compaction.service.meta.planner",
       LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
-  TSERV_COMPACTION_SERVICE_META_MAX_OPEN("tserver.compaction.service.meta.opts.maxOpen", "30",
-      PropertyType.COUNT, "The maximum number of files a compaction will open"),
-  TSERV_COMPACTION_SERVICE_META_EXECUTORS("tserver.compaction.service.meta.opts.executors",
+  TSERV_COMPACTION_SERVICE_META_MAX_OPEN("tserver.compaction.service.meta.planner.opts.maxOpen",
+      "30", PropertyType.COUNT, "The maximum number of files a compaction will open"),
+  TSERV_COMPACTION_SERVICE_META_EXECUTORS("tserver.compaction.service.meta.planner.opts.executors",
       "[{'name':'small','maxSize':'32M','numThreads':2},"
           + "{'name':'huge','numThreads':2}]".replaceAll("'", "\""),
       PropertyType.STRING,
       "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
   TSERV_COMPACTION_SERVICE_DEFAULT_PLANNER("tserver.compaction.service.default.planner",
       LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
-  TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN("tserver.compaction.service.default.opts.maxOpen", "30",
-      PropertyType.COUNT, "The maximum number of files a compaction will open"),
-  TSERV_COMPACTION_SERVICE_DEFAULT_EXECUTORS("tserver.compaction.service.default.opts.executors",
+  TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN(
+      "tserver.compaction.service.default.planner.opts.maxOpen", "30", PropertyType.COUNT,
+      "The maximum number of files a compaction will open"),
+  TSERV_COMPACTION_SERVICE_DEFAULT_EXECUTORS(
+      "tserver.compaction.service.default.planner.opts.executors",
       "[{'name':'tiny','maxSize':'8M','numThreads':3},"
           + "{'name':'small','maxSize':'32M','numThreads':3},"
           + "{'name':'medium','maxSize':'128M','numThreads':3},"

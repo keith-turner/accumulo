@@ -52,6 +52,7 @@ import org.apache.accumulo.core.iteratorsImpl.system.TimeSettingIterator;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
 import org.apache.accumulo.core.util.LocalityGroupUtil.LocalityGroupConfigurationError;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
@@ -64,7 +65,6 @@ import org.apache.accumulo.server.problems.ProblemType;
 import org.apache.accumulo.tserver.InMemoryMap;
 import org.apache.accumulo.tserver.MinorCompactionReason;
 import org.apache.accumulo.tserver.TabletIteratorEnvironment;
-import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.htrace.Trace;
 import org.apache.htrace.TraceScope;
@@ -178,8 +178,8 @@ public class Compactor implements Callable<CompactionStats> {
     return outputFile.toString();
   }
 
-  MajorCompactionReason getMajorCompactionReason() {
-    return MajorCompactionReason.values()[reason];
+  CompactionKind getMajorCompactionReason() {
+    return CompactionKind.values()[reason];
   }
 
   protected Map<String,Set<ByteSequence>> getLocalityGroups(AccumuloConfiguration acuTableConf)

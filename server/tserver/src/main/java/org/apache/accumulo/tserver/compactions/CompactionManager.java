@@ -28,12 +28,11 @@ import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
 import org.apache.accumulo.core.util.NamingThreadFactory;
+import org.apache.accumulo.fate.util.Retry;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.tserver.TabletServerResourceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.base.Preconditions;
 
 public class CompactionManager {
 
@@ -49,11 +48,21 @@ public class CompactionManager {
   private void mainLoop() {
     long lastCheckAllTime = System.nanoTime();
 
+    long increment = Math.max(1, maxTimeBetweenChecks / 10);
+
+    var retryFactory = Retry.builder().infiniteRetries()
+        .retryAfter(increment, TimeUnit.MILLISECONDS).incrementBy(increment, TimeUnit.MILLISECONDS)
+        .maxWait(maxTimeBetweenChecks, TimeUnit.MILLISECONDS).backOffFactor(1.07)
+        .logInterval(1, TimeUnit.MINUTES).createFactory();
+    var retry = retryFactory.createRetry();
+    Compactable last = null;
+
     while (true) {
       try {
         long passed = System.nanoTime() - lastCheckAllTime;
         if (passed >= maxTimeBetweenChecks) {
           for (Compactable compactable : compactables) {
+            last = compactable;
             compact(compactable);
             // TODO come up with a better way to link these
             compactable.registerNewFilesCallback(compactablesToCheck::add);
@@ -63,13 +72,24 @@ public class CompactionManager {
           var compactable =
               compactablesToCheck.poll(maxTimeBetweenChecks - passed, TimeUnit.NANOSECONDS);
           if (compactable != null) {
+            last = compactable;
             compact(compactable);
           }
         }
 
+        last = null;
+        if (retry.hasRetried())
+          retry = retryFactory.createRetry();
+
       } catch (Exception e) {
-        // TODO
-        log.error("Loop failed ", e);
+        var extent = last == null ? null : last.getExtent();
+        log.warn("Failed to compact {} ", extent, e);
+        retry.useRetry();
+        try {
+          retry.waitForNextAttempt();
+        } catch (InterruptedException e1) {
+          log.debug("Retry interrupted", e1);
+        }
       }
     }
   }
@@ -96,13 +116,12 @@ public class CompactionManager {
     configs.forEach((prop, val) -> {
       var suffix = prop.substring(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey().length());
       String[] tokens = suffix.split("\\.");
-      if (tokens[1].equals("opts")) {
-        Preconditions.checkArgument(tokens.length == 3);
-        options.computeIfAbsent(tokens[0], k -> new HashMap<>()).put(tokens[2], val);
-      } else if (tokens[1].equals("planner")) {
+      if (tokens.length == 4 && tokens[1].equals("planner") && tokens[2].equals("opts")) {
+        options.computeIfAbsent(tokens[0], k -> new HashMap<>()).put(tokens[3], val);
+      } else if (tokens.length == 2 && tokens[1].equals("planner")) {
         planners.put(tokens[0], val);
       } else {
-        // TODO
+        throw new IllegalArgumentException("Malformed compaction service property " + prop);
       }
     });
 

@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.function.Predicate;
@@ -51,14 +52,17 @@ import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
+import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
@@ -142,7 +146,7 @@ public class CompactableUtils {
     BlockCache ic = trsm.getIndexCache();
     Cache<String,Long> fileLenCache = trsm.getFileLenCache();
     MajorCompactionRequest request = new MajorCompactionRequest(tablet.getExtent(),
-        MajorCompactionReason.from(kind), tablet.getTabletServer().getFileSystem(),
+        CompactableUtils.from(kind), tablet.getTabletServer().getFileSystem(),
         tablet.getTableConfiguration(), sc, ic, fileLenCache, tablet.getContext());
 
     request.setFiles(datafiles);
@@ -286,6 +290,11 @@ public class CompactableUtils {
       public PluginEnvironment getEnvironment() {
         return new ServiceEnvironmentImpl(tablet.getContext());
       }
+
+      @Override
+      public TableId getTableId() {
+        return tablet.getExtent().getTableId();
+      }
     });
 
     Selection selection = selector.select(new CompactionSelector.SelectionParameters() {
@@ -322,6 +331,27 @@ public class CompactableUtils {
         }
 
         return sc.getSummaries();
+      }
+
+      @Override
+      public TableId getTableId() {
+        return tablet.getExtent().getTableId();
+      }
+
+      @Override
+      public Optional<SortedKeyValueIterator<Key,Value>> getSample(CompactableFile file,
+          SamplerConfigurationImpl sc) {
+        try {
+          FileOperations fileFactory = FileOperations.getInstance();
+          Path path = new Path(file.getUri());
+          FileSystem ns = tablet.getTabletServer().getFileSystem().getFileSystemByPath(path);
+          var fiter = fileFactory.newReaderBuilder()
+              .forFile(path.toString(), ns, ns.getConf(), tablet.getContext().getCryptoService())
+              .withTableConfiguration(tablet.getTableConfiguration()).seekToBeginning().build();
+          return Optional.ofNullable(fiter.getSample(sc));
+        } catch (IOException e) {
+          throw new UncheckedIOException(e);
+        }
       }
     });
 
@@ -549,7 +579,7 @@ public class CompactableUtils {
       }
     };
 
-    int reason = MajorCompactionReason.from(job.getKind()).ordinal();
+    int reason = job.getKind().ordinal();
 
     AccumuloConfiguration tableConfig =
         getCompactionConfig(job.getKind(), tablet, helper, job.getFiles());
@@ -590,5 +620,19 @@ public class CompactableUtils {
         compactTmpName, newFile, compactionId,
         new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
     return metaFile;
+  }
+
+  public static MajorCompactionReason from(CompactionKind ck) {
+    switch (ck) {
+      case CHOP:
+        return MajorCompactionReason.CHOP;
+      case SYSTEM:
+      case SELECTOR:
+        return MajorCompactionReason.NORMAL;
+      case USER:
+        return MajorCompactionReason.USER;
+      default:
+        throw new IllegalArgumentException("Unknown kind " + ck);
+    }
   }
 }

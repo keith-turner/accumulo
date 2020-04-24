@@ -182,15 +182,13 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
           && params.getRunningCompactions().stream()
               .filter(job -> job.getKind() == params.getKind()).count() == 0) {
         // TODO ISSUE could partition files by executor sizes, however would need to do this in
-        // optimal
-        // way.. not as easy as chop because need to result in a single file
+        // optimal way.. not as easy as chop because need to result in a single file
         group = findMaximalRequiredSetToCompact(params.getCandidates(), maxFilesToCompact);
       }
 
       if (group.isEmpty() && params.getKind() == CompactionKind.CHOP) {
         // TODO ISSUE since chop compactions do not have to result in a single file, could partition
-        // files
-        // by executors sizes
+        // files by executors sizes
         group = findMaximalRequiredSetToCompact(params.getCandidates(), maxFilesToCompact);
       }
 
@@ -200,17 +198,10 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         // determine which executor to use based on the size of the files
         var ceid = getExecutor(group);
 
-        if (!params.getRunningCompactions().isEmpty()) {
-          // TODO remove
-          log.info("Planning concurrent {} {}", ceid, group);
-        }
-
         return params.createPlanBuilder().addJob(createPriority(params), ceid, group).build();
       }
 
     } catch (RuntimeException e) {
-      // TODO remove
-      log.warn("params:{}", params, e);
       throw e;
     }
   }
@@ -272,7 +263,32 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
   }
 
   /**
-   * Find the largest set of small files to compact.
+   * Find the largest set of contiguous small files that meet the compaction ratio. For a set of
+   * file size like [101M,102M,103M,104M,4M,3M,3M,3M,3M], it would be nice compact the smaller files
+   * [4M,3M,3M,3M,3M] followed by the larger ones. The reason to do the smaller ones first is to
+   * more quickly reduce the number of files. However, all compactions should still follow the
+   * compaction ratio in order to ensure the amount of data rewriting is logarithmic.
+   *
+   * <p>
+   * A set of files meets the compaction ratio when the largestFileinSet * compactionRatio <
+   * sumOfFileSizesInSet. This algorithm grows the set of small files until it meets the compaction
+   * ratio, then keeps growing it while it continues to meet the ratio. Once a set does not meet the
+   * compaction ratio, the last set that did is returned. Growing the set of small files means
+   * adding the smallest file not in the set.
+   *
+   * <p>
+   * There is one caveat to the algorithm mentioned above, if a smaller set of files would prevent a
+   * future compaction then do not select it. This code in this function performs a look ahead to
+   * see if a candidate set will prevent future compactions.
+   *
+   * <p>
+   * As an example of a small set of files that could prevent a future compaction, consider the
+   * files sizes [100M,99M,33M,33M,33M,33M]. For a compaction ratio of 3, the set
+   * [100M,99M,33M,33M,33M,33M] and [33M,33M,33M,33M] both meet the compaction ratio. If the set
+   * [33M,33M,33M,33M] is compacted, then it will result in a tablet having [132M, 100M, 99M] which
+   * does not meet the compaction ration. So in this case, choosing the set [33M,33M,33M,33M]
+   * prevents a future compaction that could have occurred. This function will not choose the
+   * smaller set because of it would prevent the future compaction.
    */
   public static Collection<CompactableFile> findMapFilesToCompact(Set<CompactableFile> files,
       double ratio, int maxFilesToCompact, long maxSizeToCompact) {
@@ -301,12 +317,13 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
         goodIndex = c;
 
         if (goodIndex + 1 >= maxFilesToCompact)
-          break; // TODO old algorithm used to slide a window up when nothing found in smallest
-                 // files
+          break; // TODO ISSUE old algorithm used to slide a window up when nothing found in
+                 // smallest files
       } else if (c - 1 == goodIndex) {
         // The previous file met the compaction ratio, but the current file does not. So all of the
         // previous files are candidates. However we must ensure that any candidate set produces a
-        // file smaller than the next largest file in the next candidate set.
+        // file smaller than the next largest file in the next candidate set to ensure future
+        // compactions are not prevented.
         if (larsmaIndex == -1 || larsmaSum > sortedFiles.get(goodIndex).getEstimatedSize()) {
           larsmaIndex = goodIndex;
           larsmaSum = sum - currSize;

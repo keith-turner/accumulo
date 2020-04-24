@@ -141,7 +141,7 @@ public class CompactionServiceImpl implements CompactionService {
   @Override
   public void compact(CompactionKind kind, Compactable compactable,
       Consumer<Compactable> completionCallback) {
-    // TODO this could take a while... could run this in a thread pool
+    // TODO ISSUE this could take a while... could run this in a thread pool
     var files = compactable.getFiles(myId, kind);
 
     if (files.isEmpty() || files.get().candidates.isEmpty())
@@ -198,7 +198,14 @@ public class CompactionServiceImpl implements CompactionService {
       }
     };
 
-    var plan = planner.makePlan(params);
+    CompactionPlan plan;
+    try {
+      plan = planner.makePlan(params);
+    } catch (RuntimeException e) {
+      log.debug("Planner failed {} {} {} {}", planner.getClass().getName(), compactable.getExtent(),
+          kind, files, e);
+      throw e;
+    }
 
     Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
     if (jobs.removeIf(job -> job.getKind() != kind)) {
