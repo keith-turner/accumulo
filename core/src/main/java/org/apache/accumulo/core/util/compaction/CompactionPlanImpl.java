@@ -49,7 +49,7 @@ public class CompactionPlanImpl implements CompactionPlan {
   public static class BuilderImpl implements CompactionPlan.Builder {
 
     private CompactionKind kind;
-    private ArrayList<CompactionJob> jobs;
+    private ArrayList<CompactionJob> jobs = new ArrayList<>();
 
     public BuilderImpl(CompactionKind kind) {
       this.kind = kind;
