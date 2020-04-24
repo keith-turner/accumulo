@@ -61,7 +61,8 @@ public class CompactionManager {
 
     while (true) {
       try {
-        long passed = System.nanoTime() - lastCheckAllTime;
+        long passed = TimeUnit.MILLISECONDS.convert(System.nanoTime() - lastCheckAllTime,
+            TimeUnit.NANOSECONDS);
         if (passed >= maxTimeBetweenChecks) {
           for (Compactable compactable : compactables) {
             last = compactable;
@@ -70,7 +71,7 @@ public class CompactionManager {
           lastCheckAllTime = System.nanoTime();
         } else {
           var compactable =
-              compactablesToCheck.poll(maxTimeBetweenChecks - passed, TimeUnit.NANOSECONDS);
+              compactablesToCheck.poll(maxTimeBetweenChecks - passed, TimeUnit.MILLISECONDS);
           if (compactable != null) {
             // TODO remove
             log.debug("processing changed compactable {} ", compactable.getExtent());
