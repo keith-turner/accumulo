@@ -48,6 +48,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
+import org.apache.accumulo.core.util.compaction.CompactionJobImpl;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compactions.Compactable;
@@ -466,7 +467,7 @@ public class CompactableImpl implements Compactable {
         .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
 
     Long compactionId = null;
-    boolean propogateDeletesForSelected = true;
+    boolean propogateDeletes = true;
     CompactionHelper localHelper;
     List<IteratorSetting> iters = List.of();
     CompactionConfig localCompactionCfg;
@@ -523,8 +524,20 @@ public class CompactableImpl implements Compactable {
 
       compactionRunning = !allCompactingFiles.isEmpty();
 
-      if (job.getKind() == selectKind && selectedAll && jobFiles.containsAll(selectedFiles)) {
-        propogateDeletesForSelected = false;
+      switch (job.getKind()) {
+        case SELECTOR:
+        case USER:
+          Preconditions.checkState(selectStatus == SpecialStatus.SELECTED);
+          if (job.getKind() == selectKind && selectedAll && jobFiles.containsAll(selectedFiles)) {
+            propogateDeletes = false;
+          }
+          break;
+        default:
+          if (((CompactionJobImpl) job).selectedAll()) {
+            // At the time when the job was created all files were selected, so deletes can be
+            // dropped.
+            propogateDeletes = false;
+          }
       }
 
       if (job.getKind() == CompactionKind.USER && selectKind == job.getKind()
@@ -545,9 +558,8 @@ public class CompactableImpl implements Compactable {
 
       TabletLogger.compacting(getExtent(), job, localCompactionCfg);
 
-      metaFile =
-          CompactableUtils.compact(tablet, job, jobFiles, compactionId, propogateDeletesForSelected,
-              localHelper, iters, new CompactionCheck(service, job.getKind()));
+      metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId, propogateDeletes,
+          localHelper, iters, new CompactionCheck(service, job.getKind()));
 
       TabletLogger.compacted(getExtent(), job, metaFile);
 

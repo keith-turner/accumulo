@@ -20,13 +20,17 @@ package org.apache.accumulo.core.util.compaction;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionPlan;
+
+import com.google.common.base.Preconditions;
 
 public class CompactionPlanImpl implements CompactionPlan {
 
@@ -50,15 +54,29 @@ public class CompactionPlanImpl implements CompactionPlan {
 
     private CompactionKind kind;
     private ArrayList<CompactionJob> jobs = new ArrayList<>();
+    private Set<CompactableFile> allFiles;
+    private Set<CompactableFile> seenFiles;
 
-    public BuilderImpl(CompactionKind kind) {
+    public BuilderImpl(CompactionKind kind, Set<CompactableFile> allFiles) {
       this.kind = kind;
+      this.allFiles = allFiles;
     }
 
     @Override
     public Builder addJob(long priority, CompactionExecutorId executor,
         Collection<CompactableFile> files) {
-      jobs.add(new CompactionJobImpl(priority, executor, files, kind));
+      Set<CompactableFile> filesSet =
+          files instanceof Set ? (Set<CompactableFile>) files : Set.copyOf(files);
+
+      Preconditions.checkArgument(Collections.disjoint(filesSet, seenFiles),
+          "Job files overlaps with previous job %s %s", files, jobs);
+      Preconditions.checkArgument(allFiles.containsAll(filesSet),
+          "Job files are not tablet files %s %s", files, allFiles);
+
+      seenFiles.addAll(filesSet);
+
+      jobs.add(
+          new CompactionJobImpl(priority, executor, filesSet, kind, filesSet.equals(allFiles)));
       return this;
     }
 

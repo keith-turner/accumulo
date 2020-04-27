@@ -37,11 +37,11 @@ public interface CompactionPlan {
      *          priority of 4 and another with 5, then the one with 5 will be taken first.
      * @param executor
      *          Where the job should run.
-     * @param files
+     * @param group
      *          The files to compact.
      * @return this
      */
-    Builder addJob(long priority, CompactionExecutorId executor, Collection<CompactableFile> files);
+    Builder addJob(long priority, CompactionExecutorId executor, Collection<CompactableFile> group);
 
     CompactionPlan build();
   }

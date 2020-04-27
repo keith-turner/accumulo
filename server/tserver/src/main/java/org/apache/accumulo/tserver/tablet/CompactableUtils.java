@@ -497,7 +497,7 @@ public class CompactableUtils {
           strategyWarningsCache.get(tablet.getExtent().getTableId(), () -> {
             log.warn(
                 "Table id {} set {} to {}.  Compaction strategies are deprecated.  See the Javadoc"
-                + " for class {} for more details.",
+                    + " for class {} for more details.",
                 tablet.getExtent().getTableId(), Property.TABLE_COMPACTION_STRATEGY.getKey(),
                 stratClassName, CompactionStrategyConfig.class.getName());
             return true;
@@ -532,9 +532,9 @@ public class CompactableUtils {
   }
 
   static StoredTabletFile compact(Tablet tablet, CompactionJob job, Set<StoredTabletFile> jobFiles,
-      Long compactionId, boolean propogateDeletesForSelected,
-      CompactableImpl.CompactionHelper helper, List<IteratorSetting> iters,
-      CompactionCheck compactionCheck) throws IOException, CompactionCanceledException {
+      Long compactionId, boolean propogateDeletes, CompactableImpl.CompactionHelper helper,
+      List<IteratorSetting> iters, CompactionCheck compactionCheck)
+      throws IOException, CompactionCanceledException {
     StoredTabletFile metaFile;
     CompactionEnv cenv = new CompactionEnv() {
       @Override
@@ -566,16 +566,6 @@ public class CompactableUtils {
     SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
     HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
     jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
-
-    boolean propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
-
-    if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
-      propogateDeletes = propogateDeletesForSelected;
-    } else {
-      // TODO if any compaction job contains all of the files at its time of creation, then should
-      // probably not propogate
-      propogateDeletes = !allFiles.keySet().equals(compactFiles.keySet());
-    }
 
     TabletFile newFile = tablet.getNextMapFilename(!propogateDeletes ? "A" : "C");
     TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));

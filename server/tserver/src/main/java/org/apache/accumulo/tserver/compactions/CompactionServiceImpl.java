@@ -193,7 +193,7 @@ public class CompactionServiceImpl {
 
       @Override
       public CompactionPlan.Builder createPlanBuilder() {
-        return new CompactionPlanImpl.BuilderImpl(kind);
+        return new CompactionPlanImpl.BuilderImpl(kind, files.get().allFiles);
       }
     };
 

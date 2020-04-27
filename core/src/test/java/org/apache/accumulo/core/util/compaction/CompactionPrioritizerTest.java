@@ -42,7 +42,7 @@ public class CompactionPrioritizerTest {
           .create(URI.create("hdfs://foonn/accumulo/tables/5/" + tablet + "/" + i + ".rf"), 4, 4));
     }
     return new CompactionJobImpl(CompactionJobPrioritizer.createPriority(kind, totalFiles),
-        CompactionExecutorId.of("test"), files, kind);
+        CompactionExecutorId.of("test"), files, kind, false);
   }
 
   @Test

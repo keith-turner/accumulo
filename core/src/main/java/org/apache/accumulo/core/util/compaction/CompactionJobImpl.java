@@ -39,13 +39,15 @@ public class CompactionJobImpl implements CompactionJob {
   private final CompactionExecutorId executor;
   private final Set<CompactableFile> files;
   private final CompactionKind kind;
+  private boolean selectedAll;
 
   CompactionJobImpl(long priority, CompactionExecutorId executor, Collection<CompactableFile> files,
-      CompactionKind kind) {
+      CompactionKind kind, boolean selectedAllFiles) {
     this.priority = priority;
     this.executor = executor;
     this.files = Set.copyOf(files);
     this.kind = kind;
+    this.selectedAll = selectedAllFiles;
   }
 
   @Override
@@ -80,6 +82,10 @@ public class CompactionJobImpl implements CompactionJob {
   @Override
   public int hashCode() {
     return Objects.hash(priority, executor, files, kind);
+  }
+
+  public boolean selectedAll() {
+    return selectedAll;
   }
 
   @Override
