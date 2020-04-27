@@ -81,7 +81,7 @@ public class Compactor implements Callable<CompactionStats> {
 
   public interface CompactionEnv {
 
-    boolean isCompactionEnabled();
+    boolean isCompactionEnabled(long entriesCompacted);
 
     IteratorScope getIteratorScope();
 
@@ -378,7 +378,7 @@ public class Compactor implements Callable<CompactionStats> {
       }
 
       try (TraceScope write = Trace.startSpan("write")) {
-        while (itr.hasTop() && env.isCompactionEnabled()) {
+        while (itr.hasTop() && env.isCompactionEnabled(entriesCompacted)) {
           mfw.append(itr.getTopKey(), itr.getTopValue());
           itr.next();
           entriesCompacted++;
@@ -389,7 +389,7 @@ public class Compactor implements Callable<CompactionStats> {
           }
         }
 
-        if (itr.hasTop() && !env.isCompactionEnabled()) {
+        if (itr.hasTop() && !env.isCompactionEnabled(entriesCompacted)) {
           // cancel major compaction operation
           try {
             try {

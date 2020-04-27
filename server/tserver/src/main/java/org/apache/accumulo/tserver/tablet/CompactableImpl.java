@@ -436,6 +436,29 @@ public class CompactableImpl implements Compactable {
     }
   }
 
+  class CompactionCheck {
+    private boolean enabled = true;
+    private CompactionServiceId service;
+
+    public CompactionCheck(CompactionServiceId service, CompactionKind kind) {
+      this.service = service;
+      this.kind = kind;
+    }
+
+    private CompactionKind kind;
+
+    public boolean isCompactionEnabled(long entriesCompacted) {
+      if (entriesCompacted % 1024 == 0 && enabled) {
+        // this is called for every key value compacted, so do not want do checks too frequently
+        if (tablet.isClosed() || !service.equals(getConfiguredService(kind))) {
+          enabled = false;
+        }
+      }
+
+      return enabled;
+    }
+  }
+
   @Override
   public void compact(CompactionServiceId service, CompactionJob job) {
 
@@ -522,8 +545,9 @@ public class CompactableImpl implements Compactable {
 
       TabletLogger.compacting(getExtent(), job, localCompactionCfg);
 
-      metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId,
-          propogateDeletesForSelected, localHelper, iters);
+      metaFile =
+          CompactableUtils.compact(tablet, job, jobFiles, compactionId, propogateDeletesForSelected,
+              localHelper, iters, new CompactionCheck(service, job.getKind()));
 
       TabletLogger.compacted(getExtent(), job, metaFile);
 

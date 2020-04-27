@@ -80,6 +80,7 @@ import org.apache.accumulo.tserver.compaction.CompactionStrategy;
 import org.apache.accumulo.tserver.compaction.MajorCompactionReason;
 import org.apache.accumulo.tserver.compaction.MajorCompactionRequest;
 import org.apache.accumulo.tserver.compaction.WriteParameters;
+import org.apache.accumulo.tserver.tablet.CompactableImpl.CompactionCheck;
 import org.apache.accumulo.tserver.tablet.CompactableImpl.CompactionHelper;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionCanceledException;
 import org.apache.accumulo.tserver.tablet.Compactor.CompactionEnv;
@@ -435,7 +436,8 @@ public class CompactableUtils {
       }
 
       if (selectedFiles.isEmpty()) {
-        // TODO seems like this should be set after the metadata update.. was before in the exisitng
+        // TODO ISSUE seems like this should be set after the metadata update.. was before in the
+        // exisitng
         // code
         tablet.setLastCompactionID(compactionId);
 
@@ -513,14 +515,13 @@ public class CompactableUtils {
 
   static StoredTabletFile compact(Tablet tablet, CompactionJob job, Set<StoredTabletFile> jobFiles,
       Long compactionId, boolean propogateDeletesForSelected,
-      CompactableImpl.CompactionHelper helper, List<IteratorSetting> iters)
-      throws IOException, CompactionCanceledException {
+      CompactableImpl.CompactionHelper helper, List<IteratorSetting> iters,
+      CompactionCheck compactionCheck) throws IOException, CompactionCanceledException {
     StoredTabletFile metaFile;
     CompactionEnv cenv = new CompactionEnv() {
       @Override
-      public boolean isCompactionEnabled() {
-        // TODO check for service change????
-        return !tablet.isClosing();
+      public boolean isCompactionEnabled(long entriesCompacted) {
+        return compactionCheck.isCompactionEnabled(entriesCompacted);
       }
 
       @Override
