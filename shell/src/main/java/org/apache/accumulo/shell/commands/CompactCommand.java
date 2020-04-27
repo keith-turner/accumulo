@@ -93,30 +93,27 @@ public class CompactCommand extends TableOperation {
     }
   }
 
-  private void put(CommandLine cl, Map<String,String> opts, Option opt,
+  private void put(CommandLine cl, Map<String,String> sopts, Map<String,String> copts, Option opt,
       CompactionSettings setting) {
     if (cl.hasOption(opt.getLongOpt()))
-      setting.put(opts, cl.getOptionValue(opt.getLongOpt()));
+      setting.put(sopts, copts, cl.getOptionValue(opt.getLongOpt()));
   }
 
-  private Map<String,String> getConfigurableCompactionStrategyOpts(CommandLine cl) {
-    Map<String,String> opts = new HashMap<>();
-
-    put(cl, opts, extraSummaryOption, CompactionSettings.SF_EXTRA_SUMMARY);
-    put(cl, opts, enoSummaryOption, CompactionSettings.SF_NO_SUMMARY);
-    put(cl, opts, enoSampleOption, CompactionSettings.SF_NO_SAMPLE);
-    put(cl, opts, enameOption, CompactionSettings.SF_NAME_RE_OPT);
-    put(cl, opts, epathOption, CompactionSettings.SF_PATH_RE_OPT);
-    put(cl, opts, sizeLtOption, CompactionSettings.SF_LT_ESIZE_OPT);
-    put(cl, opts, sizeGtOption, CompactionSettings.SF_GT_ESIZE_OPT);
-    put(cl, opts, minFilesOption, CompactionSettings.MIN_FILES_OPT);
-    put(cl, opts, outCompressionOpt, CompactionSettings.OUTPUT_COMPRESSION_OPT);
-    put(cl, opts, outBlockSizeOpt, CompactionSettings.OUTPUT_BLOCK_SIZE_OPT);
-    put(cl, opts, outHdfsBlockSizeOpt, CompactionSettings.OUTPUT_HDFS_BLOCK_SIZE_OPT);
-    put(cl, opts, outIndexBlockSizeOpt, CompactionSettings.OUTPUT_INDEX_BLOCK_SIZE_OPT);
-    put(cl, opts, outReplication, CompactionSettings.OUTPUT_REPLICATION_OPT);
-
-    return opts;
+  private void getConfigurableCompactionStrategyOpts(CommandLine cl, Map<String,String> sopts,
+      Map<String,String> copts) {
+    put(cl, sopts, copts, extraSummaryOption, CompactionSettings.SF_EXTRA_SUMMARY);
+    put(cl, sopts, copts, enoSummaryOption, CompactionSettings.SF_NO_SUMMARY);
+    put(cl, sopts, copts, enoSampleOption, CompactionSettings.SF_NO_SAMPLE);
+    put(cl, sopts, copts, enameOption, CompactionSettings.SF_NAME_RE_OPT);
+    put(cl, sopts, copts, epathOption, CompactionSettings.SF_PATH_RE_OPT);
+    put(cl, sopts, copts, sizeLtOption, CompactionSettings.SF_LT_ESIZE_OPT);
+    put(cl, sopts, copts, sizeGtOption, CompactionSettings.SF_GT_ESIZE_OPT);
+    put(cl, sopts, copts, minFilesOption, CompactionSettings.MIN_FILES_OPT);
+    put(cl, sopts, copts, outCompressionOpt, CompactionSettings.OUTPUT_COMPRESSION_OPT);
+    put(cl, sopts, copts, outBlockSizeOpt, CompactionSettings.OUTPUT_BLOCK_SIZE_OPT);
+    put(cl, sopts, copts, outHdfsBlockSizeOpt, CompactionSettings.OUTPUT_HDFS_BLOCK_SIZE_OPT);
+    put(cl, sopts, copts, outIndexBlockSizeOpt, CompactionSettings.OUTPUT_INDEX_BLOCK_SIZE_OPT);
+    put(cl, sopts, copts, outReplication, CompactionSettings.OUTPUT_REPLICATION_OPT);
   }
 
   @Override
@@ -151,10 +148,12 @@ public class CompactCommand extends TableOperation {
       compactionConfig.setIterators(new ArrayList<>(iterators));
     }
 
-    Map<String,String> configurableCompactOpt = getConfigurableCompactionStrategyOpts(cl);
+    Map<String,String> selectorOpts = new HashMap<>();
+    Map<String,String> configurerOpts = new HashMap<>();
+    getConfigurableCompactionStrategyOpts(cl, selectorOpts, configurerOpts);
 
     if (cl.hasOption(strategyOpt.getOpt())) {
-      if (configurableCompactOpt.size() > 0)
+      if (selectorOpts.size() > 0 || configurerOpts.size() > 0)
         throw new IllegalArgumentException(
             "Can not specify compaction strategy with file selection and file output options.");
 
@@ -166,16 +165,17 @@ public class CompactCommand extends TableOperation {
       compactionConfig.setCompactionStrategy(csc);
     }
 
-    if (configurableCompactOpt.size() > 0) {
+    if (selectorOpts.size() > 0) {
       CompactionSelectorConfig selectorCfg = new CompactionSelectorConfig(
           "org.apache.accumulo.tserver.compaction.strategies.ConfigurableCompactionStrategy");
-      selectorCfg.setOptions(configurableCompactOpt);
+      selectorCfg.setOptions(selectorOpts);
+      compactionConfig.setSelector(selectorCfg);
+    }
 
+    if (configurerOpts.size() > 0) {
       CompactionConfigurerConfig configurerConfig = new CompactionConfigurerConfig(
           "org.apache.accumulo.tserver.compaction.strategies.ConfigurableCompactionStrategy");
-      configurerConfig.setOptions(configurableCompactOpt);
-
-      compactionConfig.setSelector(selectorCfg);
+      configurerConfig.setOptions(configurerOpts);
       compactionConfig.setConfigurer(configurerConfig);
     }
 

@@ -100,11 +100,11 @@ public class ConfigurableCompactionStrategyTest {
     // test setting all output options
     ccs = new ConfigurableCompactionStrategy();
 
-    CompactionSettings.OUTPUT_BLOCK_SIZE_OPT.put(opts, "64K");
-    CompactionSettings.OUTPUT_COMPRESSION_OPT.put(opts, "snappy");
-    CompactionSettings.OUTPUT_HDFS_BLOCK_SIZE_OPT.put(opts, "256M");
-    CompactionSettings.OUTPUT_INDEX_BLOCK_SIZE_OPT.put(opts, "32K");
-    CompactionSettings.OUTPUT_REPLICATION_OPT.put(opts, "5");
+    CompactionSettings.OUTPUT_BLOCK_SIZE_OPT.put(null, opts, "64K");
+    CompactionSettings.OUTPUT_COMPRESSION_OPT.put(null, opts, "snappy");
+    CompactionSettings.OUTPUT_HDFS_BLOCK_SIZE_OPT.put(null, opts, "256M");
+    CompactionSettings.OUTPUT_INDEX_BLOCK_SIZE_OPT.put(null, opts, "32K");
+    CompactionSettings.OUTPUT_REPLICATION_OPT.put(null, opts, "5");
 
     ccs.init(initParams);
 
