@@ -696,9 +696,9 @@ public enum Property {
           + "compaction, even if the files do not meet the compaction ratio."),
   TABLE_COMPACTION_SELECTOR_OPTS("table.compaction.selector.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction dispatcher"),
-  TABLE_COMPACTION_CONFIGUROR("table.compaction.configuror", "", PropertyType.CLASSNAME,
+  TABLE_COMPACTION_CONFIGURER("table.compaction.configurer", "", PropertyType.CLASSNAME,
       "A plugin that can dynamically configure compaction output files based on input files."),
-  TABLE_COMPACTION_CONFIGUROR_OPTS("table.compaction.configuror.opts.", null, PropertyType.PREFIX,
+  TABLE_COMPACTION_CONFIGURER_OPTS("table.compaction.configurer.opts.", null, PropertyType.PREFIX,
       "Options for the table compaction configuror"),
   @Deprecated(since = "2.1.0", forRemoval = true)
   @ReplacedBy(property = TABLE_COMPACTION_SELECTOR)

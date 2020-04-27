@@ -42,6 +42,7 @@ import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector.Selection;
+import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.Summary;
 import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
@@ -199,12 +200,12 @@ public class CompactableUtils {
       Set<CompactableFile> files) {
     var tconf = tablet.getTableConfiguration();
 
-    var configurorClass = tconf.get(Property.TABLE_COMPACTION_CONFIGUROR);
+    var configurorClass = tconf.get(Property.TABLE_COMPACTION_CONFIGURER);
     if (configurorClass == null || configurorClass.isBlank()) {
       return tconf;
     }
 
-    var opts = tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_CONFIGUROR_OPTS);
+    var opts = tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_CONFIGURER_OPTS);
 
     return createCompactionConfiguration(tablet, files,
         new CompactionConfigurerConfig(configurorClass).setOptions(opts));
@@ -336,7 +337,7 @@ public class CompactableUtils {
 
       @Override
       public Optional<SortedKeyValueIterator<Key,Value>> getSample(CompactableFile file,
-          SamplerConfigurationImpl sc) {
+          SamplerConfiguration sc) {
         try {
           FileOperations fileFactory = FileOperations.getInstance();
           Path path = new Path(file.getUri());
@@ -344,7 +345,7 @@ public class CompactableUtils {
           var fiter = fileFactory.newReaderBuilder()
               .forFile(path.toString(), ns, ns.getConf(), tablet.getContext().getCryptoService())
               .withTableConfiguration(tablet.getTableConfiguration()).seekToBeginning().build();
-          return Optional.ofNullable(fiter.getSample(sc));
+          return Optional.ofNullable(fiter.getSample(new SamplerConfigurationImpl(sc)));
         } catch (IOException e) {
           throw new UncheckedIOException(e);
         }

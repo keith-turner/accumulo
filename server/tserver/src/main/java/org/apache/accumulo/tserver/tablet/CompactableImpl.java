@@ -225,9 +225,6 @@ public class CompactableImpl implements Compactable {
       CompactionConfig compactionConfig) {
     Preconditions.checkArgument(kind == CompactionKind.USER || kind == CompactionKind.SELECTOR);
 
-    // TODO limit the frequency of this call taking action
-
-    // TODO optimize this
     var localHelper = CompactableUtils.getHelper(kind, tablet, compactionId, compactionConfig);
 
     if (localHelper == null)

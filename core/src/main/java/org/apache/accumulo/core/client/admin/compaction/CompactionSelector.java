@@ -25,13 +25,13 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
+import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.Summary;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
-import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 
 /**
  * This class select which files a user compaction will compact. It can also be configured per table
@@ -62,7 +62,7 @@ public interface CompactionSelector {
     TableId getTableId();
 
     Optional<SortedKeyValueIterator<Key,Value>> getSample(CompactableFile cf,
-        SamplerConfigurationImpl sc);
+        SamplerConfiguration sc);
 
   }
 

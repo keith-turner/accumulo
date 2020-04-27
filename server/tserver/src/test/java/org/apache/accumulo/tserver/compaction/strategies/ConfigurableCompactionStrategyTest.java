@@ -62,7 +62,6 @@ public class ConfigurableCompactionStrategyTest {
 
       @Override
       public Map<String,String> getOptions() {
-        // TODO Auto-generated method stub
         return opts;
       }
 
@@ -78,7 +77,6 @@ public class ConfigurableCompactionStrategyTest {
 
       @Override
       public TableId getTableId() {
-        // TODO Auto-generated method stub
         return null;
       }
 

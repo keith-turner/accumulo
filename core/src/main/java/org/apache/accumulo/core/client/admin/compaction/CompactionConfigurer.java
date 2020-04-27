@@ -63,7 +63,7 @@ public interface CompactionConfigurer {
     private final Map<String,String> tablePropertyOverrides;
 
     public Overrides(Map<String,String> tablePropertyOverrides) {
-      this.tablePropertyOverrides = tablePropertyOverrides;
+      this.tablePropertyOverrides = Map.copyOf(tablePropertyOverrides);
     }
 
     /**

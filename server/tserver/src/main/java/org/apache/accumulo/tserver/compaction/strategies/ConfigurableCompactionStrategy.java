@@ -118,7 +118,8 @@ public class ConfigurableCompactionStrategy implements CompactionSelector, Compa
 
       Set<CompactableFile> filesToCompact = new HashSet<>();
       for (CompactableFile tabletFile : params.getAvailableFiles()) {
-        Optional<SortedKeyValueIterator<Key,Value>> sample = params.getSample(tabletFile, sc);
+        Optional<SortedKeyValueIterator<Key,Value>> sample =
+            params.getSample(tabletFile, sc.toSamplerConfiguration());
 
         if (sample.isEmpty()) {
           filesToCompact.add(tabletFile);
