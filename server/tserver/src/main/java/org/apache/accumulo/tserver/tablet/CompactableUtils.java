@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -92,11 +93,15 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Collections2;
 
 public class CompactableUtils {
 
   private static final Logger log = LoggerFactory.getLogger(CompactableUtils.class);
+
+  private final static Cache<TableId,Boolean> strategyWarningsCache =
+      CacheBuilder.newBuilder().maximumSize(1000).build();
 
   public static Map<StoredTabletFile,Pair<Key,Key>> getFirstAndLastKeys(Tablet tablet,
       Set<StoredTabletFile> allFiles) throws IOException {
@@ -486,8 +491,21 @@ public class CompactableUtils {
       CompactionStrategyConfig stratCfg = null;
 
       if (cselCfg == null && tconf.isPropertySet(Property.TABLE_COMPACTION_STRATEGY, true)) {
-        // TODO log warning
         var stratClassName = tconf.get(Property.TABLE_COMPACTION_STRATEGY);
+
+        try {
+          strategyWarningsCache.get(tablet.getExtent().getTableId(), () -> {
+            log.warn(
+                "Table id {} set {} to {}.  Compaction strategies are deprecated.  See the Javadoc"
+                + " for class {} for more details.",
+                tablet.getExtent().getTableId(), Property.TABLE_COMPACTION_STRATEGY.getKey(),
+                stratClassName, CompactionStrategyConfig.class.getName());
+            return true;
+          });
+        } catch (ExecutionException e) {
+          throw new RuntimeException(e);
+        }
+
         var opts =
             tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_STRATEGY_PREFIX);
 
