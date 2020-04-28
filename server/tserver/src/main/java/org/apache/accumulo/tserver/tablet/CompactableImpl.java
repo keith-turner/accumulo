@@ -449,11 +449,11 @@ public class CompactableImpl implements Compactable {
     private CompactionKind kind;
 
     public boolean isCompactionEnabled(long entriesCompacted) {
-      if (entriesCompacted % 1024 == 0 && enabled) {
-        // this is called for every key value compacted, so do not want do checks too frequently
-        if (tablet.isClosed() || !service.equals(getConfiguredService(kind))) {
-          enabled = false;
-        }
+      // this is called for every key value compacted, so do not want to check service too
+      // frequently
+      if (tablet.isClosed()
+          || (entriesCompacted % 1024 == 0 && !service.equals(getConfiguredService(kind)))) {
+        enabled = false;
       }
 
       return enabled;
