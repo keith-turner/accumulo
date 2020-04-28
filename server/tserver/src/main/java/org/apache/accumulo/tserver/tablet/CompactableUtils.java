@@ -141,7 +141,7 @@ public class CompactableUtils {
   }
 
   static CompactionPlan selectFiles(CompactionKind kind, Tablet tablet,
-      SortedMap<StoredTabletFile,DataFileValue> datafiles, CompactionStrategyConfig csc) {
+      SortedMap<StoredTabletFile,DataFileValue> datafiles, CompactionStrategyConfig cscˇ) {
 
     var trsm = tablet.getTabletResources().getTabletServerResourceManager();
 
