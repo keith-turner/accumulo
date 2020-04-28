@@ -1195,6 +1195,9 @@ public class Tablet {
 
     MinorCompactionTask mct = null;
 
+    // cancel any running compactions and prevent future ones from starting
+    compactable.close();
+
     synchronized (this) {
       if (isClosed() || isClosing()) {
         String msg = "Tablet " + getExtent() + " already " + closeState;
@@ -1205,16 +1208,6 @@ public class Tablet {
       // should cause running major compactions to stop
       closeState = CloseState.CLOSING;
       this.notifyAll();
-
-      // wait for major compactions to finish, setting closing to
-      // true should cause any running major compactions to abort
-      while (isMajorCompactionRunning()) {
-        try {
-          this.wait(50);
-        } catch (InterruptedException e) {
-          log.error(e.toString());
-        }
-      }
 
       while (updatingFlushID) {
         try {

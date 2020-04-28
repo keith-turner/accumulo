@@ -99,6 +99,8 @@ public class CompactableImpl implements Compactable {
 
   private CompactionManager manager;
 
+  private volatile boolean closed = false;
+
   // This interface exists for two purposes. First it allows abstraction of new and old
   // implementations for user pluggable file selection code. Second it facilitates placing code
   // outside of this class.
@@ -232,6 +234,9 @@ public class CompactableImpl implements Compactable {
       return;
 
     synchronized (this) {
+      if (closed)
+        return;
+
       if (selectStatus == SpecialStatus.NOT_ACTIVE || (kind == CompactionKind.USER
           && selectKind == CompactionKind.SELECTOR
           && runnningJobs.stream().noneMatch(job -> job.getKind() == CompactionKind.SELECTOR))) {
@@ -340,7 +345,7 @@ public class CompactableImpl implements Compactable {
   @Override
   public Optional<Files> getFiles(CompactionServiceId service, CompactionKind kind) {
 
-    if (tablet.isClosing() || tablet.isClosed() || !service.equals(getConfiguredService(kind)))
+    if (!service.equals(getConfiguredService(kind)))
       return Optional.empty();
 
     var files = tablet.getDatafiles();
@@ -349,6 +354,9 @@ public class CompactableImpl implements Compactable {
     initiateSelection(kind);
 
     synchronized (this) {
+
+      if (closed)
+        return Optional.empty();
 
       if (!files.keySet().containsAll(allCompactingFiles)) {
         log.trace("Ignoring because compacting not a subset {}", getExtent());
@@ -451,8 +459,7 @@ public class CompactableImpl implements Compactable {
     public boolean isCompactionEnabled(long entriesCompacted) {
       // this is called for every key value compacted, so do not want to check service too
       // frequently
-      if (tablet.isClosing()
-          || (entriesCompacted % 1024 == 0 && !service.equals(getConfiguredService(kind)))) {
+      if (closed || (entriesCompacted % 1024 == 0 && !service.equals(getConfiguredService(kind)))) {
         enabled = false;
       }
 
@@ -473,6 +480,9 @@ public class CompactableImpl implements Compactable {
     CompactionConfig localCompactionCfg;
 
     synchronized (this) {
+      if (closed)
+        return;
+
       if (!service.equals(getConfiguredService(job.getKind())))
         return;
 
@@ -571,6 +581,10 @@ public class CompactableImpl implements Compactable {
         Preconditions.checkState(runnningJobs.remove(job));
         compactionRunning = !allCompactingFiles.isEmpty();
 
+        if (allCompactingFiles.isEmpty()) {
+          notifyAll();
+        }
+
         if (metaFile != null) {
           choppedFiles.add(metaFile);
         }
@@ -637,5 +651,21 @@ public class CompactableImpl implements Compactable {
   public boolean isMajorCompactionRunning() {
     // this method intentionally not synchronized because its called by stats code.
     return compactionRunning;
+  }
+
+  public synchronized void close() {
+    if (closed)
+      return;
+
+    closed = true;
+
+    while (!allCompactingFiles.isEmpty()) {
+      try {
+        wait(50);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(e);
+      }
+    }
   }
 }
