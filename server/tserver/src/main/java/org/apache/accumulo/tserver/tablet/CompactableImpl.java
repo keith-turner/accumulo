@@ -299,7 +299,8 @@ public class CompactableImpl implements Compactable {
 
     } catch (Exception e) {
       synchronized (this) {
-        selectStatus = SpecialStatus.NEW;
+        if (selectStatus == SpecialStatus.SELECTING)
+          selectStatus = SpecialStatus.NOT_ACTIVE;
         log.error("Failed to select user compaction files {}", getExtent(), e);
         log.trace("Selected compaction status changed {} {}", getExtent(), selectStatus);
         selectedFiles.clear();
@@ -599,7 +600,7 @@ public class CompactableImpl implements Compactable {
 
       if ((job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR)
           && metaFile != null)
-        selectedCompactionCompleted(job, jobFiles, metaFile);// TODO what if it failed?
+        selectedCompactionCompleted(job, jobFiles, metaFile);
       else
         selectFiles();
     }
