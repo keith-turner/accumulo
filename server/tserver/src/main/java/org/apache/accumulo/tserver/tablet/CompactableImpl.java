@@ -578,6 +578,7 @@ public class CompactableImpl implements Compactable {
       log.debug("Compaction canceled {} " + getExtent());
       metaFile = null;
     } catch (Exception e) {
+      metaFile = null;
       throw new RuntimeException(e);
     } finally {
       synchronized (this) {
