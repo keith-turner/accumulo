@@ -30,6 +30,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.util.compaction.CompactionJobPrioritizer;
 import org.apache.accumulo.tserver.TabletServerResourceManager;
+import org.apache.htrace.wrappers.TraceRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,10 +102,22 @@ public class CompactionExecutor {
 
   }
 
+  private static CompactionJob getJob(Runnable r) {
+    if (r instanceof TraceRunnable) {
+      return getJob(((TraceRunnable) r).getRunnable());
+    }
+
+    if (r instanceof CompactionTask) {
+      return ((CompactionTask) r).getJob();
+    }
+
+    throw new IllegalArgumentException("Unknown runnable type " + r.getClass().getName());
+  }
+
   CompactionExecutor(CompactionExecutorId ceid, int threads, TabletServerResourceManager tsrm) {
     this.ceid = ceid;
-    var comparator = Comparator.comparing(r -> ((CompactionTask) r).getJob(),
-        CompactionJobPrioritizer.JOB_COMPARATOR);
+    var comparator =
+        Comparator.comparing(CompactionExecutor::getJob, CompactionJobPrioritizer.JOB_COMPARATOR);
 
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
 
