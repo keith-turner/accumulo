@@ -163,6 +163,9 @@ public class CompactableUtils {
         strategy.gatherInformation(request);
         var plan = strategy.getCompactionPlan(request);
 
+        if (plan == null)
+          return new CompactionPlan();
+
         log.debug("Selected files using compaction strategy {} {} {} {}",
             strategy.getClass().getSimpleName(), csc.getOptions(), plan.inputFiles,
             plan.deleteFiles);
