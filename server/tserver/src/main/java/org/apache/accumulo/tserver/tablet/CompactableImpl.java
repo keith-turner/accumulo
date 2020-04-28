@@ -54,6 +54,7 @@ import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionManager;
 import org.apache.accumulo.tserver.mastermessage.TabletStatusMessage;
+import org.apache.accumulo.tserver.tablet.Compactor.CompactionCanceledException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -573,6 +574,9 @@ public class CompactableImpl implements Compactable {
 
       TabletLogger.compacted(getExtent(), job, metaFile);
 
+    } catch (CompactionCanceledException cce) {
+      log.debug("Compaction canceled {} " + getExtent());
+      metaFile = null;
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {
