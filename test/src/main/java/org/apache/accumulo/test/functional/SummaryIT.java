@@ -456,7 +456,7 @@ public class SummaryIT extends AccumuloClusterHarness {
         Long foos = summary.getStatistics().getOrDefault("foos", 0L);
         Long bars = summary.getStatistics().getOrDefault("bars", 0L);
 
-        if(foos > bars) {
+        if (foos > bars) {
           return new Selection(sparams.getAvailableFiles());
         }
       }
@@ -509,16 +509,14 @@ public class SummaryIT extends AccumuloClusterHarness {
     // Create a compaction config that will filter out foos if there are too many. Uses summary
     // data to know if there are too many foos.
     CompactionSelectorConfig csc = new CompactionSelectorConfig(FooSelector.class.getName());
-    CompactionConfig compactConfig = new CompactionConfig()
-        .setSelector(csc);
+    CompactionConfig compactConfig = new CompactionConfig().setSelector(csc);
     compactionTest(compactConfig);
   }
 
   @Test
   public void compactionStrategyTest() throws Exception {
     CompactionStrategyConfig csc = new CompactionStrategyConfig(FooCS.class.getName());
-    CompactionConfig compactConfig = new CompactionConfig()
-        .setCompactionStrategy(csc);
+    CompactionConfig compactConfig = new CompactionConfig().setCompactionStrategy(csc);
     compactionTest(compactConfig);
   }
 
@@ -539,8 +537,7 @@ public class SummaryIT extends AccumuloClusterHarness {
 
       List<IteratorSetting> iterators =
           Collections.singletonList(new IteratorSetting(100, FooFilter.class));
-      compactConfig = compactConfig.setFlush(true)
-          .setIterators(iterators).setWait(true);
+      compactConfig = compactConfig.setFlush(true).setIterators(iterators).setWait(true);
 
       // this compaction should make no changes because there are less foos than bars
       c.tableOperations().compact(table, compactConfig);

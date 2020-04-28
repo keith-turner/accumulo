@@ -44,7 +44,7 @@ public class CompactionJobImpl implements CompactionJob {
   CompactionJobImpl(long priority, CompactionExecutorId executor, Collection<CompactableFile> files,
       CompactionKind kind, boolean selectedAllFiles) {
     this.priority = priority;
-    this.executor = executor;
+    this.executor = Objects.requireNonNull(executor);
     this.files = Set.copyOf(files);
     this.kind = kind;
     this.selectedAll = selectedAllFiles;

@@ -21,6 +21,7 @@ package org.apache.accumulo.core.util.compaction;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -55,7 +56,7 @@ public class CompactionPlanImpl implements CompactionPlan {
     private CompactionKind kind;
     private ArrayList<CompactionJob> jobs = new ArrayList<>();
     private Set<CompactableFile> allFiles;
-    private Set<CompactableFile> seenFiles;
+    private Set<CompactableFile> seenFiles = new HashSet<>();
 
     public BuilderImpl(CompactionKind kind, Set<CompactableFile> allFiles) {
       this.kind = kind;
