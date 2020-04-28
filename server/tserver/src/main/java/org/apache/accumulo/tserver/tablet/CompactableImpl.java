@@ -451,7 +451,7 @@ public class CompactableImpl implements Compactable {
     public boolean isCompactionEnabled(long entriesCompacted) {
       // this is called for every key value compacted, so do not want to check service too
       // frequently
-      if (tablet.isClosed()
+      if (tablet.isClosing()
           || (entriesCompacted % 1024 == 0 && !service.equals(getConfiguredService(kind)))) {
         enabled = false;
       }
