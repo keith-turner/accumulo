@@ -1029,7 +1029,6 @@ public class Tablet {
         }
       }
 
-      // TODO
       if (overlappingConfig == null)
         overlappingConfig = new CompactionConfig(); // no config present, set to default
 
@@ -2066,7 +2065,6 @@ public class Tablet {
         return;
       }
 
-      // TODO remove???
       if (isMinorCompactionRunning()) {
         // want to wait for running minc to finish before starting majc, see ACCUMULO-3041
         if (compactionWaitInfo.compactionID == compactionId) {
@@ -2080,7 +2078,6 @@ public class Tablet {
         }
       }
 
-      // TODO remove major compaction state tracking
       if (isClosing() || isClosed()) {
         return;
       }
@@ -2089,7 +2086,6 @@ public class Tablet {
 
     }
 
-    // TODO may need to record in sync block that we are initiating
     if (shouldInitiate) {
       compactable.initiateUserCompaction(compactionId, compactionConfig);
     }
