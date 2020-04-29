@@ -72,7 +72,7 @@ public class CompactionIT extends SharedMiniClusterBase {
       if (params.getKind() == CompactionKind.SYSTEM) {
         var planBuilder = params.createPlanBuilder();
 
-        if (params.getCandidates().size() > filesPerExecutor * executorIds.size()) {
+        if (params.getCandidates().size() >= filesPerExecutor * executorIds.size()) {
           ArrayList<CompactableFile> files = new ArrayList<>(params.getCandidates());
           for (CompactionExecutorId ceid : executorIds) {
             var group = files.subList(files.size() - filesPerExecutor, files.size());
