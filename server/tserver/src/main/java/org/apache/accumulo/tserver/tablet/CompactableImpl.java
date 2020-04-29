@@ -659,6 +659,10 @@ public class CompactableImpl implements Compactable {
     return compactionRunning;
   }
 
+  /**
+   * Interrupts and waits for any running compactions. After this method returns no compactions
+   * should be running and none should be able to start.
+   */
   public synchronized void close() {
     if (closed)
       return;
