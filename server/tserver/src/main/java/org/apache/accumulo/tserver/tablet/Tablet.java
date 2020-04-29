@@ -1201,7 +1201,6 @@ public class Tablet {
       }
 
       // enter the closing state, no splits or minor compactions can start
-
       closeState = CloseState.CLOSING;
       this.notifyAll();
     }
@@ -1231,10 +1230,10 @@ public class Tablet {
         return;
       }
 
-      // calling this.wait() in waitForMinC() releases the lock, ensure things are as expected when
-      // the lock is obtained again
       getTabletMemory().waitForMinC();
 
+      // calling this.wait() in waitForMinC() releases the lock, ensure things are as expected when
+      // the lock is obtained again
       Preconditions.checkState(closeState == CloseState.CLOSING);
 
       try {
