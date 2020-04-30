@@ -637,7 +637,7 @@ public class CompactableImpl implements Compactable {
       TabletLogger.compacted(getExtent(), job, metaFile);
 
     } catch (CompactionCanceledException cce) {
-      log.debug("Compaction canceled {} " + getExtent());
+      log.debug("Compaction canceled {} ", getExtent());
       metaFile = null;
     } catch (Exception e) {
       metaFile = null;
