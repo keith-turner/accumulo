@@ -199,6 +199,9 @@ public class CompactionServiceImpl {
       }
     };
 
+    log.trace("Planning compactions {} {} {} {} {}", planner.getClass().getName(),
+        compactable.getExtent(), kind, files);
+
     CompactionPlan plan;
     try {
       plan = planner.makePlan(params);
