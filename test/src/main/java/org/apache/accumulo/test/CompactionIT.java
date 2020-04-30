@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -76,12 +77,12 @@ public class CompactionIT extends SharedMiniClusterBase {
       if (params.getKind() == CompactionKind.SYSTEM) {
         var planBuilder = params.createPlanBuilder();
 
-        int execIdx = 0;
+        Random rand = new Random();
 
         params.getCandidates().stream().collect(Collectors.groupingBy(TestPlanner::getFirstChar))
             .values().forEach(files -> {
               for (int i = filesPerExecutor; i <= files.size(); i += filesPerExecutor) {
-                planBuilder.addJob(1, executorIds.get(execIdx),
+                planBuilder.addJob(1, executorIds.get(rand.nextInt(executorIds.size())),
                     files.subList(i - filesPerExecutor, i));
               }
             });
