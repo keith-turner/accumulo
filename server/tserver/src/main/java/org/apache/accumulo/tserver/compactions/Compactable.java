@@ -70,7 +70,7 @@ public interface Compactable {
     @Override
     public String toString() {
       return "Files [allFiles=" + allFiles + ", candidates=" + candidates + ", compacting="
-          + compacting + "]";
+          + compacting + ", hints=" + executionHints + "]";
     }
 
   }
