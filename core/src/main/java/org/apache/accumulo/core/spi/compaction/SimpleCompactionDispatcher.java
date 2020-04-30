@@ -19,6 +19,7 @@
 package org.apache.accumulo.core.spi.compaction;
 
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.accumulo.core.client.admin.CompactionConfig;
@@ -90,12 +91,19 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher {
         services.put(ctype, CompactionDirectives.builder().setService(service).build());
     }
 
-    params.getOptions().forEach((k, v) -> {
-      if (k.startsWith("service.user.")) {
-        String type = k.substring("service.user.".length());
-        userServices.put(type, CompactionDirectives.builder().setService(v).build());
-      }
-    });
+    if (params.getOptions().isEmpty()) {
+      userServices = Map.of();
+    } else {
+      Map<String,CompactionDirectives> tmpUS = new HashMap<>();
+      params.getOptions().forEach((k, v) -> {
+        if (k.startsWith("service.user.")) {
+          String type = k.substring("service.user.".length());
+          tmpUS.put(type, CompactionDirectives.builder().setService(v).build());
+        }
+      });
+
+      userServices = Map.copyOf(tmpUS);
+    }
   }
 
   @Override
