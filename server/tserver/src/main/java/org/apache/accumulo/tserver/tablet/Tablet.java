@@ -993,13 +993,8 @@ public class Tablet {
   long getCompactionCancelID() {
     String zTablePath = Constants.ZROOT + "/" + tabletServer.getInstanceID() + Constants.ZTABLES
         + "/" + extent.getTableId() + Constants.ZTABLE_COMPACT_CANCEL_ID;
-
-    try {
-      String id = new String(context.getZooReaderWriter().getData(zTablePath, null), UTF_8);
-      return Long.parseLong(id);
-    } catch (KeeperException | InterruptedException e) {
-      throw new RuntimeException("Exception on " + extent + " getting compact cancel ID", e);
-    }
+    String id = new String(context.getZooCache().get(zTablePath), UTF_8);
+    return Long.parseLong(id);
   }
 
   public Pair<Long,CompactionConfig> getCompactionID() throws NoNodeException {
@@ -1032,8 +1027,8 @@ public class Tablet {
       if (overlappingConfig == null)
         overlappingConfig = new CompactionConfig(); // no config present, set to default
 
-      //TODO remove or improve, was added to debug test
-      log.debug("Got compaction ID {} {}", compactID, overlappingConfig);
+      // TODO remove or improve, was added to debug test
+      log.debug("{} got compaction ID {} {}", extent, compactID, overlappingConfig);
 
       return new Pair<>(compactID, overlappingConfig);
     } catch (InterruptedException | DecoderException | NumberFormatException e) {
