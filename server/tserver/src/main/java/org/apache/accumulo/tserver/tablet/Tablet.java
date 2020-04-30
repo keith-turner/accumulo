@@ -1032,6 +1032,9 @@ public class Tablet {
       if (overlappingConfig == null)
         overlappingConfig = new CompactionConfig(); // no config present, set to default
 
+      //TODO remove or improve, was added to debug test
+      log.debug("Got compaction ID {} {}", compactID, overlappingConfig);
+
       return new Pair<>(compactID, overlappingConfig);
     } catch (InterruptedException | DecoderException | NumberFormatException e) {
       throw new RuntimeException("Exception on " + extent + " getting compaction ID", e);
