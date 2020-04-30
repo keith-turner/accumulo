@@ -512,7 +512,7 @@ public class CompactableImpl implements Compactable {
           return false;
         if (!service.equals(getConfiguredService(kind)))
           return false;
-        if (kind == CompactionKind.USER && compactionId >= lastSeenCompactionCancelId.get())
+        if (kind == CompactionKind.USER && lastSeenCompactionCancelId.get() >= compactionId)
           return false;
 
         return true;
