@@ -531,6 +531,7 @@ public class CompactableImpl implements Compactable {
         .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
 
     Long compactionId = null;
+    Long checkCompactionId = null;
     boolean propogateDeletes = true;
     CompactionHelper localHelper;
     List<IteratorSetting> iters = List.of();
@@ -618,6 +619,7 @@ public class CompactableImpl implements Compactable {
 
       if (job.getKind() == CompactionKind.USER) {
         iters = compactionConfig.getIterators();
+        checkCompactionId = this.compactionId;
       }
 
       localHelper = this.chelper;
@@ -630,7 +632,7 @@ public class CompactableImpl implements Compactable {
       TabletLogger.compacting(getExtent(), job, localCompactionCfg);
 
       metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId, propogateDeletes,
-          localHelper, iters, new CompactionCheck(service, job.getKind(), compactionId));
+          localHelper, iters, new CompactionCheck(service, job.getKind(), checkCompactionId));
 
       TabletLogger.compacted(getExtent(), job, metaFile);
 
