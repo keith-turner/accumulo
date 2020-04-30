@@ -288,7 +288,8 @@ public class CompactableImpl implements Compactable {
         this.chelper = localHelper;
         this.compactionId = compactionId;
         this.compactionConfig = compactionConfig;
-        log.trace("Selected compaction status changed {} {}", getExtent(), selectStatus);
+        log.trace("Selected compaction status changed {} {} {} {}", getExtent(), selectStatus,
+            compactionId, compactionConfig);
       } else {
         return;
       }

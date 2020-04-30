@@ -255,6 +255,7 @@ public class CompactionConfig {
         selectorConfig);
     prefix = append(sb, prefix, () -> !UserCompactionUtils.isDefault(configurerConfig),
         "configurer", configurerConfig);
+    prefix = append(sb, prefix, () -> !hints.isEmpty(), "hints", hints);
     sb.append("]");
     return sb.toString();
   }
