@@ -86,7 +86,7 @@ public class CompactionIT extends SharedMiniClusterBase {
     public CompactionPlan makePlan(PlanningParameters params) {
 
       if (Boolean
-          .parseBoolean(params.getExecutionHints().getOrDefault("compactact_all", "false"))) {
+          .parseBoolean(params.getExecutionHints().getOrDefault("compact_all", "false"))) {
         return params.createPlanBuilder()
             .addJob(1, executorIds.get(rand.nextInt(executorIds.size())), params.getCandidates())
             .build();
