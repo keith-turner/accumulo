@@ -143,8 +143,10 @@ public class CompactionServiceImpl {
     // TODO ISSUE this could take a while... could run this in a thread pool
     var files = compactable.getFiles(myId, kind);
 
-    if (files.isEmpty() || files.get().candidates.isEmpty())
+    if (files.isEmpty() || files.get().candidates.isEmpty()) {
+      log.trace("Compactable returned no files {} {} {}", compactable.getExtent(), kind, files);
       return;
+    }
 
     PlanningParameters params = new PlanningParameters() {
 
