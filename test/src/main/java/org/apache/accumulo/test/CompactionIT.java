@@ -30,6 +30,9 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
+import org.apache.accumulo.core.client.AccumuloException;
+import org.apache.accumulo.core.client.AccumuloSecurityException;
+import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
@@ -44,6 +47,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionPlan;
 import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.apache.accumulo.harness.SharedMiniClusterBase;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -142,6 +146,20 @@ public class CompactionIT extends SharedMiniClusterBase {
   @AfterClass
   public static void teardown() {
     SharedMiniClusterBase.stopMiniCluster();
+  }
+
+  @After
+  public void cleanup() {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+      client.tableOperations().list().stream()
+          .filter(tableName -> !tableName.startsWith("accumulo.")).forEach(tableName -> {
+            try {
+              client.tableOperations().delete(tableName);
+            } catch (AccumuloException | AccumuloSecurityException | TableNotFoundException e) {
+              throw new RuntimeException(e);
+            }
+          });
+    }
   }
 
   /**
