@@ -20,6 +20,7 @@
 package org.apache.accumulo.test;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.Property;
@@ -51,15 +53,19 @@ public class CompactionIT extends SharedMiniClusterBase {
 
   public static class TestPlanner implements CompactionPlanner {
 
-    private int filesPerExecutor;
+    private int filesPerCompaction;
     private List<CompactionExecutorId> executorIds;
+    private EnumSet<CompactionKind> kindsToProcess = EnumSet.noneOf(CompactionKind.class);
+    private Random rand = new Random();
 
     @Override
     public void init(InitParameters params) {
       var executors = Integer.parseInt(params.getOptions().get("executors"));
-      this.filesPerExecutor = Integer.parseInt(params.getOptions().get("filesPerExecutor"));
-
+      this.filesPerCompaction = Integer.parseInt(params.getOptions().get("filesPerCompaction"));
       this.executorIds = new ArrayList<>();
+      for (String kind : params.getOptions().get("process").split(",")) {
+        kindsToProcess.add(CompactionKind.valueOf(kind.toUpperCase()));
+      }
 
       for (int i = 0; i < executors; i++) {
         var ceid = params.getExecutorManager().createExecutor("e" + i, 2);
@@ -74,26 +80,33 @@ public class CompactionIT extends SharedMiniClusterBase {
 
     @Override
     public CompactionPlan makePlan(PlanningParameters params) {
-      if (params.getKind() == CompactionKind.SYSTEM) {
+
+      if (Boolean
+          .parseBoolean(params.getExecutionHints().getOrDefault("compactact_all", "false"))) {
+        return params.createPlanBuilder()
+            .addJob(1, executorIds.get(rand.nextInt(executorIds.size())), params.getCandidates())
+            .build();
+      }
+
+      if (kindsToProcess.contains(params.getKind())) {
         var planBuilder = params.createPlanBuilder();
 
-        Random rand = new Random();
-
+        // Group files by first char, like F for flush files or C for compaction produced files.
+        // This prevents F and C files from compacting together, which makes it easy to reason about
+        // the number of expected files produced by compactions from known number of F files.
         params.getCandidates().stream().collect(Collectors.groupingBy(TestPlanner::getFirstChar))
             .values().forEach(files -> {
-              for (int i = filesPerExecutor; i <= files.size(); i += filesPerExecutor) {
+              for (int i = filesPerCompaction; i <= files.size(); i += filesPerCompaction) {
                 planBuilder.addJob(1, executorIds.get(rand.nextInt(executorIds.size())),
-                    files.subList(i - filesPerExecutor, i));
+                    files.subList(i - filesPerCompaction, i));
               }
             });
 
         return planBuilder.build();
       } else {
-        return params.createPlanBuilder().addJob(1, executorIds.get(0), params.getCandidates())
-            .build();
+        return params.createPlanBuilder().build();
       }
     }
-
   }
 
   @BeforeClass
@@ -104,11 +117,23 @@ public class CompactionIT extends SharedMiniClusterBase {
       var csp = Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey();
       siteCfg.put(csp + "cs1.planner", TestPlanner.class.getName());
       siteCfg.put(csp + "cs1.planner.opts.executors", "3");
-      siteCfg.put(csp + "cs1.planner.opts.filesPerExecutor", "5");
+      siteCfg.put(csp + "cs1.planner.opts.filesPerCompaction", "5");
+      siteCfg.put(csp + "cs1.planner.opts.process", "SYSTEM");
 
       siteCfg.put(csp + "cs2.planner", TestPlanner.class.getName());
       siteCfg.put(csp + "cs2.planner.opts.executors", "2");
-      siteCfg.put(csp + "cs2.planner.opts.filesPerExecutor", "7");
+      siteCfg.put(csp + "cs2.planner.opts.filesPerCompaction", "7");
+      siteCfg.put(csp + "cs2.planner.opts.process", "SYSTEM");
+
+      siteCfg.put(csp + "cs3.planner", TestPlanner.class.getName());
+      siteCfg.put(csp + "cs3.planner.opts.executors", "1");
+      siteCfg.put(csp + "cs3.planner.opts.filesPerCompaction", "3");
+      siteCfg.put(csp + "cs3.planner.opts.process", "USER");
+
+      siteCfg.put(csp + "cs4.planner", TestPlanner.class.getName());
+      siteCfg.put(csp + "cs4.planner.opts.executors", "2");
+      siteCfg.put(csp + "cs4.planner.opts.filesPerCompaction", "11");
+      siteCfg.put(csp + "cs4.planner.opts.process", "USER");
 
       miniCfg.setSiteConfig(siteCfg);
     });
@@ -119,8 +144,13 @@ public class CompactionIT extends SharedMiniClusterBase {
     SharedMiniClusterBase.stopMiniCluster();
   }
 
+  /**
+   * Test ensures that system compactions are dispatched to a configured compaction service. The
+   * compaction services produce a very specific number of files, so the test indirectly checks
+   * dispatching worked by observing how many files a tablet ends up with.
+   */
   @Test
-  public void testTest() throws Exception {
+  public void testDispatchSystem() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
       createTable(client, "tab1", "cs1");
       createTable(client, "tab2", "cs2");
@@ -141,6 +171,52 @@ public class CompactionIT extends SharedMiniClusterBase {
       Assert.assertEquals(3, getFiles(client, "tab1").size());
       Assert.assertEquals(2, getFiles(client, "tab2").size());
     }
+  }
+
+  @Test
+  public void testDispatchUser() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+      createTable(client, "tab1", "cs3");
+      createTable(client, "tab2", "cs3", "special", "cs4");
+
+      addFiles(client, "tab1", 6);
+      addFiles(client, "tab2", 33);
+
+      Assert.assertEquals(6, getFiles(client, "tab1").size());
+      Assert.assertEquals(33, getFiles(client, "tab2").size());
+
+      client.tableOperations().compact("tab1", new CompactionConfig().setWait(false));
+
+      // The hint should cause the compaction to dispatch to service cs4 which will produce a
+      // different number of files.
+      client.tableOperations().compact("tab2", new CompactionConfig().setWait(false)
+          .setExecutionHints(Map.of("compaction_type", "special")));
+
+      while (getFiles(client, "tab1").size() > 2 || getFiles(client, "tab2").size() > 3) {
+        Thread.sleep(100);
+      }
+
+      Assert.assertEquals(2, getFiles(client, "tab1").size());
+      Assert.assertEquals(3, getFiles(client, "tab2").size());
+
+      // The way the compaction services were configured, they would never converge to one file for
+      // the user compactions. However Accumulo will keep asking the planner for a plan until a user
+      // compaction converges to one file. So cancel the compactions.
+      client.tableOperations().cancelCompaction("tab1");
+      client.tableOperations().cancelCompaction("tab2");
+
+      Assert.assertEquals(2, getFiles(client, "tab1").size());
+      Assert.assertEquals(3, getFiles(client, "tab2").size());
+
+      client.tableOperations().compact("tab1",
+          new CompactionConfig().setWait(true).setExecutionHints(Map.of("compact_all", "true")));
+      client.tableOperations().compact("tab2",
+          new CompactionConfig().setWait(true).setExecutionHints(Map.of("compact_all", "true")));
+
+      Assert.assertEquals(1, getFiles(client, "tab1").size());
+      Assert.assertEquals(1, getFiles(client, "tab2").size());
+    }
+
   }
 
   private Set<String> getFiles(AccumuloClient client, String name) {
@@ -172,4 +248,15 @@ public class CompactionIT extends SharedMiniClusterBase {
         Map.of(Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey() + "service", compactionService));
     client.tableOperations().create(name, ntc);
   }
+
+  private void createTable(AccumuloClient client, String name, String compactionService,
+      String userType, String userService) throws Exception {
+    var tcdo = Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey();
+
+    NewTableConfiguration ntc = new NewTableConfiguration().setProperties(Map.of(tcdo + "service",
+        compactionService, tcdo + "service.user." + userType, userService));
+
+    client.tableOperations().create(name, ntc);
+  }
+
 }
