@@ -67,19 +67,25 @@ public class CompactionIT extends SharedMiniClusterBase {
 
     }
 
+    static String getFirstChar(CompactableFile cf) {
+      return cf.getFileName().substring(0, 1);
+    }
+
     @Override
     public CompactionPlan makePlan(PlanningParameters params) {
       if (params.getKind() == CompactionKind.SYSTEM) {
         var planBuilder = params.createPlanBuilder();
 
-        if (params.getCandidates().size() >= filesPerExecutor * executorIds.size()) {
-          ArrayList<CompactableFile> files = new ArrayList<>(params.getCandidates());
-          for (CompactionExecutorId ceid : executorIds) {
-            var group = files.subList(files.size() - filesPerExecutor, files.size());
-            planBuilder.addJob(1, ceid, group);
-            group.clear();
-          }
-        }
+        int execIdx = 0;
+
+        params.getCandidates().stream().collect(Collectors.groupingBy(TestPlanner::getFirstChar))
+            .values().forEach(files -> {
+              for (int i = filesPerExecutor; i <= files.size(); i += filesPerExecutor) {
+                planBuilder.addJob(1, executorIds.get(execIdx),
+                    files.subList(i - filesPerExecutor, i));
+              }
+            });
+
         return planBuilder.build();
       } else {
         return params.createPlanBuilder().addJob(1, executorIds.get(0), params.getCandidates())
@@ -100,8 +106,8 @@ public class CompactionIT extends SharedMiniClusterBase {
       siteCfg.put(csp + "cs1.planner.opts.filesPerExecutor", "5");
 
       siteCfg.put(csp + "cs2.planner", TestPlanner.class.getName());
-      siteCfg.put(csp + "cs2.planner.opts.executors", "5");
-      siteCfg.put(csp + "cs2.planner.opts.filesPerExecutor", "2");
+      siteCfg.put(csp + "cs2.planner.opts.executors", "2");
+      siteCfg.put(csp + "cs2.planner.opts.filesPerExecutor", "7");
 
       miniCfg.setSiteConfig(siteCfg);
     });
@@ -119,20 +125,20 @@ public class CompactionIT extends SharedMiniClusterBase {
       createTable(client, "tab2", "cs2");
 
       addFiles(client, "tab1", 14);
-      addFiles(client, "tab2", 9);
+      addFiles(client, "tab2", 13);
 
-      Assert.assertEquals(14, getFiles(client, "tab1").size());
-      Assert.assertEquals(9, getFiles(client, "tab2").size());
+      Assert.assertTrue(getFiles(client, "tab1").size() >= 6);
+      Assert.assertTrue(getFiles(client, "tab2").size() >= 7);
 
       addFiles(client, "tab1", 1);
       addFiles(client, "tab2", 1);
 
-      while (getFiles(client, "tab1").size() > 3 || getFiles(client, "tab2").size() > 5) {
+      while (getFiles(client, "tab1").size() > 3 || getFiles(client, "tab2").size() > 2) {
         Thread.sleep(100);
       }
 
       Assert.assertEquals(3, getFiles(client, "tab1").size());
-      Assert.assertEquals(5, getFiles(client, "tab2").size());
+      Assert.assertEquals(2, getFiles(client, "tab2").size());
     }
   }
 
