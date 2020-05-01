@@ -268,7 +268,7 @@ public class CompactionIT extends SharedMiniClusterBase {
       Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
       Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
 
-      while (getFiles(client, "tmd_selector").size() != 1) {
+      while (getFiles(client, "tmd_selector").size() != 0) {
         Thread.sleep(100);
       }
 
@@ -300,7 +300,7 @@ public class CompactionIT extends SharedMiniClusterBase {
                   .setOptions(Map.of("threshold", ".40")))
               .setWait(true));
 
-      Assert.assertEquals(1, getFiles(client, "tmd_control1").size());
+      Assert.assertEquals(0, getFiles(client, "tmd_control1").size());
       Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
     }
   }
