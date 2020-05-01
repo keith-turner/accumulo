@@ -265,6 +265,9 @@ public class CompactionIT extends SharedMiniClusterBase {
       addFile(client, "tmd_control2", 1, 1000, false);
       addFile(client, "tmd_control2", 1000, 2000, false);
 
+      addFile(client, "tmd_control3", 1, 2000, false);
+      addFile(client, "tmd_control3", 1, 1000, true);
+
       Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
       Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
 
@@ -275,33 +278,36 @@ public class CompactionIT extends SharedMiniClusterBase {
       Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
       Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
 
-      client.tableOperations().compact("tmd_control1",
-          new CompactionConfig()
-              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
-                  .setOptions(Map.of("threshold", ".99")))
-              .setWait(true));
-      client.tableOperations().compact("tmd_control2",
-          new CompactionConfig()
-              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
-                  .setOptions(Map.of("threshold", ".99")))
-              .setWait(true));
+      var cc1 = new CompactionConfig()
+          .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+              .setOptions(Map.of("threshold", ".99")))
+          .setWait(true);
 
-      Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
-
-      client.tableOperations().compact("tmd_control1",
-          new CompactionConfig()
-              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
-                  .setOptions(Map.of("threshold", ".40")))
-              .setWait(true));
-      client.tableOperations().compact("tmd_control2",
-          new CompactionConfig()
-              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
-                  .setOptions(Map.of("threshold", ".40")))
-              .setWait(true));
+      client.tableOperations().compact("tmd_control1", cc1);
+      client.tableOperations().compact("tmd_control2", cc1);
+      client.tableOperations().compact("tmd_control3", cc1);
 
       Assert.assertEquals(0, getFiles(client, "tmd_control1").size());
       Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control3").size());
+
+      var cc2 = new CompactionConfig()
+          .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+              .setOptions(Map.of("threshold", ".40")))
+          .setWait(true);
+
+      client.tableOperations().compact("tmd_control1", cc2);
+      client.tableOperations().compact("tmd_control2", cc2);
+      client.tableOperations().compact("tmd_control3", cc2);
+
+      Assert.assertEquals(0, getFiles(client, "tmd_control1").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+      Assert.assertEquals(1, getFiles(client, "tmd_control3").size());
+
+      client.tableOperations().compact("tmd_control2", new CompactionConfig().setWait(true));
+
+      Assert.assertEquals(1, getFiles(client, "tmd_control2").size());
+
     }
   }
 
