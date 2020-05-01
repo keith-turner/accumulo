@@ -270,7 +270,8 @@ public class ConfigurableCompactionStrategy implements CompactionSelector, Compa
   @Override
   public Selection select(SelectionParameters sparams) {
 
-    Set<CompactableFile> filesToCompact = null;
+    Set<CompactableFile> filesToCompact =
+        tests.isEmpty() ? new HashSet<>(sparams.getAvailableFiles()) : null;
 
     for (Test test : tests) {
       var files = test.getFilesToCompact(sparams);
@@ -283,7 +284,7 @@ public class ConfigurableCompactionStrategy implements CompactionSelector, Compa
       }
     }
 
-    if (filesToCompact == null || filesToCompact.size() < minFiles) {
+    if (filesToCompact.size() < minFiles) {
       return new Selection(Set.of());
     }
 
