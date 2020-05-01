@@ -255,6 +255,8 @@ public class CompactionIT extends SharedMiniClusterBase {
           new NewTableConfiguration().enableSummarization(deleteSummarizerCfg));
       client.tableOperations().create("tmd_control2",
           new NewTableConfiguration().enableSummarization(deleteSummarizerCfg));
+      client.tableOperations().create("tmd_control3",
+          new NewTableConfiguration().enableSummarization(deleteSummarizerCfg));
 
       addFile(client, "tmd_selector", 1, 1000, false);
       addFile(client, "tmd_selector", 1, 1000, true);
@@ -270,6 +272,7 @@ public class CompactionIT extends SharedMiniClusterBase {
 
       Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
       Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control3").size());
 
       while (getFiles(client, "tmd_selector").size() != 0) {
         Thread.sleep(100);
@@ -277,6 +280,7 @@ public class CompactionIT extends SharedMiniClusterBase {
 
       Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
       Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control3").size());
 
       var cc1 = new CompactionConfig()
           .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
