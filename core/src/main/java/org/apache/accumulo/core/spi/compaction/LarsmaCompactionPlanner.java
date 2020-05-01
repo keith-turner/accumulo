@@ -262,6 +262,44 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     return sortedFiles.subList(0, numToCompact);
   }
 
+  public static Collection<CompactableFile> findMapFilesToCompact(Set<CompactableFile> files,
+      double ratio, int maxFilesToCompact, long maxSizeToCompact) {
+    if (files.size() <= 1)
+      return Collections.emptySet();
+
+    // sort files from smallest to largest. So position 0 has the smallest file.
+    List<CompactableFile> sortedFiles = sortByFileSize(files);
+
+    int maxSizeIndex = sortedFiles.size();
+    long sum = 0;
+    for (int i = 0; i < sortedFiles.size(); i++) {
+      sum += sortedFiles.get(i).getEstimatedSize();
+      if (sum > maxSizeToCompact) {
+        maxSizeIndex = i;
+        break;
+      }
+    }
+
+    if (maxSizeIndex < sortedFiles.size()) {
+      sortedFiles = sortedFiles.subList(0, maxSizeIndex);
+      if (sortedFiles.size() <= 1)
+        return Collections.emptySet();
+    }
+
+    var loops = Math.max(1, sortedFiles.size() - maxFilesToCompact + 1);
+    for (int i = 0; i < loops; i++) {
+      // TODO ISSUE old algorithm used to slide a window up when nothing found in
+      // smallest files
+      var filesToCompact = findMapFilesToCompact(
+          sortedFiles.subList(i, Math.min(sortedFiles.size(), maxFilesToCompact) + i), ratio);
+      if (!filesToCompact.isEmpty())
+        return filesToCompact;
+    }
+
+    return Collections.emptySet();
+
+  }
+
   /**
    * Find the largest set of contiguous small files that meet the compaction ratio. For a set of
    * file size like [101M,102M,103M,104M,4M,3M,3M,3M,3M], it would be nice compact the smaller files
@@ -290,17 +328,8 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
    * prevents a future compaction that could have occurred. This function will not choose the
    * smaller set because of it would prevent the future compaction.
    */
-  public static Collection<CompactableFile> findMapFilesToCompact(Set<CompactableFile> files,
-      double ratio, int maxFilesToCompact, long maxSizeToCompact) {
-    if (files.size() <= 1)
-      return Collections.emptySet();
-
-    // TODO remove
-    log.debug("findMapFilesToCompact({}, {}, {}, {})", files.size(), ratio, maxFilesToCompact,
-        maxSizeToCompact);
-
-    // sort files from smallest to largest. So position 0 has the smallest file.
-    List<CompactableFile> sortedFiles = sortByFileSize(files);
+  private static Collection<CompactableFile>
+      findMapFilesToCompact(List<CompactableFile> sortedFiles, double ratio) {
 
     int larsmaIndex = -1;
     long larsmaSum = Long.MIN_VALUE;
@@ -312,23 +341,15 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
     for (int c = 1; c < sortedFiles.size(); c++) {
       long currSize = sortedFiles.get(c).getEstimatedSize();
+
+      // ensure data is sorted
+      Preconditions.checkArgument(currSize >= sortedFiles.get(c - 1).getEstimatedEntries());
+
       sum += currSize;
-
-      // TODO remove
-      log.debug("name={} currSize={} sum={}", sortedFiles.get(c).getFileName(), currSize, sum);
-
-      if (sum > maxSizeToCompact)
-        break;
 
       if (currSize * ratio < sum) {
         goodIndex = c;
         // TODO remove
-        log.debug("goodIndex={}", c);
-
-        // TODO does not seem to constrain to max files to compact, when first goodIndex found is greater than max
-        if (goodIndex + 1 >= maxFilesToCompact)
-          break; // TODO ISSUE old algorithm used to slide a window up when nothing found in
-                 // smallest files
       } else if (c - 1 == goodIndex) {
         // The previous file met the compaction ratio, but the current file does not. So all of the
         // previous files are candidates. However we must ensure that any candidate set produces a
@@ -367,7 +388,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
   }
 
   public static List<CompactableFile> sortByFileSize(Collection<CompactableFile> files) {
-    List<CompactableFile> sortedFiles = new ArrayList<>(files);
+    ArrayList<CompactableFile> sortedFiles = new ArrayList<>(files);
 
     // sort from smallest file to largest
     Collections.sort(sortedFiles, Comparator.comparingLong(CompactableFile::getEstimatedSize)

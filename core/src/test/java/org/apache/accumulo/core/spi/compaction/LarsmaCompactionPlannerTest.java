@@ -49,12 +49,22 @@ public class LarsmaCompactionPlannerTest {
   }
 
   private static void testFFtC(Set<CompactableFile> expected, double ratio) {
-    testFFtC(expected, expected, ratio);
+    testFFtC(expected, expected, ratio, 100);
   }
 
   private static void testFFtC(Set<CompactableFile> expected, Set<CompactableFile> files,
       double ratio) {
-    var result = LarsmaCompactionPlanner.findMapFilesToCompact(files, ratio, 100, Long.MAX_VALUE);
+    testFFtC(expected, files, ratio, 100);
+  }
+
+  private static void testFFtC(Set<CompactableFile> expected, Set<CompactableFile> files,
+      double ratio, int maxFiles) {
+    testFFtC(expected, files, ratio, maxFiles, Long.MAX_VALUE);
+  }
+
+  private static void testFFtC(Set<CompactableFile> expected, Set<CompactableFile> files,
+      double ratio, int maxFiles, long maxSize) {
+    var result = LarsmaCompactionPlanner.findMapFilesToCompact(files, ratio, maxFiles, maxSize);
     var expectedNames = expected.stream().map(CompactableFile::getUri).map(URI::getPath)
         .map(path -> path.split("/")).map(t -> t[t.length - 1]).collect(Collectors.toSet());
     var resultNames = result.stream().map(CompactableFile::getUri).map(URI::getPath)
@@ -66,48 +76,77 @@ public class LarsmaCompactionPlannerTest {
   public void testFindFilesToCompact() {
 
     testFFtC(createCFs("F4", "1M", "F5", "1M", "F6", "1M"),
-        createCFs("F1", "100M", "F2", "100M", "F3", "100M", "F4", "1M", "F5", "1M", "F6", "1M"), 2);
+        createCFs("F1", "100M", "F2", "100M", "F3", "100M", "F4", "1M", "F5", "1M", "F6", "1M"),
+        2.0);
 
-    testFFtC(createCFs("F1", "100M", "F2", "100M", "F3", "100M", "F4", "1M"), 2);
+    testFFtC(createCFs("F1", "100M", "F2", "100M", "F3", "100M", "F4", "1M"), 2.0);
 
     testFFtC(
         createCFs("F1", "100M", "F2", "99M", "F3", "33M", "F4", "33M", "F5", "33M", "F6", "33M"),
-        2);
+        2.0);
     testFFtC(
         createCFs("F1", "100M", "F2", "99M", "F3", "33M", "F4", "33M", "F5", "33M", "F6", "33M"),
-        3);
+        3.0);
 
     testFFtC(createCFs("F3", "10M", "F4", "10M", "F5", "10M", "F6", "10M"),
-        createCFs("F1", "50M", "F2", "49M", "F3", "10M", "F4", "10M", "F5", "10M", "F6", "10M"), 2);
+        createCFs("F1", "50M", "F2", "49M", "F3", "10M", "F4", "10M", "F5", "10M", "F6", "10M"),
+        2.0);
 
     testFFtC(createCFs("F3", "10M", "F4", "10M", "F5", "10M", "F6", "10M"),
-        createCFs("F1", "50M", "F2", "49M", "F3", "10M", "F4", "10M", "F5", "10M", "F6", "10M"), 3);
+        createCFs("F1", "50M", "F2", "49M", "F3", "10M", "F4", "10M", "F5", "10M", "F6", "10M"),
+        3.0);
 
     testFFtC(createCFs("S1", "1M", "S2", "1M", "S3", "1M", "S4", "1M"),
         createCFs("B1", "100M", "B2", "100M", "B3", "100M", "B4", "100M", "M1", "10M", "M2", "10M",
             "M3", "10M", "M4", "10M", "S1", "1M", "S2", "1M", "S3", "1M", "S4", "1M"),
-        3);
+        3.0);
     testFFtC(createCFs("M1", "10M", "M2", "10M", "M3", "10M", "M4", "10M", "C1", "4M"),
         createCFs("B1", "100M", "B2", "100M", "B3", "100M", "B4", "100M", "M1", "10M", "M2", "10M",
             "M3", "10M", "M4", "10M", "C1", "4M"),
-        3);
+        3.0);
     testFFtC(createCFs("B1", "100M", "B2", "100M", "B3", "100M", "B4", "100M", "C2", "44M"),
-        createCFs("B1", "100M", "B2", "100M", "B3", "100M", "B4", "100M", "C2", "44M"), 3);
-    testFFtC(createCFs(), createCFs("C3", "444M"), 3);
+        createCFs("B1", "100M", "B2", "100M", "B3", "100M", "B4", "100M", "C2", "44M"), 3.0);
+    testFFtC(createCFs(), createCFs("C3", "444M"), 3.0);
 
-    testFFtC(createCFs(), createCFs("A1", "17M", "S1", "11M", "S2", "11M", "S3", "11M"), 3);
-    testFFtC(createCFs("A1", "16M", "S1", "11M", "S2", "11M", "S3", "11M"), 3);
+    testFFtC(createCFs(), createCFs("A1", "17M", "S1", "11M", "S2", "11M", "S3", "11M"), 3.0);
+    testFFtC(createCFs("A1", "16M", "S1", "11M", "S2", "11M", "S3", "11M"), 3.0);
 
     testFFtC(
         createCFs("A1", "1M", "A2", "1M", "A3", "1M", "A4", "1M", "A5", "3M", "A6", "3M", "A7",
             "5M", "A8", "5M"),
         createCFs("A1", "1M", "A2", "1M", "A3", "1M", "A4", "1M", "A5", "3M", "A6", "3M", "A7",
             "5M", "A8", "5M", "A9", "100M", "A10", "100M", "A11", "100M", "A12", "500M"),
-        3);
+        3.0);
 
     testFFtC(
         createCFs("F1", "100M", "F2", "99M", "F3", "33M", "F4", "33M", "F5", "33M", "F6", "33M"),
-        3);
+        3.0);
+
+    testFFtC(createCFs("F3", "10M", "F4", "9M", "F5", "8M", "F6", "7M"),
+        createCFs("F1", "12M", "F2", "11M", "F3", "10M", "F4", "9M", "F5", "8M", "F6", "7M"), 3.0,
+        4);
+
+    testFFtC(createCFs("F3", "4M", "F4", "8M", "F5", "9M", "F6", "10M"),
+        createCFs("F1", "1M", "F2", "2M", "F3", "4M", "F4", "8M", "F5", "9M", "F6", "10M"), 3.0, 4);
+
+    testFFtC(createCFs(),
+        createCFs("F1", "1M", "F2", "2M", "F3", "4M", "F4", "8M", "F5", "16M", "F6", "32M"), 3.0,
+        4);
+
+    testFFtC(createCFs(), createCFs("F1", "200M", "F2", "200M", "F3", "200M", "F4", "200M", "F5",
+        "200M", "F6", "200M"), 3.0, 4, 100_000_000L);
+
+    testFFtC(createCFs("F2", "2M", "F3", "30M", "F4", "30M", "F5", "30M"),
+        createCFs("F1", "1M", "F2", "2M", "F3", "30M", "F4", "30M", "F5", "30M", "F6", "30M"), 3.0,
+        4, 100_000_000L);
+
+    testFFtC(createCFs("F1", "1M", "F2", "2M", "F3", "30M", "F4", "30M", "F5", "30M"),
+        createCFs("F1", "1M", "F2", "2M", "F3", "30M", "F4", "30M", "F5", "30M", "F6", "30M"), 3.0,
+        8, 100_000_000L);
+
+    testFFtC(createCFs("F1", "1M", "F2", "2M", "F3", "30M", "F4", "30M", "F5", "30M", "F6", "30M"),
+        createCFs("F1", "1M", "F2", "2M", "F3", "30M", "F4", "30M", "F5", "30M", "F6", "30M"), 3.0,
+        8, 200_000_000L);
 
   }
 }
