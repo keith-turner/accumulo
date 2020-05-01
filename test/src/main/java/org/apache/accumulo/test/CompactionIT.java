@@ -34,8 +34,12 @@ import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
+import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
+import org.apache.accumulo.core.client.admin.compaction.TooManyDeletesSelector;
+import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
+import org.apache.accumulo.core.client.summary.summarizers.DeletesSummarizer;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.TableId;
@@ -85,8 +89,7 @@ public class CompactionIT extends SharedMiniClusterBase {
     @Override
     public CompactionPlan makePlan(PlanningParameters params) {
 
-      if (Boolean
-          .parseBoolean(params.getExecutionHints().getOrDefault("compact_all", "false"))) {
+      if (Boolean.parseBoolean(params.getExecutionHints().getOrDefault("compact_all", "false"))) {
         return params.createPlanBuilder()
             .addJob(1, executorIds.get(rand.nextInt(executorIds.size())), params.getCandidates())
             .build();
@@ -237,6 +240,71 @@ public class CompactionIT extends SharedMiniClusterBase {
 
   }
 
+  @Test
+  public void testTooManyDeletes() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+      Map<String,
+          String> props = Map.of(Property.TABLE_COMPACTION_SELECTOR.getKey(),
+              TooManyDeletesSelector.class.getName(),
+              Property.TABLE_COMPACTION_SELECTOR_OPTS.getKey() + "threshold", ".4");
+      var deleteSummarizerCfg =
+          SummarizerConfiguration.builder(DeletesSummarizer.class.getName()).build();
+      client.tableOperations().create("tmd_selector", new NewTableConfiguration()
+          .setProperties(props).enableSummarization(deleteSummarizerCfg));
+      client.tableOperations().create("tmd_control1",
+          new NewTableConfiguration().enableSummarization(deleteSummarizerCfg));
+      client.tableOperations().create("tmd_control2",
+          new NewTableConfiguration().enableSummarization(deleteSummarizerCfg));
+
+      addFile(client, "tmd_selector", 1, 1000, false);
+      addFile(client, "tmd_selector", 1, 1000, true);
+
+      addFile(client, "tmd_control1", 1, 1000, false);
+      addFile(client, "tmd_control1", 1, 1000, true);
+
+      addFile(client, "tmd_control2", 1, 1000, false);
+      addFile(client, "tmd_control2", 1000, 2000, false);
+
+      Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+
+      while (getFiles(client, "tmd_control2").size() != 1) {
+        Thread.sleep(100);
+      }
+
+      Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+
+      client.tableOperations().compact("tmd_control1",
+          new CompactionConfig()
+              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+                  .setOptions(Map.of("threshold", ".99")))
+              .setWait(true));
+      client.tableOperations().compact("tmd_control2",
+          new CompactionConfig()
+              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+                  .setOptions(Map.of("threshold", ".99")))
+              .setWait(true));
+
+      Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+
+      client.tableOperations().compact("tmd_control1",
+          new CompactionConfig()
+              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+                  .setOptions(Map.of("threshold", ".40")))
+              .setWait(true));
+      client.tableOperations().compact("tmd_control2",
+          new CompactionConfig()
+              .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+                  .setOptions(Map.of("threshold", ".40")))
+              .setWait(true));
+
+      Assert.assertEquals(1, getFiles(client, "tmd_control1").size());
+      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
+    }
+  }
+
   private Set<String> getFiles(AccumuloClient client, String name) {
     var tableId = TableId.of(client.tableOperations().tableIdMap().get(name));
 
@@ -247,6 +315,22 @@ public class CompactionIT extends SharedMiniClusterBase {
     }
   }
 
+  private void addFile(AccumuloClient client, String table, int startRow, int endRow,
+      boolean delete) throws Exception {
+    try (var writer = client.createBatchWriter(table)) {
+      for (int i = startRow; i < endRow; i++) {
+        Mutation mut = new Mutation(String.format("%09d", i));
+        if (delete)
+          mut.putDelete("f1", "q1");
+        else
+          mut.put("f1", "q1", "v" + i);
+        writer.addMutation(mut);
+
+      }
+    }
+    client.tableOperations().flush(table, null, null, true);
+  }
+
   private void addFiles(AccumuloClient client, String table, int num) throws Exception {
     try (var writer = client.createBatchWriter(table)) {
       for (int i = 0; i < num; i++) {
@@ -254,9 +338,8 @@ public class CompactionIT extends SharedMiniClusterBase {
         mut.put("f1", "q1", "v" + i);
         writer.addMutation(mut);
         writer.flush();
-
-        client.tableOperations().flush(table, null, null, true);
       }
+      client.tableOperations().flush(table, null, null, true);
     }
   }
 
