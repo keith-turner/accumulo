@@ -295,6 +295,10 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     if (files.size() <= 1)
       return Collections.emptySet();
 
+    // TODO remove
+    log.debug("findMapFilesToCompact({}, {}, {}, {})", files.size(), ratio, maxFilesToCompact,
+        maxSizeToCompact);
+
     // sort files from smallest to largest. So position 0 has the smallest file.
     List<CompactableFile> sortedFiles = sortByFileSize(files);
 
@@ -310,12 +314,18 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
       long currSize = sortedFiles.get(c).getEstimatedSize();
       sum += currSize;
 
+      // TODO remove
+      log.debug("name={} currSize={} sum={}", sortedFiles.get(c).getFileName(), currSize, sum);
+
       if (sum > maxSizeToCompact)
         break;
 
       if (currSize * ratio < sum) {
         goodIndex = c;
+        // TODO remove
+        log.debug("goodIndex={}", c);
 
+        // TODO does not seem to constrain to max files to compact, when first goodIndex found is greater than max
         if (goodIndex + 1 >= maxFilesToCompact)
           break; // TODO ISSUE old algorithm used to slide a window up when nothing found in
                  // smallest files
