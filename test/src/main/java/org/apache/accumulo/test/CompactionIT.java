@@ -173,69 +173,69 @@ public class CompactionIT extends SharedMiniClusterBase {
   @Test
   public void testDispatchSystem() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
-      createTable(client, "tab1", "cs1");
-      createTable(client, "tab2", "cs2");
+      createTable(client, "dst1", "cs1");
+      createTable(client, "dst2", "cs2");
 
-      addFiles(client, "tab1", 14);
-      addFiles(client, "tab2", 13);
+      addFiles(client, "dst1", 14);
+      addFiles(client, "dst2", 13);
 
-      Assert.assertTrue(getFiles(client, "tab1").size() >= 6);
-      Assert.assertTrue(getFiles(client, "tab2").size() >= 7);
+      Assert.assertTrue(getFiles(client, "dst1").size() >= 6);
+      Assert.assertTrue(getFiles(client, "dst2").size() >= 7);
 
-      addFiles(client, "tab1", 1);
-      addFiles(client, "tab2", 1);
+      addFiles(client, "dst1", 1);
+      addFiles(client, "dst2", 1);
 
-      while (getFiles(client, "tab1").size() > 3 || getFiles(client, "tab2").size() > 2) {
+      while (getFiles(client, "dst1").size() > 3 || getFiles(client, "dst2").size() > 2) {
         Thread.sleep(100);
       }
 
-      Assert.assertEquals(3, getFiles(client, "tab1").size());
-      Assert.assertEquals(2, getFiles(client, "tab2").size());
+      Assert.assertEquals(3, getFiles(client, "dst1").size());
+      Assert.assertEquals(2, getFiles(client, "dst2").size());
     }
   }
 
   @Test
   public void testDispatchUser() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
-      createTable(client, "tab1", "cs3");
-      createTable(client, "tab2", "cs3", "special", "cs4");
+      createTable(client, "dut1", "cs3");
+      createTable(client, "dut2", "cs3", "special", "cs4");
 
-      addFiles(client, "tab1", 6);
-      addFiles(client, "tab2", 33);
+      addFiles(client, "dut1", 6);
+      addFiles(client, "dut2", 33);
 
-      Assert.assertEquals(6, getFiles(client, "tab1").size());
-      Assert.assertEquals(33, getFiles(client, "tab2").size());
+      Assert.assertEquals(6, getFiles(client, "dut1").size());
+      Assert.assertEquals(33, getFiles(client, "dut2").size());
 
-      client.tableOperations().compact("tab1", new CompactionConfig().setWait(false));
+      client.tableOperations().compact("dut1", new CompactionConfig().setWait(false));
 
       // The hint should cause the compaction to dispatch to service cs4 which will produce a
       // different number of files.
-      client.tableOperations().compact("tab2", new CompactionConfig().setWait(false)
+      client.tableOperations().compact("dut2", new CompactionConfig().setWait(false)
           .setExecutionHints(Map.of("compaction_type", "special")));
 
-      while (getFiles(client, "tab1").size() > 2 || getFiles(client, "tab2").size() > 3) {
+      while (getFiles(client, "dut1").size() > 2 || getFiles(client, "dut2").size() > 3) {
         Thread.sleep(100);
       }
 
-      Assert.assertEquals(2, getFiles(client, "tab1").size());
-      Assert.assertEquals(3, getFiles(client, "tab2").size());
+      Assert.assertEquals(2, getFiles(client, "dut1").size());
+      Assert.assertEquals(3, getFiles(client, "dut2").size());
 
       // The way the compaction services were configured, they would never converge to one file for
       // the user compactions. However Accumulo will keep asking the planner for a plan until a user
       // compaction converges to one file. So cancel the compactions.
-      client.tableOperations().cancelCompaction("tab1");
-      client.tableOperations().cancelCompaction("tab2");
+      client.tableOperations().cancelCompaction("dut1");
+      client.tableOperations().cancelCompaction("dut2");
 
-      Assert.assertEquals(2, getFiles(client, "tab1").size());
-      Assert.assertEquals(3, getFiles(client, "tab2").size());
+      Assert.assertEquals(2, getFiles(client, "dut1").size());
+      Assert.assertEquals(3, getFiles(client, "dut2").size());
 
-      client.tableOperations().compact("tab1",
+      client.tableOperations().compact("dut1",
           new CompactionConfig().setWait(true).setExecutionHints(Map.of("compact_all", "true")));
-      client.tableOperations().compact("tab2",
+      client.tableOperations().compact("dut2",
           new CompactionConfig().setWait(true).setExecutionHints(Map.of("compact_all", "true")));
 
-      Assert.assertEquals(1, getFiles(client, "tab1").size());
-      Assert.assertEquals(1, getFiles(client, "tab2").size());
+      Assert.assertEquals(1, getFiles(client, "dut1").size());
+      Assert.assertEquals(1, getFiles(client, "dut2").size());
     }
 
   }
