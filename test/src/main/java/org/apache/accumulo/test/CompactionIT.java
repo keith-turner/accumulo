@@ -348,8 +348,8 @@ public class CompactionIT extends SharedMiniClusterBase {
         mut.put("f1", "q1", "v" + i);
         writer.addMutation(mut);
         writer.flush();
+        client.tableOperations().flush(table, null, null, true);
       }
-      client.tableOperations().flush(table, null, null, true);
     }
   }
 
