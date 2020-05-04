@@ -19,6 +19,8 @@
 
 package org.apache.accumulo.core.util.compaction;
 
+import static org.junit.Assert.assertEquals;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,7 +31,6 @@ import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
-import org.junit.Assert;
 import org.junit.Test;
 
 public class CompactionPrioritizerTest {
@@ -63,6 +64,6 @@ public class CompactionPrioritizerTest {
     Collections.shuffle(shuffled);
     Collections.sort(shuffled, CompactionJobPrioritizer.JOB_COMPARATOR);
 
-    Assert.assertEquals(expected, shuffled);
+    assertEquals(expected, shuffled);
   }
 }

@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.core.spi.compaction;
 
+import static org.junit.Assert.assertEquals;
+
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.HashSet;
@@ -26,7 +28,6 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
-import org.junit.Assert;
 import org.junit.Test;
 
 public class LarsmaCompactionPlannerTest {
@@ -69,7 +70,7 @@ public class LarsmaCompactionPlannerTest {
         .map(path -> path.split("/")).map(t -> t[t.length - 1]).collect(Collectors.toSet());
     var resultNames = result.stream().map(CompactableFile::getUri).map(URI::getPath)
         .map(path -> path.split("/")).map(t -> t[t.length - 1]).collect(Collectors.toSet());
-    Assert.assertEquals(expectedNames, resultNames);
+    assertEquals(expectedNames, resultNames);
   }
 
   @Test

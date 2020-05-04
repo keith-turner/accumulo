@@ -288,8 +288,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
     var loops = Math.max(1, sortedFiles.size() - maxFilesToCompact + 1);
     for (int i = 0; i < loops; i++) {
-      // TODO ISSUE old algorithm used to slide a window up when nothing found in
-      // smallest files
       var filesToCompact = findMapFilesToCompact(
           sortedFiles.subList(i, Math.min(sortedFiles.size(), maxFilesToCompact) + i), ratio);
       if (!filesToCompact.isEmpty())
@@ -349,7 +347,6 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
 
       if (currSize * ratio < sum) {
         goodIndex = c;
-        // TODO remove
       } else if (c - 1 == goodIndex) {
         // The previous file met the compaction ratio, but the current file does not. So all of the
         // previous files are candidates. However we must ensure that any candidate set produces a

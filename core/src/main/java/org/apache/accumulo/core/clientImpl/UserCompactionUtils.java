@@ -50,13 +50,13 @@ public class UserCompactionUtils {
     @Override
     public CompactionConfigurerConfig setOptions(java.util.Map<String,String> opts) {
       throw new UnsupportedOperationException();
-    };
+    }
   };
   public static CompactionSelectorConfig DEFAULT_CSC = new CompactionSelectorConfig("") {
     @Override
     public CompactionSelectorConfig setOptions(java.util.Map<String,String> opts) {
       throw new UnsupportedOperationException();
-    };
+    }
   };
 
   public static void encode(DataOutput dout, Map<String,String> options) {
