@@ -19,6 +19,9 @@
 
 package org.apache.accumulo.test;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -53,7 +56,6 @@ import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.apache.accumulo.harness.SharedMiniClusterBase;
 import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -179,8 +181,8 @@ public class CompactionIT extends SharedMiniClusterBase {
       addFiles(client, "dst1", 14);
       addFiles(client, "dst2", 13);
 
-      Assert.assertTrue(getFiles(client, "dst1").size() >= 6);
-      Assert.assertTrue(getFiles(client, "dst2").size() >= 7);
+      assertTrue(getFiles(client, "dst1").size() >= 6);
+      assertTrue(getFiles(client, "dst2").size() >= 7);
 
       addFiles(client, "dst1", 1);
       addFiles(client, "dst2", 1);
@@ -189,8 +191,8 @@ public class CompactionIT extends SharedMiniClusterBase {
         Thread.sleep(100);
       }
 
-      Assert.assertEquals(3, getFiles(client, "dst1").size());
-      Assert.assertEquals(2, getFiles(client, "dst2").size());
+      assertEquals(3, getFiles(client, "dst1").size());
+      assertEquals(2, getFiles(client, "dst2").size());
     }
   }
 
@@ -203,8 +205,8 @@ public class CompactionIT extends SharedMiniClusterBase {
       addFiles(client, "dut1", 6);
       addFiles(client, "dut2", 33);
 
-      Assert.assertEquals(6, getFiles(client, "dut1").size());
-      Assert.assertEquals(33, getFiles(client, "dut2").size());
+      assertEquals(6, getFiles(client, "dut1").size());
+      assertEquals(33, getFiles(client, "dut2").size());
 
       client.tableOperations().compact("dut1", new CompactionConfig().setWait(false));
 
@@ -217,8 +219,8 @@ public class CompactionIT extends SharedMiniClusterBase {
         Thread.sleep(100);
       }
 
-      Assert.assertEquals(2, getFiles(client, "dut1").size());
-      Assert.assertEquals(3, getFiles(client, "dut2").size());
+      assertEquals(2, getFiles(client, "dut1").size());
+      assertEquals(3, getFiles(client, "dut2").size());
 
       // The way the compaction services were configured, they would never converge to one file for
       // the user compactions. However Accumulo will keep asking the planner for a plan until a user
@@ -226,16 +228,16 @@ public class CompactionIT extends SharedMiniClusterBase {
       client.tableOperations().cancelCompaction("dut1");
       client.tableOperations().cancelCompaction("dut2");
 
-      Assert.assertEquals(2, getFiles(client, "dut1").size());
-      Assert.assertEquals(3, getFiles(client, "dut2").size());
+      assertEquals(2, getFiles(client, "dut1").size());
+      assertEquals(3, getFiles(client, "dut2").size());
 
       client.tableOperations().compact("dut1",
           new CompactionConfig().setWait(true).setExecutionHints(Map.of("compact_all", "true")));
       client.tableOperations().compact("dut2",
           new CompactionConfig().setWait(true).setExecutionHints(Map.of("compact_all", "true")));
 
-      Assert.assertEquals(1, getFiles(client, "dut1").size());
-      Assert.assertEquals(1, getFiles(client, "dut2").size());
+      assertEquals(1, getFiles(client, "dut1").size());
+      assertEquals(1, getFiles(client, "dut2").size());
     }
 
   }
@@ -270,17 +272,17 @@ public class CompactionIT extends SharedMiniClusterBase {
       addFile(client, "tmd_control3", 1, 2000, false);
       addFile(client, "tmd_control3", 1, 1000, true);
 
-      Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control3").size());
+      assertEquals(2, getFiles(client, "tmd_control1").size());
+      assertEquals(2, getFiles(client, "tmd_control2").size());
+      assertEquals(2, getFiles(client, "tmd_control3").size());
 
       while (getFiles(client, "tmd_selector").size() != 0) {
         Thread.sleep(100);
       }
 
-      Assert.assertEquals(2, getFiles(client, "tmd_control1").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control3").size());
+      assertEquals(2, getFiles(client, "tmd_control1").size());
+      assertEquals(2, getFiles(client, "tmd_control2").size());
+      assertEquals(2, getFiles(client, "tmd_control3").size());
 
       var cc1 = new CompactionConfig()
           .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
@@ -291,9 +293,9 @@ public class CompactionIT extends SharedMiniClusterBase {
       client.tableOperations().compact("tmd_control2", cc1);
       client.tableOperations().compact("tmd_control3", cc1);
 
-      Assert.assertEquals(0, getFiles(client, "tmd_control1").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control3").size());
+      assertEquals(0, getFiles(client, "tmd_control1").size());
+      assertEquals(2, getFiles(client, "tmd_control2").size());
+      assertEquals(2, getFiles(client, "tmd_control3").size());
 
       var cc2 = new CompactionConfig()
           .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
@@ -304,13 +306,13 @@ public class CompactionIT extends SharedMiniClusterBase {
       client.tableOperations().compact("tmd_control2", cc2);
       client.tableOperations().compact("tmd_control3", cc2);
 
-      Assert.assertEquals(0, getFiles(client, "tmd_control1").size());
-      Assert.assertEquals(2, getFiles(client, "tmd_control2").size());
-      Assert.assertEquals(1, getFiles(client, "tmd_control3").size());
+      assertEquals(0, getFiles(client, "tmd_control1").size());
+      assertEquals(2, getFiles(client, "tmd_control2").size());
+      assertEquals(1, getFiles(client, "tmd_control3").size());
 
       client.tableOperations().compact("tmd_control2", new CompactionConfig().setWait(true));
 
-      Assert.assertEquals(1, getFiles(client, "tmd_control2").size());
+      assertEquals(1, getFiles(client, "tmd_control2").size());
 
     }
   }
