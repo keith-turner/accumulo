@@ -26,7 +26,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionKind;
 
 public class CompactionJobPrioritizer {
 
-  public static Comparator<CompactionJob> JOB_COMPARATOR =
+  public static final Comparator<CompactionJob> JOB_COMPARATOR =
       Comparator.comparingLong(CompactionJob::getPriority)
           .thenComparingInt(job -> job.getFiles().size()).reversed();
 

@@ -32,6 +32,7 @@ import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
+import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
@@ -42,6 +43,7 @@ import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
 import org.apache.accumulo.core.client.summary.summarizers.DeletesSummarizer;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
+import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
@@ -173,6 +175,14 @@ public class CompactionIT extends SharedMiniClusterBase {
   @Test
   public void testDispatchSystem() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+
+      Scanner scanner = client.createScanner("your table");
+      scanner.setRange(Range.exact("your row", "your family"));
+
+      for (Entry<Key,Value> entry : scanner) {
+
+      }
+
       createTable(client, "dst1", "cs1");
       createTable(client, "dst2", "cs2");
 

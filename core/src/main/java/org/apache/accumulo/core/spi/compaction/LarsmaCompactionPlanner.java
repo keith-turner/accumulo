@@ -73,9 +73,9 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
   private static Logger log = LoggerFactory.getLogger(LarsmaCompactionPlanner.class);
 
   public static class ExecutorConfig {
-    String name;
-    String maxSize;
-    int numThreads;
+    String name = null;
+    String maxSize = null;
+    int numThreads = 0;
   }
 
   private static class Executor {

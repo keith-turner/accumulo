@@ -46,13 +46,13 @@ public class UserCompactionUtils {
   private static final int SELECTOR_MAGIC = 0xae9270bf;
   private static final int CONFIGURER_MAGIC = 0xf93e570a;
 
-  public static CompactionConfigurerConfig DEFAULT_CCC = new CompactionConfigurerConfig("") {
+  public static final CompactionConfigurerConfig DEFAULT_CCC = new CompactionConfigurerConfig("") {
     @Override
     public CompactionConfigurerConfig setOptions(java.util.Map<String,String> opts) {
       throw new UnsupportedOperationException();
     }
   };
-  public static CompactionSelectorConfig DEFAULT_CSC = new CompactionSelectorConfig("") {
+  public static final CompactionSelectorConfig DEFAULT_CSC = new CompactionSelectorConfig("") {
     @Override
     public CompactionSelectorConfig setOptions(java.util.Map<String,String> opts) {
       throw new UnsupportedOperationException();
