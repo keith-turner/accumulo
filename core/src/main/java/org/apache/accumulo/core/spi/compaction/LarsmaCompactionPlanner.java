@@ -39,6 +39,8 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 /**
  * Finds the largest continuous set of small files that meet the compaction ratio and do not prevent
  * future compactions.
@@ -96,6 +98,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
   private List<Executor> executors;
   private int maxFilesToCompact;
 
+  @SuppressFBWarnings(value = "UWF_UNWRITTEN_FIELD", justification = "Field is written by Gson")
   @Override
   public void init(InitParameters params) {
     ExecutorConfig[] execConfigs =
