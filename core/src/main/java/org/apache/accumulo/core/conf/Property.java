@@ -410,9 +410,11 @@ public enum Property {
       "The maximum number of concurrent tablet migrations for a tablet server"),
   TSERV_MAJC_DELAY("tserver.compaction.major.delay", "30s", PropertyType.TIMEDURATION,
       "Time a tablet server will sleep between checking which tablets need compaction."),
-  TSERV_COMPACTION_SERVICE_PREFIX("tserver.compaction.service.", null, PropertyType.PREFIX, ""),
+  TSERV_COMPACTION_SERVICE_PREFIX("tserver.compaction.service.", null, PropertyType.PREFIX,
+      "Prefix for compaction services."),
   TSERV_COMPACTION_SERVICE_ROOT_PLANNER("tserver.compaction.service.root.planner",
-      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
+      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
+      "Compaction planner for root tablet"),
   TSERV_COMPACTION_SERVICE_ROOT_MAX_OPEN("tserver.compaction.service.root.planner.opts.maxOpen",
       "30", PropertyType.COUNT, "The maximum number of files a compaction will open"),
   TSERV_COMPACTION_SERVICE_ROOT_EXECUTORS("tserver.compaction.service.root.planner.opts.executors",
@@ -421,7 +423,8 @@ public enum Property {
       PropertyType.STRING,
       "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
   TSERV_COMPACTION_SERVICE_META_PLANNER("tserver.compaction.service.meta.planner",
-      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
+      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
+      "Compaction planner for metadatat table"),
   TSERV_COMPACTION_SERVICE_META_MAX_OPEN("tserver.compaction.service.meta.planner.opts.maxOpen",
       "30", PropertyType.COUNT, "The maximum number of files a compaction will open"),
   TSERV_COMPACTION_SERVICE_META_EXECUTORS("tserver.compaction.service.meta.planner.opts.executors",
@@ -430,7 +433,8 @@ public enum Property {
       PropertyType.STRING,
       "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
   TSERV_COMPACTION_SERVICE_DEFAULT_PLANNER("tserver.compaction.service.default.planner",
-      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME, ""),
+      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
+      "Planner for default compaction service."),
   TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN(
       "tserver.compaction.service.default.planner.opts.maxOpen", "30", PropertyType.COUNT,
       "The maximum number of files a compaction will open"),
@@ -1255,7 +1259,9 @@ public enum Property {
             || key.startsWith(TABLE_SAMPLER_OPTS.getKey())
             || key.startsWith(TABLE_SUMMARIZER_PREFIX.getKey())
             || key.startsWith(TABLE_SCAN_DISPATCHER_OPTS.getKey())
-            || key.startsWith(TABLE_COMPACTION_DISPATCHER_OPTS.getKey())));
+            || key.startsWith(TABLE_COMPACTION_DISPATCHER_OPTS.getKey())
+            || key.startsWith(TABLE_COMPACTION_CONFIGURER_OPTS.getKey())
+            || key.startsWith(TABLE_COMPACTION_SELECTOR_OPTS.getKey())));
   }
 
   private static final EnumSet<Property> fixedProperties =
