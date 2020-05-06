@@ -62,9 +62,9 @@ import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.TableOfflineException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
-import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
 import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
+import org.apache.accumulo.core.client.admin.PluginConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.client.security.SecurityErrorCode;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
@@ -508,7 +508,7 @@ public class SummaryIT extends AccumuloClusterHarness {
   public void compactionSelectorTest() throws Exception {
     // Create a compaction config that will filter out foos if there are too many. Uses summary
     // data to know if there are too many foos.
-    CompactionSelectorConfig csc = new CompactionSelectorConfig(FooSelector.class.getName());
+    PluginConfig csc = new PluginConfig(FooSelector.class.getName());
     CompactionConfig compactConfig = new CompactionConfig().setSelector(csc);
     compactionTest(compactConfig);
   }

@@ -36,9 +36,8 @@ import java.util.stream.Collectors;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
-import org.apache.accumulo.core.client.admin.CompactionConfigurerConfig;
-import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
 import org.apache.accumulo.core.client.admin.CompactionStrategyConfig;
+import org.apache.accumulo.core.client.admin.PluginConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
@@ -217,11 +216,11 @@ public class CompactableUtils {
     var opts = tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_CONFIGURER_OPTS);
 
     return createCompactionConfiguration(tablet, files,
-        new CompactionConfigurerConfig(configurorClass).setOptions(opts));
+        new PluginConfig(configurorClass).setOptions(opts));
   }
 
   static AccumuloConfiguration createCompactionConfiguration(Tablet tablet,
-      Set<CompactableFile> files, CompactionConfigurerConfig cfg) {
+      Set<CompactableFile> files, PluginConfig cfg) {
     CompactionConfigurer configurer = CompactableUtils.newInstance(tablet.getTableConfiguration(),
         cfg.getClassName(), CompactionConfigurer.class);
 
@@ -279,8 +278,7 @@ public class CompactableUtils {
   }
 
   static Set<StoredTabletFile> selectFiles(Tablet tablet,
-      SortedMap<StoredTabletFile,DataFileValue> datafiles,
-      CompactionSelectorConfig selectorConfig) {
+      SortedMap<StoredTabletFile,DataFileValue> datafiles, PluginConfig selectorConfig) {
 
     // TODO how are exceptions handled
     CompactionSelector selector = newInstance(tablet.getTableConfiguration(),
@@ -366,14 +364,14 @@ public class CompactableUtils {
   }
 
   private static final class TableCompactionHelper implements CompactionHelper {
-    private final CompactionSelectorConfig cselCfg2;
+    private final PluginConfig cselCfg2;
     private final CompactionStrategyConfig stratCfg2;
     private final Tablet tablet;
     private WriteParameters wp;
     private Set<StoredTabletFile> filesToDrop;
 
-    private TableCompactionHelper(CompactionSelectorConfig cselCfg2,
-        CompactionStrategyConfig stratCfg2, Tablet tablet) {
+    private TableCompactionHelper(PluginConfig cselCfg2, CompactionStrategyConfig stratCfg2,
+        Tablet tablet) {
       this.cselCfg2 = cselCfg2;
       this.stratCfg2 = stratCfg2;
       this.tablet = tablet;
@@ -483,12 +481,12 @@ public class CompactableUtils {
       var tconf = tablet.getTableConfiguration();
       var selectorClassName = tconf.get(Property.TABLE_COMPACTION_SELECTOR);
 
-      CompactionSelectorConfig cselCfg = null;
+      PluginConfig cselCfg = null;
 
       if (selectorClassName != null && !selectorClassName.isBlank()) {
         var opts =
             tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_SELECTOR_OPTS);
-        cselCfg = new CompactionSelectorConfig(selectorClassName).setOptions(opts);
+        cselCfg = new PluginConfig(selectorClassName).setOptions(opts);
       }
 
       CompactionStrategyConfig stratCfg = null;

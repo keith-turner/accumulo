@@ -37,8 +37,8 @@ import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
-import org.apache.accumulo.core.client.admin.CompactionSelectorConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
+import org.apache.accumulo.core.client.admin.PluginConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.client.admin.compaction.TooManyDeletesSelector;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
@@ -167,6 +167,10 @@ public class CompactionIT extends SharedMiniClusterBase {
     }
   }
 
+  // TODO test compacting half of tablets with filtering iter... then other half with different
+  // filtering iter... then scan
+  // TODO test setting incorrect plugin types and ensure there is an error
+
   /**
    * Test ensures that system compactions are dispatched to a configured compaction service. The
    * compaction services produce a very specific number of files, so the test indirectly checks
@@ -285,7 +289,7 @@ public class CompactionIT extends SharedMiniClusterBase {
       assertEquals(2, getFiles(client, "tmd_control3").size());
 
       var cc1 = new CompactionConfig()
-          .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+          .setSelector(new PluginConfig(TooManyDeletesSelector.class.getName())
               .setOptions(Map.of("threshold", ".99")))
           .setWait(true);
 
@@ -298,7 +302,7 @@ public class CompactionIT extends SharedMiniClusterBase {
       assertEquals(2, getFiles(client, "tmd_control3").size());
 
       var cc2 = new CompactionConfig()
-          .setSelector(new CompactionSelectorConfig(TooManyDeletesSelector.class.getName())
+          .setSelector(new PluginConfig(TooManyDeletesSelector.class.getName())
               .setOptions(Map.of("threshold", ".40")))
           .setWait(true);
 

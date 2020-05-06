@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.function.BooleanSupplier;
 
 import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
+import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.hadoop.io.Text;
 
@@ -46,8 +48,8 @@ public class CompactionConfig {
   private List<IteratorSetting> iterators = Collections.emptyList();
   private CompactionStrategyConfig compactionStrategy = DEFAULT_STRATEGY;
   private Map<String,String> hints = Map.of();
-  private CompactionSelectorConfig selectorConfig = UserCompactionUtils.DEFAULT_CSC;
-  private CompactionConfigurerConfig configurerConfig = UserCompactionUtils.DEFAULT_CCC;
+  private PluginConfig selectorConfig = UserCompactionUtils.DEFAULT_CSC;
+  private PluginConfig configurerConfig = UserCompactionUtils.DEFAULT_CCC;
 
   /**
    * @param start
@@ -175,10 +177,13 @@ public class CompactionConfig {
   }
 
   /**
+   * Configure a {@link CompactionSelector} plugin to run for this compaction. Specify the class
+   * name and options here.
+   *
    * @return this;
    * @since 2.1.0
    */
-  public CompactionConfig setSelector(CompactionSelectorConfig selectorConfig) {
+  public CompactionConfig setSelector(PluginConfig selectorConfig) {
     Preconditions.checkState(compactionStrategy.getClassName().isEmpty());
     Preconditions.checkArgument(!selectorConfig.getClassName().isBlank());
     this.selectorConfig = requireNonNull(selectorConfig);
@@ -188,7 +193,7 @@ public class CompactionConfig {
   /**
    * @since 2.1.0
    */
-  public CompactionSelectorConfig getSelector() {
+  public PluginConfig getSelector() {
     return selectorConfig;
   }
 
@@ -210,12 +215,12 @@ public class CompactionConfig {
   }
 
   /**
-   * Set and override any per-table properties that configure compaction file output like
-   * compression.
+   * Enables a {@link CompactionConfigurer} to run for this compaction on the server side. Specify
+   * the class name and options here.
    *
    * @since 2.1.0
    */
-  public CompactionConfig setConfigurer(CompactionConfigurerConfig configurerConfig) {
+  public CompactionConfig setConfigurer(PluginConfig configurerConfig) {
     Preconditions.checkState(compactionStrategy.getClassName().isEmpty());
     this.configurerConfig = configurerConfig;
     return this;
@@ -224,7 +229,7 @@ public class CompactionConfig {
   /**
    * @since 2.1.0
    */
-  public CompactionConfigurerConfig getConfigurer() {
+  public PluginConfig getConfigurer() {
     return configurerConfig;
   }
 

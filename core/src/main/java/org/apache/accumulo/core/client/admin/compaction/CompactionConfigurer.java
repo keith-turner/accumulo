@@ -25,7 +25,8 @@ import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.data.TableId;
 
 /**
- * Enables dynamically overriding of configuration used to create the output file for a compaction.
+ * Enables dynamically overriding of per table properties used to create the output file for a
+ * compaction. For example it could override the per table property for compression.
  *
  * @since 2.1.0
  */
