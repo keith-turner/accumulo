@@ -131,7 +131,7 @@ public class CompactableImpl implements Compactable {
         servicesIds.add(getConfiguredService(kind));
       }
       return Set.copyOf(servicesIds);
-    }, 1, TimeUnit.SECONDS);
+    }, 2, TimeUnit.SECONDS);
   }
 
   void initiateChop() {
