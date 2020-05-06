@@ -29,7 +29,7 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
-import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
+import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner;
 import org.apache.accumulo.core.util.NamingThreadFactory;
 import org.apache.accumulo.fate.util.Retry;
 import org.apache.accumulo.server.ServerContext;
@@ -130,7 +130,7 @@ public class CompactionManager {
     options.forEach((serviceName, serviceOptions) -> {
       tmpServices.put(CompactionServiceId.of(serviceName),
           new CompactionService(serviceName,
-              planners.getOrDefault(serviceName, LarsmaCompactionPlanner.class.getName()),
+              planners.getOrDefault(serviceName, DefaultCompactionPlanner.class.getName()),
               serviceOptions, ctx, resourceManager));
     });
 

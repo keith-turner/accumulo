@@ -70,9 +70,9 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
  * @see org.apache.accumulo.core.spi.compaction
  */
 
-public class LarsmaCompactionPlanner implements CompactionPlanner {
+public class DefaultCompactionPlanner implements CompactionPlanner {
 
-  private static Logger log = LoggerFactory.getLogger(LarsmaCompactionPlanner.class);
+  private static Logger log = LoggerFactory.getLogger(DefaultCompactionPlanner.class);
 
   public static class ExecutorConfig {
     String name;
@@ -124,7 +124,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
           "Can only have one executor w/o a maxSize. " + params.getOptions().get("executors"));
     }
 
-    String fqo = params.getFullyQualifiedOption("maxFilesPerCompaction");
+    String fqo = params.getFullyQualifiedOption("maxOpen");
 
     if (!params.getServiceEnvironment().getConfiguration().isSet(fqo)
         && params.getServiceEnvironment().getConfiguration()
@@ -183,7 +183,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
           && (params.getKind() == CompactionKind.USER
               || params.getKind() == CompactionKind.SELECTOR)
           && params.getRunningCompactions().stream()
-              .filter(job -> job.getKind() == params.getKind()).count() == 0) {
+              .noneMatch(job -> job.getKind() == params.getKind())) {
         // TODO ISSUE could partition files by executor sizes, however would need to do this in
         // optimal way.. not as easy as chop because need to result in a single file
         group = findMaximalRequiredSetToCompact(params.getCandidates(), maxFilesToCompact);
@@ -380,7 +380,7 @@ public class LarsmaCompactionPlanner implements CompactionPlanner {
     long size = files.stream().mapToLong(CompactableFile::getEstimatedSize).sum();
 
     for (Executor executor : executors) {
-      if (size < executor.maxSize)
+      if (executor.maxSize == null || size < executor.maxSize)
         return executor.ceid;
     }
 

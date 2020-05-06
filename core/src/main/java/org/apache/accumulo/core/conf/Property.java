@@ -32,7 +32,7 @@ import org.apache.accumulo.core.file.rfile.RFile;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iteratorsImpl.system.DeletingIterator;
 import org.apache.accumulo.core.metadata.MetadataTable;
-import org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner;
+import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.SimpleCompactionDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanPrioritizer;
@@ -413,17 +413,17 @@ public enum Property {
   TSERV_COMPACTION_SERVICE_PREFIX("tserver.compaction.service.", null, PropertyType.PREFIX,
       "Prefix for compaction services."),
   TSERV_COMPACTION_SERVICE_ROOT_PLANNER("tserver.compaction.service.root.planner",
-      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
-      "Compaction planner for root tablet"),
+      DefaultCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
+      "Compaction planner for root tablet service"),
   TSERV_COMPACTION_SERVICE_ROOT_MAX_OPEN("tserver.compaction.service.root.planner.opts.maxOpen",
       "30", PropertyType.COUNT, "The maximum number of files a compaction will open"),
   TSERV_COMPACTION_SERVICE_ROOT_EXECUTORS("tserver.compaction.service.root.planner.opts.executors",
       "[{'name':'small','maxSize':'32M','numThreads':1},"
           + "{'name':'huge','numThreads':1}]".replaceAll("'", "\""),
       PropertyType.STRING,
-      "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
+      "See {% jlink -f org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner %} "),
   TSERV_COMPACTION_SERVICE_META_PLANNER("tserver.compaction.service.meta.planner",
-      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
+      DefaultCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
       "Compaction planner for metadatat table"),
   TSERV_COMPACTION_SERVICE_META_MAX_OPEN("tserver.compaction.service.meta.planner.opts.maxOpen",
       "30", PropertyType.COUNT, "The maximum number of files a compaction will open"),
@@ -431,9 +431,9 @@ public enum Property {
       "[{'name':'small','maxSize':'32M','numThreads':2},"
           + "{'name':'huge','numThreads':2}]".replaceAll("'", "\""),
       PropertyType.STRING,
-      "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
+      "See {% jlink -f org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner %} "),
   TSERV_COMPACTION_SERVICE_DEFAULT_PLANNER("tserver.compaction.service.default.planner",
-      LarsmaCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
+      DefaultCompactionPlanner.class.getName(), PropertyType.CLASSNAME,
       "Planner for default compaction service."),
   TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN(
       "tserver.compaction.service.default.planner.opts.maxOpen", "30", PropertyType.COUNT,
@@ -446,7 +446,7 @@ public enum Property {
           + "{'name':'large','maxSize':'512M','numThreads':3},"
           + "{'name':'huge','numThreads':3}]".replaceAll("'", "\""),
       PropertyType.STRING,
-      "See {% jlink -f org.apache.accumulo.core.spi.compaction.LarsmaCompactionPlanner %} "),
+      "See {% jlink -f org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner %} "),
   @Deprecated(since = "2.1.0", forRemoval = true)
   @ReplacedBy(property = Property.TSERV_COMPACTION_SERVICE_DEFAULT_MAX_OPEN)
   TSERV_MAJC_THREAD_MAXOPEN("tserver.compaction.major.thread.files.open.max", "10",
