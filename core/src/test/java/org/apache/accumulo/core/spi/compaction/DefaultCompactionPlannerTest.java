@@ -124,7 +124,7 @@ public class DefaultCompactionPlannerTest {
 
   @Test
   public void testRunningCompaction() {
-    var planner = createPlanner();
+    var planner = createPlanner(true);
     var all = createCFs("F1", "3M", "F2", "3M", "F3", "11M", "F4", "12M", "F5", "13M");
     var candidates = createCFs("F3", "11M", "F4", "12M", "F5", "13M");
     var compacting =
@@ -151,7 +151,7 @@ public class DefaultCompactionPlannerTest {
 
   @Test
   public void testUserCompaction() {
-    var planner = createPlanner();
+    var planner = createPlanner(true);
     var all = createCFs("F1", "3M", "F2", "3M", "F3", "11M", "F4", "12M", "F5", "13M");
     var candidates = createCFs("F3", "11M", "F4", "12M", "F5", "13M");
     var compacting =
@@ -192,6 +192,26 @@ public class DefaultCompactionPlannerTest {
     assertEquals(all, job.getFiles());
     assertEquals(CompactionExecutorId.of("huge"), job.getExecutor());
 
+  }
+
+  @Test
+  public void testMaxSize() {
+    var planner = createPlanner(false);
+    var all = createCFs("F1", "128M", "F2", "129M", "F3", "130M", "F4", "131M", "F5", "132M");
+    var params = createPlanningParams(all, all, Set.of(), 2, CompactionKind.SYSTEM);
+    var plan = planner.makePlan(params);
+
+    // should only compact files less than max size
+    var job = Iterables.getOnlyElement(plan.getJobs());
+    assertEquals(createCFs("F1", "128M", "F2", "129M", "F3", "130M"), job.getFiles());
+    assertEquals(CompactionExecutorId.of("large"), job.getExecutor());
+
+    // user compaction can exceed the max size
+    params = createPlanningParams(all, all, Set.of(), 2, CompactionKind.USER);
+    plan = planner.makePlan(params);
+    job = Iterables.getOnlyElement(plan.getJobs());
+    assertEquals(all, job.getFiles());
+    assertEquals(CompactionExecutorId.of("large"), job.getExecutor());
   }
 
   private CompactionJob createJob(CompactionKind kind, Set<CompactableFile> all,
@@ -294,7 +314,7 @@ public class DefaultCompactionPlannerTest {
     };
   }
 
-  private static DefaultCompactionPlanner createPlanner() {
+  private static DefaultCompactionPlanner createPlanner(boolean withHugeExecutor) {
     DefaultCompactionPlanner planner = new DefaultCompactionPlanner();
     Configuration conf = EasyMock.createMock(Configuration.class);
     EasyMock.expect(conf.isSet(EasyMock.anyString())).andReturn(false).anyTimes();
@@ -303,6 +323,18 @@ public class DefaultCompactionPlannerTest {
     EasyMock.expect(senv.getConfiguration()).andReturn(conf).anyTimes();
 
     EasyMock.replay(conf, senv);
+
+    StringBuilder execBldr = new StringBuilder("[{'name':'small','maxSize':'32M','numThreads':1},"
+        + "{'name':'medium','maxSize':'128M','numThreads':2},"
+        + "{'name':'large','maxSize':'512M','numThreads':3}");
+
+    if (withHugeExecutor) {
+      execBldr.append(",{'name':'huge','numThreads':4}]");
+    } else {
+      execBldr.append("]");
+    }
+
+    String executors = execBldr.toString().replaceAll("'", "\"");
 
     planner.init(new CompactionPlanner.InitParameters() {
 
@@ -314,12 +346,7 @@ public class DefaultCompactionPlannerTest {
       @Override
       public Map<String,String> getOptions() {
         // TODO Auto-generated method stub
-        return Map.of("executors",
-            "[{'name':'small','maxSize':'32M','numThreads':1},"
-                + "{'name':'medium','maxSize':'128M','numThreads':2},"
-                + "{'name':'large','maxSize':'512M','numThreads':3},"
-                + "{'name':'huge','numThreads':4}]".replaceAll("'", "\""),
-            "maxOpen", "15");
+        return Map.of("executors", executors, "maxOpen", "15");
       }
 
       @Override

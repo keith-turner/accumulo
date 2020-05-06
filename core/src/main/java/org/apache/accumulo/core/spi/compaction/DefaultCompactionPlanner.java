@@ -93,6 +93,11 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
     Long getMaxSize() {
       return maxSize;
     }
+
+    @Override
+    public String toString() {
+      return "[ceid=" + ceid + ", maxSize=" + maxSize + "]";
+    }
   }
 
   private List<Executor> executors;
@@ -216,8 +221,8 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
   private long getMaxSizeToCompact(CompactionKind kind) {
     if (kind == CompactionKind.SYSTEM) {
       Long max = executors.get(executors.size() - 1).maxSize;
-      if (max == null)
-        max = Long.MAX_VALUE;
+      if (max != null)
+        return max;
     }
     return Long.MAX_VALUE;
   }
