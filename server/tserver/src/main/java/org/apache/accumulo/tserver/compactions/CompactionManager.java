@@ -25,6 +25,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
@@ -41,7 +42,7 @@ public class CompactionManager {
   private static final Logger log = LoggerFactory.getLogger(CompactionManager.class);
 
   private Iterable<Compactable> compactables;
-  private Map<CompactionServiceId,CompactionServiceImpl> services;
+  private Map<CompactionServiceId,CompactionService> services;
 
   private LinkedBlockingQueue<Compactable> compactablesToCheck = new LinkedBlockingQueue<>();
 
@@ -109,7 +110,7 @@ public class CompactionManager {
     Map<String,String> configs =
         ctx.getConfiguration().getAllPropertiesWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX);
 
-    Map<CompactionServiceId,CompactionServiceImpl> tmpServices = new HashMap<>();
+    Map<CompactionServiceId,CompactionService> tmpServices = new HashMap<>();
 
     Map<String,String> planners = new HashMap<>();
     Map<String,Map<String,String>> options = new HashMap<>();
@@ -128,7 +129,7 @@ public class CompactionManager {
 
     options.forEach((serviceName, serviceOptions) -> {
       tmpServices.put(CompactionServiceId.of(serviceName),
-          new CompactionServiceImpl(serviceName,
+          new CompactionService(serviceName,
               planners.getOrDefault(serviceName, LarsmaCompactionPlanner.class.getName()),
               serviceOptions, ctx, resourceManager));
     });
@@ -154,5 +155,10 @@ public class CompactionManager {
         return services.keySet();
       }
     };
+  }
+
+  public boolean isCompactionQueued(KeyExtent extent, Set<CompactionServiceId> servicesUsed) {
+    return servicesUsed.stream().map(services::get)
+        .anyMatch(compactionService -> compactionService.isCompactionQueued(extent));
   }
 }

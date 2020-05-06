@@ -1595,8 +1595,7 @@ public class Tablet {
   }
 
   public boolean isMajorCompactionQueued() {
-    // TODO this is hard to track!
-    return false;
+    return compactable.isMajorCompactionQueued();
   }
 
   public boolean isMinorCompactionQueued() {

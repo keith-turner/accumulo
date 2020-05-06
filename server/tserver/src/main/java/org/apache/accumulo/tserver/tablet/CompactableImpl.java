@@ -90,6 +90,8 @@ public class CompactableImpl implements Compactable {
   private Set<StoredTabletFile> choppedFiles = new HashSet<>();
   private SpecialStatus chopStatus = SpecialStatus.NOT_ACTIVE;
 
+  private Supplier<Set<CompactionServiceId>> servicesInUse;
+
   // status of special compactions
   private enum SpecialStatus {
     NEW, SELECTING, SELECTED, NOT_ACTIVE, CANCELED
@@ -123,6 +125,13 @@ public class CompactableImpl implements Compactable {
   public CompactableImpl(Tablet tablet, CompactionManager manager) {
     this.tablet = tablet;
     this.manager = manager;
+    this.servicesInUse = Suppliers.memoizeWithExpiration(() -> {
+      HashSet<CompactionServiceId> servicesIds = new HashSet<>();
+      for (CompactionKind kind : CompactionKind.values()) {
+        servicesIds.add(getConfiguredService(kind));
+      }
+      return Set.copyOf(servicesIds);
+    }, 1, TimeUnit.SECONDS);
   }
 
   void initiateChop() {
@@ -720,6 +729,10 @@ public class CompactableImpl implements Compactable {
   public boolean isMajorCompactionRunning() {
     // this method intentionally not synchronized because its called by stats code.
     return compactionRunning;
+  }
+
+  public boolean isMajorCompactionQueued() {
+    return manager.isCompactionQueued(getExtent(), servicesInUse.get());
   }
 
   /**

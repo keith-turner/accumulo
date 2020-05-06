@@ -19,7 +19,6 @@
 package org.apache.accumulo.tserver.compactions;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -28,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
@@ -54,18 +54,18 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-public class CompactionServiceImpl {
+public class CompactionService {
   // TODO ISSUE move rate limiters to the compaction service level.
   private final CompactionPlanner planner;
   private final Map<CompactionExecutorId,CompactionExecutor> executors;
   private final CompactionServiceId myId;
-  private Map<KeyExtent,List<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
+  private Map<KeyExtent,Collection<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
   private ServerContext serverCtx;
 
-  private static final Logger log = LoggerFactory.getLogger(CompactionServiceImpl.class);
+  private static final Logger log = LoggerFactory.getLogger(CompactionService.class);
 
   // TODO ISSUE change thread pool sizes if compaction service config changes
-  public CompactionServiceImpl(String serviceName, String plannerClass,
+  public CompactionService(String serviceName, String plannerClass,
       Map<String,String> serviceOptions, ServerContext sctx, TabletServerResourceManager tsrm) {
 
     this.myId = CompactionServiceId.of(serviceName);
@@ -116,7 +116,7 @@ public class CompactionServiceImpl {
     log.debug("Created new compaction service id:{} executors:{}", myId, executors.keySet());
   }
 
-  private boolean reconcile(Set<CompactionJob> jobs, List<SubmittedJob> submitted) {
+  private boolean reconcile(Set<CompactionJob> jobs, Collection<SubmittedJob> submitted) {
     for (SubmittedJob submittedJob : submitted) {
       // only read status once to avoid race conditions since multiple compares are done
       var status = submittedJob.getStatus();
@@ -216,7 +216,8 @@ public class CompactionServiceImpl {
       log.warn("Planner {} is returning wrong job kind {}", planner.getClass().getName(), kind);
     }
 
-    List<SubmittedJob> submitted = submittedJobs.getOrDefault(compactable.getExtent(), List.of());
+    Collection<SubmittedJob> submitted =
+        submittedJobs.getOrDefault(compactable.getExtent(), List.of());
     if (!submitted.isEmpty()) {
       submitted.removeIf(sj -> {
         // to avoid race conditions, only read status once and use local var for the two compares
@@ -229,7 +230,9 @@ public class CompactionServiceImpl {
       for (CompactionJob job : jobs) {
         var sjob =
             executors.get(job.getExecutor()).submit(myId, job, compactable, completionCallback);
-        submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ArrayList<>()).add(sjob);
+        // its important that the collection created in computeIfAbsent supports concurrency
+        submittedJobs.computeIfAbsent(compactable.getExtent(), k -> new ConcurrentLinkedQueue<>())
+            .add(sjob);
       }
 
       if (!jobs.isEmpty()) {
@@ -240,5 +243,10 @@ public class CompactionServiceImpl {
       log.trace("Did not submit compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
           myId, files, plan);
     }
+  }
+
+  public boolean isCompactionQueued(KeyExtent extent) {
+    return submittedJobs.getOrDefault(extent, List.of()).stream()
+        .anyMatch(job -> job.getStatus() == Status.QUEUED);
   }
 }
