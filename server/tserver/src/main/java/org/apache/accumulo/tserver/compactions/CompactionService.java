@@ -48,6 +48,7 @@ import org.apache.accumulo.core.util.compaction.CompactionPlanImpl;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
+import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,7 @@ public class CompactionService {
   private ServerContext serverCtx;
   private String plannerClassName;
   private Map<String,String> plannerOpts;
+  private CompactionExecutorsMetrics ceMetrics;
 
   private static final Logger log = LoggerFactory.getLogger(CompactionService.class);
 
@@ -110,12 +112,13 @@ public class CompactionService {
 
   // TODO ISSUE change thread pool sizes if compaction service config changes
   public CompactionService(String serviceName, String plannerClass,
-      Map<String,String> plannerOptions, ServerContext sctx) {
+      Map<String,String> plannerOptions, ServerContext sctx, CompactionExecutorsMetrics ceMetrics) {
 
     this.myId = CompactionServiceId.of(serviceName);
     this.serverCtx = sctx;
     this.plannerClassName = plannerClass;
     this.plannerOpts = plannerOptions;
+    this.ceMetrics = ceMetrics;
 
     var initParams = new CpInitParams(plannerOpts);
     planner = createPlanner(plannerClass);
@@ -124,7 +127,7 @@ public class CompactionService {
     Map<CompactionExecutorId,CompactionExecutor> tmpExecutors = new HashMap<>();
 
     initParams.requestedExecutors.forEach((ceid, numThreads) -> {
-      tmpExecutors.put(ceid, new CompactionExecutor(ceid, numThreads));
+      tmpExecutors.put(ceid, new CompactionExecutor(ceid, numThreads, ceMetrics));
     });
 
     this.executors = Map.copyOf(tmpExecutors);
@@ -305,7 +308,7 @@ public class CompactionService {
     initParams.requestedExecutors.forEach((ceid, numThreads) -> {
       var executor = executors.get(ceid);
       if (executor == null) {
-        executor = new CompactionExecutor(ceid, numThreads);
+        executor = new CompactionExecutor(ceid, numThreads, ceMetrics);
       } else {
         executor.setThreads(numThreads);
       }
@@ -328,5 +331,13 @@ public class CompactionService {
 
   public void stop() {
     executors.values().forEach(CompactionExecutor::stop);
+  }
+
+  int getCompactionsRunning() {
+    return executors.values().stream().mapToInt(CompactionExecutor::getCompactionsRunning).sum();
+  }
+
+  int getCompactionsQueued() {
+    return executors.values().stream().mapToInt(CompactionExecutor::getCompactionsQueued).sum();
   }
 }

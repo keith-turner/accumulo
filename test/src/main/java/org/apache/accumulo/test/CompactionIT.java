@@ -228,8 +228,9 @@ public class CompactionIT extends SharedMiniClusterBase {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
       client.instanceOperations().setProperty(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey()
           + "newcs.planner.opts.filesPerCompaction", "7");
-      client.instanceOperations().setProperty(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey()
-          + "newcs.planner.opts.process", "SYSTEM");
+      client.instanceOperations().setProperty(
+          Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey() + "newcs.planner.opts.process",
+          "SYSTEM");
       client.instanceOperations().setProperty(
           Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey() + "newcs.planner.opts.executors", "3");
       client.instanceOperations().setProperty(
