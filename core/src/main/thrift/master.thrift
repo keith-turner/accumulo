@@ -126,6 +126,14 @@ struct MasterMonitorInfo {
   11:list<BulkImportStatus> bulkImports
 }
 
+struct UserCompaction {
+  1:string id
+  2:string tableId
+  3:i32 tabletsCompacted
+  4:i32 tabletsToCompact
+  5:binary compactionConfig
+}
+
 struct TabletSplit {
   1:data.TKeyExtent oldTablet
   2:list<data.TKeyExtent> newTablets
@@ -393,4 +401,11 @@ service MasterClientService extends FateService {
     1:client.ThriftNotActiveServiceException tnase
   )
 
+  list<UserCompaction> getActiveUserCompactions(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+  ) throws (
+    1:client.ThriftSecurityException sec
+    2:client.ThriftNotActiveServiceException tnase
+  )
 }

@@ -19,10 +19,12 @@
 package org.apache.accumulo.core.client.admin;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.data.TabletId;
+import org.apache.accumulo.core.data.UserCompactionId;
 
 /**
  * @since 1.5.0
@@ -37,7 +39,7 @@ public abstract class ActiveCompaction {
     /**
      * Accumulo no longer does merging minor compactions.
      */
-    @Deprecated(since = "2.1.0", forRemoval = true)
+    @Deprecated(since = "2.1.0", forRemoval = false)
     MERGE,
     /**
      * compaction that merges a subset of a tablets files into one file
@@ -128,4 +130,9 @@ public abstract class ActiveCompaction {
    * @return the per compaction iterators configured
    */
   public abstract List<IteratorSetting> getIterators();
+
+  /**
+   * @since 2.1.0
+   */
+  public abstract Optional<UserCompactionId> getUserCompactionId();
 }

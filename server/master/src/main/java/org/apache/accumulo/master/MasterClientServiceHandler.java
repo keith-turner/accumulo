@@ -45,6 +45,7 @@ import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.clientImpl.thrift.SecurityErrorCode;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperation;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperationExceptionType;
+import org.apache.accumulo.core.clientImpl.thrift.ThriftNotActiveServiceException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftTableOperationException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
@@ -62,6 +63,7 @@ import org.apache.accumulo.core.master.thrift.MasterMonitorInfo;
 import org.apache.accumulo.core.master.thrift.MasterState;
 import org.apache.accumulo.core.master.thrift.TabletLoadState;
 import org.apache.accumulo.core.master.thrift.TabletSplit;
+import org.apache.accumulo.core.master.thrift.UserCompaction;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.ReplicationSection;
@@ -594,5 +596,13 @@ public class MasterClientServiceHandler extends FateServiceHandler
     }
 
     return true;
+  }
+
+  @Override
+  public List<UserCompaction> getActiveUserCompactions(TInfo tinfo, TCredentials credentials)
+      throws ThriftSecurityException, ThriftNotActiveServiceException, TException {
+
+    // TODO Auto-generated method stub
+    return null;
   }
 }

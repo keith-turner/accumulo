@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.core.client.admin;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -103,9 +104,13 @@ public interface InstanceOperations {
    * @return the list of active compactions
    * @since 1.5.0
    */
-
   List<ActiveCompaction> getActiveCompactions(String tserver)
       throws AccumuloException, AccumuloSecurityException;
+
+  /**
+   * @since 2.1.0
+   */
+  Collection<UserCompaction> getUserCompactions();
 
   /**
    * Throws an exception if a tablet server can not be contacted.
