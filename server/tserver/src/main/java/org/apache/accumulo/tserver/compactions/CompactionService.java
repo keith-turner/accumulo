@@ -56,7 +56,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 
 public class CompactionService {
-  // TODO ISSUE move rate limiters to the compaction service level.
   private CompactionPlanner planner;
   private Map<CompactionExecutorId,CompactionExecutor> executors;
   private final CompactionServiceId myId;
@@ -168,7 +167,6 @@ public class CompactionService {
 
   public void compact(CompactionKind kind, Compactable compactable,
       Consumer<Compactable> completionCallback) {
-    // TODO ISSUE this could take a while... could run this in a thread pool
     var files = compactable.getFiles(myId, kind);
 
     if (files.isEmpty() || files.get().candidates.isEmpty()) {
