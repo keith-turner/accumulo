@@ -441,8 +441,6 @@ public class CompactableUtils {
       }
 
       if (selectedFiles.isEmpty()) {
-        // TODO ISSUE seems like this should be set after the metadata update.. was before in the
-        // exisitng code
         tablet.setLastCompactionID(compactionId);
 
         MetadataTableUtil.updateTabletCompactID(tablet.getExtent(), compactionId,
@@ -575,8 +573,6 @@ public class CompactableUtils {
     var mcs = compactor.call();
 
     if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
-      // TODO this approach will only drop files when there are files to compact... I think this is
-      // what old code did
       helper.getFilesToDrop().forEach(f -> {
         if (allFiles.containsKey(f)) {
           compactFiles.put(f, allFiles.get(f));

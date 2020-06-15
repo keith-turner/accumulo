@@ -197,7 +197,6 @@ public class CompactableImpl implements Compactable {
   }
 
   private void markChopped() {
-    // TODO ISSUE work into compaction mutation
     MetadataTableUtil.chopped(tablet.getTabletServer().getContext(), getExtent(),
         tablet.getTabletServer().getLock());
     tablet.getTabletServer()
@@ -520,7 +519,6 @@ public class CompactableImpl implements Compactable {
     private Supplier<Boolean> memoizedCheck;
 
     public CompactionCheck(CompactionServiceId service, CompactionKind kind, Long compactionId) {
-      // TODO ISSUE explore performance of this as its called for every key value in a compaction
       this.memoizedCheck = Suppliers.memoizeWithExpiration(() -> {
         if (closed)
           return false;

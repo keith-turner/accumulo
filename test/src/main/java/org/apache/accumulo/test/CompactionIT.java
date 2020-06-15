@@ -79,8 +79,6 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 public class CompactionIT extends SharedMiniClusterBase {
 
-  // TODO ISSUE create a test where the compaction selector sporadically throws an exception
-
   @SuppressFBWarnings(value = "PREDICTABLE_RANDOM",
       justification = "predictable random is okay for testing")
   public static class TestPlanner implements CompactionPlanner {
@@ -228,8 +226,9 @@ public class CompactionIT extends SharedMiniClusterBase {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
       client.instanceOperations().setProperty(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey()
           + "newcs.planner.opts.filesPerCompaction", "7");
-      client.instanceOperations().setProperty(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey()
-          + "newcs.planner.opts.process", "SYSTEM");
+      client.instanceOperations().setProperty(
+          Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey() + "newcs.planner.opts.process",
+          "SYSTEM");
       client.instanceOperations().setProperty(
           Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey() + "newcs.planner.opts.executors", "3");
       client.instanceOperations().setProperty(
