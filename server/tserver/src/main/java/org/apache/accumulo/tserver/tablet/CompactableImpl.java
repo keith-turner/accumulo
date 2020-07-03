@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -474,6 +475,12 @@ public class CompactableImpl implements Compactable {
                 Set<StoredTabletFile> candidates = new HashSet<>(selectedFiles);
                 candidates.removeAll(allCompactingFiles);
                 candidates = Collections.unmodifiableSet(candidates);
+                if (kind == CompactionKind.USER
+                    && candidates.equals(CompactableUtils.GENERATOR_SET)) {
+                  files = new TreeMap<>(files);
+                  files.put(CompactableUtils.GENERATOR_FILE, new DataFileValue(0, 0));
+                  files = Collections.unmodifiableSortedMap(files);
+                }
                 Preconditions.checkState(files.keySet().containsAll(candidates),
                     "selected files not in all files %s %s", candidates, files.keySet());
                 Map<String,String> hints = Map.of();

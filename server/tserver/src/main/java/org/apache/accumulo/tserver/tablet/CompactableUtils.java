@@ -104,6 +104,13 @@ public class CompactableUtils {
   private final static Cache<TableId,Boolean> strategyWarningsCache =
       CacheBuilder.newBuilder().maximumSize(1000).build();
 
+  // When a user initiates a compaction with iterators, tablets with no files should be compacted.
+  // To avoid lots of special cases in the code for this, a special file URI is used as the tablets
+  // single file for this compaction. The following is the URI.
+  public static final StoredTabletFile GENERATOR_FILE =
+      new StoredTabletFile("aef266c://accumulo/tables/abcdefg/t-00000000/A00000000.rf");
+  public static final Set<StoredTabletFile> GENERATOR_SET = Set.of(GENERATOR_FILE);
+
   public static Map<StoredTabletFile,Pair<Key,Key>> getFirstAndLastKeys(Tablet tablet,
       Set<StoredTabletFile> allFiles) throws IOException {
     final Map<StoredTabletFile,Pair<Key,Key>> result = new HashMap<>();
@@ -425,6 +432,13 @@ public class CompactableUtils {
 
       Set<StoredTabletFile> selectedFiles;
 
+      if (allFiles.isEmpty() && !compactionConfig.getIterators().isEmpty()) {
+        selectedFiles = GENERATOR_SET;
+        filesToDrop = Set.of();
+
+        return selectedFiles;
+      } // TODO else if AND no return above?
+
       if (!CompactionStrategyConfigUtil.isDefault(compactionConfig.getCompactionStrategy())) {
         var plan = CompactableUtils.selectFiles(CompactionKind.USER, tablet, allFiles,
             compactionConfig.getCompactionStrategy());
@@ -562,7 +576,9 @@ public class CompactableUtils {
 
     SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
     HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
-    jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
+
+    if (!jobFiles.equals(GENERATOR_SET))
+      jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
 
     TabletFile newFile = tablet.getNextMapFilename(!propogateDeletes ? "A" : "C");
     TabletFile compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));

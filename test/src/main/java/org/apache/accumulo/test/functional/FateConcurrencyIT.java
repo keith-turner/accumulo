@@ -478,7 +478,7 @@ public class FateConcurrencyIT extends AccumuloClusterHarness {
   }
 
   /**
-   * Concurrency testing - ensure that tests are valid id multiple compactions are running. for
+   * Concurrency testing - ensure that tests are valid if multiple compactions are running. for
    * development testing - force transient condition that was failing this test so that we know if
    * multiple compactions are running, they are properly handled by the test code and the tests are
    * valid.
