@@ -44,7 +44,6 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.file.FileSKVWriter;
-import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.iteratorsImpl.system.ColumnFamilySkippingIterator;
@@ -60,6 +59,7 @@ import org.apache.accumulo.core.util.LocalityGroupUtil.LocalityGroupConfiguratio
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.fs.VolumeManager;
+import org.apache.accumulo.server.iterators.SystemIteratorEnvironment;
 import org.apache.accumulo.server.problems.ProblemReport;
 import org.apache.accumulo.server.problems.ProblemReportingIterator;
 import org.apache.accumulo.server.problems.ProblemReports;
@@ -88,8 +88,8 @@ public class Compactor implements Callable<CompactionStats> {
 
     RateLimiter getWriteLimiter();
 
-    IteratorEnvironment createIteratorEnv(ServerContext context, AccumuloConfiguration acuTableConf,
-        TableId tableId);
+    SystemIteratorEnvironment createIteratorEnv(ServerContext context,
+        AccumuloConfiguration acuTableConf, TableId tableId);
 
     SortedKeyValueIterator<Key,Value> getMinCIterator();
 
@@ -352,11 +352,11 @@ public class Compactor implements Callable<CompactionStats> {
 
       // if(env.getIteratorScope() )
 
-      IteratorEnvironment iterEnv =
+      SystemIteratorEnvironment iterEnv =
           env.createIteratorEnv(context, acuTableConf, getExtent().tableId());
 
-      SortedKeyValueIterator<Key,Value> itr = IterConfigUtil
-          .convertItersAndLoad(env.getIteratorScope(), cfsi, acuTableConf, iterators, iterEnv);
+      SortedKeyValueIterator<Key,Value> itr = iterEnv.getTopLevelIterator(IterConfigUtil
+          .convertItersAndLoad(env.getIteratorScope(), cfsi, acuTableConf, iterators, iterEnv));
 
       itr.seek(extent.toDataRange(), columnFamilies, inclusive);
 

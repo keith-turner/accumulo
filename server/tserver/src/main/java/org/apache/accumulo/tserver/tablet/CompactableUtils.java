@@ -58,7 +58,6 @@ import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
-import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.metadata.CompactableFileImpl;
@@ -83,6 +82,7 @@ import org.apache.accumulo.server.compaction.Compactor;
 import org.apache.accumulo.server.compaction.Compactor.CompactionCanceledException;
 import org.apache.accumulo.server.compaction.Compactor.CompactionEnv;
 import org.apache.accumulo.server.fs.VolumeManager;
+import org.apache.accumulo.server.iterators.SystemIteratorEnvironment;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.TabletIteratorEnvironment;
 import org.apache.accumulo.tserver.compaction.CompactionPlan;
@@ -563,7 +563,7 @@ public class CompactableUtils {
       }
 
       @Override
-      public IteratorEnvironment createIteratorEnv(ServerContext context,
+      public SystemIteratorEnvironment createIteratorEnv(ServerContext context,
           AccumuloConfiguration acuTableConf, TableId tableId) {
         return new TabletIteratorEnvironment(context, IteratorScope.majc, !propogateDeletes,
             acuTableConf, tableId, job.getKind());

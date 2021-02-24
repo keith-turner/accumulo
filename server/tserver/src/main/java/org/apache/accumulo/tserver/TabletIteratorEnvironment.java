@@ -172,6 +172,7 @@ public class TabletIteratorEnvironment implements SystemIteratorEnvironment {
     return authorizations;
   }
 
+  @Override
   public SortedKeyValueIterator<Key,Value>
       getTopLevelIterator(SortedKeyValueIterator<Key,Value> iter) {
     if (topLevelIterators.isEmpty())

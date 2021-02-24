@@ -34,7 +34,6 @@ import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
-import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.manager.state.tables.TableState;
@@ -46,6 +45,7 @@ import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.compaction.CompactionStats;
 import org.apache.accumulo.server.compaction.Compactor;
 import org.apache.accumulo.server.conf.TableConfiguration;
+import org.apache.accumulo.server.iterators.SystemIteratorEnvironment;
 import org.apache.accumulo.server.problems.ProblemReport;
 import org.apache.accumulo.server.problems.ProblemReports;
 import org.apache.accumulo.server.problems.ProblemType;
@@ -88,7 +88,7 @@ public class MinorCompactor extends Compactor {
           }
 
           @Override
-          public IteratorEnvironment createIteratorEnv(ServerContext context,
+          public SystemIteratorEnvironment createIteratorEnv(ServerContext context,
               AccumuloConfiguration acuTableConf, TableId tableId) {
             return new TabletIteratorEnvironment(context, IteratorScope.minc, acuTableConf,
                 tableId);
