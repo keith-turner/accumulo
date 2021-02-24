@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.tserver.tablet;
+package org.apache.accumulo.server.compaction;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,11 +38,13 @@ public class CompactionInfo {
   private final String localityGroup;
   private final long entriesRead;
   private final long entriesWritten;
+  private final CompactionReason reason;
 
   CompactionInfo(Compactor compactor) {
     this.localityGroup = compactor.getCurrentLocalityGroup();
     this.entriesRead = compactor.getEntriesRead();
     this.entriesWritten = compactor.getEntriesWritten();
+    this.reason = compactor.getReason();
     this.compactor = compactor;
   }
 
@@ -83,37 +85,6 @@ public class CompactionInfo {
       type = CompactionType.FULL;
     else
       type = CompactionType.MAJOR;
-
-    CompactionReason reason;
-
-    if (compactor.hasIMM()) {
-      switch (compactor.getMinCReason()) {
-        case USER:
-          reason = CompactionReason.USER;
-          break;
-        case CLOSE:
-          reason = CompactionReason.CLOSE;
-          break;
-        case SYSTEM:
-        default:
-          reason = CompactionReason.SYSTEM;
-          break;
-      }
-    } else {
-      switch (compactor.getMajorCompactionReason()) {
-        case USER:
-          reason = CompactionReason.USER;
-          break;
-        case CHOP:
-          reason = CompactionReason.CHOP;
-          break;
-        case SELECTOR:
-        case SYSTEM:
-        default:
-          reason = CompactionReason.SYSTEM;
-          break;
-      }
-    }
 
     List<IterInfo> iiList = new ArrayList<>();
     Map<String,Map<String,String>> iterOptions = new HashMap<>();
