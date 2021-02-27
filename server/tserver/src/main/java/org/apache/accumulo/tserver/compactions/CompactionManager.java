@@ -29,6 +29,7 @@ import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
@@ -293,7 +294,7 @@ public class CompactionManager {
         tmpServices.put(CompactionServiceId.of(serviceName),
             new CompactionService(serviceName, plannerClassName,
                 currentCfg.getRateLimit(serviceName),
-                currentCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics));
+                currentCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics, this::getExternalExecutor));
       } catch (RuntimeException e) {
         log.error("Failed to create compaction service {} with planner:{} options:{}", serviceName,
             plannerClassName, currentCfg.options.getOrDefault(serviceName, Map.of()));
@@ -331,7 +332,7 @@ public class CompactionManager {
               tmpServices.put(csid,
                   new CompactionService(serviceName, plannerClassName,
                       tmpCfg.getRateLimit(serviceName),
-                      tmpCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics));
+                      tmpCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics, this::getExternalExecutor));
             } else {
               service.configurationChanged(plannerClassName, tmpCfg.getRateLimit(serviceName),
                   tmpCfg.options.getOrDefault(serviceName, Map.of()));
@@ -385,5 +386,24 @@ public class CompactionManager {
 
   public int getCompactionsQueued() {
     return services.values().stream().mapToInt(CompactionService::getCompactionsQueued).sum();
+  }
+
+  public ExternalCompaction reserveExternalCompaction(String queueName, long priority, String compactorId) {
+    ExternalCompactionExecutor extCE = getExternalExecutor(queueName);
+    return extCE.reserveExternalCompaction(priority, compactorId);
+  }
+
+  ExternalCompactionExecutor getExternalExecutor(CompactionExecutorId ceid) {
+    //TODO put prefix handling in one place
+    return getExternalExecutor(ceid.canonical().substring(2));
+  }
+
+  ExternalCompactionExecutor getExternalExecutor(String queueName) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  public void commitExternalCompaction(org.apache.accumulo.core.compaction.thrift.CompactionJob job) {
+
   }
 }

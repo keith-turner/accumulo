@@ -397,6 +397,11 @@ public class DefaultCompactionPlannerTest {
             }
             return CompactionExecutorId.of(name);
           }
+
+          @Override
+          public CompactionExecutorId getExternalExecutor(String name) {
+            throw new UnsupportedOperationException();
+          }
         };
       }
     });
