@@ -88,4 +88,7 @@ public interface Compactable {
   CompactionServiceId getConfiguredService(CompactionKind kind);
 
   double getCompactionRatio();
+
+  ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service, CompactionJob job,
+      String compactorId);
 }

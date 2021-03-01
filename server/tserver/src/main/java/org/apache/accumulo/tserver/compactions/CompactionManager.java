@@ -294,7 +294,8 @@ public class CompactionManager {
         tmpServices.put(CompactionServiceId.of(serviceName),
             new CompactionService(serviceName, plannerClassName,
                 currentCfg.getRateLimit(serviceName),
-                currentCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics, this::getExternalExecutor));
+                currentCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics,
+                this::getExternalExecutor));
       } catch (RuntimeException e) {
         log.error("Failed to create compaction service {} with planner:{} options:{}", serviceName,
             plannerClassName, currentCfg.options.getOrDefault(serviceName, Map.of()));
@@ -332,7 +333,8 @@ public class CompactionManager {
               tmpServices.put(csid,
                   new CompactionService(serviceName, plannerClassName,
                       tmpCfg.getRateLimit(serviceName),
-                      tmpCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics, this::getExternalExecutor));
+                      tmpCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics,
+                      this::getExternalExecutor));
             } else {
               service.configurationChanged(plannerClassName, tmpCfg.getRateLimit(serviceName),
                   tmpCfg.options.getOrDefault(serviceName, Map.of()));
@@ -388,13 +390,14 @@ public class CompactionManager {
     return services.values().stream().mapToInt(CompactionService::getCompactionsQueued).sum();
   }
 
-  public ExternalCompaction reserveExternalCompaction(String queueName, long priority, String compactorId) {
+  public ExternalCompactionJob reserveExternalCompaction(String queueName, long priority,
+      String compactorId) {
     ExternalCompactionExecutor extCE = getExternalExecutor(queueName);
     return extCE.reserveExternalCompaction(priority, compactorId);
   }
 
   ExternalCompactionExecutor getExternalExecutor(CompactionExecutorId ceid) {
-    //TODO put prefix handling in one place
+    // TODO put prefix handling in one place
     return getExternalExecutor(ceid.canonical().substring(2));
   }
 
@@ -403,7 +406,8 @@ public class CompactionManager {
     return null;
   }
 
-  public void commitExternalCompaction(org.apache.accumulo.core.compaction.thrift.CompactionJob job) {
+  public void
+      commitExternalCompaction(org.apache.accumulo.core.compaction.thrift.CompactionJob job) {
 
   }
 }

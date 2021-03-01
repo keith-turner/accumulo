@@ -51,11 +51,10 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
   }
 
-
   private PriorityBlockingQueue<ExternalJob> queue;
   private CompactionExecutorId ceid;
 
-  ExternalCompactionExecutor(){
+  ExternalCompactionExecutor() {
     queue = new PriorityBlockingQueue<ExternalJob>();
   }
 
@@ -90,27 +89,24 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
   }
 
-  ExternalCompaction
-      reserveExternalCompaction(long priority, String compactorId) {
-
-
+  ExternalCompactionJob reserveExternalCompaction(long priority, String compactorId) {
 
     ExternalJob extJob = queue.poll();
-    while(extJob.getStatus() != Status.QUEUED) {
+    while (extJob.getStatus() != Status.QUEUED) {
       extJob = queue.poll();
     }
 
-    if(extJob.getJob().getPriority() >= priority) {
-      if(extJob.status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
-        return extJob.compactable.reserveExternalCompaction(compactorId);
+    if (extJob.getJob().getPriority() >= priority) {
+      if (extJob.status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
+        return extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(),
+            compactorId);
       } else {
-        //TODO try again
+        // TODO try again
       }
     } else {
-      //TODO this messes with the ordering.. maybe make the comparator compare on time also
+      // TODO this messes with the ordering.. maybe make the comparator compare on time also
       queue.add(extJob);
     }
-
 
     // TODO Auto-generated method stub
     return null;

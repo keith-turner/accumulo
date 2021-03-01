@@ -119,7 +119,7 @@ public class CompactionService {
         public CompactionExecutorId createExecutor(String executorName, int threads) {
           Preconditions.checkArgument(threads > 0, "Positive number of threads required : %s",
               threads);
-          var ceid = CompactionExecutorId.of("i."+myId + "." + executorName);
+          var ceid = CompactionExecutorId.of("i." + myId + "." + executorName);
           Preconditions.checkState(!requestedExecutors.containsKey(ceid));
           requestedExecutors.put(ceid, threads);
           return ceid;
@@ -127,7 +127,7 @@ public class CompactionService {
 
         @Override
         public CompactionExecutorId getExternalExecutor(String name) {
-          var ceid = CompactionExecutorId.of("e."+name);
+          var ceid = CompactionExecutorId.of("e." + name);
           Preconditions.checkArgument(!requestedExternalExecutors.contains(ceid));
           requestedExternalExecutors.add(ceid);
           return ceid;
@@ -138,7 +138,8 @@ public class CompactionService {
   }
 
   public CompactionService(String serviceName, String plannerClass, Long maxRate,
-      Map<String,String> plannerOptions, ServerContext sctx, CompactionExecutorsMetrics ceMetrics, Function<CompactionExecutorId,ExternalCompactionExecutor> externExecutorSupplier) {
+      Map<String,String> plannerOptions, ServerContext sctx, CompactionExecutorsMetrics ceMetrics,
+      Function<CompactionExecutorId,ExternalCompactionExecutor> externExecutorSupplier) {
 
     Preconditions.checkArgument(maxRate >= 0);
 
@@ -383,7 +384,8 @@ public class CompactionService {
     initParams.requestedExecutors.forEach((ceid, numThreads) -> {
       InternalCompactionExecutor executor = (InternalCompactionExecutor) executors.get(ceid);
       if (executor == null) {
-        executor = new InternalCompactionExecutor(ceid, numThreads, ceMetrics, readLimiter, writeLimiter);
+        executor =
+            new InternalCompactionExecutor(ceid, numThreads, ceMetrics, readLimiter, writeLimiter);
       } else {
         executor.setThreads(numThreads);
       }
@@ -399,7 +401,7 @@ public class CompactionService {
     });
 
     Sets.difference(executors.keySet(), tmpExecutors.keySet()).forEach(ceid -> {
-      //TODO may not make sense for external
+      // TODO may not make sense for external
       executors.get(ceid).stop();
     });
 

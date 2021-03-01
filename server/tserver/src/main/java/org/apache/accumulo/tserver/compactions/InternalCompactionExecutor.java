@@ -150,11 +150,11 @@ public class InternalCompactionExecutor implements CompactionExecutor {
     throw new IllegalArgumentException("Unknown runnable type " + r.getClass().getName());
   }
 
-  InternalCompactionExecutor(CompactionExecutorId ceid, int threads, CompactionExecutorsMetrics ceMetrics,
-      RateLimiter readLimiter, RateLimiter writeLimiter) {
+  InternalCompactionExecutor(CompactionExecutorId ceid, int threads,
+      CompactionExecutorsMetrics ceMetrics, RateLimiter readLimiter, RateLimiter writeLimiter) {
     this.ceid = ceid;
-    var comparator =
-        Comparator.comparing(InternalCompactionExecutor::getJob, CompactionJobPrioritizer.JOB_COMPARATOR);
+    var comparator = Comparator.comparing(InternalCompactionExecutor::getJob,
+        CompactionJobPrioritizer.JOB_COMPARATOR);
 
     queue = new PriorityBlockingQueue<Runnable>(100, comparator);
 
