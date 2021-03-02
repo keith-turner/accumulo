@@ -77,6 +77,10 @@ public class LiveTServerSet implements Watcher {
     public TServerConnection(HostAndPort addr) {
       address = addr;
     }
+    
+    public HostAndPort getAddress() {
+      return address;
+    }
 
     private String lockString(ZooLock mlock) {
       return mlock.getLockID().serialize(context.getZooKeeperRoot() + Constants.ZMANAGER_LOCK);

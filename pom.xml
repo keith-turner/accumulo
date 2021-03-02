@@ -87,6 +87,7 @@
     <module>iterator-test-harness</module>
     <module>minicluster</module>
     <module>server/base</module>
+    <module>server/compaction-coordinator</module>
     <module>server/gc</module>
     <module>server/manager</module>
     <module>server/master</module>
