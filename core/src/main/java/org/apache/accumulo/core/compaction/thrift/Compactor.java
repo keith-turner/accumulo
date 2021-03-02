@@ -29,13 +29,13 @@ public class Compactor {
 
   public interface Iface {
 
-    public void cancel(CompactionJob compaction) throws org.apache.thrift.TException;
+    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) throws org.apache.thrift.TException;
 
   }
 
   public interface AsyncIface {
 
-    public void cancel(CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
+    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
 
   }
 
@@ -59,13 +59,13 @@ public class Compactor {
       super(iprot, oprot);
     }
 
-    public void cancel(CompactionJob compaction) throws org.apache.thrift.TException
+    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) throws org.apache.thrift.TException
     {
       send_cancel(compaction);
       recv_cancel();
     }
 
-    public void send_cancel(CompactionJob compaction) throws org.apache.thrift.TException
+    public void send_cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) throws org.apache.thrift.TException
     {
       cancel_args args = new cancel_args();
       args.setCompaction(compaction);
@@ -97,7 +97,7 @@ public class Compactor {
       super(protocolFactory, clientManager, transport);
     }
 
-    public void cancel(CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
+    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
       checkReady();
       cancel_call method_call = new cancel_call(compaction, resultHandler, this, ___protocolFactory, ___transport);
       this.___currentMethod = method_call;
@@ -105,8 +105,8 @@ public class Compactor {
     }
 
     public static class cancel_call extends org.apache.thrift.async.TAsyncMethodCall<Void> {
-      private CompactionJob compaction;
-      public cancel_call(CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+      private org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction;
+      public cancel_call(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
         super(client, protocolFactory, transport, resultHandler, false);
         this.compaction = compaction;
       }
@@ -258,7 +258,7 @@ public class Compactor {
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new cancel_argsStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new cancel_argsTupleSchemeFactory();
 
-    public @org.apache.thrift.annotation.Nullable CompactionJob compaction; // required
+    public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -325,7 +325,7 @@ public class Compactor {
     static {
       java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new java.util.EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
       tmpMap.put(_Fields.COMPACTION, new org.apache.thrift.meta_data.FieldMetaData("compaction", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, CompactionJob.class)));
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.tabletserver.thrift.CompactionJob.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(cancel_args.class, metaDataMap);
     }
@@ -334,7 +334,7 @@ public class Compactor {
     }
 
     public cancel_args(
-      CompactionJob compaction)
+      org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction)
     {
       this();
       this.compaction = compaction;
@@ -345,7 +345,7 @@ public class Compactor {
      */
     public cancel_args(cancel_args other) {
       if (other.isSetCompaction()) {
-        this.compaction = new CompactionJob(other.compaction);
+        this.compaction = new org.apache.accumulo.core.tabletserver.thrift.CompactionJob(other.compaction);
       }
     }
 
@@ -359,11 +359,11 @@ public class Compactor {
     }
 
     @org.apache.thrift.annotation.Nullable
-    public CompactionJob getCompaction() {
+    public org.apache.accumulo.core.tabletserver.thrift.CompactionJob getCompaction() {
       return this.compaction;
     }
 
-    public cancel_args setCompaction(@org.apache.thrift.annotation.Nullable CompactionJob compaction) {
+    public cancel_args setCompaction(@org.apache.thrift.annotation.Nullable org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) {
       this.compaction = compaction;
       return this;
     }
@@ -389,7 +389,7 @@ public class Compactor {
         if (value == null) {
           unsetCompaction();
         } else {
-          setCompaction((CompactionJob)value);
+          setCompaction((org.apache.accumulo.core.tabletserver.thrift.CompactionJob)value);
         }
         break;
 
@@ -551,7 +551,7 @@ public class Compactor {
           switch (schemeField.id) {
             case 1: // COMPACTION
               if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
-                struct.compaction = new CompactionJob();
+                struct.compaction = new org.apache.accumulo.core.tabletserver.thrift.CompactionJob();
                 struct.compaction.read(iprot);
                 struct.setCompactionIsSet(true);
               } else { 
@@ -610,7 +610,7 @@ public class Compactor {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
         java.util.BitSet incoming = iprot.readBitSet(1);
         if (incoming.get(0)) {
-          struct.compaction = new CompactionJob();
+          struct.compaction = new org.apache.accumulo.core.tabletserver.thrift.CompactionJob();
           struct.compaction.read(iprot);
           struct.setCompactionIsSet(true);
         }

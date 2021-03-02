@@ -30,7 +30,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
 
   private static final org.apache.thrift.protocol.TField TIMESTAMP_FIELD_DESC = new org.apache.thrift.protocol.TField("timestamp", org.apache.thrift.protocol.TType.I64, (short)1);
   private static final org.apache.thrift.protocol.TField COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("compactionId", org.apache.thrift.protocol.TType.I64, (short)2);
-  private static final org.apache.thrift.protocol.TField COMPACTOR_HOST_AND_PORT_FIELD_DESC = new org.apache.thrift.protocol.TField("compactorHostAndPort", org.apache.thrift.protocol.TType.STRING, (short)3);
+  private static final org.apache.thrift.protocol.TField COMPACTOR_FIELD_DESC = new org.apache.thrift.protocol.TField("compactor", org.apache.thrift.protocol.TType.STRING, (short)3);
   private static final org.apache.thrift.protocol.TField STATE_FIELD_DESC = new org.apache.thrift.protocol.TField("state", org.apache.thrift.protocol.TType.I32, (short)4);
   private static final org.apache.thrift.protocol.TField MESSAGE_FIELD_DESC = new org.apache.thrift.protocol.TField("message", org.apache.thrift.protocol.TType.STRING, (short)5);
 
@@ -39,7 +39,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
 
   public long timestamp; // required
   public long compactionId; // required
-  public @org.apache.thrift.annotation.Nullable java.lang.String compactorHostAndPort; // required
+  public @org.apache.thrift.annotation.Nullable java.lang.String compactor; // required
   /**
    * 
    * @see CompactionState
@@ -51,7 +51,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     TIMESTAMP((short)1, "timestamp"),
     COMPACTION_ID((short)2, "compactionId"),
-    COMPACTOR_HOST_AND_PORT((short)3, "compactorHostAndPort"),
+    COMPACTOR((short)3, "compactor"),
     /**
      * 
      * @see CompactionState
@@ -77,8 +77,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
           return TIMESTAMP;
         case 2: // COMPACTION_ID
           return COMPACTION_ID;
-        case 3: // COMPACTOR_HOST_AND_PORT
-          return COMPACTOR_HOST_AND_PORT;
+        case 3: // COMPACTOR
+          return COMPACTOR;
         case 4: // STATE
           return STATE;
         case 5: // MESSAGE
@@ -134,7 +134,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
     tmpMap.put(_Fields.COMPACTION_ID, new org.apache.thrift.meta_data.FieldMetaData("compactionId", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
-    tmpMap.put(_Fields.COMPACTOR_HOST_AND_PORT, new org.apache.thrift.meta_data.FieldMetaData("compactorHostAndPort", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+    tmpMap.put(_Fields.COMPACTOR, new org.apache.thrift.meta_data.FieldMetaData("compactor", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     tmpMap.put(_Fields.STATE, new org.apache.thrift.meta_data.FieldMetaData("state", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, CompactionState.class)));
@@ -150,7 +150,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   public Status(
     long timestamp,
     long compactionId,
-    java.lang.String compactorHostAndPort,
+    java.lang.String compactor,
     CompactionState state,
     java.lang.String message)
   {
@@ -159,7 +159,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     setTimestampIsSet(true);
     this.compactionId = compactionId;
     setCompactionIdIsSet(true);
-    this.compactorHostAndPort = compactorHostAndPort;
+    this.compactor = compactor;
     this.state = state;
     this.message = message;
   }
@@ -171,8 +171,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     __isset_bitfield = other.__isset_bitfield;
     this.timestamp = other.timestamp;
     this.compactionId = other.compactionId;
-    if (other.isSetCompactorHostAndPort()) {
-      this.compactorHostAndPort = other.compactorHostAndPort;
+    if (other.isSetCompactor()) {
+      this.compactor = other.compactor;
     }
     if (other.isSetState()) {
       this.state = other.state;
@@ -192,7 +192,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     this.timestamp = 0;
     setCompactionIdIsSet(false);
     this.compactionId = 0;
-    this.compactorHostAndPort = null;
+    this.compactor = null;
     this.state = null;
     this.message = null;
   }
@@ -244,27 +244,27 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   }
 
   @org.apache.thrift.annotation.Nullable
-  public java.lang.String getCompactorHostAndPort() {
-    return this.compactorHostAndPort;
+  public java.lang.String getCompactor() {
+    return this.compactor;
   }
 
-  public Status setCompactorHostAndPort(@org.apache.thrift.annotation.Nullable java.lang.String compactorHostAndPort) {
-    this.compactorHostAndPort = compactorHostAndPort;
+  public Status setCompactor(@org.apache.thrift.annotation.Nullable java.lang.String compactor) {
+    this.compactor = compactor;
     return this;
   }
 
-  public void unsetCompactorHostAndPort() {
-    this.compactorHostAndPort = null;
+  public void unsetCompactor() {
+    this.compactor = null;
   }
 
-  /** Returns true if field compactorHostAndPort is set (has been assigned a value) and false otherwise */
-  public boolean isSetCompactorHostAndPort() {
-    return this.compactorHostAndPort != null;
+  /** Returns true if field compactor is set (has been assigned a value) and false otherwise */
+  public boolean isSetCompactor() {
+    return this.compactor != null;
   }
 
-  public void setCompactorHostAndPortIsSet(boolean value) {
+  public void setCompactorIsSet(boolean value) {
     if (!value) {
-      this.compactorHostAndPort = null;
+      this.compactor = null;
     }
   }
 
@@ -344,11 +344,11 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       }
       break;
 
-    case COMPACTOR_HOST_AND_PORT:
+    case COMPACTOR:
       if (value == null) {
-        unsetCompactorHostAndPort();
+        unsetCompactor();
       } else {
-        setCompactorHostAndPort((java.lang.String)value);
+        setCompactor((java.lang.String)value);
       }
       break;
 
@@ -380,8 +380,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     case COMPACTION_ID:
       return getCompactionId();
 
-    case COMPACTOR_HOST_AND_PORT:
-      return getCompactorHostAndPort();
+    case COMPACTOR:
+      return getCompactor();
 
     case STATE:
       return getState();
@@ -404,8 +404,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       return isSetTimestamp();
     case COMPACTION_ID:
       return isSetCompactionId();
-    case COMPACTOR_HOST_AND_PORT:
-      return isSetCompactorHostAndPort();
+    case COMPACTOR:
+      return isSetCompactor();
     case STATE:
       return isSetState();
     case MESSAGE:
@@ -447,12 +447,12 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         return false;
     }
 
-    boolean this_present_compactorHostAndPort = true && this.isSetCompactorHostAndPort();
-    boolean that_present_compactorHostAndPort = true && that.isSetCompactorHostAndPort();
-    if (this_present_compactorHostAndPort || that_present_compactorHostAndPort) {
-      if (!(this_present_compactorHostAndPort && that_present_compactorHostAndPort))
+    boolean this_present_compactor = true && this.isSetCompactor();
+    boolean that_present_compactor = true && that.isSetCompactor();
+    if (this_present_compactor || that_present_compactor) {
+      if (!(this_present_compactor && that_present_compactor))
         return false;
-      if (!this.compactorHostAndPort.equals(that.compactorHostAndPort))
+      if (!this.compactor.equals(that.compactor))
         return false;
     }
 
@@ -485,9 +485,9 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
 
     hashCode = hashCode * 8191 + org.apache.thrift.TBaseHelper.hashCode(compactionId);
 
-    hashCode = hashCode * 8191 + ((isSetCompactorHostAndPort()) ? 131071 : 524287);
-    if (isSetCompactorHostAndPort())
-      hashCode = hashCode * 8191 + compactorHostAndPort.hashCode();
+    hashCode = hashCode * 8191 + ((isSetCompactor()) ? 131071 : 524287);
+    if (isSetCompactor())
+      hashCode = hashCode * 8191 + compactor.hashCode();
 
     hashCode = hashCode * 8191 + ((isSetState()) ? 131071 : 524287);
     if (isSetState())
@@ -528,12 +528,12 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         return lastComparison;
       }
     }
-    lastComparison = java.lang.Boolean.valueOf(isSetCompactorHostAndPort()).compareTo(other.isSetCompactorHostAndPort());
+    lastComparison = java.lang.Boolean.valueOf(isSetCompactor()).compareTo(other.isSetCompactor());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetCompactorHostAndPort()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.compactorHostAndPort, other.compactorHostAndPort);
+    if (isSetCompactor()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.compactor, other.compactor);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -587,11 +587,11 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     sb.append(this.compactionId);
     first = false;
     if (!first) sb.append(", ");
-    sb.append("compactorHostAndPort:");
-    if (this.compactorHostAndPort == null) {
+    sb.append("compactor:");
+    if (this.compactor == null) {
       sb.append("null");
     } else {
-      sb.append(this.compactorHostAndPort);
+      sb.append(this.compactor);
     }
     first = false;
     if (!first) sb.append(", ");
@@ -671,10 +671,10 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 3: // COMPACTOR_HOST_AND_PORT
+          case 3: // COMPACTOR
             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
-              struct.compactorHostAndPort = iprot.readString();
-              struct.setCompactorHostAndPortIsSet(true);
+              struct.compactor = iprot.readString();
+              struct.setCompactorIsSet(true);
             } else { 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
@@ -716,9 +716,9 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       oprot.writeFieldBegin(COMPACTION_ID_FIELD_DESC);
       oprot.writeI64(struct.compactionId);
       oprot.writeFieldEnd();
-      if (struct.compactorHostAndPort != null) {
-        oprot.writeFieldBegin(COMPACTOR_HOST_AND_PORT_FIELD_DESC);
-        oprot.writeString(struct.compactorHostAndPort);
+      if (struct.compactor != null) {
+        oprot.writeFieldBegin(COMPACTOR_FIELD_DESC);
+        oprot.writeString(struct.compactor);
         oprot.writeFieldEnd();
       }
       if (struct.state != null) {
@@ -755,7 +755,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       if (struct.isSetCompactionId()) {
         optionals.set(1);
       }
-      if (struct.isSetCompactorHostAndPort()) {
+      if (struct.isSetCompactor()) {
         optionals.set(2);
       }
       if (struct.isSetState()) {
@@ -771,8 +771,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       if (struct.isSetCompactionId()) {
         oprot.writeI64(struct.compactionId);
       }
-      if (struct.isSetCompactorHostAndPort()) {
-        oprot.writeString(struct.compactorHostAndPort);
+      if (struct.isSetCompactor()) {
+        oprot.writeString(struct.compactor);
       }
       if (struct.isSetState()) {
         oprot.writeI32(struct.state.getValue());
@@ -795,8 +795,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         struct.setCompactionIdIsSet(true);
       }
       if (incoming.get(2)) {
-        struct.compactorHostAndPort = iprot.readString();
-        struct.setCompactorHostAndPortIsSet(true);
+        struct.compactor = iprot.readString();
+        struct.setCompactorIsSet(true);
       }
       if (incoming.get(3)) {
         struct.state = org.apache.accumulo.core.compaction.thrift.CompactionState.findByValue(iprot.readI32());

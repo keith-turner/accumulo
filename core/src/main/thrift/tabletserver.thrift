@@ -158,6 +158,28 @@ enum TUnloadTabletGoal {
   DELETED
 }
 
+struct CompactionJob {
+  1:trace.TInfo traceInfo
+  2:security.TCredentials credentials
+  3:i64 compactionId
+  5:data.TKeyExtent extent
+  6:list<string> files
+  7:i32 priority
+  8:i32 readRate
+  9:i32 writeRate
+  10:IteratorConfig iteratorSettings
+  11:CompactionType type
+  # Need to add SELECTOR To CompactionReason, delete CompactionKind?
+  12:CompactionReason reason
+  13:string outputFile
+}
+
+struct CompactionQueueSummary {
+  1:string queue
+  2:i64 priority
+  3:i32 count
+}
+
 service TabletClientService extends client.ClientService {
 
   // scan a range of keys
@@ -474,6 +496,18 @@ service TabletClientService extends client.ClientService {
     2:i64 sessionId
   ) throws (
     1:NoSuchScanIDException nssi
+  )
+  
+  list<CompactionQueueSummary> getCompactionQueueInfo()
+  
+  CompactionJob reserveCompactionJob(
+    1:string queueName
+    2:i64 priority
+    3:string compactor
+  )
+  
+  void compactionJobFinished(
+    1:CompactionJob job
   )
 
 }

@@ -24,12 +24,6 @@ include "security.thrift"
 include "tabletserver.thrift"
 include "trace.thrift"
 
-enum Action {
-  ADD
-  UPDATE
-  CANCEL
-}
-
 enum CompactionState {
   # Coordinator should set state to ASSIGNED when getCompactionJob is called by Compactor
   ASSIGNED
@@ -45,26 +39,10 @@ enum CompactionState {
   CANCELLED
 }
 
-struct CompactionJob {
-  1:trace.TInfo traceInfo
-  2:security.TCredentials credentials
-  3:i64 compactionId
-  5:data.TKeyExtent extent
-  6:list<string> files
-  7:i32 priority
-  8:i32 readRate
-  9:i32 writeRate
-  10:tabletserver.IteratorConfig iteratorSettings
-  11:tabletserver.CompactionType type
-  # Need to add SELECTOR To CompactionReason, delete CompactionKind?
-  12:tabletserver.CompactionReason reason
-  13:string outputFile
-}
-
 struct Status {
   1:i64 timestamp
   2:i64 compactionId
-  3:string compactorHostAndPort
+  3:string compactor
   4:CompactionState state
   5:string message
 }
@@ -72,46 +50,44 @@ struct Status {
 service CompactionCoordinator {
 
   /*
-   * Called by TabletServer (or CLI) to add, update, or cancel a compaction for a tablet
+   * Called by TabletServer to cancel a compaction for a tablet
    */
-  void AddOrUpdateCompaction(
+  void cancelCompaction(
     1:data.TKeyExtent extent
     2:string queueName
     3:i64 priority
-    4:Action action
   )
   
   /*
    * Called by TabletServer (or CLI) to get current status of compaction for a tablet
    */
-  Status getCompactionStatus(
-    1:string tableId
-    2:string endRow
-    3:string queueName
-  )
-  
-  /*
-   * Called by TabletServer (or CLI) to get complete status of compaction for a tablet
-   */
-  list<Status> getCompactionStatusHistory(
-    1:string tableId
-    2:string endRow
-    3:string queueName    
+  list<Status> getCompactionStatus(
+    1:data.TKeyExtent extent
+    2:string queueName
+    3:i64 priority
   )
 
   /*
    * Called by Compactor to get the next compaction job
    */
-  CompactionJob getCompactionJob(
+  tabletserver.CompactionJob getCompactionJob(
     1:string queueName
-    2:i64 compactorHostAndPort
+    2:string compactor
   )
-  
+
+  /*
+   * Called by Compactor on successful completion of compaction job
+   */
+  void compactionCompleted(
+    1:tabletserver.CompactionJob job
+    2:data.CompactionStats stats
+  )
+     
   /*
    * Called by Compactor to update the Coordinator with the state of the compaction
    */
-  void updateCompactionState(
-    1:CompactionJob compaction
+  void updateCompactionStatus(
+    1:tabletserver.CompactionJob compaction
     2:CompactionState state
     3:string message
     4:i64 timestamp
@@ -123,12 +99,9 @@ service Compactor {
 
   /*
    * Called by Coordinator to instruct the Compactor to stop working on the compaction.
-   * Compactor should call updateCompcationState with state CANCELLED
-   *
-   * Question: What if Compactor is no longer working on job?
    */
   void cancel(
-    1:CompactionJob compaction
+    1:tabletserver.CompactionJob compaction
   )
 
 }
