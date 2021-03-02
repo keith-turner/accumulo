@@ -2594,14 +2594,14 @@ public class CompactionCoordinator {
             case 0: // SUCCESS
               if (schemeField.type == org.apache.thrift.protocol.TType.LIST) {
                 {
-                  org.apache.thrift.protocol.TList _list0 = iprot.readListBegin();
-                  struct.success = new java.util.ArrayList<Status>(_list0.size);
-                  @org.apache.thrift.annotation.Nullable Status _elem1;
-                  for (int _i2 = 0; _i2 < _list0.size; ++_i2)
+                  org.apache.thrift.protocol.TList _list8 = iprot.readListBegin();
+                  struct.success = new java.util.ArrayList<Status>(_list8.size);
+                  @org.apache.thrift.annotation.Nullable Status _elem9;
+                  for (int _i10 = 0; _i10 < _list8.size; ++_i10)
                   {
-                    _elem1 = new Status();
-                    _elem1.read(iprot);
-                    struct.success.add(_elem1);
+                    _elem9 = new Status();
+                    _elem9.read(iprot);
+                    struct.success.add(_elem9);
                   }
                   iprot.readListEnd();
                 }
@@ -2629,9 +2629,9 @@ public class CompactionCoordinator {
           oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
           {
             oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, struct.success.size()));
-            for (Status _iter3 : struct.success)
+            for (Status _iter11 : struct.success)
             {
-              _iter3.write(oprot);
+              _iter11.write(oprot);
             }
             oprot.writeListEnd();
           }
@@ -2662,9 +2662,9 @@ public class CompactionCoordinator {
         if (struct.isSetSuccess()) {
           {
             oprot.writeI32(struct.success.size());
-            for (Status _iter4 : struct.success)
+            for (Status _iter12 : struct.success)
             {
-              _iter4.write(oprot);
+              _iter12.write(oprot);
             }
           }
         }
@@ -2676,14 +2676,14 @@ public class CompactionCoordinator {
         java.util.BitSet incoming = iprot.readBitSet(1);
         if (incoming.get(0)) {
           {
-            org.apache.thrift.protocol.TList _list5 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, iprot.readI32());
-            struct.success = new java.util.ArrayList<Status>(_list5.size);
-            @org.apache.thrift.annotation.Nullable Status _elem6;
-            for (int _i7 = 0; _i7 < _list5.size; ++_i7)
+            org.apache.thrift.protocol.TList _list13 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, iprot.readI32());
+            struct.success = new java.util.ArrayList<Status>(_list13.size);
+            @org.apache.thrift.annotation.Nullable Status _elem14;
+            for (int _i15 = 0; _i15 < _list13.size; ++_i15)
             {
-              _elem6 = new Status();
-              _elem6.read(iprot);
-              struct.success.add(_elem6);
+              _elem14 = new Status();
+              _elem14.read(iprot);
+              struct.success.add(_elem14);
             }
           }
           struct.setSuccessIsSet(true);

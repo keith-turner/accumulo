@@ -122,6 +122,7 @@ import org.apache.accumulo.server.compaction.CompactionInfo;
 import org.apache.accumulo.server.compaction.Compactor;
 import org.apache.accumulo.server.conf.TableConfiguration;
 import org.apache.accumulo.server.data.ServerMutation;
+import org.apache.accumulo.server.fs.TooManyFilesException;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.rpc.TServerUtils;
 import org.apache.accumulo.server.zookeeper.TransactionWatcher;

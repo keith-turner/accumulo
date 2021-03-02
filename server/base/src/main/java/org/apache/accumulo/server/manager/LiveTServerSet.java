@@ -77,7 +77,7 @@ public class LiveTServerSet implements Watcher {
     public TServerConnection(HostAndPort addr) {
       address = addr;
     }
-    
+
     public HostAndPort getAddress() {
       return address;
     }

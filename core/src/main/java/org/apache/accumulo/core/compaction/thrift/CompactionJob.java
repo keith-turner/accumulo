@@ -40,6 +40,8 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
   private static final org.apache.thrift.protocol.TField TYPE_FIELD_DESC = new org.apache.thrift.protocol.TField("type", org.apache.thrift.protocol.TType.I32, (short)11);
   private static final org.apache.thrift.protocol.TField REASON_FIELD_DESC = new org.apache.thrift.protocol.TField("reason", org.apache.thrift.protocol.TType.I32, (short)12);
   private static final org.apache.thrift.protocol.TField OUTPUT_FILE_FIELD_DESC = new org.apache.thrift.protocol.TField("outputFile", org.apache.thrift.protocol.TType.STRING, (short)13);
+  private static final org.apache.thrift.protocol.TField PROPAGATE_DELETES_FIELD_DESC = new org.apache.thrift.protocol.TField("propagateDeletes", org.apache.thrift.protocol.TType.BOOL, (short)14);
+  private static final org.apache.thrift.protocol.TField KIND_FIELD_DESC = new org.apache.thrift.protocol.TField("kind", org.apache.thrift.protocol.TType.I32, (short)15);
 
   private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new CompactionJobStandardSchemeFactory();
   private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new CompactionJobTupleSchemeFactory();
@@ -48,7 +50,7 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
   public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials; // required
   public long compactionId; // required
   public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent; // required
-  public @org.apache.thrift.annotation.Nullable java.util.List<java.lang.String> files; // required
+  public @org.apache.thrift.annotation.Nullable java.util.List<InputFile> files; // required
   public int priority; // required
   public int readRate; // required
   public int writeRate; // required
@@ -64,6 +66,12 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
    */
   public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.tabletserver.thrift.CompactionReason reason; // required
   public @org.apache.thrift.annotation.Nullable java.lang.String outputFile; // required
+  public boolean propagateDeletes; // required
+  /**
+   * 
+   * @see CompactionKind
+   */
+  public @org.apache.thrift.annotation.Nullable CompactionKind kind; // required
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -86,7 +94,13 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
      * @see org.apache.accumulo.core.tabletserver.thrift.CompactionReason
      */
     REASON((short)12, "reason"),
-    OUTPUT_FILE((short)13, "outputFile");
+    OUTPUT_FILE((short)13, "outputFile"),
+    PROPAGATE_DELETES((short)14, "propagateDeletes"),
+    /**
+     * 
+     * @see CompactionKind
+     */
+    KIND((short)15, "kind");
 
     private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -126,6 +140,10 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
           return REASON;
         case 13: // OUTPUT_FILE
           return OUTPUT_FILE;
+        case 14: // PROPAGATE_DELETES
+          return PROPAGATE_DELETES;
+        case 15: // KIND
+          return KIND;
         default:
           return null;
       }
@@ -171,6 +189,7 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
   private static final int __PRIORITY_ISSET_ID = 1;
   private static final int __READRATE_ISSET_ID = 2;
   private static final int __WRITERATE_ISSET_ID = 3;
+  private static final int __PROPAGATEDELETES_ISSET_ID = 4;
   private byte __isset_bitfield = 0;
   public static final java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
@@ -185,7 +204,7 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
         new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent.class)));
     tmpMap.put(_Fields.FILES, new org.apache.thrift.meta_data.FieldMetaData("files", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.ListMetaData(org.apache.thrift.protocol.TType.LIST, 
-            new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING))));
+            new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, InputFile.class))));
     tmpMap.put(_Fields.PRIORITY, new org.apache.thrift.meta_data.FieldMetaData("priority", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32)));
     tmpMap.put(_Fields.READ_RATE, new org.apache.thrift.meta_data.FieldMetaData("readRate", org.apache.thrift.TFieldRequirementType.DEFAULT, 
@@ -200,6 +219,10 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
         new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, org.apache.accumulo.core.tabletserver.thrift.CompactionReason.class)));
     tmpMap.put(_Fields.OUTPUT_FILE, new org.apache.thrift.meta_data.FieldMetaData("outputFile", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+    tmpMap.put(_Fields.PROPAGATE_DELETES, new org.apache.thrift.meta_data.FieldMetaData("propagateDeletes", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.BOOL)));
+    tmpMap.put(_Fields.KIND, new org.apache.thrift.meta_data.FieldMetaData("kind", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, CompactionKind.class)));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
     org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(CompactionJob.class, metaDataMap);
   }
@@ -212,14 +235,16 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
     org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials,
     long compactionId,
     org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent,
-    java.util.List<java.lang.String> files,
+    java.util.List<InputFile> files,
     int priority,
     int readRate,
     int writeRate,
     org.apache.accumulo.core.tabletserver.thrift.IteratorConfig iteratorSettings,
     org.apache.accumulo.core.tabletserver.thrift.CompactionType type,
     org.apache.accumulo.core.tabletserver.thrift.CompactionReason reason,
-    java.lang.String outputFile)
+    java.lang.String outputFile,
+    boolean propagateDeletes,
+    CompactionKind kind)
   {
     this();
     this.traceInfo = traceInfo;
@@ -238,6 +263,9 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
     this.type = type;
     this.reason = reason;
     this.outputFile = outputFile;
+    this.propagateDeletes = propagateDeletes;
+    setPropagateDeletesIsSet(true);
+    this.kind = kind;
   }
 
   /**
@@ -256,7 +284,10 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       this.extent = new org.apache.accumulo.core.dataImpl.thrift.TKeyExtent(other.extent);
     }
     if (other.isSetFiles()) {
-      java.util.List<java.lang.String> __this__files = new java.util.ArrayList<java.lang.String>(other.files);
+      java.util.List<InputFile> __this__files = new java.util.ArrayList<InputFile>(other.files.size());
+      for (InputFile other_element : other.files) {
+        __this__files.add(new InputFile(other_element));
+      }
       this.files = __this__files;
     }
     this.priority = other.priority;
@@ -273,6 +304,10 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
     }
     if (other.isSetOutputFile()) {
       this.outputFile = other.outputFile;
+    }
+    this.propagateDeletes = other.propagateDeletes;
+    if (other.isSetKind()) {
+      this.kind = other.kind;
     }
   }
 
@@ -298,6 +333,9 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
     this.type = null;
     this.reason = null;
     this.outputFile = null;
+    setPropagateDeletesIsSet(false);
+    this.propagateDeletes = false;
+    this.kind = null;
   }
 
   @org.apache.thrift.annotation.Nullable
@@ -403,23 +441,23 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
   }
 
   @org.apache.thrift.annotation.Nullable
-  public java.util.Iterator<java.lang.String> getFilesIterator() {
+  public java.util.Iterator<InputFile> getFilesIterator() {
     return (this.files == null) ? null : this.files.iterator();
   }
 
-  public void addToFiles(java.lang.String elem) {
+  public void addToFiles(InputFile elem) {
     if (this.files == null) {
-      this.files = new java.util.ArrayList<java.lang.String>();
+      this.files = new java.util.ArrayList<InputFile>();
     }
     this.files.add(elem);
   }
 
   @org.apache.thrift.annotation.Nullable
-  public java.util.List<java.lang.String> getFiles() {
+  public java.util.List<InputFile> getFiles() {
     return this.files;
   }
 
-  public CompactionJob setFiles(@org.apache.thrift.annotation.Nullable java.util.List<java.lang.String> files) {
+  public CompactionJob setFiles(@org.apache.thrift.annotation.Nullable java.util.List<InputFile> files) {
     this.files = files;
     return this;
   }
@@ -624,6 +662,62 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
     }
   }
 
+  public boolean isPropagateDeletes() {
+    return this.propagateDeletes;
+  }
+
+  public CompactionJob setPropagateDeletes(boolean propagateDeletes) {
+    this.propagateDeletes = propagateDeletes;
+    setPropagateDeletesIsSet(true);
+    return this;
+  }
+
+  public void unsetPropagateDeletes() {
+    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __PROPAGATEDELETES_ISSET_ID);
+  }
+
+  /** Returns true if field propagateDeletes is set (has been assigned a value) and false otherwise */
+  public boolean isSetPropagateDeletes() {
+    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __PROPAGATEDELETES_ISSET_ID);
+  }
+
+  public void setPropagateDeletesIsSet(boolean value) {
+    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __PROPAGATEDELETES_ISSET_ID, value);
+  }
+
+  /**
+   * 
+   * @see CompactionKind
+   */
+  @org.apache.thrift.annotation.Nullable
+  public CompactionKind getKind() {
+    return this.kind;
+  }
+
+  /**
+   * 
+   * @see CompactionKind
+   */
+  public CompactionJob setKind(@org.apache.thrift.annotation.Nullable CompactionKind kind) {
+    this.kind = kind;
+    return this;
+  }
+
+  public void unsetKind() {
+    this.kind = null;
+  }
+
+  /** Returns true if field kind is set (has been assigned a value) and false otherwise */
+  public boolean isSetKind() {
+    return this.kind != null;
+  }
+
+  public void setKindIsSet(boolean value) {
+    if (!value) {
+      this.kind = null;
+    }
+  }
+
   public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
     switch (field) {
     case TRACE_INFO:
@@ -662,7 +756,7 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       if (value == null) {
         unsetFiles();
       } else {
-        setFiles((java.util.List<java.lang.String>)value);
+        setFiles((java.util.List<InputFile>)value);
       }
       break;
 
@@ -722,6 +816,22 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       }
       break;
 
+    case PROPAGATE_DELETES:
+      if (value == null) {
+        unsetPropagateDeletes();
+      } else {
+        setPropagateDeletes((java.lang.Boolean)value);
+      }
+      break;
+
+    case KIND:
+      if (value == null) {
+        unsetKind();
+      } else {
+        setKind((CompactionKind)value);
+      }
+      break;
+
     }
   }
 
@@ -764,6 +874,12 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
     case OUTPUT_FILE:
       return getOutputFile();
 
+    case PROPAGATE_DELETES:
+      return isPropagateDeletes();
+
+    case KIND:
+      return getKind();
+
     }
     throw new java.lang.IllegalStateException();
   }
@@ -799,6 +915,10 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       return isSetReason();
     case OUTPUT_FILE:
       return isSetOutputFile();
+    case PROPAGATE_DELETES:
+      return isSetPropagateDeletes();
+    case KIND:
+      return isSetKind();
     }
     throw new java.lang.IllegalStateException();
   }
@@ -926,6 +1046,24 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
         return false;
     }
 
+    boolean this_present_propagateDeletes = true;
+    boolean that_present_propagateDeletes = true;
+    if (this_present_propagateDeletes || that_present_propagateDeletes) {
+      if (!(this_present_propagateDeletes && that_present_propagateDeletes))
+        return false;
+      if (this.propagateDeletes != that.propagateDeletes)
+        return false;
+    }
+
+    boolean this_present_kind = true && this.isSetKind();
+    boolean that_present_kind = true && that.isSetKind();
+    if (this_present_kind || that_present_kind) {
+      if (!(this_present_kind && that_present_kind))
+        return false;
+      if (!this.kind.equals(that.kind))
+        return false;
+    }
+
     return true;
   }
 
@@ -972,6 +1110,12 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
     hashCode = hashCode * 8191 + ((isSetOutputFile()) ? 131071 : 524287);
     if (isSetOutputFile())
       hashCode = hashCode * 8191 + outputFile.hashCode();
+
+    hashCode = hashCode * 8191 + ((propagateDeletes) ? 131071 : 524287);
+
+    hashCode = hashCode * 8191 + ((isSetKind()) ? 131071 : 524287);
+    if (isSetKind())
+      hashCode = hashCode * 8191 + kind.getValue();
 
     return hashCode;
   }
@@ -1104,6 +1248,26 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
         return lastComparison;
       }
     }
+    lastComparison = java.lang.Boolean.valueOf(isSetPropagateDeletes()).compareTo(other.isSetPropagateDeletes());
+    if (lastComparison != 0) {
+      return lastComparison;
+    }
+    if (isSetPropagateDeletes()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.propagateDeletes, other.propagateDeletes);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
+    lastComparison = java.lang.Boolean.valueOf(isSetKind()).compareTo(other.isSetKind());
+    if (lastComparison != 0) {
+      return lastComparison;
+    }
+    if (isSetKind()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.kind, other.kind);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
     return 0;
   }
 
@@ -1204,6 +1368,18 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       sb.append(this.outputFile);
     }
     first = false;
+    if (!first) sb.append(", ");
+    sb.append("propagateDeletes:");
+    sb.append(this.propagateDeletes);
+    first = false;
+    if (!first) sb.append(", ");
+    sb.append("kind:");
+    if (this.kind == null) {
+      sb.append("null");
+    } else {
+      sb.append(this.kind);
+    }
+    first = false;
     sb.append(")");
     return sb.toString();
   }
@@ -1300,11 +1476,12 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
             if (schemeField.type == org.apache.thrift.protocol.TType.LIST) {
               {
                 org.apache.thrift.protocol.TList _list0 = iprot.readListBegin();
-                struct.files = new java.util.ArrayList<java.lang.String>(_list0.size);
-                @org.apache.thrift.annotation.Nullable java.lang.String _elem1;
+                struct.files = new java.util.ArrayList<InputFile>(_list0.size);
+                @org.apache.thrift.annotation.Nullable InputFile _elem1;
                 for (int _i2 = 0; _i2 < _list0.size; ++_i2)
                 {
-                  _elem1 = iprot.readString();
+                  _elem1 = new InputFile();
+                  _elem1.read(iprot);
                   struct.files.add(_elem1);
                 }
                 iprot.readListEnd();
@@ -1371,6 +1548,22 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
+          case 14: // PROPAGATE_DELETES
+            if (schemeField.type == org.apache.thrift.protocol.TType.BOOL) {
+              struct.propagateDeletes = iprot.readBool();
+              struct.setPropagateDeletesIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+            }
+            break;
+          case 15: // KIND
+            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
+              struct.kind = org.apache.accumulo.core.compaction.thrift.CompactionKind.findByValue(iprot.readI32());
+              struct.setKindIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+            }
+            break;
           default:
             org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
         }
@@ -1407,10 +1600,10 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       if (struct.files != null) {
         oprot.writeFieldBegin(FILES_FIELD_DESC);
         {
-          oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRING, struct.files.size()));
-          for (java.lang.String _iter3 : struct.files)
+          oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, struct.files.size()));
+          for (InputFile _iter3 : struct.files)
           {
-            oprot.writeString(_iter3);
+            _iter3.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -1443,6 +1636,14 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       if (struct.outputFile != null) {
         oprot.writeFieldBegin(OUTPUT_FILE_FIELD_DESC);
         oprot.writeString(struct.outputFile);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldBegin(PROPAGATE_DELETES_FIELD_DESC);
+      oprot.writeBool(struct.propagateDeletes);
+      oprot.writeFieldEnd();
+      if (struct.kind != null) {
+        oprot.writeFieldBegin(KIND_FIELD_DESC);
+        oprot.writeI32(struct.kind.getValue());
         oprot.writeFieldEnd();
       }
       oprot.writeFieldStop();
@@ -1499,7 +1700,13 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       if (struct.isSetOutputFile()) {
         optionals.set(11);
       }
-      oprot.writeBitSet(optionals, 12);
+      if (struct.isSetPropagateDeletes()) {
+        optionals.set(12);
+      }
+      if (struct.isSetKind()) {
+        optionals.set(13);
+      }
+      oprot.writeBitSet(optionals, 14);
       if (struct.isSetTraceInfo()) {
         struct.traceInfo.write(oprot);
       }
@@ -1515,9 +1722,9 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       if (struct.isSetFiles()) {
         {
           oprot.writeI32(struct.files.size());
-          for (java.lang.String _iter4 : struct.files)
+          for (InputFile _iter4 : struct.files)
           {
-            oprot.writeString(_iter4);
+            _iter4.write(oprot);
           }
         }
       }
@@ -1542,12 +1749,18 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       if (struct.isSetOutputFile()) {
         oprot.writeString(struct.outputFile);
       }
+      if (struct.isSetPropagateDeletes()) {
+        oprot.writeBool(struct.propagateDeletes);
+      }
+      if (struct.isSetKind()) {
+        oprot.writeI32(struct.kind.getValue());
+      }
     }
 
     @Override
     public void read(org.apache.thrift.protocol.TProtocol prot, CompactionJob struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-      java.util.BitSet incoming = iprot.readBitSet(12);
+      java.util.BitSet incoming = iprot.readBitSet(14);
       if (incoming.get(0)) {
         struct.traceInfo = new org.apache.accumulo.core.trace.thrift.TInfo();
         struct.traceInfo.read(iprot);
@@ -1569,12 +1782,13 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       }
       if (incoming.get(4)) {
         {
-          org.apache.thrift.protocol.TList _list5 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRING, iprot.readI32());
-          struct.files = new java.util.ArrayList<java.lang.String>(_list5.size);
-          @org.apache.thrift.annotation.Nullable java.lang.String _elem6;
+          org.apache.thrift.protocol.TList _list5 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, iprot.readI32());
+          struct.files = new java.util.ArrayList<InputFile>(_list5.size);
+          @org.apache.thrift.annotation.Nullable InputFile _elem6;
           for (int _i7 = 0; _i7 < _list5.size; ++_i7)
           {
-            _elem6 = iprot.readString();
+            _elem6 = new InputFile();
+            _elem6.read(iprot);
             struct.files.add(_elem6);
           }
         }
@@ -1608,6 +1822,14 @@ public class CompactionJob implements org.apache.thrift.TBase<CompactionJob, Com
       if (incoming.get(11)) {
         struct.outputFile = iprot.readString();
         struct.setOutputFileIsSet(true);
+      }
+      if (incoming.get(12)) {
+        struct.propagateDeletes = iprot.readBool();
+        struct.setPropagateDeletesIsSet(true);
+      }
+      if (incoming.get(13)) {
+        struct.kind = org.apache.accumulo.core.compaction.thrift.CompactionKind.findByValue(iprot.readI32());
+        struct.setKindIsSet(true);
       }
     }
   }

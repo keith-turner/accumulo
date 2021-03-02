@@ -39,6 +39,37 @@ enum CompactionState {
   CANCELLED
 }
 
+struct InputFile {
+  1:string metadataFileEntry
+  2:i64 size
+  3:i64 entries
+  4:i64 timestamp
+}
+
+enum CompactionKind {
+  CHOP
+  SELECTOR
+  SYSTEM
+  USER
+}
+
+struct CompactionJob {
+  1:trace.TInfo traceInfo
+  2:security.TCredentials credentials
+  3:i64 compactionId
+  5:data.TKeyExtent extent
+  6:list<InputFile> files
+  7:i32 priority
+  8:i32 readRate
+  9:i32 writeRate
+  10:tabletserver.IteratorConfig iteratorSettings
+  11:tabletserver.CompactionType type
+  12:tabletserver.CompactionReason reason
+  13:string outputFile
+  14:bool propagateDeletes
+  15:CompactionKind kind
+}
+
 struct Status {
   1:i64 timestamp
   2:i64 compactionId
