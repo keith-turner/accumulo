@@ -158,12 +158,19 @@ enum TUnloadTabletGoal {
   DELETED
 }
 
+struct InputFile {
+  1:string metadataFileEntry
+  2:i64 size
+  3:i64 entries
+  4:i64 timestamp
+}
+
 struct CompactionJob {
   1:trace.TInfo traceInfo
   2:security.TCredentials credentials
   3:i64 compactionId
   5:data.TKeyExtent extent
-  6:list<string> files
+  6:list<InputFile> files
   7:i32 priority
   8:i32 readRate
   9:i32 writeRate
@@ -172,12 +179,27 @@ struct CompactionJob {
   # Need to add SELECTOR To CompactionReason, delete CompactionKind?
   12:CompactionReason reason
   13:string outputFile
+  14:bool propagateDeletes
+  15:CompactionKind kind
+}
+
+enum CompactionKind {
+  CHOP
+  SELECTOR
+  SYSTEM
+  USER
 }
 
 struct CompactionQueueSummary {
   1:string queue
   2:i64 priority
   3:i32 count
+}
+
+struct CompactionStats{
+  1:i64 entriesRead;
+  2:i64 entriesWritten;
+  3:i64 fileSize;
 }
 
 service TabletClientService extends client.ClientService {

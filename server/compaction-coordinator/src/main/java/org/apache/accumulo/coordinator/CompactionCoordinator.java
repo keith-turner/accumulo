@@ -19,6 +19,7 @@
 package org.apache.accumulo.coordinator;
 
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -35,15 +36,16 @@ import java.util.concurrent.TimeUnit;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.clientImpl.ThriftTransportPool;
 import org.apache.accumulo.core.compaction.thrift.CompactionState;
+import org.apache.accumulo.core.compaction.thrift.Compactor;
 import org.apache.accumulo.core.compaction.thrift.Status;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.dataImpl.thrift.CompactionStats;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.CompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.CompactionQueueSummary;
+import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.Halt;
@@ -57,6 +59,8 @@ import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
+import org.apache.accumulo.server.compaction.RetryableThriftCall;
+import org.apache.accumulo.server.compaction.RetryableThriftFunction;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
 import org.apache.accumulo.server.rpc.ServerAddress;
@@ -200,14 +204,14 @@ public class CompactionCoordinator extends AbstractServer implements
   
   private static class RunningCompaction {
     private final CompactionJob job;
-    private final String compactor;
+    private final String compactorAddress;
     private final TServerInstance tserver;
     private Map<Long, CompactionUpdate> updates = new TreeMap<>();
     private CompactionStats stats = null;
-    public RunningCompaction(CompactionJob job, String compactor, TServerInstance tserver) {
+    public RunningCompaction(CompactionJob job, String compactorAddress, TServerInstance tserver) {
       super();
       this.job = job;
-      this.compactor = compactor;
+      this.compactorAddress = compactorAddress;
       this.tserver = tserver;
     }
     public Map<Long,CompactionUpdate> getUpdates() {
@@ -215,9 +219,6 @@ public class CompactionCoordinator extends AbstractServer implements
     }
     public void addUpdate(Long timestamp, String message, CompactionState state) {
       this.updates.put(timestamp, new CompactionUpdate(timestamp, message, state));
-    }
-    public void setUpdates(Map<Long,CompactionUpdate> updates) {
-      this.updates = updates;
     }
     public CompactionStats getStats() {
       return stats;
@@ -228,8 +229,8 @@ public class CompactionCoordinator extends AbstractServer implements
     public CompactionJob getJob() {
       return job;
     }
-    public String getCompactor() {
-      return compactor;
+    public String getCompactorAddress() {
+      return compactorAddress;
     }
     public TServerInstance getTserver() {
       return tserver;
@@ -293,7 +294,7 @@ public class CompactionCoordinator extends AbstractServer implements
    * @return address of this CompactionCoordinator client service
    * @throws UnknownHostException
    */
-  private ServerAddress startCompactorClientService() throws UnknownHostException {
+  private ServerAddress startCoordinatorClientService() throws UnknownHostException {
     CompactionCoordinator rpcProxy = TraceUtil.wrapService(this);
     final org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Processor<CompactionCoordinator> processor;
     if (getContext().getThriftServerType() == ThriftServerType.SASL) {
@@ -319,7 +320,7 @@ public class CompactionCoordinator extends AbstractServer implements
 
     ServerAddress coordinatorAddress = null;
     try {
-      coordinatorAddress = startCompactorClientService();
+      coordinatorAddress = startCoordinatorClientService();
     } catch (UnknownHostException e1) {
       throw new RuntimeException("Failed to start the coordinator service", e1);
     }
@@ -364,7 +365,7 @@ public class CompactionCoordinator extends AbstractServer implements
   
 
   /**
-   * Callback for the LiveTServerSet object to update us current set of tablet servers, including 
+   * Callback for the LiveTServerSet object to update current set of tablet servers, including 
    * ones that were deleted and added
    * 
    * @param current current set of live tservers
@@ -394,14 +395,14 @@ public class CompactionCoordinator extends AbstractServer implements
   }
 
   /**
-   * Return the next compaction job for the queue to a Compactor
+   * Return the next compaction job from the queue to a Compactor
    * 
    * @param queueName queue
-   * @param compactor compactor address
+   * @param compactorAddress compactor address
    * @return compaction job
    */
   @Override
-  public CompactionJob getCompactionJob(String queueName, String compactor) throws TException {
+  public CompactionJob getCompactionJob(String queueName, String compactorAddress) throws TException {
     String queue = queueName.intern();
     TServerInstance tserver = null;
     Long priority = null;
@@ -434,20 +435,17 @@ public class CompactionCoordinator extends AbstractServer implements
             break;
           }
         }
-      } else {
-        return (CompactionJob) null; //TODO: or should we thrown an error for no tserver for this queue?
       }
     }
-
-    try {
-      TabletClientService.Client client = getTabletServerConnection(tserver);
-      CompactionJob job = client.reserveCompactionJob(queue, priority, compactor);
-      RUNNING.put(job.getCompactionId(), new RunningCompaction(job, compactor, tserver));
-      return job;
-    } catch (TException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
+    
+    if (null == tserver) {
+      return null;
     }
+
+    TabletClientService.Client client = getTabletServerConnection(tserver);
+    CompactionJob job = client.reserveCompactionJob(queue, priority, compactorAddress);
+    RUNNING.put(job.getCompactionId(), new RunningCompaction(job, compactorAddress, tserver));
+    return job;
   }
   
   private TabletClientService.Client getTabletServerConnection(TServerInstance tserver) throws TTransportException {
@@ -456,19 +454,43 @@ public class CompactionCoordinator extends AbstractServer implements
     return ThriftUtil.createClient(new TabletClientService.Client.Factory(), transport);
   }
   
+  private Compactor.Client getCompactorConnection(HostAndPort compactorAddress) throws TTransportException {
+    TTransport transport = ThriftTransportPool.getInstance().getTransport(compactorAddress, 0, getContext());
+    return ThriftUtil.createClient(new Compactor.Client.Factory(), transport);
+  }
 
+  /**
+   * Called by the TabletServer to cancel the running compaction.
+   */
   @Override
   public void cancelCompaction(TKeyExtent extent, String queueName, long priority)
       throws TException {
-    // TODO Auto-generated method stub
-    
+    RunningCompaction rc = RUNNING.get(null/* compactionId */); // TODO: Need to change thrift inputs here
+    HostAndPort compactor = HostAndPort.fromString(rc.getCompactorAddress());
+    RetryableThriftCall<Void> cancelThriftCall = new RetryableThriftCall<>(1000,
+        RetryableThriftCall.MAX_WAIT_TIME, 0, new RetryableThriftFunction<Void>() {
+          @Override
+          public Void execute() throws TException {
+            try {
+              getCompactorConnection(compactor).cancel(rc.getJob());
+              return null;
+            } catch (TException e) {
+              throw e;
+            }
+          }
+        });
+    cancelThriftCall.run();
   }
 
   @Override
   public List<Status> getCompactionStatus(TKeyExtent extent, String queueName, long priority)
       throws TException {
-    // TODO Auto-generated method stub
-    return null;
+    RunningCompaction rc = RUNNING.get(null/* compactionId */); // TODO: Need to change thrift inputs here
+    List<Status> status = new ArrayList<>();
+    rc.getUpdates().forEach((k,v) -> {
+      status.add(new Status(v.getTimestamp(), rc.getJob().getCompactionId(), rc.getCompactorAddress(), v.getState(), v.getMessage()));
+    });
+    return status;
   }
 
   /**

@@ -16,11 +16,18 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.compactor;
+package org.apache.accumulo.server.compaction;
 
-import org.apache.thrift.TException;
+import org.apache.accumulo.core.Constants;
+import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.accumulo.server.ServerContext;
 
-@FunctionalInterface
-public interface RetryableThriftFunction<T> {
-  T execute() throws TException;
+public class ExternalCompactionUtil {
+
+  public static HostAndPort findCompactionCoordinator(ServerContext context) {
+    final String lockPath = context.getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
+    byte[] address = context.getZooCache().get(lockPath);
+    String coordinatorAddress = new String(address);
+    return HostAndPort.fromString(coordinatorAddress);
+  }
 }

@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.compactor;
+package org.apache.accumulo.server.compaction;
 
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.thrift.TException;
@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 public class RetryableThriftCall<T> {
 
   private static final Logger LOG = LoggerFactory.getLogger(RetryableThriftCall.class);
+  public static final long MAX_WAIT_TIME = 60000;
 
   private final long start;
   private final long maxWaitTime;

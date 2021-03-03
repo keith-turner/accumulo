@@ -191,9 +191,3 @@ typedef map<TKeyExtent, list<TMutation>> UpdateBatch
 
 typedef map<TKeyExtent, map<string, MapFileInfo>> TabletFiles
 
-struct CompactionStats{
-  1:i64 entriesRead;
-  2:i64 entriesWritten;
-  3:i64 fileSize;
-}
-
