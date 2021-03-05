@@ -165,22 +165,20 @@ struct InputFile {
   4:i64 timestamp
 }
 
-struct CompactionJob {
-  1:trace.TInfo traceInfo
-  2:security.TCredentials credentials
-  3:i64 compactionId
-  5:data.TKeyExtent extent
-  6:list<InputFile> files
-  7:i32 priority
-  8:i32 readRate
-  9:i32 writeRate
-  10:IteratorConfig iteratorSettings
-  11:CompactionType type
+struct TExternalCompactionJob {
+  1:string externalCompactionId
+  2:data.TKeyExtent extent
+  3:list<InputFile> files
+  4:i32 priority
+  5:i32 readRate
+  6:i32 writeRate
+  7:IteratorConfig iteratorSettings
+  8:CompactionType type
   # Need to add SELECTOR To CompactionReason, delete CompactionKind?
-  12:CompactionReason reason
-  13:string outputFile
-  14:bool propagateDeletes
-  15:CompactionKind kind
+  9:CompactionReason reason
+  10:string outputFile
+  11:bool propagateDeletes
+  12:CompactionKind kind
 }
 
 enum CompactionKind {
@@ -190,7 +188,7 @@ enum CompactionKind {
   USER
 }
 
-struct CompactionQueueSummary {
+struct TCompactionQueueSummary {
   1:string queue
   2:i64 priority
   3:i32 count
@@ -520,18 +518,32 @@ service TabletClientService extends client.ClientService {
     1:NoSuchScanIDException nssi
   )
   
-  list<CompactionQueueSummary> getCompactionQueueInfo()
+  list<TCompactionQueueSummary> getCompactionQueueInfo(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+  ) throws (
+    1:client.ThriftSecurityException sec
+  )
   
-  CompactionJob reserveCompactionJob(
-    1:string queueName
-    2:i64 priority
-    3:string compactor
+  TExternalCompactionJob reserveCompactionJob(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string queueName
+    4:i64 priority
+    5:string compactor
+  ) throws (
+    1:client.ThriftSecurityException sec
   )
   
   void compactionJobFinished(
-    1:CompactionJob job
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
+    4:i64 fileSize
+    5:i64 entries
+  ) throws (
+    1:client.ThriftSecurityException sec
   )
-
 }
 
 typedef i32 TabletID

@@ -19,24 +19,31 @@
 package org.apache.accumulo.tserver.compactions;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
 import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.Retry;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
+import org.apache.accumulo.tserver.tablet.Tablet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,6 +71,11 @@ public class CompactionManager {
   public static final CompactionServiceId DEFAULT_SERVICE = CompactionServiceId.of("default");
 
   private String lastDeprecationWarning = "";
+
+  private Map<CompactionExecutorId,ExternalCompactionExecutor> externalExecutors;
+
+  // TODO this may need to be garbage collected... also will need to be populated when tablet load
+  private Map<UUID,KeyExtent> runningExternalCompactions;
 
   private class Config {
     Map<String,String> planners = new HashMap<>();
@@ -286,6 +298,10 @@ public class CompactionManager {
 
     this.ceMetrics = ceMetrics;
 
+    this.externalExecutors = new ConcurrentHashMap<>();
+
+    this.runningExternalCompactions = new ConcurrentHashMap<>();
+
     Map<CompactionServiceId,CompactionService> tmpServices = new HashMap<>();
 
     currentCfg.planners.forEach((serviceName, plannerClassName) -> {
@@ -293,7 +309,8 @@ public class CompactionManager {
         tmpServices.put(CompactionServiceId.of(serviceName),
             new CompactionService(serviceName, plannerClassName,
                 currentCfg.getRateLimit(serviceName),
-                currentCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics));
+                currentCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics,
+                this::getExternalExecutor));
       } catch (RuntimeException e) {
         log.error("Failed to create compaction service {} with planner:{} options:{}", serviceName,
             plannerClassName, currentCfg.options.getOrDefault(serviceName, Map.of()));
@@ -331,7 +348,8 @@ public class CompactionManager {
               tmpServices.put(csid,
                   new CompactionService(serviceName, plannerClassName,
                       tmpCfg.getRateLimit(serviceName),
-                      tmpCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics));
+                      tmpCfg.options.getOrDefault(serviceName, Map.of()), ctx, ceMetrics,
+                      this::getExternalExecutor));
             } else {
               service.configurationChanged(plannerClassName, tmpCfg.getRateLimit(serviceName),
                   tmpCfg.options.getOrDefault(serviceName, Map.of()));
@@ -385,5 +403,42 @@ public class CompactionManager {
 
   public int getCompactionsQueued() {
     return services.values().stream().mapToInt(CompactionService::getCompactionsQueued).sum();
+  }
+
+  public ExternalCompactionJob reserveExternalCompaction(String queueName, long priority,
+      String compactorId) {
+    ExternalCompactionExecutor extCE = getExternalExecutor(queueName);
+    var ecJob = extCE.reserveExternalCompaction(priority, compactorId);
+    if (ecJob != null) {
+      runningExternalCompactions.put(ecJob.getExternalCompactionId(), ecJob.getExtent());
+    }
+    return ecJob;
+  }
+
+  ExternalCompactionExecutor getExternalExecutor(CompactionExecutorId ceid) {
+    return externalExecutors.computeIfAbsent(ceid, id -> new ExternalCompactionExecutor(id));
+  }
+
+  ExternalCompactionExecutor getExternalExecutor(String queueName) {
+    // TODO put prefix for external executor in one place
+    return getExternalExecutor(CompactionExecutorId.of("e." + queueName));
+  }
+
+  public void commitExternalCompaction(UUID extCompactionId, Map<KeyExtent,Tablet> currentTablets,
+      long fileSize, long entries) {
+    KeyExtent extent = runningExternalCompactions.get(extCompactionId);
+    if (extent != null) {
+      Tablet tablet = currentTablets.get(extent);
+      if (tablet != null) {
+        tablet.asCompactable().commitExternalCompaction(extCompactionId, fileSize, entries);
+      }
+      runningExternalCompactions.remove(extCompactionId);
+    }
+  }
+
+  public List<TCompactionQueueSummary> getCompactionQueueSummaries() {
+    // TODO Auto-generated method stub
+    return externalExecutors.values().stream().map(ece -> ece.summarize())
+        .collect(Collectors.toList());
   }
 }

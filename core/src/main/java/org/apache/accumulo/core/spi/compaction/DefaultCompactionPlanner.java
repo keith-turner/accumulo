@@ -77,7 +77,8 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
   public static class ExecutorConfig {
     String name;
     String maxSize;
-    int numThreads;
+    Integer numThreads;
+    String externalQueue;
   }
 
   private static class Executor {
@@ -112,10 +113,22 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
     List<Executor> tmpExec = new ArrayList<>();
 
     for (ExecutorConfig executorConfig : execConfigs) {
-      var ceid = params.getExecutorManager().createExecutor(executorConfig.name,
-          executorConfig.numThreads);
       Long maxSize = executorConfig.maxSize == null ? null
           : ConfigurationTypeHelper.getFixedMemoryAsBytes(executorConfig.maxSize);
+
+      CompactionExecutorId ceid;
+
+      if (executorConfig.externalQueue == null) {
+        ceid = params.getExecutorManager().createExecutor(executorConfig.name,
+            executorConfig.numThreads);
+      } else if (executorConfig.numThreads == null) {
+        ceid = params.getExecutorManager().getExternalExecutor(executorConfig.externalQueue);
+      } else {
+        throw new IllegalArgumentException(
+            "When creating an executor must specify only one of numThreads or externalQueue. "
+                + params.getOptions().get("executors"));
+      }
+
       tmpExec.add(new Executor(ceid, maxSize));
     }
 

@@ -29,13 +29,13 @@ public class Compactor {
 
   public interface Iface {
 
-    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) throws org.apache.thrift.TException;
+    public void cancel(java.lang.String externalCompactionId) throws org.apache.thrift.TException;
 
   }
 
   public interface AsyncIface {
 
-    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
+    public void cancel(java.lang.String externalCompactionId, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
 
   }
 
@@ -59,16 +59,16 @@ public class Compactor {
       super(iprot, oprot);
     }
 
-    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) throws org.apache.thrift.TException
+    public void cancel(java.lang.String externalCompactionId) throws org.apache.thrift.TException
     {
-      send_cancel(compaction);
+      send_cancel(externalCompactionId);
       recv_cancel();
     }
 
-    public void send_cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) throws org.apache.thrift.TException
+    public void send_cancel(java.lang.String externalCompactionId) throws org.apache.thrift.TException
     {
       cancel_args args = new cancel_args();
-      args.setCompaction(compaction);
+      args.setExternalCompactionId(externalCompactionId);
       sendBase("cancel", args);
     }
 
@@ -97,24 +97,24 @@ public class Compactor {
       super(protocolFactory, clientManager, transport);
     }
 
-    public void cancel(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
+    public void cancel(java.lang.String externalCompactionId, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
       checkReady();
-      cancel_call method_call = new cancel_call(compaction, resultHandler, this, ___protocolFactory, ___transport);
+      cancel_call method_call = new cancel_call(externalCompactionId, resultHandler, this, ___protocolFactory, ___transport);
       this.___currentMethod = method_call;
       ___manager.call(method_call);
     }
 
     public static class cancel_call extends org.apache.thrift.async.TAsyncMethodCall<Void> {
-      private org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction;
-      public cancel_call(org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+      private java.lang.String externalCompactionId;
+      public cancel_call(java.lang.String externalCompactionId, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
         super(client, protocolFactory, transport, resultHandler, false);
-        this.compaction = compaction;
+        this.externalCompactionId = externalCompactionId;
       }
 
       public void write_args(org.apache.thrift.protocol.TProtocol prot) throws org.apache.thrift.TException {
         prot.writeMessageBegin(new org.apache.thrift.protocol.TMessage("cancel", org.apache.thrift.protocol.TMessageType.CALL, 0));
         cancel_args args = new cancel_args();
-        args.setCompaction(compaction);
+        args.setExternalCompactionId(externalCompactionId);
         args.write(prot);
         prot.writeMessageEnd();
       }
@@ -166,7 +166,7 @@ public class Compactor {
 
       public cancel_result getResult(I iface, cancel_args args) throws org.apache.thrift.TException {
         cancel_result result = new cancel_result();
-        iface.cancel(args.compaction);
+        iface.cancel(args.externalCompactionId);
         return result;
       }
     }
@@ -244,7 +244,7 @@ public class Compactor {
       }
 
       public void start(I iface, cancel_args args, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
-        iface.cancel(args.compaction,resultHandler);
+        iface.cancel(args.externalCompactionId,resultHandler);
       }
     }
 
@@ -253,16 +253,16 @@ public class Compactor {
   public static class cancel_args implements org.apache.thrift.TBase<cancel_args, cancel_args._Fields>, java.io.Serializable, Cloneable, Comparable<cancel_args>   {
     private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("cancel_args");
 
-    private static final org.apache.thrift.protocol.TField COMPACTION_FIELD_DESC = new org.apache.thrift.protocol.TField("compaction", org.apache.thrift.protocol.TType.STRUCT, (short)1);
+    private static final org.apache.thrift.protocol.TField EXTERNAL_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("externalCompactionId", org.apache.thrift.protocol.TType.STRING, (short)1);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new cancel_argsStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new cancel_argsTupleSchemeFactory();
 
-    public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction; // required
+    public @org.apache.thrift.annotation.Nullable java.lang.String externalCompactionId; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
-      COMPACTION((short)1, "compaction");
+      EXTERNAL_COMPACTION_ID((short)1, "externalCompactionId");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -278,8 +278,8 @@ public class Compactor {
       @org.apache.thrift.annotation.Nullable
       public static _Fields findByThriftId(int fieldId) {
         switch(fieldId) {
-          case 1: // COMPACTION
-            return COMPACTION;
+          case 1: // EXTERNAL_COMPACTION_ID
+            return EXTERNAL_COMPACTION_ID;
           default:
             return null;
         }
@@ -324,8 +324,8 @@ public class Compactor {
     public static final java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
     static {
       java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new java.util.EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
-      tmpMap.put(_Fields.COMPACTION, new org.apache.thrift.meta_data.FieldMetaData("compaction", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.tabletserver.thrift.CompactionJob.class)));
+      tmpMap.put(_Fields.EXTERNAL_COMPACTION_ID, new org.apache.thrift.meta_data.FieldMetaData("externalCompactionId", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(cancel_args.class, metaDataMap);
     }
@@ -334,18 +334,18 @@ public class Compactor {
     }
 
     public cancel_args(
-      org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction)
+      java.lang.String externalCompactionId)
     {
       this();
-      this.compaction = compaction;
+      this.externalCompactionId = externalCompactionId;
     }
 
     /**
      * Performs a deep copy on <i>other</i>.
      */
     public cancel_args(cancel_args other) {
-      if (other.isSetCompaction()) {
-        this.compaction = new org.apache.accumulo.core.tabletserver.thrift.CompactionJob(other.compaction);
+      if (other.isSetExternalCompactionId()) {
+        this.externalCompactionId = other.externalCompactionId;
       }
     }
 
@@ -355,41 +355,41 @@ public class Compactor {
 
     @Override
     public void clear() {
-      this.compaction = null;
+      this.externalCompactionId = null;
     }
 
     @org.apache.thrift.annotation.Nullable
-    public org.apache.accumulo.core.tabletserver.thrift.CompactionJob getCompaction() {
-      return this.compaction;
+    public java.lang.String getExternalCompactionId() {
+      return this.externalCompactionId;
     }
 
-    public cancel_args setCompaction(@org.apache.thrift.annotation.Nullable org.apache.accumulo.core.tabletserver.thrift.CompactionJob compaction) {
-      this.compaction = compaction;
+    public cancel_args setExternalCompactionId(@org.apache.thrift.annotation.Nullable java.lang.String externalCompactionId) {
+      this.externalCompactionId = externalCompactionId;
       return this;
     }
 
-    public void unsetCompaction() {
-      this.compaction = null;
+    public void unsetExternalCompactionId() {
+      this.externalCompactionId = null;
     }
 
-    /** Returns true if field compaction is set (has been assigned a value) and false otherwise */
-    public boolean isSetCompaction() {
-      return this.compaction != null;
+    /** Returns true if field externalCompactionId is set (has been assigned a value) and false otherwise */
+    public boolean isSetExternalCompactionId() {
+      return this.externalCompactionId != null;
     }
 
-    public void setCompactionIsSet(boolean value) {
+    public void setExternalCompactionIdIsSet(boolean value) {
       if (!value) {
-        this.compaction = null;
+        this.externalCompactionId = null;
       }
     }
 
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
-      case COMPACTION:
+      case EXTERNAL_COMPACTION_ID:
         if (value == null) {
-          unsetCompaction();
+          unsetExternalCompactionId();
         } else {
-          setCompaction((org.apache.accumulo.core.tabletserver.thrift.CompactionJob)value);
+          setExternalCompactionId((java.lang.String)value);
         }
         break;
 
@@ -399,8 +399,8 @@ public class Compactor {
     @org.apache.thrift.annotation.Nullable
     public java.lang.Object getFieldValue(_Fields field) {
       switch (field) {
-      case COMPACTION:
-        return getCompaction();
+      case EXTERNAL_COMPACTION_ID:
+        return getExternalCompactionId();
 
       }
       throw new java.lang.IllegalStateException();
@@ -413,8 +413,8 @@ public class Compactor {
       }
 
       switch (field) {
-      case COMPACTION:
-        return isSetCompaction();
+      case EXTERNAL_COMPACTION_ID:
+        return isSetExternalCompactionId();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -434,12 +434,12 @@ public class Compactor {
       if (this == that)
         return true;
 
-      boolean this_present_compaction = true && this.isSetCompaction();
-      boolean that_present_compaction = true && that.isSetCompaction();
-      if (this_present_compaction || that_present_compaction) {
-        if (!(this_present_compaction && that_present_compaction))
+      boolean this_present_externalCompactionId = true && this.isSetExternalCompactionId();
+      boolean that_present_externalCompactionId = true && that.isSetExternalCompactionId();
+      if (this_present_externalCompactionId || that_present_externalCompactionId) {
+        if (!(this_present_externalCompactionId && that_present_externalCompactionId))
           return false;
-        if (!this.compaction.equals(that.compaction))
+        if (!this.externalCompactionId.equals(that.externalCompactionId))
           return false;
       }
 
@@ -450,9 +450,9 @@ public class Compactor {
     public int hashCode() {
       int hashCode = 1;
 
-      hashCode = hashCode * 8191 + ((isSetCompaction()) ? 131071 : 524287);
-      if (isSetCompaction())
-        hashCode = hashCode * 8191 + compaction.hashCode();
+      hashCode = hashCode * 8191 + ((isSetExternalCompactionId()) ? 131071 : 524287);
+      if (isSetExternalCompactionId())
+        hashCode = hashCode * 8191 + externalCompactionId.hashCode();
 
       return hashCode;
     }
@@ -465,12 +465,12 @@ public class Compactor {
 
       int lastComparison = 0;
 
-      lastComparison = java.lang.Boolean.valueOf(isSetCompaction()).compareTo(other.isSetCompaction());
+      lastComparison = java.lang.Boolean.valueOf(isSetExternalCompactionId()).compareTo(other.isSetExternalCompactionId());
       if (lastComparison != 0) {
         return lastComparison;
       }
-      if (isSetCompaction()) {
-        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.compaction, other.compaction);
+      if (isSetExternalCompactionId()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.externalCompactionId, other.externalCompactionId);
         if (lastComparison != 0) {
           return lastComparison;
         }
@@ -496,11 +496,11 @@ public class Compactor {
       java.lang.StringBuilder sb = new java.lang.StringBuilder("cancel_args(");
       boolean first = true;
 
-      sb.append("compaction:");
-      if (this.compaction == null) {
+      sb.append("externalCompactionId:");
+      if (this.externalCompactionId == null) {
         sb.append("null");
       } else {
-        sb.append(this.compaction);
+        sb.append(this.externalCompactionId);
       }
       first = false;
       sb.append(")");
@@ -510,9 +510,6 @@ public class Compactor {
     public void validate() throws org.apache.thrift.TException {
       // check for required fields
       // check for sub-struct validity
-      if (compaction != null) {
-        compaction.validate();
-      }
     }
 
     private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
@@ -549,11 +546,10 @@ public class Compactor {
             break;
           }
           switch (schemeField.id) {
-            case 1: // COMPACTION
-              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
-                struct.compaction = new org.apache.accumulo.core.tabletserver.thrift.CompactionJob();
-                struct.compaction.read(iprot);
-                struct.setCompactionIsSet(true);
+            case 1: // EXTERNAL_COMPACTION_ID
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+                struct.externalCompactionId = iprot.readString();
+                struct.setExternalCompactionIdIsSet(true);
               } else { 
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
@@ -573,9 +569,9 @@ public class Compactor {
         struct.validate();
 
         oprot.writeStructBegin(STRUCT_DESC);
-        if (struct.compaction != null) {
-          oprot.writeFieldBegin(COMPACTION_FIELD_DESC);
-          struct.compaction.write(oprot);
+        if (struct.externalCompactionId != null) {
+          oprot.writeFieldBegin(EXTERNAL_COMPACTION_ID_FIELD_DESC);
+          oprot.writeString(struct.externalCompactionId);
           oprot.writeFieldEnd();
         }
         oprot.writeFieldStop();
@@ -596,12 +592,12 @@ public class Compactor {
       public void write(org.apache.thrift.protocol.TProtocol prot, cancel_args struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol oprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
         java.util.BitSet optionals = new java.util.BitSet();
-        if (struct.isSetCompaction()) {
+        if (struct.isSetExternalCompactionId()) {
           optionals.set(0);
         }
         oprot.writeBitSet(optionals, 1);
-        if (struct.isSetCompaction()) {
-          struct.compaction.write(oprot);
+        if (struct.isSetExternalCompactionId()) {
+          oprot.writeString(struct.externalCompactionId);
         }
       }
 
@@ -610,9 +606,8 @@ public class Compactor {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
         java.util.BitSet incoming = iprot.readBitSet(1);
         if (incoming.get(0)) {
-          struct.compaction = new org.apache.accumulo.core.tabletserver.thrift.CompactionJob();
-          struct.compaction.read(iprot);
-          struct.setCompactionIsSet(true);
+          struct.externalCompactionId = iprot.readString();
+          struct.setExternalCompactionIdIsSet(true);
         }
       }
     }

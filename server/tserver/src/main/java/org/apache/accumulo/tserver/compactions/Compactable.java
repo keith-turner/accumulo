@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
@@ -88,4 +89,9 @@ public interface Compactable {
   CompactionServiceId getConfiguredService(CompactionKind kind);
 
   double getCompactionRatio();
+
+  ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service, CompactionJob job,
+      String compactorId);
+
+  void commitExternalCompaction(UUID extCompactionId, long fileSize, long entries);
 }

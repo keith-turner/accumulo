@@ -52,9 +52,9 @@ import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.CompactionReason;
 import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
+import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.HostAndPort;
@@ -109,7 +109,7 @@ public class Compactor extends AbstractServer
    * Object used to hold information about the current compaction
    */
   private static class CompactionJobHolder {
-    private CompactionJob job;
+    private TExternalCompactionJob job;
     private Thread compactionThread;
     private volatile Boolean cancelled = Boolean.FALSE;
     private CompactionStats stats = null;
@@ -123,7 +123,7 @@ public class Compactor extends AbstractServer
       stats = null;
     }
 
-    public CompactionJob getJob() {
+    public TExternalCompactionJob getJob() {
       return job;
     }
 
@@ -151,7 +151,7 @@ public class Compactor extends AbstractServer
       return (null != this.job);
     }
 
-    public void set(CompactionJob job, Thread compactionThread) {
+    public void set(TExternalCompactionJob job, Thread compactionThread) {
       Objects.requireNonNull(job, "CompactionJob is null");
       Objects.requireNonNull(compactionThread, "Compaction thread is null");
       this.job = job;
@@ -302,10 +302,11 @@ public class Compactor extends AbstractServer
    *          job
    */
   @Override
-  public void cancel(CompactionJob compactionJob) {
+  public void cancel(String externalCompactionId) {
     synchronized (jobHolder) {
-      if (jobHolder.isSet() && jobHolder.getJob().equals(compactionJob)) {
-        LOG.info("Cancel requested for compaction job {}", compactionJob);
+      if (jobHolder.isSet()
+          && jobHolder.getJob().getExternalCompactionId().equals(externalCompactionId)) {
+        LOG.info("Cancel requested for compaction job {}", externalCompactionId);
         jobHolder.cancel();
         jobHolder.getThread().interrupt();
       }
@@ -314,7 +315,7 @@ public class Compactor extends AbstractServer
 
   /**
    * Send an update to the coordinator for this job
-   * 
+   *
    * @param coordinatorClient
    *          address of the CompactionCoordinator
    * @param job
@@ -324,17 +325,18 @@ public class Compactor extends AbstractServer
    * @param message
    *          updated message
    */
-  private void updateCompactionState(CompactionJob job, CompactionState state, String message) {
-    RetryableThriftCall<Void> thriftCall =
-        new RetryableThriftCall<>(1000, RetryableThriftCall.MAX_WAIT_TIME, 25, new RetryableThriftFunction<Void>() {
+  private void updateCompactionState(TExternalCompactionJob job, CompactionState state,
+      String message) {
+    RetryableThriftCall<Void> thriftCall = new RetryableThriftCall<>(1000,
+        RetryableThriftCall.MAX_WAIT_TIME, 25, new RetryableThriftFunction<Void>() {
           @Override
           public Void execute() throws TException {
             try {
               if (null == coordinatorClient.get()) {
                 coordinatorClient.set(getCoordinatorClient());
               }
-              coordinatorClient.get().updateCompactionStatus(job, state, message,
-                  System.currentTimeMillis());
+              coordinatorClient.get().updateCompactionStatus(job.getExternalCompactionId(), state,
+                  message, System.currentTimeMillis());
               return null;
             } catch (TException e) {
               coordinatorClient.set(null);
@@ -344,23 +346,25 @@ public class Compactor extends AbstractServer
         });
     thriftCall.run();
   }
-  
+
   /**
    * Update the coordinator with the stats from the job
-   *  
-   * @param job current compaction job
-   * @param stats compaction stats
+   *
+   * @param job
+   *          current compaction job
+   * @param stats
+   *          compaction stats
    */
-  private void updateCompactionCompleted(CompactionJob job, CompactionStats stats) {
-    RetryableThriftCall<Void> thriftCall =
-        new RetryableThriftCall<>(1000, RetryableThriftCall.MAX_WAIT_TIME, 25, new RetryableThriftFunction<Void>() {
+  private void updateCompactionCompleted(TExternalCompactionJob job, CompactionStats stats) {
+    RetryableThriftCall<Void> thriftCall = new RetryableThriftCall<>(1000,
+        RetryableThriftCall.MAX_WAIT_TIME, 25, new RetryableThriftFunction<Void>() {
           @Override
           public Void execute() throws TException {
             try {
               if (null == coordinatorClient.get()) {
                 coordinatorClient.set(getCoordinatorClient());
               }
-              coordinatorClient.get().compactionCompleted(job, stats);
+              coordinatorClient.get().compactionCompleted(job.getExternalCompactionId(), stats);
               return null;
             } catch (TException e) {
               coordinatorClient.set(null);
@@ -380,30 +384,33 @@ public class Compactor extends AbstractServer
    *          address of this Compactor
    * @return CompactionJob
    */
-  private CompactionJob getNextJob() {
-    RetryableThriftCall<CompactionJob> nextJobThriftCall = new RetryableThriftCall<>(1000,
-        RetryableThriftCall.MAX_WAIT_TIME, 0, new RetryableThriftFunction<CompactionJob>() {
-          @Override
-          public CompactionJob execute() throws TException {
-            try {
-              if (null == coordinatorClient.get()) {
-                coordinatorClient.set(getCoordinatorClient());
+  private TExternalCompactionJob getNextJob() {
+    RetryableThriftCall<TExternalCompactionJob> nextJobThriftCall =
+        new RetryableThriftCall<>(1000, RetryableThriftCall.MAX_WAIT_TIME, 0,
+            new RetryableThriftFunction<TExternalCompactionJob>() {
+              @Override
+              public TExternalCompactionJob execute() throws TException {
+                try {
+                  if (null == coordinatorClient.get()) {
+                    coordinatorClient.set(getCoordinatorClient());
+                  }
+                  return coordinatorClient.get().getCompactionJob(queueName,
+                      getHostPortString(compactorAddress.getAddress()));
+                } catch (TException e) {
+                  coordinatorClient.set(null);
+                  throw e;
+                }
               }
-              return coordinatorClient.get().getCompactionJob(queueName, getHostPortString(compactorAddress.getAddress()));
-            } catch (TException e) {
-              coordinatorClient.set(null);
-              throw e;
-            }
-          }
-        });
+            });
     return nextJobThriftCall.run();
   }
-  
+
   /**
    * Get the client to the CompactionCoordinator
    *
    * @return compaction coordinator client
-   * @throws TTransportException when unable to get client
+   * @throws TTransportException
+   *           when unable to get client
    */
   private CompactionCoordinator.Client getCoordinatorClient() throws TTransportException {
     HostAndPort coordinatorHost = ExternalCompactionUtil.findCompactionCoordinator(getContext());
@@ -411,17 +418,18 @@ public class Compactor extends AbstractServer
       throw new TTransportException("Unable to get CompactionCoordinator address from ZooKeeper");
     }
     LOG.info("CompactionCoordinator address is: {}", coordinatorHost);
-      return ThriftUtil.getClient(new CompactionCoordinator.Client.Factory(),
-          coordinatorHost, getContext());
+    return ThriftUtil.getClient(new CompactionCoordinator.Client.Factory(), coordinatorHost,
+        getContext());
   }
 
   /**
    * Create and return a new CompactionEnv for the current compaction job
    *
-   * @param job current compaction job
+   * @param job
+   *          current compaction job
    * @return new env
    */
-  private CompactionEnv getCompactionEnvironment(CompactionJob job) {
+  private CompactionEnv getCompactionEnvironment(TExternalCompactionJob job) {
     return new CompactionEnv() {
       @Override
       public boolean isCompactionEnabled() {
@@ -471,9 +479,9 @@ public class Compactor extends AbstractServer
             return CompactionReason.SYSTEM;
         }
       }
-    };  
+    };
   }
-  
+
   @Override
   public void run() {
 
@@ -498,8 +506,8 @@ public class Compactor extends AbstractServer
       while (true) {
         err.set(null);
         jobHolder.reset();
-        
-        final CompactionJob job = getNextJob();
+
+        final TExternalCompactionJob job = getNextJob();
         LOG.info("Received next compaction job: {}", job);
 
         final LongAdder totalInputSize = new LongAdder();
@@ -509,7 +517,7 @@ public class Compactor extends AbstractServer
 
         Thread compactionThread = Threads.createThread(
             "Compaction job for tablet " + job.getExtent().toString(), new Runnable() {
-              
+
               @Override
               public void run() {
                 try {
@@ -542,7 +550,7 @@ public class Compactor extends AbstractServer
 
                   LOG.info("Starting compactor");
                   started.countDown();
-                  
+
                   org.apache.accumulo.server.compaction.CompactionStats stat = compactor.call();
                   CompactionStats cs = new CompactionStats();
                   cs.setEntriesRead(stat.getEntriesRead());
@@ -551,7 +559,8 @@ public class Compactor extends AbstractServer
                   jobHolder.setStats(cs);
                   LOG.info("Compaction completed successfully");
                   // Update state when completed
-                  updateCompactionState(job, CompactionState.SUCCEEDED, "Compaction completed successfully");
+                  updateCompactionState(job, CompactionState.SUCCEEDED,
+                      "Compaction completed successfully");
                 } catch (Exception e) {
                   LOG.error("Compaction failed", e);
                   err.set(e);
@@ -595,14 +604,14 @@ public class Compactor extends AbstractServer
             LOG.error(
                 "Compactor thread was interrupted waiting for compaction to finish, cancelling job",
                 e);
-            cancel(job);
+            cancel(job.getExternalCompactionId());
           }
 
         } catch (InterruptedException e1) {
           LOG.error(
               "Compactor thread was interrupted waiting for compaction to start, cancelling job",
               e1);
-          cancel(job);
+          cancel(job.getExternalCompactionId());
         }
 
         if (compactionThread.isInterrupted()) {
@@ -612,7 +621,8 @@ public class Compactor extends AbstractServer
 
         Throwable thrown = err.get();
         if (thrown != null) {
-          updateCompactionState(job, CompactionState.FAILED, "Compaction failed due to: " + thrown.getMessage());
+          updateCompactionState(job, CompactionState.FAILED,
+              "Compaction failed due to: " + thrown.getMessage());
         }
       }
 

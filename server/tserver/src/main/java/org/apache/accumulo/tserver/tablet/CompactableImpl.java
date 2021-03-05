@@ -30,6 +30,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -46,6 +48,7 @@ import org.apache.accumulo.core.logging.TabletLogger;
 import org.apache.accumulo.core.master.thrift.TabletLoadState;
 import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
+import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher.DispatchParameters;
@@ -61,7 +64,9 @@ import org.apache.accumulo.server.compaction.Compactor.CompactionCanceledExcepti
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionManager;
+import org.apache.accumulo.tserver.compactions.ExternalCompactionJob;
 import org.apache.accumulo.tserver.managermessage.TabletStatusMessage;
+import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -540,29 +545,34 @@ public class CompactableImpl implements Compactable {
     }
   }
 
-  @Override
-  public void compact(CompactionServiceId service, CompactionJob job, RateLimiter readLimiter,
-      RateLimiter writeLimiter, long queuedTime) {
-
-    Set<StoredTabletFile> jobFiles = job.getFiles().stream()
-        .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
-
+  private static class CompactionInfo {
+    Set<StoredTabletFile> jobFiles;
     Long compactionId = null;
     Long checkCompactionId = null;
     boolean propogateDeletes = true;
     CompactionHelper localHelper;
     List<IteratorSetting> iters = List.of();
     CompactionConfig localCompactionCfg;
+    public TabletFile compactTmpName;
+    public CompactionJob job;
+    public TabletFile newFile;
+  }
+
+  private CompactionInfo reserveFilesForCompaction(CompactionServiceId service, CompactionJob job) {
+    CompactionInfo cInfo = new CompactionInfo();
+
+    Set<StoredTabletFile> jobFiles = job.getFiles().stream()
+        .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
 
     if (job.getKind() == CompactionKind.USER)
       checkIfUserCompactionCanceled();
 
     synchronized (this) {
       if (closed)
-        return;
+        return null;
 
       if (!service.equals(getConfiguredService(job.getKind())))
-        return;
+        return null;
 
       switch (selectStatus) {
         case NEW:
@@ -570,24 +580,24 @@ public class CompactableImpl implements Compactable {
           log.trace(
               "Ignoring compaction because files are being selected for user compaction {} {}",
               getExtent(), job);
-          return;
+          return null;
         case SELECTED: {
           if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
             if (selectKind == job.getKind()) {
               if (!selectedFiles.containsAll(jobFiles)) {
                 log.error("Ignoring {} compaction that does not contain selected files {} {} {}",
                     job.getKind(), getExtent(), asFileNames(selectedFiles), asFileNames(jobFiles));
-                return;
+                return null;
               }
             } else {
               log.trace("Ingoring {} compaction because not selected kind {}", job.getKind(),
                   getExtent());
-              return;
+              return null;
             }
           } else if (!Collections.disjoint(selectedFiles, jobFiles)) {
             log.trace("Ingoring compaction that overlaps with selected files {} {} {}", getExtent(),
                 job.getKind(), asFileNames(Sets.intersection(selectedFiles, jobFiles)));
-            return;
+            return null;
           }
           break;
         }
@@ -596,7 +606,7 @@ public class CompactableImpl implements Compactable {
           if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
             log.trace("Ignoring {} compaction because selectStatus is {} for {}", job.getKind(),
                 selectStatus, getExtent());
-            return;
+            return null;
           }
           break;
         }
@@ -608,7 +618,7 @@ public class CompactableImpl implements Compactable {
         allCompactingFiles.addAll(jobFiles);
         runnningJobs.add(job);
       } else {
-        return;
+        return null;
       }
 
       compactionRunning = !allCompactingFiles.isEmpty();
@@ -618,30 +628,66 @@ public class CompactableImpl implements Compactable {
         case USER:
           Preconditions.checkState(selectStatus == SpecialStatus.SELECTED);
           if (job.getKind() == selectKind && selectedAll && jobFiles.containsAll(selectedFiles)) {
-            propogateDeletes = false;
+            cInfo.propogateDeletes = false;
           }
           break;
         default:
           if (((CompactionJobImpl) job).selectedAll()) {
             // At the time when the job was created all files were selected, so deletes can be
             // dropped.
-            propogateDeletes = false;
+            cInfo.propogateDeletes = false;
           }
       }
 
       if (job.getKind() == CompactionKind.USER && selectKind == job.getKind()
           && selectedFiles.equals(jobFiles)) {
-        compactionId = this.compactionId;
+        cInfo.compactionId = this.compactionId;
       }
 
       if (job.getKind() == CompactionKind.USER) {
-        iters = compactionConfig.getIterators();
-        checkCompactionId = this.compactionId;
+        cInfo.iters = compactionConfig.getIterators();
+        cInfo.checkCompactionId = this.compactionId;
       }
 
-      localHelper = this.chelper;
-      localCompactionCfg = this.compactionConfig;
+      cInfo.localHelper = this.chelper;
+      cInfo.localCompactionCfg = this.compactionConfig;
     }
+
+    return cInfo;
+  }
+
+  private void completeCompaction(CompactionJob job, Set<StoredTabletFile> jobFiles,
+      StoredTabletFile metaFile) {
+    synchronized (this) {
+      Preconditions.checkState(allCompactingFiles.removeAll(jobFiles));
+      Preconditions.checkState(runnningJobs.remove(job));
+      compactionRunning = !allCompactingFiles.isEmpty();
+
+      if (allCompactingFiles.isEmpty()) {
+        notifyAll();
+      }
+
+      if (metaFile != null) {
+        choppedFiles.add(metaFile);
+      }
+    }
+
+    checkifChopComplete(tablet.getDatafiles().keySet());
+
+    if ((job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR)
+        && metaFile != null)
+      selectedCompactionCompleted(job, jobFiles, metaFile);
+    else
+      selectFiles();
+  }
+
+  @Override
+  public void compact(CompactionServiceId service, CompactionJob job, RateLimiter readLimiter,
+      RateLimiter writeLimiter, long queuedTime) {
+
+    CompactionInfo cInfo = reserveFilesForCompaction(service, job);
+    if (cInfo == null)
+      return;
 
     StoredTabletFile metaFile = null;
     long startTime = System.currentTimeMillis();
@@ -649,12 +695,13 @@ public class CompactableImpl implements Compactable {
     CompactionStats stats = new CompactionStats();
     try {
 
-      TabletLogger.compacting(getExtent(), job, localCompactionCfg);
+      TabletLogger.compacting(getExtent(), job, cInfo.localCompactionCfg);
       tablet.incrementStatusMajor();
 
-      metaFile = CompactableUtils.compact(tablet, job, jobFiles, compactionId, propogateDeletes,
-          localHelper, iters, new CompactionCheck(service, job.getKind(), checkCompactionId),
-          readLimiter, writeLimiter, stats);
+      metaFile = CompactableUtils.compact(tablet, job, cInfo.jobFiles, cInfo.compactionId,
+          cInfo.propogateDeletes, cInfo.localHelper, cInfo.iters,
+          new CompactionCheck(service, job.getKind(), cInfo.checkCompactionId), readLimiter,
+          writeLimiter, stats);
 
       TabletLogger.compacted(getExtent(), job, metaFile);
 
@@ -665,29 +712,64 @@ public class CompactableImpl implements Compactable {
       metaFile = null;
       throw new RuntimeException(e);
     } finally {
-      synchronized (this) {
-        Preconditions.checkState(allCompactingFiles.removeAll(jobFiles));
-        Preconditions.checkState(runnningJobs.remove(job));
-        compactionRunning = !allCompactingFiles.isEmpty();
-
-        if (allCompactingFiles.isEmpty()) {
-          notifyAll();
-        }
-
-        if (metaFile != null) {
-          choppedFiles.add(metaFile);
-        }
-      }
-
-      checkifChopComplete(tablet.getDatafiles().keySet());
-
-      if ((job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR)
-          && metaFile != null)
-        selectedCompactionCompleted(job, jobFiles, metaFile);
-      else
-        selectFiles();
-
+      completeCompaction(job, cInfo.jobFiles, metaFile);
+      // TODO should this be in completeCompaction
       tablet.updateTimer(MAJOR, queuedTime, startTime, stats.getEntriesRead(), metaFile == null);
+    }
+  }
+
+  // TODO move to top of class
+  private Map<UUID,CompactionInfo> externalCompactions = new ConcurrentHashMap<>();
+
+  @Override
+  public ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service,
+      CompactionJob job, String compactorId) {
+
+    CompactionInfo cInfo = reserveFilesForCompaction(service, job);
+    if (cInfo == null)
+      return null;
+
+    // TODO add external compaction info to metadata table
+    try {
+      // TODO share code w/ CompactableUtil and/or move there
+      cInfo.newFile = tablet.getNextMapFilename(!cInfo.propogateDeletes ? "A" : "C");
+      cInfo.compactTmpName = new TabletFile(new Path(cInfo.newFile.getMetaInsert() + "_tmp"));
+
+      UUID externalCompactionId = UUID.randomUUID();
+
+      cInfo.job = job;
+
+      externalCompactions.put(externalCompactionId, cInfo);
+
+      // TODO because this is an RPC the return may never get to the caller... however the caller
+      // may be alive.... maybe the caller can set the externalCompactionId it working on in ZK
+      return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, cInfo.compactTmpName,
+          getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters);
+
+    } catch (Exception e) {
+      // TODO unreserve files for compaction!
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Override
+  public void commitExternalCompaction(UUID extCompactionId, long fileSize, long entries) {
+    // TODO double check w/ java docs that only one thread can remove
+    CompactionInfo cInfo = externalCompactions.remove(extCompactionId);
+
+    if (cInfo != null) {
+      // TODO do a sanity check that files exists in dfs?
+      StoredTabletFile metaFile = null;
+      try {
+        metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(cInfo.jobFiles,
+            cInfo.compactTmpName, cInfo.newFile, compactionId,
+            new DataFileValue(fileSize, entries));
+      } catch (Exception e) {
+        metaFile = null;
+        throw new RuntimeException(e);
+      } finally {
+        completeCompaction(cInfo.job, cInfo.jobFiles, metaFile);
+      }
     }
   }
 

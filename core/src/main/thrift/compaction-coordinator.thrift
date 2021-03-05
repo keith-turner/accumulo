@@ -41,7 +41,7 @@ enum CompactionState {
 
 struct Status {
   1:i64 timestamp
-  2:i64 compactionId
+  2:string externalCompactionId
   3:string compactor
   4:CompactionState state
   5:string message
@@ -70,7 +70,7 @@ service CompactionCoordinator {
   /*
    * Called by Compactor to get the next compaction job
    */
-  tabletserver.CompactionJob getCompactionJob(
+  tabletserver.TExternalCompactionJob getCompactionJob(
     1:string queueName
     2:string compactor
   )
@@ -79,7 +79,7 @@ service CompactionCoordinator {
    * Called by Compactor on successful completion of compaction job
    */
   void compactionCompleted(
-    1:tabletserver.CompactionJob job
+    1:string externalCompactionId
     2:tabletserver.CompactionStats stats
   )
      
@@ -87,11 +87,15 @@ service CompactionCoordinator {
    * Called by Compactor to update the Coordinator with the state of the compaction
    */
   void updateCompactionStatus(
-    1:tabletserver.CompactionJob compaction
+    1:string externalCompactionId
     2:CompactionState state
     3:string message
     4:i64 timestamp
   )
+  
+  /*
+   *  TODO need a function to report failed compactions
+   */
 
 }
 
@@ -101,7 +105,7 @@ service Compactor {
    * Called by Coordinator to instruct the Compactor to stop working on the compaction.
    */
   void cancel(
-    1:tabletserver.CompactionJob compaction
+    1:string externalCompactionId
   )
 
 }

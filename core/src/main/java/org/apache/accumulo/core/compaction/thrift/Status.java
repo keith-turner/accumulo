@@ -29,7 +29,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("Status");
 
   private static final org.apache.thrift.protocol.TField TIMESTAMP_FIELD_DESC = new org.apache.thrift.protocol.TField("timestamp", org.apache.thrift.protocol.TType.I64, (short)1);
-  private static final org.apache.thrift.protocol.TField COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("compactionId", org.apache.thrift.protocol.TType.I64, (short)2);
+  private static final org.apache.thrift.protocol.TField EXTERNAL_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("externalCompactionId", org.apache.thrift.protocol.TType.STRING, (short)2);
   private static final org.apache.thrift.protocol.TField COMPACTOR_FIELD_DESC = new org.apache.thrift.protocol.TField("compactor", org.apache.thrift.protocol.TType.STRING, (short)3);
   private static final org.apache.thrift.protocol.TField STATE_FIELD_DESC = new org.apache.thrift.protocol.TField("state", org.apache.thrift.protocol.TType.I32, (short)4);
   private static final org.apache.thrift.protocol.TField MESSAGE_FIELD_DESC = new org.apache.thrift.protocol.TField("message", org.apache.thrift.protocol.TType.STRING, (short)5);
@@ -38,7 +38,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new StatusTupleSchemeFactory();
 
   public long timestamp; // required
-  public long compactionId; // required
+  public @org.apache.thrift.annotation.Nullable java.lang.String externalCompactionId; // required
   public @org.apache.thrift.annotation.Nullable java.lang.String compactor; // required
   /**
    * 
@@ -50,7 +50,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     TIMESTAMP((short)1, "timestamp"),
-    COMPACTION_ID((short)2, "compactionId"),
+    EXTERNAL_COMPACTION_ID((short)2, "externalCompactionId"),
     COMPACTOR((short)3, "compactor"),
     /**
      * 
@@ -75,8 +75,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       switch(fieldId) {
         case 1: // TIMESTAMP
           return TIMESTAMP;
-        case 2: // COMPACTION_ID
-          return COMPACTION_ID;
+        case 2: // EXTERNAL_COMPACTION_ID
+          return EXTERNAL_COMPACTION_ID;
         case 3: // COMPACTOR
           return COMPACTOR;
         case 4: // STATE
@@ -125,15 +125,14 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
 
   // isset id assignments
   private static final int __TIMESTAMP_ISSET_ID = 0;
-  private static final int __COMPACTIONID_ISSET_ID = 1;
   private byte __isset_bitfield = 0;
   public static final java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
     java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new java.util.EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
     tmpMap.put(_Fields.TIMESTAMP, new org.apache.thrift.meta_data.FieldMetaData("timestamp", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
-    tmpMap.put(_Fields.COMPACTION_ID, new org.apache.thrift.meta_data.FieldMetaData("compactionId", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
+    tmpMap.put(_Fields.EXTERNAL_COMPACTION_ID, new org.apache.thrift.meta_data.FieldMetaData("externalCompactionId", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     tmpMap.put(_Fields.COMPACTOR, new org.apache.thrift.meta_data.FieldMetaData("compactor", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     tmpMap.put(_Fields.STATE, new org.apache.thrift.meta_data.FieldMetaData("state", org.apache.thrift.TFieldRequirementType.DEFAULT, 
@@ -149,7 +148,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
 
   public Status(
     long timestamp,
-    long compactionId,
+    java.lang.String externalCompactionId,
     java.lang.String compactor,
     CompactionState state,
     java.lang.String message)
@@ -157,8 +156,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     this();
     this.timestamp = timestamp;
     setTimestampIsSet(true);
-    this.compactionId = compactionId;
-    setCompactionIdIsSet(true);
+    this.externalCompactionId = externalCompactionId;
     this.compactor = compactor;
     this.state = state;
     this.message = message;
@@ -170,7 +168,9 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   public Status(Status other) {
     __isset_bitfield = other.__isset_bitfield;
     this.timestamp = other.timestamp;
-    this.compactionId = other.compactionId;
+    if (other.isSetExternalCompactionId()) {
+      this.externalCompactionId = other.externalCompactionId;
+    }
     if (other.isSetCompactor()) {
       this.compactor = other.compactor;
     }
@@ -190,8 +190,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   public void clear() {
     setTimestampIsSet(false);
     this.timestamp = 0;
-    setCompactionIdIsSet(false);
-    this.compactionId = 0;
+    this.externalCompactionId = null;
     this.compactor = null;
     this.state = null;
     this.message = null;
@@ -220,27 +219,29 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __TIMESTAMP_ISSET_ID, value);
   }
 
-  public long getCompactionId() {
-    return this.compactionId;
+  @org.apache.thrift.annotation.Nullable
+  public java.lang.String getExternalCompactionId() {
+    return this.externalCompactionId;
   }
 
-  public Status setCompactionId(long compactionId) {
-    this.compactionId = compactionId;
-    setCompactionIdIsSet(true);
+  public Status setExternalCompactionId(@org.apache.thrift.annotation.Nullable java.lang.String externalCompactionId) {
+    this.externalCompactionId = externalCompactionId;
     return this;
   }
 
-  public void unsetCompactionId() {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __COMPACTIONID_ISSET_ID);
+  public void unsetExternalCompactionId() {
+    this.externalCompactionId = null;
   }
 
-  /** Returns true if field compactionId is set (has been assigned a value) and false otherwise */
-  public boolean isSetCompactionId() {
-    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __COMPACTIONID_ISSET_ID);
+  /** Returns true if field externalCompactionId is set (has been assigned a value) and false otherwise */
+  public boolean isSetExternalCompactionId() {
+    return this.externalCompactionId != null;
   }
 
-  public void setCompactionIdIsSet(boolean value) {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __COMPACTIONID_ISSET_ID, value);
+  public void setExternalCompactionIdIsSet(boolean value) {
+    if (!value) {
+      this.externalCompactionId = null;
+    }
   }
 
   @org.apache.thrift.annotation.Nullable
@@ -336,11 +337,11 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       }
       break;
 
-    case COMPACTION_ID:
+    case EXTERNAL_COMPACTION_ID:
       if (value == null) {
-        unsetCompactionId();
+        unsetExternalCompactionId();
       } else {
-        setCompactionId((java.lang.Long)value);
+        setExternalCompactionId((java.lang.String)value);
       }
       break;
 
@@ -377,8 +378,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     case TIMESTAMP:
       return getTimestamp();
 
-    case COMPACTION_ID:
-      return getCompactionId();
+    case EXTERNAL_COMPACTION_ID:
+      return getExternalCompactionId();
 
     case COMPACTOR:
       return getCompactor();
@@ -402,8 +403,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     switch (field) {
     case TIMESTAMP:
       return isSetTimestamp();
-    case COMPACTION_ID:
-      return isSetCompactionId();
+    case EXTERNAL_COMPACTION_ID:
+      return isSetExternalCompactionId();
     case COMPACTOR:
       return isSetCompactor();
     case STATE:
@@ -438,12 +439,12 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         return false;
     }
 
-    boolean this_present_compactionId = true;
-    boolean that_present_compactionId = true;
-    if (this_present_compactionId || that_present_compactionId) {
-      if (!(this_present_compactionId && that_present_compactionId))
+    boolean this_present_externalCompactionId = true && this.isSetExternalCompactionId();
+    boolean that_present_externalCompactionId = true && that.isSetExternalCompactionId();
+    if (this_present_externalCompactionId || that_present_externalCompactionId) {
+      if (!(this_present_externalCompactionId && that_present_externalCompactionId))
         return false;
-      if (this.compactionId != that.compactionId)
+      if (!this.externalCompactionId.equals(that.externalCompactionId))
         return false;
     }
 
@@ -483,7 +484,9 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
 
     hashCode = hashCode * 8191 + org.apache.thrift.TBaseHelper.hashCode(timestamp);
 
-    hashCode = hashCode * 8191 + org.apache.thrift.TBaseHelper.hashCode(compactionId);
+    hashCode = hashCode * 8191 + ((isSetExternalCompactionId()) ? 131071 : 524287);
+    if (isSetExternalCompactionId())
+      hashCode = hashCode * 8191 + externalCompactionId.hashCode();
 
     hashCode = hashCode * 8191 + ((isSetCompactor()) ? 131071 : 524287);
     if (isSetCompactor())
@@ -518,12 +521,12 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         return lastComparison;
       }
     }
-    lastComparison = java.lang.Boolean.valueOf(isSetCompactionId()).compareTo(other.isSetCompactionId());
+    lastComparison = java.lang.Boolean.valueOf(isSetExternalCompactionId()).compareTo(other.isSetExternalCompactionId());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetCompactionId()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.compactionId, other.compactionId);
+    if (isSetExternalCompactionId()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.externalCompactionId, other.externalCompactionId);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -583,8 +586,12 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     sb.append(this.timestamp);
     first = false;
     if (!first) sb.append(", ");
-    sb.append("compactionId:");
-    sb.append(this.compactionId);
+    sb.append("externalCompactionId:");
+    if (this.externalCompactionId == null) {
+      sb.append("null");
+    } else {
+      sb.append(this.externalCompactionId);
+    }
     first = false;
     if (!first) sb.append(", ");
     sb.append("compactor:");
@@ -663,10 +670,10 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 2: // COMPACTION_ID
-            if (schemeField.type == org.apache.thrift.protocol.TType.I64) {
-              struct.compactionId = iprot.readI64();
-              struct.setCompactionIdIsSet(true);
+          case 2: // EXTERNAL_COMPACTION_ID
+            if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+              struct.externalCompactionId = iprot.readString();
+              struct.setExternalCompactionIdIsSet(true);
             } else { 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
@@ -713,9 +720,11 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       oprot.writeFieldBegin(TIMESTAMP_FIELD_DESC);
       oprot.writeI64(struct.timestamp);
       oprot.writeFieldEnd();
-      oprot.writeFieldBegin(COMPACTION_ID_FIELD_DESC);
-      oprot.writeI64(struct.compactionId);
-      oprot.writeFieldEnd();
+      if (struct.externalCompactionId != null) {
+        oprot.writeFieldBegin(EXTERNAL_COMPACTION_ID_FIELD_DESC);
+        oprot.writeString(struct.externalCompactionId);
+        oprot.writeFieldEnd();
+      }
       if (struct.compactor != null) {
         oprot.writeFieldBegin(COMPACTOR_FIELD_DESC);
         oprot.writeString(struct.compactor);
@@ -752,7 +761,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       if (struct.isSetTimestamp()) {
         optionals.set(0);
       }
-      if (struct.isSetCompactionId()) {
+      if (struct.isSetExternalCompactionId()) {
         optionals.set(1);
       }
       if (struct.isSetCompactor()) {
@@ -768,8 +777,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       if (struct.isSetTimestamp()) {
         oprot.writeI64(struct.timestamp);
       }
-      if (struct.isSetCompactionId()) {
-        oprot.writeI64(struct.compactionId);
+      if (struct.isSetExternalCompactionId()) {
+        oprot.writeString(struct.externalCompactionId);
       }
       if (struct.isSetCompactor()) {
         oprot.writeString(struct.compactor);
@@ -791,8 +800,8 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         struct.setTimestampIsSet(true);
       }
       if (incoming.get(1)) {
-        struct.compactionId = iprot.readI64();
-        struct.setCompactionIdIsSet(true);
+        struct.externalCompactionId = iprot.readString();
+        struct.setExternalCompactionIdIsSet(true);
       }
       if (incoming.get(2)) {
         struct.compactor = iprot.readString();

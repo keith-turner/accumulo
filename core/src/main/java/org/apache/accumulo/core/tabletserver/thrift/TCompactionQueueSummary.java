@@ -25,15 +25,15 @@
 package org.apache.accumulo.core.tabletserver.thrift;
 
 @SuppressWarnings({"cast", "rawtypes", "serial", "unchecked", "unused"})
-public class CompactionQueueSummary implements org.apache.thrift.TBase<CompactionQueueSummary, CompactionQueueSummary._Fields>, java.io.Serializable, Cloneable, Comparable<CompactionQueueSummary> {
-  private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("CompactionQueueSummary");
+public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompactionQueueSummary, TCompactionQueueSummary._Fields>, java.io.Serializable, Cloneable, Comparable<TCompactionQueueSummary> {
+  private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("TCompactionQueueSummary");
 
   private static final org.apache.thrift.protocol.TField QUEUE_FIELD_DESC = new org.apache.thrift.protocol.TField("queue", org.apache.thrift.protocol.TType.STRING, (short)1);
   private static final org.apache.thrift.protocol.TField PRIORITY_FIELD_DESC = new org.apache.thrift.protocol.TField("priority", org.apache.thrift.protocol.TType.I64, (short)2);
   private static final org.apache.thrift.protocol.TField COUNT_FIELD_DESC = new org.apache.thrift.protocol.TField("count", org.apache.thrift.protocol.TType.I32, (short)3);
 
-  private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new CompactionQueueSummaryStandardSchemeFactory();
-  private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new CompactionQueueSummaryTupleSchemeFactory();
+  private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new TCompactionQueueSummaryStandardSchemeFactory();
+  private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new TCompactionQueueSummaryTupleSchemeFactory();
 
   public @org.apache.thrift.annotation.Nullable java.lang.String queue; // required
   public long priority; // required
@@ -119,13 +119,13 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
     tmpMap.put(_Fields.COUNT, new org.apache.thrift.meta_data.FieldMetaData("count", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32)));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
-    org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(CompactionQueueSummary.class, metaDataMap);
+    org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(TCompactionQueueSummary.class, metaDataMap);
   }
 
-  public CompactionQueueSummary() {
+  public TCompactionQueueSummary() {
   }
 
-  public CompactionQueueSummary(
+  public TCompactionQueueSummary(
     java.lang.String queue,
     long priority,
     int count)
@@ -141,7 +141,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
   /**
    * Performs a deep copy on <i>other</i>.
    */
-  public CompactionQueueSummary(CompactionQueueSummary other) {
+  public TCompactionQueueSummary(TCompactionQueueSummary other) {
     __isset_bitfield = other.__isset_bitfield;
     if (other.isSetQueue()) {
       this.queue = other.queue;
@@ -150,8 +150,8 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
     this.count = other.count;
   }
 
-  public CompactionQueueSummary deepCopy() {
-    return new CompactionQueueSummary(this);
+  public TCompactionQueueSummary deepCopy() {
+    return new TCompactionQueueSummary(this);
   }
 
   @Override
@@ -168,7 +168,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
     return this.queue;
   }
 
-  public CompactionQueueSummary setQueue(@org.apache.thrift.annotation.Nullable java.lang.String queue) {
+  public TCompactionQueueSummary setQueue(@org.apache.thrift.annotation.Nullable java.lang.String queue) {
     this.queue = queue;
     return this;
   }
@@ -192,7 +192,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
     return this.priority;
   }
 
-  public CompactionQueueSummary setPriority(long priority) {
+  public TCompactionQueueSummary setPriority(long priority) {
     this.priority = priority;
     setPriorityIsSet(true);
     return this;
@@ -215,7 +215,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
     return this.count;
   }
 
-  public CompactionQueueSummary setCount(int count) {
+  public TCompactionQueueSummary setCount(int count) {
     this.count = count;
     setCountIsSet(true);
     return this;
@@ -300,12 +300,12 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
   public boolean equals(java.lang.Object that) {
     if (that == null)
       return false;
-    if (that instanceof CompactionQueueSummary)
-      return this.equals((CompactionQueueSummary)that);
+    if (that instanceof TCompactionQueueSummary)
+      return this.equals((TCompactionQueueSummary)that);
     return false;
   }
 
-  public boolean equals(CompactionQueueSummary that) {
+  public boolean equals(TCompactionQueueSummary that) {
     if (that == null)
       return false;
     if (this == that)
@@ -357,7 +357,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
   }
 
   @Override
-  public int compareTo(CompactionQueueSummary other) {
+  public int compareTo(TCompactionQueueSummary other) {
     if (!getClass().equals(other.getClass())) {
       return getClass().getName().compareTo(other.getClass().getName());
     }
@@ -412,7 +412,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
 
   @Override
   public java.lang.String toString() {
-    java.lang.StringBuilder sb = new java.lang.StringBuilder("CompactionQueueSummary(");
+    java.lang.StringBuilder sb = new java.lang.StringBuilder("TCompactionQueueSummary(");
     boolean first = true;
 
     sb.append("queue:");
@@ -457,15 +457,15 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
     }
   }
 
-  private static class CompactionQueueSummaryStandardSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
-    public CompactionQueueSummaryStandardScheme getScheme() {
-      return new CompactionQueueSummaryStandardScheme();
+  private static class TCompactionQueueSummaryStandardSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
+    public TCompactionQueueSummaryStandardScheme getScheme() {
+      return new TCompactionQueueSummaryStandardScheme();
     }
   }
 
-  private static class CompactionQueueSummaryStandardScheme extends org.apache.thrift.scheme.StandardScheme<CompactionQueueSummary> {
+  private static class TCompactionQueueSummaryStandardScheme extends org.apache.thrift.scheme.StandardScheme<TCompactionQueueSummary> {
 
-    public void read(org.apache.thrift.protocol.TProtocol iprot, CompactionQueueSummary struct) throws org.apache.thrift.TException {
+    public void read(org.apache.thrift.protocol.TProtocol iprot, TCompactionQueueSummary struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TField schemeField;
       iprot.readStructBegin();
       while (true)
@@ -510,7 +510,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
       struct.validate();
     }
 
-    public void write(org.apache.thrift.protocol.TProtocol oprot, CompactionQueueSummary struct) throws org.apache.thrift.TException {
+    public void write(org.apache.thrift.protocol.TProtocol oprot, TCompactionQueueSummary struct) throws org.apache.thrift.TException {
       struct.validate();
 
       oprot.writeStructBegin(STRUCT_DESC);
@@ -531,16 +531,16 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
 
   }
 
-  private static class CompactionQueueSummaryTupleSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
-    public CompactionQueueSummaryTupleScheme getScheme() {
-      return new CompactionQueueSummaryTupleScheme();
+  private static class TCompactionQueueSummaryTupleSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
+    public TCompactionQueueSummaryTupleScheme getScheme() {
+      return new TCompactionQueueSummaryTupleScheme();
     }
   }
 
-  private static class CompactionQueueSummaryTupleScheme extends org.apache.thrift.scheme.TupleScheme<CompactionQueueSummary> {
+  private static class TCompactionQueueSummaryTupleScheme extends org.apache.thrift.scheme.TupleScheme<TCompactionQueueSummary> {
 
     @Override
-    public void write(org.apache.thrift.protocol.TProtocol prot, CompactionQueueSummary struct) throws org.apache.thrift.TException {
+    public void write(org.apache.thrift.protocol.TProtocol prot, TCompactionQueueSummary struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol oprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
       java.util.BitSet optionals = new java.util.BitSet();
       if (struct.isSetQueue()) {
@@ -565,7 +565,7 @@ public class CompactionQueueSummary implements org.apache.thrift.TBase<Compactio
     }
 
     @Override
-    public void read(org.apache.thrift.protocol.TProtocol prot, CompactionQueueSummary struct) throws org.apache.thrift.TException {
+    public void read(org.apache.thrift.protocol.TProtocol prot, TCompactionQueueSummary struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
       java.util.BitSet incoming = iprot.readBitSet(3);
       if (incoming.get(0)) {

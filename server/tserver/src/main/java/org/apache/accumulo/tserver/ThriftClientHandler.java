@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -104,7 +105,9 @@ import org.apache.accumulo.core.tabletserver.thrift.ActiveScan;
 import org.apache.accumulo.core.tabletserver.thrift.ConstraintViolationException;
 import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
 import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
 import org.apache.accumulo.core.tabletserver.thrift.TDurability;
+import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.TSampleNotPresentException;
 import org.apache.accumulo.core.tabletserver.thrift.TSamplerConfiguration;
 import org.apache.accumulo.core.tabletserver.thrift.TUnloadTabletGoal;
@@ -1653,6 +1656,52 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
     }
 
     return ret;
+  }
+
+  @Override
+  public List<TCompactionQueueSummary> getCompactionQueueInfo(TInfo tinfo, TCredentials credentials)
+      throws ThriftSecurityException, TException {
+
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
+
+    return server.getCompactionManager().getCompactionQueueSummaries();
+  }
+
+  @Override
+  public TExternalCompactionJob reserveCompactionJob(TInfo tinfo, TCredentials credentials,
+      String queueName, long priority, String compactor)
+      throws ThriftSecurityException, TException {
+
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
+
+    var extCompaction =
+        server.getCompactionManager().reserveExternalCompaction(queueName, priority, compactor);
+
+    if (extCompaction != null) {
+      return extCompaction.toThrift();
+    }
+
+    return null;
+  }
+
+  @Override
+  public void compactionJobFinished(TInfo tinfo, TCredentials credentials,
+      String externalCompactionId, long fileSize, long entries)
+      throws ThriftSecurityException, TException {
+
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
+
+    server.getCompactionManager().commitExternalCompaction(UUID.fromString(externalCompactionId),
+        server.getOnlineTablets(), fileSize, entries);
   }
 
   @Override
