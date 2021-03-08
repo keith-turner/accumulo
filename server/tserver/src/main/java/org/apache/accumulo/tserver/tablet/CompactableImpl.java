@@ -795,7 +795,7 @@ public class CompactableImpl implements Compactable {
       var hints = tmpHints;
       debugHints = hints;
 
-      var directives = dispatcher.dispatch(new DispatchParameters() {
+      var dispatch = dispatcher.dispatch(new DispatchParameters() {
 
         @Override
         public ServiceEnvironment getServiceEnv() {
@@ -818,7 +818,7 @@ public class CompactableImpl implements Compactable {
         }
       });
 
-      return directives.getService();
+      return dispatch.getService();
     } catch (RuntimeException e) {
       log.error("Failed to dispatch compaction {} kind:{} hints:{}, falling back to {} service.",
           getExtent(), kind, debugHints, CompactionManager.DEFAULT_SERVICE, e);
