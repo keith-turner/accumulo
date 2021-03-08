@@ -16,30 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.monitor.rest.tservers;
+package org.apache.accumulo.core.spi.crypto;
 
-import jakarta.xml.bind.annotation.XmlAttribute;
+import java.io.InputStream;
 
-/**
- * Generates a tserver shutting down
- *
- * @since 2.0.0
- */
-public class ServerShuttingDownInformation {
-
-  // Variable names become JSON keys
-  @XmlAttribute
-  public String id;
-
-  public ServerShuttingDownInformation() {}
-
-  /**
-   * Stores ID of the tserver shutting down
-   *
-   * @param id
-   *          ID of the tserver shutting down
-   */
-  public ServerShuttingDownInformation(String id) {
-    this.id = id;
+public class NoFileDecrypter implements FileDecrypter {
+  @Override
+  public InputStream decryptStream(InputStream inputStream) throws CryptoService.CryptoException {
+    return inputStream;
   }
 }

@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.core.crypto;
 
+import static org.apache.accumulo.core.crypto.CryptoUtils.getFileDecrypter;
 import static org.apache.accumulo.core.file.rfile.RFileTest.getAccumuloConfig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -57,11 +58,9 @@ import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.crypto.CryptoServiceFactory.ClassloaderType;
 import org.apache.accumulo.core.crypto.streams.NoFlushOutputStream;
-import org.apache.accumulo.core.cryptoImpl.AESCryptoService;
-import org.apache.accumulo.core.cryptoImpl.AESKeyUtils;
-import org.apache.accumulo.core.cryptoImpl.CryptoEnvironmentImpl;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.spi.crypto.AESCryptoService;
 import org.apache.accumulo.core.spi.crypto.CryptoEnvironment;
 import org.apache.accumulo.core.spi.crypto.CryptoEnvironment.Scope;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
@@ -108,10 +107,10 @@ public class CryptoTest {
   public void simpleGCMTest() throws Exception {
     AccumuloConfiguration conf = getAccumuloConfig(CRYPTO_ON_CONF);
 
-    CryptoService cryptoService = new AESCryptoService();
-    cryptoService.init(conf.getAllPropertiesWithPrefix(Property.INSTANCE_CRYPTO_PREFIX));
+    CryptoService cs = new AESCryptoService();
+    cs.init(conf.getAllPropertiesWithPrefix(Property.INSTANCE_CRYPTO_PREFIX));
     CryptoEnvironment encEnv = new CryptoEnvironmentImpl(Scope.RFILE, null);
-    FileEncrypter encrypter = cryptoService.getFileEncrypter(encEnv);
+    FileEncrypter encrypter = cs.getFileEncrypter(encEnv);
     byte[] params = encrypter.getDecryptionParameters();
     assertNotNull(params);
 
@@ -134,9 +133,7 @@ public class CryptoTest {
 
     // decrypt
     ByteArrayInputStream in = new ByteArrayInputStream(cipherText);
-    params = CryptoUtils.readParams(new DataInputStream(in));
-    CryptoEnvironment decEnv = new CryptoEnvironmentImpl(Scope.RFILE, params);
-    FileDecrypter decrypter = cryptoService.getFileDecrypter(decEnv);
+    FileDecrypter decrypter = getFileDecrypter(cs, Scope.RFILE, new DataInputStream(in));
     DataInputStream decrypted = new DataInputStream(decrypter.decryptStream(in));
     String plainText = decrypted.readUTF();
     decrypted.close();
@@ -268,7 +265,7 @@ public class CryptoTest {
       aconf.set(e.getKey(), e.getValue());
     }
     aconf.set(Property.INSTANCE_CRYPTO_SERVICE,
-        "org.apache.accumulo.core.cryptoImpl.AESCryptoService");
+        "org.apache.accumulo.core.spi.crypto.AESCryptoService");
     String configuredClass = aconf.get(Property.INSTANCE_CRYPTO_SERVICE.getKey());
     Class<? extends CryptoService> clazz =
         ClassLoaderUtil.loadClass(configuredClass, CryptoService.class);
@@ -298,7 +295,7 @@ public class CryptoTest {
   @SuppressFBWarnings(value = "CIPHER_INTEGRITY", justification = "CBC is being tested")
   private void verifyKeySizeForCBC(SecureRandom sr, int sizeInBytes)
       throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException {
-    java.security.Key key = AESKeyUtils.generateKey(sr, sizeInBytes);
+    java.security.Key key = AESCryptoService.generateKey(sr, sizeInBytes);
     Cipher.getInstance("AES/CBC/NoPadding").init(Cipher.ENCRYPT_MODE, key);
   }
 
@@ -306,11 +303,11 @@ public class CryptoTest {
   public void testAESKeyUtilsWrapAndUnwrap()
       throws NoSuchAlgorithmException, NoSuchProviderException {
     SecureRandom sr = SecureRandom.getInstance("SHA1PRNG", "SUN");
-    java.security.Key kek = AESKeyUtils.generateKey(sr, 16);
-    java.security.Key fek = AESKeyUtils.generateKey(sr, 16);
-    byte[] wrapped = AESKeyUtils.wrapKey(fek, kek);
+    java.security.Key kek = AESCryptoService.generateKey(sr, 16);
+    java.security.Key fek = AESCryptoService.generateKey(sr, 16);
+    byte[] wrapped = AESCryptoService.wrapKey(fek, kek);
     assertFalse(Arrays.equals(fek.getEncoded(), wrapped));
-    java.security.Key unwrapped = AESKeyUtils.unwrapKey(wrapped, kek);
+    java.security.Key unwrapped = AESCryptoService.unwrapKey(wrapped, kek);
     assertEquals(unwrapped, fek);
   }
 
@@ -318,19 +315,19 @@ public class CryptoTest {
   public void testAESKeyUtilsFailUnwrapWithWrongKEK()
       throws NoSuchAlgorithmException, NoSuchProviderException {
     SecureRandom sr = SecureRandom.getInstance("SHA1PRNG", "SUN");
-    java.security.Key kek = AESKeyUtils.generateKey(sr, 16);
-    java.security.Key fek = AESKeyUtils.generateKey(sr, 16);
+    java.security.Key kek = AESCryptoService.generateKey(sr, 16);
+    java.security.Key fek = AESCryptoService.generateKey(sr, 16);
     byte[] wrongBytes = kek.getEncoded();
     wrongBytes[0]++;
     java.security.Key wrongKek = new SecretKeySpec(wrongBytes, "AES");
 
-    byte[] wrapped = AESKeyUtils.wrapKey(fek, kek);
-    assertThrows(CryptoException.class, () -> AESKeyUtils.unwrapKey(wrapped, wrongKek));
+    byte[] wrapped = AESCryptoService.wrapKey(fek, kek);
+    assertThrows(CryptoException.class, () -> AESCryptoService.unwrapKey(wrapped, wrongKek));
   }
 
   @Test
   public void testAESKeyUtilsLoadKekFromUri() throws IOException {
-    SecretKeySpec fileKey = AESKeyUtils.loadKekFromUri(keyPath);
+    java.security.Key fileKey = AESCryptoService.loadKekFromUri(keyPath);
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
     dos.writeUTF("sixteenbytekey");
@@ -340,13 +337,13 @@ public class CryptoTest {
 
   @Test
   public void testAESKeyUtilsLoadKekFromUriInvalidUri() {
-    assertThrows(CryptoException.class, () -> AESKeyUtils.loadKekFromUri(
+    assertThrows(CryptoException.class, () -> AESCryptoService.loadKekFromUri(
         System.getProperty("user.dir") + "/target/CryptoTest-testkeyfile-doesnt-exist"));
   }
 
   @Test
   public void testAESKeyUtilsLoadKekFromEmptyFile() {
-    assertThrows(CryptoException.class, () -> AESKeyUtils.loadKekFromUri(emptyKeyPath));
+    assertThrows(CryptoException.class, () -> AESCryptoService.loadKekFromUri(emptyKeyPath));
   }
 
   private ArrayList<Key> testData() {
@@ -385,13 +382,9 @@ public class CryptoTest {
 
   private void decrypt(byte[] resultingBytes, Scope scope, String configFile) throws Exception {
     try (DataInputStream dataIn = new DataInputStream(new ByteArrayInputStream(resultingBytes))) {
-      byte[] params = CryptoUtils.readParams(dataIn);
-
       AccumuloConfiguration conf = getAccumuloConfig(configFile);
-      CryptoService cryptoService = CryptoServiceFactory.newInstance(conf, ClassloaderType.JAVA);
-      CryptoEnvironment env = new CryptoEnvironmentImpl(scope, params);
-
-      FileDecrypter decrypter = cryptoService.getFileDecrypter(env);
+      CryptoService cs = CryptoServiceFactory.newInstance(conf, ClassloaderType.JAVA);
+      FileDecrypter decrypter = getFileDecrypter(cs, scope, dataIn);
 
       try (DataInputStream decrypted = new DataInputStream(decrypter.decryptStream(dataIn))) {
         String markerString = decrypted.readUTF();

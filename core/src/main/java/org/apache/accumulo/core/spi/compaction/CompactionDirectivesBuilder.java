@@ -16,30 +16,33 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.monitor.rest.tservers;
+package org.apache.accumulo.core.spi.compaction;
 
-import jakarta.xml.bind.annotation.XmlAttribute;
+import java.util.Objects;
 
 /**
- * Generates a tserver shutting down
- *
- * @since 2.0.0
+ * This class intentionally package private.
  */
-public class ServerShuttingDownInformation {
+class CompactionDirectivesBuilder
+    implements CompactionDirectives.Builder, CompactionDirectives.ServiceBuilder {
 
-  // Variable names become JSON keys
-  @XmlAttribute
-  public String id;
+  private CompactionServiceId service;
 
-  public ServerShuttingDownInformation() {}
-
-  /**
-   * Stores ID of the tserver shutting down
-   *
-   * @param id
-   *          ID of the tserver shutting down
-   */
-  public ServerShuttingDownInformation(String id) {
-    this.id = id;
+  @Override
+  public CompactionDirectives.Builder toService(CompactionServiceId service) {
+    this.service = Objects.requireNonNull(service, "CompactionServiceId cannot be null");
+    return this;
   }
+
+  @Override
+  public CompactionDirectives.Builder toService(String compactionServiceId) {
+    this.service = CompactionServiceId.of(compactionServiceId);
+    return this;
+  }
+
+  @Override
+  public CompactionDirectives build() {
+    return new CompactionDirectivesImpl(service);
+  }
+
 }
