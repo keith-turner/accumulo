@@ -47,26 +47,29 @@ struct Status {
   5:string message
 }
 
+exception UnknownCompactionIdException {}
+
 service CompactionCoordinator {
 
   /*
    * Called by TabletServer to cancel a compaction for a tablet
    */
   void cancelCompaction(
-    1:data.TKeyExtent extent
-    2:string queueName
-    3:i64 priority
-  )
-  
-  /*
-   * Called by TabletServer (or CLI) to get current status of compaction for a tablet
-   */
-  list<Status> getCompactionStatus(
-    1:data.TKeyExtent extent
-    2:string queueName
-    3:i64 priority
+    1:string externalCompactionId
+  ) throws (
+    1:UnknownCompactionIdException e
   )
 
+  /*
+   * Called by Compactor on successful completion of compaction job
+   */
+  void compactionCompleted(
+    1:string externalCompactionId
+    2:tabletserver.CompactionStats stats
+  ) throws (
+    1:UnknownCompactionIdException e
+  )
+  
   /*
    * Called by Compactor to get the next compaction job
    */
@@ -76,11 +79,12 @@ service CompactionCoordinator {
   )
 
   /*
-   * Called by Compactor on successful completion of compaction job
+   * Called by TabletServer (or CLI) to get current status of compaction for a tablet
    */
-  void compactionCompleted(
+  list<Status> getCompactionStatus(
     1:string externalCompactionId
-    2:tabletserver.CompactionStats stats
+  ) throws (
+    1:UnknownCompactionIdException e
   )
      
   /*
@@ -91,6 +95,8 @@ service CompactionCoordinator {
     2:CompactionState state
     3:string message
     4:i64 timestamp
+  ) throws (
+    1:UnknownCompactionIdException e
   )
   
   /*
@@ -106,6 +112,8 @@ service Compactor {
    */
   void cancel(
     1:string externalCompactionId
+  ) throws (
+    1:UnknownCompactionIdException e
   )
 
 }

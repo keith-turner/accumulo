@@ -25,6 +25,36 @@ import org.slf4j.LoggerFactory;
 
 public class RetryableThriftCall<T> {
 
+  public static class RetriesExceededException extends Exception {
+
+    /**
+     * 
+     */
+    private static final long serialVersionUID = 1L;
+
+    public RetriesExceededException() {
+      super();
+    }
+
+    public RetriesExceededException(String message, Throwable cause, boolean enableSuppression,
+        boolean writableStackTrace) {
+      super(message, cause, enableSuppression, writableStackTrace);
+    }
+
+    public RetriesExceededException(String message, Throwable cause) {
+      super(message, cause);
+    }
+
+    public RetriesExceededException(String message) {
+      super(message);
+    }
+
+    public RetriesExceededException(Throwable cause) {
+      super(cause);
+    }
+
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(RetryableThriftCall.class);
   public static final long MAX_WAIT_TIME = 60000;
 
@@ -62,10 +92,11 @@ public class RetryableThriftCall<T> {
    * RuntimeException is thrown when it has exceeded he maxNumRetries parameter.
    *
    * @return T
-   * @throws RuntimeException
-   *           when maximum number of retries has been exceeded
+   * @throws RetriesExceededException
+   *           when maximum number of retries has been exceeded and the cause is set to the last
+   *           TException
    */
-  public T run() {
+  public T run() throws RetriesExceededException {
     long waitTime = start;
     int numRetries = 0;
     T result = null;
@@ -73,12 +104,13 @@ public class RetryableThriftCall<T> {
       try {
         result = function.execute();
       } catch (TException e) {
-        LOG.error("Error in Thrift function talking to Coordinator, retrying in {}ms", waitTime);
+        LOG.error("Error in Thrift function, retrying in {}ms. Error: {}", waitTime,
+            e.getMessage());
         if (!retryForever) {
           numRetries++;
           if (numRetries > maxNumRetries) {
-            throw new RuntimeException(
-                "Maximum number of retries (" + this.maxNumRetries + ") attempted.");
+            throw new RetriesExceededException(
+                "Maximum number of retries (" + this.maxNumRetries + ") attempted.", e);
           }
         }
       }

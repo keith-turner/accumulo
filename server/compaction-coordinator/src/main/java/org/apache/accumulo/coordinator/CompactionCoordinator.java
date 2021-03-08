@@ -38,9 +38,9 @@ import org.apache.accumulo.core.clientImpl.ThriftTransportPool;
 import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.compaction.thrift.Compactor;
 import org.apache.accumulo.core.compaction.thrift.Status;
+import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
@@ -60,6 +60,7 @@ import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.compaction.RetryableThriftCall;
+import org.apache.accumulo.server.compaction.RetryableThriftCall.RetriesExceededException;
 import org.apache.accumulo.server.compaction.RetryableThriftFunction;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
@@ -354,9 +355,8 @@ public class CompactionCoordinator extends AbstractServer
     tserverSet = new LiveTServerSet(getContext(), this);
 
     // TODO: On initial startup contact all running tservers to get information about the
-    // compactions
-    // that are current running in external queues to populate the RUNNING map. This is to handle
-    // the case where the coordinator dies or is restarted at runtime
+    // compactions that are current running in external queues to populate the RUNNING map.
+    // This is to handle the case where the coordinator dies or is restarted at runtime
 
     tserverSet.startListeningForTabletServerChanges();
 
@@ -364,16 +364,21 @@ public class CompactionCoordinator extends AbstractServer
       tserverSet.getCurrentServers().forEach(tsi -> {
         try {
           synchronized (QUEUES) {
-            TabletClientService.Client client = getTabletServerConnection(tsi);
-            // TODO credentials
-            List<TCompactionQueueSummary> summaries = client.getCompactionQueueInfo(null, null);
-            summaries.forEach(summary -> {
-              QueueAndPriority qp =
-                  QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
-              QUEUES.putIfAbsent(qp.getQueue(), new TreeMap<>())
-                  .putIfAbsent(qp.getPriority(), new LinkedHashSet<>()).add(tsi);
-              INDEX.putIfAbsent(tsi, new HashSet<>()).add(qp);
-            });
+            TabletClientService.Client client = null;
+            try {
+              client = getTabletServerConnection(tsi);
+              List<TCompactionQueueSummary> summaries =
+                  client.getCompactionQueueInfo(TraceUtil.traceInfo(), getContext().rpcCreds());
+              summaries.forEach(summary -> {
+                QueueAndPriority qp =
+                    QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
+                QUEUES.putIfAbsent(qp.getQueue(), new TreeMap<>())
+                    .putIfAbsent(qp.getPriority(), new LinkedHashSet<>()).add(tsi);
+                INDEX.putIfAbsent(tsi, new HashSet<>()).add(qp);
+              });
+            } finally {
+              ThriftUtil.returnClient(client);
+            }
           }
         } catch (TException e) {
           LOG.warn("Error getting compaction summaries from tablet server: {}",
@@ -435,7 +440,7 @@ public class CompactionCoordinator extends AbstractServer
     TServerInstance tserver = null;
     Long priority = null;
     synchronized (QUEUES) {
-      TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(queueName.intern());
+      TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(queue);
       if (null != m) {
         while (tserver == null) {
           // Get the first TServerInstance from the highest priority queue
@@ -470,13 +475,17 @@ public class CompactionCoordinator extends AbstractServer
       return null;
     }
 
-    TabletClientService.Client client = getTabletServerConnection(tserver);
-    // TODO credentials
-    TExternalCompactionJob job =
-        client.reserveCompactionJob(null, null, queue, priority, compactorAddress);
-    RUNNING.put(job.getExternalCompactionId(),
-        new RunningCompaction(job, compactorAddress, tserver));
-    return job;
+    TabletClientService.Client client = null;
+    try {
+      client = getTabletServerConnection(tserver);
+      TExternalCompactionJob job = client.reserveCompactionJob(TraceUtil.traceInfo(),
+          getContext().rpcCreds(), queue, priority, compactorAddress);
+      RUNNING.put(job.getExternalCompactionId(),
+          new RunningCompaction(job, compactorAddress, tserver));
+      return job;
+    } finally {
+      ThriftUtil.returnClient(client);
+    }
   }
 
   private TabletClientService.Client getTabletServerConnection(TServerInstance tserver)
@@ -498,31 +507,41 @@ public class CompactionCoordinator extends AbstractServer
    * Called by the TabletServer to cancel the running compaction.
    */
   @Override
-  public void cancelCompaction(TKeyExtent extent, String queueName, long priority)
-      throws TException {
-    RunningCompaction rc = RUNNING.get(null/* compactionId */); // TODO: Need to change thrift
-                                                                // inputs here
+  public void cancelCompaction(String externalCompactionId) throws TException {
+    RunningCompaction rc = RUNNING.get(externalCompactionId);
+    if (null == rc) {
+      throw new UnknownCompactionIdException();
+    }
     HostAndPort compactor = HostAndPort.fromString(rc.getCompactorAddress());
     RetryableThriftCall<Void> cancelThriftCall = new RetryableThriftCall<>(1000,
         RetryableThriftCall.MAX_WAIT_TIME, 0, new RetryableThriftFunction<Void>() {
           @Override
           public Void execute() throws TException {
+            Compactor.Client compactorConnection = null;
             try {
-              getCompactorConnection(compactor).cancel(rc.getJob().getExternalCompactionId());
+              compactorConnection = getCompactorConnection(compactor);
+              compactorConnection.cancel(rc.getJob().getExternalCompactionId());
               return null;
             } catch (TException e) {
               throw e;
+            } finally {
+              ThriftUtil.returnClient(compactorConnection);
             }
           }
         });
-    cancelThriftCall.run();
+    try {
+      cancelThriftCall.run();
+    } catch (RetriesExceededException e) {
+      // TODO: This should not occur as the cancelThriftCall has unlimited retries
+    }
   }
 
   @Override
-  public List<Status> getCompactionStatus(TKeyExtent extent, String queueName, long priority)
-      throws TException {
-    RunningCompaction rc = RUNNING.get(null/* compactionId */); // TODO: Need to change thrift
-                                                                // inputs here
+  public List<Status> getCompactionStatus(String externalCompactionId) throws TException {
+    RunningCompaction rc = RUNNING.get(externalCompactionId);
+    if (null == rc) {
+      throw new UnknownCompactionIdException();
+    }
     List<Status> status = new ArrayList<>();
     rc.getUpdates().forEach((k, v) -> {
       status.add(new Status(v.getTimestamp(), rc.getJob().getExternalCompactionId(),
@@ -545,18 +564,45 @@ public class CompactionCoordinator extends AbstractServer
     RunningCompaction rc = RUNNING.get(externalCompactionId);
     if (null != rc) {
       rc.setStats(stats);
+    } else {
+      LOG.error(
+          "Compaction completed called by Compactor for {}, but no running compaction for that id.",
+          externalCompactionId);
+      throw new UnknownCompactionIdException();
     }
-    // TODO: What happens if tserver is no longer hosting tablet? I wonder if we should not notify
-    // the tserver that the compaction has finished and instead let the tserver that is hosting the
-    // tablet poll for state updates. That way if the tablet is re-hosted, the tserver can check as
-    // part of the tablet loading process. This would also enable us to remove the running
-    // compaction
-    // from RUNNING when the tserver makes the call and gets the stats.
-    // TODO : rc could be null
-    TabletClientService.Client client = getTabletServerConnection(rc.getTserver());
-    // TODO credentials
-    client.compactionJobFinished(null, null, externalCompactionId, stats.fileSize,
-        stats.entriesWritten);
+    // Attempt up to ten times to contact the TServer and notify it that the compaction has
+    // completed.
+    RetryableThriftCall<Void> completedThriftCall = new RetryableThriftCall<>(1000,
+        RetryableThriftCall.MAX_WAIT_TIME, 10, new RetryableThriftFunction<Void>() {
+          @Override
+          public Void execute() throws TException {
+            TabletClientService.Client client = null;
+            try {
+              client = getTabletServerConnection(rc.getTserver());
+              client.compactionJobFinished(TraceUtil.traceInfo(), getContext().rpcCreds(),
+                  externalCompactionId, stats.fileSize, stats.entriesWritten);
+              RUNNING.remove(externalCompactionId, rc);
+              return null;
+            } catch (TException e) {
+              throw e;
+            } finally {
+              ThriftUtil.returnClient(client);
+            }
+          }
+        });
+    try {
+      completedThriftCall.run();
+    } catch (RetriesExceededException e) {
+      // TODO: What happens if tserver is no longer hosting tablet? I wonder if we should not notify
+      // the tserver that the compaction has finished and instead let the tserver that is hosting
+      // the tablet poll for state updates. That way if the tablet is re-hosted, the tserver can
+      // check
+      // as part of the tablet loading process. This would also enable us to remove the running
+      // compaction from RUNNING when the tserver makes the call and gets the stats.
+
+      // TODO: If the call above fails, the RUNNING entry will be orphaned
+
+    }
   }
 
   /**
@@ -577,6 +623,8 @@ public class CompactionCoordinator extends AbstractServer
     RunningCompaction rc = RUNNING.get(externalCompactionId);
     if (null != rc) {
       rc.addUpdate(timestamp, message, state);
+    } else {
+      throw new UnknownCompactionIdException();
     }
   }
 
