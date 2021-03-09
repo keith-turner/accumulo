@@ -24,6 +24,25 @@ import org.apache.accumulo.server.ServerContext;
 
 public class ExternalCompactionUtil {
 
+  /**
+   * Utility for returning the address of a service in the form host:port
+   *
+   * @param address
+   *          HostAndPort of service
+   * @return host and port
+   */
+  public static String getHostPortString(HostAndPort address) {
+    if (address == null) {
+      return null;
+    }
+    return address.getHost() + ":" + address.getPort();
+  }
+
+  /**
+   * 
+   * @param context
+   * @return
+   */
   public static HostAndPort findCompactionCoordinator(ServerContext context) {
     final String lockPath = context.getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
     byte[] address = context.getZooCache().get(lockPath);

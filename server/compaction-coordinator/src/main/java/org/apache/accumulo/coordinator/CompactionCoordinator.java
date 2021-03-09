@@ -29,7 +29,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -48,17 +47,15 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
-import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.HostAndPort;
-import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ZooLock;
-import org.apache.accumulo.fate.zookeeper.ZooLock.LockLossReason;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
+import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.server.compaction.RetryableThriftCall;
 import org.apache.accumulo.server.compaction.RetryableThriftCall.RetriesExceededException;
 import org.apache.accumulo.server.compaction.RetryableThriftFunction;
@@ -78,178 +75,6 @@ import org.slf4j.LoggerFactory;
 public class CompactionCoordinator extends AbstractServer
     implements org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Iface,
     LiveTServerSet.Listener {
-
-  private static class QueueAndPriority implements Comparable<QueueAndPriority> {
-
-    private static WeakHashMap<Pair<String,Long>,QueueAndPriority> CACHE = new WeakHashMap<>();
-
-    public static QueueAndPriority get(String queue, Long priority) {
-      return CACHE.putIfAbsent(new Pair<>(queue, priority), new QueueAndPriority(queue, priority));
-    }
-
-    private final String queue;
-    private final Long priority;
-
-    private QueueAndPriority(String queue, Long priority) {
-      super();
-      this.queue = queue;
-      this.priority = priority;
-    }
-
-    public String getQueue() {
-      return queue;
-    }
-
-    public Long getPriority() {
-      return priority;
-    }
-
-    @Override
-    public int hashCode() {
-      return queue.hashCode() + priority.hashCode();
-    }
-
-    @Override
-    public String toString() {
-      StringBuilder buf = new StringBuilder();
-      buf.append("queue: ").append(queue);
-      buf.append(", priority: ").append(priority);
-      return buf.toString();
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (null == obj)
-        return false;
-      if (obj == this)
-        return true;
-      if (!(obj instanceof QueueAndPriority)) {
-        return false;
-      } else {
-        QueueAndPriority other = (QueueAndPriority) obj;
-        return this.queue.equals(other.queue) && this.priority.equals(other.priority);
-      }
-    }
-
-    @Override
-    public int compareTo(QueueAndPriority other) {
-      int result = this.queue.compareTo(other.queue);
-      if (result == 0) {
-        // reversing order such that if other priority is lower, then this has a higher priority
-        return Long.compare(other.priority, this.priority);
-      } else {
-        return result;
-      }
-    }
-
-  }
-
-  private static class CoordinatorLockWatcher implements ZooLock.AccumuloLockWatcher {
-
-    @Override
-    public void lostLock(LockLossReason reason) {
-      Halt.halt("Coordinator lock in zookeeper lost (reason = " + reason + "), exiting!", -1);
-    }
-
-    @Override
-    public void unableToMonitorLockNode(final Exception e) {
-      // ACCUMULO-3651 Changed level to error and added FATAL to message for slf4j compatibility
-      Halt.halt(-1, () -> LOG.error("FATAL: No longer able to monitor Coordinator lock node", e));
-
-    }
-
-    @Override
-    public synchronized void acquiredLock() {
-      // This is overridden by the LockWatcherWrapper in ZooLock.tryLock()
-    }
-
-    @Override
-    public synchronized void failedToAcquireLock(Exception e) {
-      // This is overridden by the LockWatcherWrapper in ZooLock.tryLock()
-    }
-
-  }
-
-  /**
-   * Utility for returning the address in the form host:port
-   *
-   * @return host and port for Compactor client connections
-   */
-  private static String getHostPortString(HostAndPort address) {
-    if (address == null) {
-      return null;
-    }
-    return address.getHost() + ":" + address.getPort();
-  }
-
-  private static class CompactionUpdate {
-    private final Long timestamp;
-    private final String message;
-    private final CompactionState state;
-
-    public CompactionUpdate(Long timestamp, String message, CompactionState state) {
-      super();
-      this.timestamp = timestamp;
-      this.message = message;
-      this.state = state;
-    }
-
-    public Long getTimestamp() {
-      return timestamp;
-    }
-
-    public String getMessage() {
-      return message;
-    }
-
-    public CompactionState getState() {
-      return state;
-    }
-  }
-
-  private static class RunningCompaction {
-    private final TExternalCompactionJob job;
-    private final String compactorAddress;
-    private final TServerInstance tserver;
-    private Map<Long,CompactionUpdate> updates = new TreeMap<>();
-    private CompactionStats stats = null;
-
-    public RunningCompaction(TExternalCompactionJob job, String compactorAddress,
-        TServerInstance tserver) {
-      super();
-      this.job = job;
-      this.compactorAddress = compactorAddress;
-      this.tserver = tserver;
-    }
-
-    public Map<Long,CompactionUpdate> getUpdates() {
-      return updates;
-    }
-
-    public void addUpdate(Long timestamp, String message, CompactionState state) {
-      this.updates.put(timestamp, new CompactionUpdate(timestamp, message, state));
-    }
-
-    public CompactionStats getStats() {
-      return stats;
-    }
-
-    public void setStats(CompactionStats stats) {
-      this.stats = stats;
-    }
-
-    public TExternalCompactionJob getJob() {
-      return job;
-    }
-
-    public String getCompactorAddress() {
-      return compactorAddress;
-    }
-
-    public TServerInstance getTserver() {
-      return tserver;
-    }
-  }
 
   private static final Logger LOG = LoggerFactory.getLogger(CompactionCoordinator.class);
   private static final long TIME_BETWEEN_CHECKS = 5000;
@@ -290,11 +115,11 @@ public class CompactionCoordinator extends AbstractServer
    * @throws KeeperException
    * @throws InterruptedException
    */
-  private boolean getCoordinatorLock(HostAndPort clientAddress)
+  protected boolean getCoordinatorLock(HostAndPort clientAddress)
       throws KeeperException, InterruptedException {
     LOG.info("trying to get coordinator lock");
 
-    final String coordinatorClientAddress = getHostPortString(clientAddress);
+    final String coordinatorClientAddress = ExternalCompactionUtil.getHostPortString(clientAddress);
     final String lockPath = getContext().getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
     final UUID zooLockUUID = UUID.randomUUID();
 
@@ -309,7 +134,7 @@ public class CompactionCoordinator extends AbstractServer
    * @return address of this CompactionCoordinator client service
    * @throws UnknownHostException
    */
-  private ServerAddress startCoordinatorClientService() throws UnknownHostException {
+  protected ServerAddress startCoordinatorClientService() throws UnknownHostException {
     CompactionCoordinator rpcProxy = TraceUtil.wrapService(this);
     final org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Processor<
         CompactionCoordinator> processor;
@@ -488,7 +313,7 @@ public class CompactionCoordinator extends AbstractServer
     }
   }
 
-  private TabletClientService.Client getTabletServerConnection(TServerInstance tserver)
+  protected TabletClientService.Client getTabletServerConnection(TServerInstance tserver)
       throws TTransportException {
     TServerConnection connection = tserverSet.getConnection(tserver);
     TTransport transport =
@@ -496,7 +321,7 @@ public class CompactionCoordinator extends AbstractServer
     return ThriftUtil.createClient(new TabletClientService.Client.Factory(), transport);
   }
 
-  private Compactor.Client getCompactorConnection(HostAndPort compactorAddress)
+  protected Compactor.Client getCompactorConnection(HostAndPort compactorAddress)
       throws TTransportException {
     TTransport transport =
         ThriftTransportPool.getInstance().getTransport(compactorAddress, 0, getContext());
