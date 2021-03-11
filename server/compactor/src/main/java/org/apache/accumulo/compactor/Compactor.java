@@ -37,6 +37,7 @@ import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.compaction.thrift.CompactionCoordinator;
 import org.apache.accumulo.core.compaction.thrift.CompactionState;
+import org.apache.accumulo.core.compaction.thrift.Compactor.Iface;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -200,11 +201,11 @@ public class Compactor extends AbstractServer
    * @throws UnknownHostException
    */
   protected ServerAddress startCompactorClientService() throws UnknownHostException {
-    Compactor rpcProxy = TraceUtil.wrapService(this);
-    final org.apache.accumulo.core.compaction.thrift.Compactor.Processor<Compactor> processor;
+    Iface rpcProxy = TraceUtil.wrapService(this);
+    final org.apache.accumulo.core.compaction.thrift.Compactor.Processor<Iface> processor;
     if (getContext().getThriftServerType() == ThriftServerType.SASL) {
-      Compactor tcredProxy =
-          TCredentialsUpdatingWrapper.service(rpcProxy, Compactor.class, getConfiguration());
+      Iface tcredProxy =
+          TCredentialsUpdatingWrapper.service(rpcProxy, getClass(), getConfiguration());
       processor = new org.apache.accumulo.core.compaction.thrift.Compactor.Processor<>(tcredProxy);
     } else {
       processor = new org.apache.accumulo.core.compaction.thrift.Compactor.Processor<>(rpcProxy);
@@ -349,7 +350,7 @@ public class Compactor extends AbstractServer
 
   /**
    * Create compaction runnable
-   * 
+   *
    * @param job
    *          compaction job
    * @param totalInputEntries

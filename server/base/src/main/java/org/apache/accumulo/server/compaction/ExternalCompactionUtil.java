@@ -20,7 +20,9 @@ package org.apache.accumulo.server.compaction;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.accumulo.fate.zookeeper.ZooLock;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.zookeeper.KeeperException;
 
 public class ExternalCompactionUtil {
 
@@ -39,14 +41,18 @@ public class ExternalCompactionUtil {
   }
 
   /**
-   * 
+   *
    * @param context
    * @return
    */
   public static HostAndPort findCompactionCoordinator(ServerContext context) {
     final String lockPath = context.getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
-    byte[] address = context.getZooCache().get(lockPath);
-    String coordinatorAddress = new String(address);
-    return HostAndPort.fromString(coordinatorAddress);
+    try {
+      byte[] address = ZooLock.getLockData(context.getZooReaderWriter().getZooKeeper(), lockPath);
+      String coordinatorAddress = new String(address);
+      return HostAndPort.fromString(coordinatorAddress);
+    } catch (KeeperException | InterruptedException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

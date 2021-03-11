@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.clientImpl.ThriftTransportPool;
+import org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Iface;
 import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.compaction.thrift.Compactor;
 import org.apache.accumulo.core.compaction.thrift.Status;
@@ -123,9 +124,11 @@ public class CompactionCoordinator extends AbstractServer
     final String lockPath = getContext().getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
     final UUID zooLockUUID = UUID.randomUUID();
 
-    CoordinatorLockWatcher managerLockWatcher = new CoordinatorLockWatcher();
+    CoordinatorLockWatcher coordinatorLockWatcher = new CoordinatorLockWatcher();
     coordinatorLock = new ZooLock(getContext().getSiteConfiguration(), lockPath, zooLockUUID);
-    return coordinatorLock.tryLock(managerLockWatcher, coordinatorClientAddress.getBytes());
+    // TODO may want to wait like manager code when lock not acquired, this allows starting multiple
+    // coordinators.
+    return coordinatorLock.tryLock(coordinatorLockWatcher, coordinatorClientAddress.getBytes());
   }
 
   /**
@@ -135,12 +138,12 @@ public class CompactionCoordinator extends AbstractServer
    * @throws UnknownHostException
    */
   protected ServerAddress startCoordinatorClientService() throws UnknownHostException {
-    CompactionCoordinator rpcProxy = TraceUtil.wrapService(this);
+    Iface rpcProxy = TraceUtil.wrapService(this);
     final org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Processor<
-        CompactionCoordinator> processor;
+        Iface> processor;
     if (getContext().getThriftServerType() == ThriftServerType.SASL) {
-      CompactionCoordinator tcredProxy = TCredentialsUpdatingWrapper.service(rpcProxy,
-          CompactionCoordinator.class, getConfiguration());
+      Iface tcredProxy = TCredentialsUpdatingWrapper.service(rpcProxy, CompactionCoordinator.class,
+          getConfiguration());
       processor = new org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Processor<>(
           tcredProxy);
     } else {

@@ -420,8 +420,7 @@ public class CompactionManager {
   }
 
   ExternalCompactionExecutor getExternalExecutor(String queueName) {
-    // TODO put prefix for external executor in one place
-    return getExternalExecutor(CompactionExecutorId.of("e." + queueName));
+    return getExternalExecutor(CompactionExecutorId.externalId(queueName));
   }
 
   public void commitExternalCompaction(UUID extCompactionId, Map<KeyExtent,Tablet> currentTablets,

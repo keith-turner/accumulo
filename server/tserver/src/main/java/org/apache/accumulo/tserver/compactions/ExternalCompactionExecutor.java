@@ -111,8 +111,12 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
   ExternalCompactionJob reserveExternalCompaction(long priority, String compactorId) {
 
     ExternalJob extJob = queue.poll();
-    while (extJob.getStatus() != Status.QUEUED) {
+    while (extJob != null && extJob.getStatus() != Status.QUEUED) {
       extJob = queue.poll();
+    }
+
+    if (extJob == null) {
+      return null;
     }
 
     if (extJob.getJob().getPriority() >= priority) {
@@ -120,7 +124,8 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
         return extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(),
             compactorId);
       } else {
-        // TODO try again
+        // TODO could this cause a stack overflow?
+        return reserveExternalCompaction(priority, compactorId);
       }
     } else {
       // TODO this messes with the ordering.. maybe make the comparator compare on time also
@@ -138,13 +143,18 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
     // TODO cast to int is problematic
     int count = (int) queue.stream().filter(extJob -> extJob.status.get() == Status.QUEUED).count();
 
-    // TODO is there a better way to get prio w/o looping over everything? seems a stream over the
-    // queue is not in particular order
-    long priority = queue.stream().filter(extJob -> extJob.status.get() == Status.QUEUED)
-        .mapToLong(extJob -> extJob.getJob().getPriority()).max().orElse(0);
+    long priority = 0;
+    ExternalJob topJob = queue.peek();
+    while (topJob != null && topJob.getStatus() != Status.QUEUED) {
+      queue.removeIf(extJob -> extJob.getStatus() != Status.QUEUED);
+      topJob = queue.peek();
+    }
 
-    // TODO put extraction of queue name in one place
-    return new TCompactionQueueSummary(ceid.canonical().substring(2), priority, count);
+    if (topJob != null) {
+      priority = topJob.getJob().getPriority();
+    }
+
+    return new TCompactionQueueSummary(ceid.getExernalName(), priority, count);
   }
 
 }

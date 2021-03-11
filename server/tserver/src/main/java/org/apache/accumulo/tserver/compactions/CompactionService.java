@@ -119,7 +119,7 @@ public class CompactionService {
         public CompactionExecutorId createExecutor(String executorName, int threads) {
           Preconditions.checkArgument(threads > 0, "Positive number of threads required : %s",
               threads);
-          var ceid = CompactionExecutorId.of("i." + myId + "." + executorName);
+          var ceid = CompactionExecutorId.internalId(myId, executorName);
           Preconditions.checkState(!requestedExecutors.containsKey(ceid));
           requestedExecutors.put(ceid, threads);
           return ceid;
@@ -127,7 +127,7 @@ public class CompactionService {
 
         @Override
         public CompactionExecutorId getExternalExecutor(String name) {
-          var ceid = CompactionExecutorId.of("e." + name);
+          var ceid = CompactionExecutorId.externalId(name);
           Preconditions.checkArgument(!requestedExternalExecutors.contains(ceid));
           requestedExternalExecutors.add(ceid);
           return ceid;

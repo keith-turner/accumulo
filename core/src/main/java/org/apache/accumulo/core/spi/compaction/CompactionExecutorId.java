@@ -20,6 +20,8 @@ package org.apache.accumulo.core.spi.compaction;
 
 import org.apache.accumulo.core.data.AbstractId;
 
+import com.google.common.base.Preconditions;
+
 /**
  * A unique identifier for a a compaction executor that a {@link CompactionPlanner} can schedule
  * compactions on using a {@link CompactionJob}.
@@ -34,7 +36,20 @@ public class CompactionExecutorId extends AbstractId<CompactionExecutorId> {
     super(canonical);
   }
 
-  public static CompactionExecutorId of(String canonical) {
-    return new CompactionExecutorId(canonical);
+  public boolean isExernalId() {
+    return canonical().startsWith("e.");
+  }
+
+  public String getExernalName() {
+    Preconditions.checkState(isExernalId());
+    return canonical().substring("e.".length());
+  }
+
+  public static CompactionExecutorId internalId(CompactionServiceId csid, String executorName) {
+    return new CompactionExecutorId("i." + csid + "." + executorName);
+  }
+
+  public static CompactionExecutorId externalId(String executorName) {
+    return new CompactionExecutorId("e." + executorName);
   }
 }
