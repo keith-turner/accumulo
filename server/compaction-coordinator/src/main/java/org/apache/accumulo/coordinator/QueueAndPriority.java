@@ -27,7 +27,8 @@ public class QueueAndPriority implements Comparable<QueueAndPriority> {
   private static WeakHashMap<Pair<String,Long>,QueueAndPriority> CACHE = new WeakHashMap<>();
 
   public static QueueAndPriority get(String queue, Long priority) {
-    return CACHE.putIfAbsent(new Pair<>(queue, priority), new QueueAndPriority(queue, priority));
+    return CACHE.computeIfAbsent(new Pair<>(queue, priority),
+        k -> new QueueAndPriority(queue, priority));
   }
 
   private final String queue;

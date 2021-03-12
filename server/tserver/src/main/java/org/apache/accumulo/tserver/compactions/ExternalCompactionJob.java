@@ -19,6 +19,7 @@
 package org.apache.accumulo.tserver.compactions;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -49,14 +50,14 @@ public class ExternalCompactionJob {
   public ExternalCompactionJob(Set<StoredTabletFile> jobFiles, boolean propogateDeletes,
       TabletFile compactTmpName, KeyExtent extent, UUID externalCompactionId, long priority,
       CompactionKind kind, List<IteratorSetting> iters) {
-    this.jobFiles = jobFiles;
+    this.jobFiles = Objects.requireNonNull(jobFiles);
     this.propogateDeletes = propogateDeletes;
-    this.compactTmpName = compactTmpName;
-    this.extent = extent;
-    this.externalCompactionId = externalCompactionId;
+    this.compactTmpName = Objects.requireNonNull(compactTmpName);
+    this.extent = Objects.requireNonNull(extent);
+    this.externalCompactionId = Objects.requireNonNull(externalCompactionId);
     this.priority = priority;
-    this.kind = kind;
-    this.iters = iters;
+    this.kind = Objects.requireNonNull(kind);
+    this.iters = Objects.requireNonNull(iters);
   }
 
   public TExternalCompactionJob toThrift() {
@@ -89,10 +90,13 @@ public class ExternalCompactionJob {
     List<InputFile> files = jobFiles.stream().map(stf -> new InputFile(stf.getPathStr(), 0, 0, 0))
         .collect(Collectors.toList());
 
+    // CBUG there seem to be two CompactionKind thrift types
+    // CBUG rename CompactionKind thrift type to TCompactionKind
     // TODO priority cast and compactionId cast... compactionId could be null I think
     return new TExternalCompactionJob(externalCompactionId.toString(), extent.toThrift(), files,
         (int) priority, readRate, writeRate, iteratorSettings, type, reason,
-        compactTmpName.getPathStr(), propogateDeletes, null);
+        compactTmpName.getPathStr(), propogateDeletes,
+        org.apache.accumulo.core.tabletserver.thrift.CompactionKind.valueOf(kind.name()));
   }
 
   public UUID getExternalCompactionId() {

@@ -101,8 +101,7 @@ public class RetryableThriftCall<T> {
       try {
         result = function.execute();
       } catch (TException e) {
-        LOG.error("Error in Thrift function, retrying in {}ms. Error: {}", waitTime,
-            e.getMessage());
+        LOG.error("Error in Thrift function, retrying in {}ms. Error: {}", waitTime, e);
         if (!retryForever) {
           numRetries++;
           if (numRetries > maxNumRetries) {

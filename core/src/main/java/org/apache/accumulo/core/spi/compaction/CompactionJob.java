@@ -30,6 +30,7 @@ import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
  */
 public interface CompactionJob {
 
+  // CBUG use a lower cardinality type for priority
   long getPriority();
 
   /**

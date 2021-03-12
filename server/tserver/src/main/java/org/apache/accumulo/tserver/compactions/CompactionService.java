@@ -158,8 +158,9 @@ public class CompactionService {
 
     this.rateLimit.set(maxRate);
 
-    // TODO it may make sense to move the rate limit config to the planner and executors... it makes
-    // no sense at the service level for a mix of internal and external compactions
+    // CBUG it may make sense to move the rate limit config to the planner and executors... it makes
+    // no sense at the service level for a mix of internal and external compactions... makes a lot
+    // more sense at the executor level
     this.readLimiter = SharedRateLimiterFactory.getInstance(this.serverCtx.getConfiguration())
         .create("CS_" + serviceName + "_read", () -> rateLimit.get());
     this.writeLimiter = SharedRateLimiterFactory.getInstance(this.serverCtx.getConfiguration())

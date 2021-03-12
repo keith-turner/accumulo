@@ -561,7 +561,7 @@ public class CompactableImpl implements Compactable {
   private CompactionInfo reserveFilesForCompaction(CompactionServiceId service, CompactionJob job) {
     CompactionInfo cInfo = new CompactionInfo();
 
-    Set<StoredTabletFile> jobFiles = job.getFiles().stream()
+    cInfo.jobFiles = job.getFiles().stream()
         .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
 
     if (job.getKind() == CompactionKind.USER)
@@ -584,9 +584,10 @@ public class CompactableImpl implements Compactable {
         case SELECTED: {
           if (job.getKind() == CompactionKind.USER || job.getKind() == CompactionKind.SELECTOR) {
             if (selectKind == job.getKind()) {
-              if (!selectedFiles.containsAll(jobFiles)) {
+              if (!selectedFiles.containsAll(cInfo.jobFiles)) {
                 log.error("Ignoring {} compaction that does not contain selected files {} {} {}",
-                    job.getKind(), getExtent(), asFileNames(selectedFiles), asFileNames(jobFiles));
+                    job.getKind(), getExtent(), asFileNames(selectedFiles),
+                    asFileNames(cInfo.jobFiles));
                 return null;
               }
             } else {
@@ -594,9 +595,9 @@ public class CompactableImpl implements Compactable {
                   getExtent());
               return null;
             }
-          } else if (!Collections.disjoint(selectedFiles, jobFiles)) {
+          } else if (!Collections.disjoint(selectedFiles, cInfo.jobFiles)) {
             log.trace("Ingoring compaction that overlaps with selected files {} {} {}", getExtent(),
-                job.getKind(), asFileNames(Sets.intersection(selectedFiles, jobFiles)));
+                job.getKind(), asFileNames(Sets.intersection(selectedFiles, cInfo.jobFiles)));
             return null;
           }
           break;
@@ -614,8 +615,8 @@ public class CompactableImpl implements Compactable {
           throw new AssertionError();
       }
 
-      if (Collections.disjoint(allCompactingFiles, jobFiles)) {
-        allCompactingFiles.addAll(jobFiles);
+      if (Collections.disjoint(allCompactingFiles, cInfo.jobFiles)) {
+        allCompactingFiles.addAll(cInfo.jobFiles);
         runnningJobs.add(job);
       } else {
         return null;
@@ -627,7 +628,8 @@ public class CompactableImpl implements Compactable {
         case SELECTOR:
         case USER:
           Preconditions.checkState(selectStatus == SpecialStatus.SELECTED);
-          if (job.getKind() == selectKind && selectedAll && jobFiles.containsAll(selectedFiles)) {
+          if (job.getKind() == selectKind && selectedAll
+              && cInfo.jobFiles.containsAll(selectedFiles)) {
             cInfo.propogateDeletes = false;
           }
           break;
@@ -640,7 +642,7 @@ public class CompactableImpl implements Compactable {
       }
 
       if (job.getKind() == CompactionKind.USER && selectKind == job.getKind()
-          && selectedFiles.equals(jobFiles)) {
+          && selectedFiles.equals(cInfo.jobFiles)) {
         cInfo.compactionId = this.compactionId;
       }
 
@@ -729,9 +731,9 @@ public class CompactableImpl implements Compactable {
     if (cInfo == null)
       return null;
 
-    // TODO add external compaction info to metadata table
+    // CBUG add external compaction info to metadata table
     try {
-      // TODO share code w/ CompactableUtil and/or move there
+      // CBUG share code w/ CompactableUtil and/or move there
       cInfo.newFile = tablet.getNextMapFilename(!cInfo.propogateDeletes ? "A" : "C");
       cInfo.compactTmpName = new TabletFile(new Path(cInfo.newFile.getMetaInsert() + "_tmp"));
 
@@ -741,35 +743,40 @@ public class CompactableImpl implements Compactable {
 
       externalCompactions.put(externalCompactionId, cInfo);
 
-      // TODO because this is an RPC the return may never get to the caller... however the caller
+      // CBUG because this is an RPC the return may never get to the caller... however the caller
       // may be alive.... maybe the caller can set the externalCompactionId it working on in ZK
       return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, cInfo.compactTmpName,
           getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters);
 
     } catch (Exception e) {
-      // TODO unreserve files for compaction!
+      // CBUG unreserve files for compaction!
       throw new RuntimeException(e);
     }
   }
 
   @Override
   public void commitExternalCompaction(UUID extCompactionId, long fileSize, long entries) {
-    // TODO double check w/ java docs that only one thread can remove
+    // CBUG double check w/ java docs that only one thread can remove
     CompactionInfo cInfo = externalCompactions.remove(extCompactionId);
 
     if (cInfo != null) {
+      log.debug("Attempting to commit external compaction {}", extCompactionId);
       // TODO do a sanity check that files exists in dfs?
       StoredTabletFile metaFile = null;
       try {
         metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(cInfo.jobFiles,
             cInfo.compactTmpName, cInfo.newFile, compactionId,
             new DataFileValue(fileSize, entries));
+        TabletLogger.compacted(getExtent(), cInfo.job, metaFile);
       } catch (Exception e) {
         metaFile = null;
         throw new RuntimeException(e);
       } finally {
         completeCompaction(cInfo.job, cInfo.jobFiles, metaFile);
       }
+    } else {
+      log.debug("Ignoring request to commit external compaction that is unknown {}",
+          extCompactionId);
     }
   }
 

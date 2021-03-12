@@ -194,15 +194,16 @@ public class CompactionCoordinator extends AbstractServer
           synchronized (QUEUES) {
             TabletClientService.Client client = null;
             try {
+              LOG.debug("contacting tserver " + tsi.getHostPort());
               client = getTabletServerConnection(tsi);
               List<TCompactionQueueSummary> summaries =
                   client.getCompactionQueueInfo(TraceUtil.traceInfo(), getContext().rpcCreds());
               summaries.forEach(summary -> {
                 QueueAndPriority qp =
                     QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
-                QUEUES.putIfAbsent(qp.getQueue(), new TreeMap<>())
-                    .putIfAbsent(qp.getPriority(), new LinkedHashSet<>()).add(tsi);
-                INDEX.putIfAbsent(tsi, new HashSet<>()).add(qp);
+                QUEUES.computeIfAbsent(qp.getQueue(), k -> new TreeMap<>())
+                    .computeIfAbsent(qp.getPriority(), k -> new LinkedHashSet<>()).add(tsi);
+                INDEX.computeIfAbsent(tsi, k -> new HashSet<>()).add(qp);
               });
             } finally {
               ThriftUtil.returnClient(client);
@@ -264,6 +265,8 @@ public class CompactionCoordinator extends AbstractServer
   @Override
   public TExternalCompactionJob getCompactionJob(String queueName, String compactorAddress)
       throws TException {
+    // CBUG need to use and check for system credentials
+    LOG.debug("getCompactionJob " + queueName + " " + compactorAddress);
     String queue = queueName.intern();
     TServerInstance tserver = null;
     Long priority = null;
@@ -310,6 +313,8 @@ public class CompactionCoordinator extends AbstractServer
           getContext().rpcCreds(), queue, priority, compactorAddress);
       RUNNING.put(job.getExternalCompactionId(),
           new RunningCompaction(job, compactorAddress, tserver));
+      LOG.debug(
+          "Returning external job id:" + job.externalCompactionId + " to " + compactorAddress);
       return job;
     } finally {
       ThriftUtil.returnClient(client);
@@ -429,6 +434,15 @@ public class CompactionCoordinator extends AbstractServer
       // compaction from RUNNING when the tserver makes the call and gets the stats.
 
       // TODO: If the call above fails, the RUNNING entry will be orphaned
+
+      /**
+       * One possible way to handle tserver down is to fall back to writing a completion entry to
+       * the metadata table. Could be something like row=~extcomp:<uuid> family=status
+       * qualifier=complete The Coordinator can periodically scan this portion of the metadata table
+       * and let tablets know. For expediency could still make RPC first to let tserver know its
+       * done and if that fails could fall back to writing to metadata table. The coordinator could
+       * read and write to the metadata table section.
+       */
 
     }
   }

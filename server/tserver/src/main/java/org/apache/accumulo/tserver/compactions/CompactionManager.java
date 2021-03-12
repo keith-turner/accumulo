@@ -407,10 +407,14 @@ public class CompactionManager {
 
   public ExternalCompactionJob reserveExternalCompaction(String queueName, long priority,
       String compactorId) {
+    log.debug("Attempting to reserved external compaction queue:{} priority:{} compactor:{}",
+        queueName, priority, compactorId);
+
     ExternalCompactionExecutor extCE = getExternalExecutor(queueName);
     var ecJob = extCE.reserveExternalCompaction(priority, compactorId);
     if (ecJob != null) {
       runningExternalCompactions.put(ecJob.getExternalCompactionId(), ecJob.getExtent());
+      log.debug("Reserved external compaction ecid:{}", ecJob.getExternalCompactionId());
     }
     return ecJob;
   }
