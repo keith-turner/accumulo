@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +41,7 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.Retry;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.compaction.ExternalCompactionId;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.apache.accumulo.tserver.tablet.Tablet;
 import org.slf4j.Logger;
@@ -75,7 +75,7 @@ public class CompactionManager {
   private Map<CompactionExecutorId,ExternalCompactionExecutor> externalExecutors;
 
   // TODO this may need to be garbage collected... also will need to be populated when tablet load
-  private Map<UUID,KeyExtent> runningExternalCompactions;
+  private Map<ExternalCompactionId,KeyExtent> runningExternalCompactions;
 
   private class Config {
     Map<String,String> planners = new HashMap<>();
@@ -405,6 +405,7 @@ public class CompactionManager {
     return services.values().stream().mapToInt(CompactionService::getCompactionsQueued).sum();
   }
 
+  // CBUG would be nice to create a CompactorId type and use that instead of string.
   public ExternalCompactionJob reserveExternalCompaction(String queueName, long priority,
       String compactorId) {
     log.debug("Attempting to reserved external compaction queue:{} priority:{} compactor:{}",
@@ -414,7 +415,7 @@ public class CompactionManager {
     var ecJob = extCE.reserveExternalCompaction(priority, compactorId);
     if (ecJob != null) {
       runningExternalCompactions.put(ecJob.getExternalCompactionId(), ecJob.getExtent());
-      log.debug("Reserved external compaction ecid:{}", ecJob.getExternalCompactionId());
+      log.debug("Reserved external compaction {}", ecJob.getExternalCompactionId());
     }
     return ecJob;
   }
@@ -427,8 +428,8 @@ public class CompactionManager {
     return getExternalExecutor(CompactionExecutorId.externalId(queueName));
   }
 
-  public void commitExternalCompaction(UUID extCompactionId, Map<KeyExtent,Tablet> currentTablets,
-      long fileSize, long entries) {
+  public void commitExternalCompaction(ExternalCompactionId extCompactionId,
+      Map<KeyExtent,Tablet> currentTablets, long fileSize, long entries) {
     KeyExtent extent = runningExternalCompactions.get(extCompactionId);
     if (extent != null) {
       Tablet tablet = currentTablets.get(extent);

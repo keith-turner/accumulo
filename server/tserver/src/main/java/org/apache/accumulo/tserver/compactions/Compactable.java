@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
@@ -37,6 +36,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
+import org.apache.accumulo.server.compaction.ExternalCompactionId;
 
 /**
  * Interface between compaction service and tablet.
@@ -93,5 +93,5 @@ public interface Compactable {
   ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service, CompactionJob job,
       String compactorId);
 
-  void commitExternalCompaction(UUID extCompactionId, long fileSize, long entries);
+  void commitExternalCompaction(ExternalCompactionId extCompactionId, long fileSize, long entries);
 }

@@ -407,7 +407,7 @@ public class Compactor extends AbstractServer
           cs.setEntriesWritten(stat.getEntriesWritten());
           cs.setFileSize(stat.getFileSize());
           jobHolder.setStats(cs);
-          LOG.info("Compaction completed successfully");
+          LOG.info("Compaction completed successfully {} ", job.getExternalCompactionId());
           // Update state when completed
           updateCompactionState(job, CompactionState.SUCCEEDED,
               "Compaction completed successfully");

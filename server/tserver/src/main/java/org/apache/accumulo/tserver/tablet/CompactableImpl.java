@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -61,6 +60,7 @@ import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.compaction.CompactionStats;
 import org.apache.accumulo.server.compaction.Compactor.CompactionCanceledException;
+import org.apache.accumulo.server.compaction.ExternalCompactionId;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionManager;
@@ -721,7 +721,7 @@ public class CompactableImpl implements Compactable {
   }
 
   // TODO move to top of class
-  private Map<UUID,CompactionInfo> externalCompactions = new ConcurrentHashMap<>();
+  private Map<ExternalCompactionId,CompactionInfo> externalCompactions = new ConcurrentHashMap<>();
 
   @Override
   public ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service,
@@ -737,7 +737,7 @@ public class CompactableImpl implements Compactable {
       cInfo.newFile = tablet.getNextMapFilename(!cInfo.propogateDeletes ? "A" : "C");
       cInfo.compactTmpName = new TabletFile(new Path(cInfo.newFile.getMetaInsert() + "_tmp"));
 
-      UUID externalCompactionId = UUID.randomUUID();
+      ExternalCompactionId externalCompactionId = ExternalCompactionId.generate();
 
       cInfo.job = job;
 
@@ -755,7 +755,8 @@ public class CompactableImpl implements Compactable {
   }
 
   @Override
-  public void commitExternalCompaction(UUID extCompactionId, long fileSize, long entries) {
+  public void commitExternalCompaction(ExternalCompactionId extCompactionId, long fileSize,
+      long entries) {
     // CBUG double check w/ java docs that only one thread can remove
     CompactionInfo cInfo = externalCompactions.remove(extCompactionId);
 

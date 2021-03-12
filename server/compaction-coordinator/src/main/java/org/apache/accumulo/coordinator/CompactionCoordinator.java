@@ -56,6 +56,7 @@ import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
+import org.apache.accumulo.server.compaction.ExternalCompactionId;
 import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.server.compaction.RetryableThriftCall;
 import org.apache.accumulo.server.compaction.RetryableThriftCall.RetriesExceededException;
@@ -86,7 +87,8 @@ public class CompactionCoordinator extends AbstractServer
   /* index of tserver to queue and priority, exists to provide O(1) lookup into QUEUES */
   private static final Map<TServerInstance,HashSet<QueueAndPriority>> INDEX = new HashMap<>();
   /* Map of compactionId to RunningCompactions */
-  private static final Map<String,RunningCompaction> RUNNING = new ConcurrentHashMap<>();
+  private static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
+      new ConcurrentHashMap<>();
 
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
   private final AccumuloConfiguration aconf;
@@ -311,10 +313,9 @@ public class CompactionCoordinator extends AbstractServer
       client = getTabletServerConnection(tserver);
       TExternalCompactionJob job = client.reserveCompactionJob(TraceUtil.traceInfo(),
           getContext().rpcCreds(), queue, priority, compactorAddress);
-      RUNNING.put(job.getExternalCompactionId(),
+      RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
           new RunningCompaction(job, compactorAddress, tserver));
-      LOG.debug(
-          "Returning external job id:" + job.externalCompactionId + " to " + compactorAddress);
+      LOG.debug("Returning external job {} to {}", job.externalCompactionId, compactorAddress);
       return job;
     } finally {
       ThriftUtil.returnClient(client);
@@ -341,7 +342,7 @@ public class CompactionCoordinator extends AbstractServer
    */
   @Override
   public void cancelCompaction(String externalCompactionId) throws TException {
-    RunningCompaction rc = RUNNING.get(externalCompactionId);
+    RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
     if (null == rc) {
       throw new UnknownCompactionIdException();
     }
@@ -371,7 +372,7 @@ public class CompactionCoordinator extends AbstractServer
 
   @Override
   public List<Status> getCompactionStatus(String externalCompactionId) throws TException {
-    RunningCompaction rc = RUNNING.get(externalCompactionId);
+    RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
     if (null == rc) {
       throw new UnknownCompactionIdException();
     }
@@ -394,7 +395,8 @@ public class CompactionCoordinator extends AbstractServer
   @Override
   public void compactionCompleted(String externalCompactionId, CompactionStats stats)
       throws TException {
-    RunningCompaction rc = RUNNING.get(externalCompactionId);
+    var ecid = ExternalCompactionId.of(externalCompactionId);
+    RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc) {
       rc.setStats(stats);
     } else {
@@ -414,7 +416,7 @@ public class CompactionCoordinator extends AbstractServer
               client = getTabletServerConnection(rc.getTserver());
               client.compactionJobFinished(TraceUtil.traceInfo(), getContext().rpcCreds(),
                   externalCompactionId, stats.fileSize, stats.entriesWritten);
-              RUNNING.remove(externalCompactionId, rc);
+              RUNNING.remove(ecid, rc);
               return null;
             } catch (TException e) {
               throw e;
@@ -462,7 +464,7 @@ public class CompactionCoordinator extends AbstractServer
   @Override
   public void updateCompactionStatus(String externalCompactionId, CompactionState state,
       String message, long timestamp) throws TException {
-    RunningCompaction rc = RUNNING.get(externalCompactionId);
+    RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
     if (null != rc) {
       rc.addUpdate(timestamp, message, state);
     } else {

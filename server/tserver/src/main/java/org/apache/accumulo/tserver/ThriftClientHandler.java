@@ -34,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -123,6 +122,7 @@ import org.apache.accumulo.fate.zookeeper.ZooUtil;
 import org.apache.accumulo.server.client.ClientServiceHandler;
 import org.apache.accumulo.server.compaction.CompactionInfo;
 import org.apache.accumulo.server.compaction.Compactor;
+import org.apache.accumulo.server.compaction.ExternalCompactionId;
 import org.apache.accumulo.server.conf.TableConfiguration;
 import org.apache.accumulo.server.data.ServerMutation;
 import org.apache.accumulo.server.fs.TooManyFilesException;
@@ -1701,8 +1701,9 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
 
-    server.getCompactionManager().commitExternalCompaction(UUID.fromString(externalCompactionId),
-        server.getOnlineTablets(), fileSize, entries);
+    server.getCompactionManager().commitExternalCompaction(
+        ExternalCompactionId.of(externalCompactionId), server.getOnlineTablets(), fileSize,
+        entries);
   }
 
   @Override

@@ -21,7 +21,6 @@ package org.apache.accumulo.tserver.compactions;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.IteratorSetting;
@@ -35,6 +34,7 @@ import org.apache.accumulo.core.tabletserver.thrift.CompactionType;
 import org.apache.accumulo.core.tabletserver.thrift.InputFile;
 import org.apache.accumulo.core.tabletserver.thrift.IteratorConfig;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
+import org.apache.accumulo.server.compaction.ExternalCompactionId;
 
 public class ExternalCompactionJob {
 
@@ -42,14 +42,14 @@ public class ExternalCompactionJob {
   private boolean propogateDeletes;
   private TabletFile compactTmpName;
   private KeyExtent extent;
-  private UUID externalCompactionId;
+  private ExternalCompactionId externalCompactionId;
   private long priority;
   private CompactionKind kind;
   private List<IteratorSetting> iters;
 
   public ExternalCompactionJob(Set<StoredTabletFile> jobFiles, boolean propogateDeletes,
-      TabletFile compactTmpName, KeyExtent extent, UUID externalCompactionId, long priority,
-      CompactionKind kind, List<IteratorSetting> iters) {
+      TabletFile compactTmpName, KeyExtent extent, ExternalCompactionId externalCompactionId,
+      long priority, CompactionKind kind, List<IteratorSetting> iters) {
     this.jobFiles = Objects.requireNonNull(jobFiles);
     this.propogateDeletes = propogateDeletes;
     this.compactTmpName = Objects.requireNonNull(compactTmpName);
@@ -99,7 +99,7 @@ public class ExternalCompactionJob {
         org.apache.accumulo.core.tabletserver.thrift.CompactionKind.valueOf(kind.name()));
   }
 
-  public UUID getExternalCompactionId() {
+  public ExternalCompactionId getExternalCompactionId() {
     return externalCompactionId;
   }
 
