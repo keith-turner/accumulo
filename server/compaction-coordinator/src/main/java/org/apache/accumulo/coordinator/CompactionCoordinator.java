@@ -273,6 +273,7 @@ public class CompactionCoordinator extends AbstractServer
     String queue = queueName.intern();
     TServerInstance tserver = null;
     Long priority = null;
+    // CBUG Review synchronization on QUEUES
     synchronized (QUEUES) {
       TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(queue);
       if (null != m) {

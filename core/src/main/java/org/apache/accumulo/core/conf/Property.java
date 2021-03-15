@@ -1027,8 +1027,8 @@ public enum Property {
   // Compactor properties
   COMPACTOR_PREFIX("compactor.", null, PropertyType.PREFIX,
       "Properties in this category affect the behavior of the accumulo compactor server."),
-  COMPACTOR_PORTSEARCH("compactor.port.search", "false", PropertyType.BOOLEAN,
-      "if the ports above are in use, search higher ports until one is available"),
+  COMPACTOR_PORTSEARCH("compactor.port.search", "true", PropertyType.BOOLEAN,
+      "if the compactor.port.client is in use, search higher ports until one is available"),
   COMPACTOR_CLIENTPORT("compactor.port.client", "9100", PropertyType.PORT,
       "The port used for handling client connections on the compactor servers"),
   COMPACTOR_MINTHREADS("compactor.server.threads.minimum", "1", PropertyType.COUNT,
