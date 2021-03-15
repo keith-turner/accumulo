@@ -80,6 +80,7 @@ public class CompactionCoordinator extends AbstractServer
 
   private static final Logger LOG = LoggerFactory.getLogger(CompactionCoordinator.class);
   private static final long TIME_BETWEEN_CHECKS = 5000;
+  private static final long TSERVER_CHECK_INTERVAL = 60000;
 
   /* Map of external queue name -> priority -> tservers */
   private static final Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> QUEUES =
@@ -192,11 +193,13 @@ public class CompactionCoordinator extends AbstractServer
     tserverSet.startListeningForTabletServerChanges();
 
     while (true) {
+      long start = System.currentTimeMillis();
       tserverSet.getCurrentServers().forEach(tsi -> {
         try {
           TabletClientService.Client client = null;
           try {
-            LOG.debug("contacting tserver " + tsi.getHostPort());
+            LOG.debug("Contacting tablet server {} to get external compaction summaries",
+                tsi.getHostPort());
             client = getTabletServerConnection(tsi);
             List<TCompactionQueueSummary> summaries =
                 client.getCompactionQueueInfo(TraceUtil.traceInfo(), getContext().rpcCreds());
@@ -213,11 +216,14 @@ public class CompactionCoordinator extends AbstractServer
             ThriftUtil.returnClient(client);
           }
         } catch (TException e) {
-          LOG.warn("Error getting compaction summaries from tablet server: {}",
+          LOG.warn("Error getting external compaction summaries from tablet server: {}",
               tsi.getHostAndPort(), e);
         }
       });
-      UtilWaitThread.sleep(60000);
+      long duration = (System.currentTimeMillis() - start);
+      if (TSERVER_CHECK_INTERVAL - duration > 0) {
+        UtilWaitThread.sleep(TSERVER_CHECK_INTERVAL - duration);
+      }
     }
 
   }
@@ -310,7 +316,8 @@ public class CompactionCoordinator extends AbstractServer
       LOG.debug("No compactions found for queue {}, returning null to compactor {}", queue,
           compactorAddress);
       // CBUG Returning null here causes:
-      // [compaction.RetryableThriftCall] ERROR: Error in Thrift function, retrying in 60000ms. Error: org.apache.thrift.TApplicationException: getCompactionJob failed: unknown result
+      // [compaction.RetryableThriftCall] ERROR: Error in Thrift function, retrying in 60000ms.
+      // Error: org.apache.thrift.TApplicationException: getCompactionJob failed: unknown result
 
       return null;
     }
@@ -353,6 +360,7 @@ public class CompactionCoordinator extends AbstractServer
    */
   @Override
   public void cancelCompaction(String externalCompactionId) throws TException {
+    LOG.info("Compaction cancel requested, id: {}", externalCompactionId);
     RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
     if (null == rc) {
       throw new UnknownCompactionIdException();
@@ -406,6 +414,7 @@ public class CompactionCoordinator extends AbstractServer
   @Override
   public void compactionCompleted(String externalCompactionId, CompactionStats stats)
       throws TException {
+    LOG.info("Compaction completed, id: {}, stats: {}", externalCompactionId, stats);
     var ecid = ExternalCompactionId.of(externalCompactionId);
     RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc) {
@@ -475,6 +484,8 @@ public class CompactionCoordinator extends AbstractServer
   @Override
   public void updateCompactionStatus(String externalCompactionId, CompactionState state,
       String message, long timestamp) throws TException {
+    LOG.info("Compaction status update, id: {}, timestamp: {}, state: {}, message: {}",
+        externalCompactionId, timestamp, state, message);
     RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
     if (null != rc) {
       rc.addUpdate(timestamp, message, state);

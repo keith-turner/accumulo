@@ -55,7 +55,6 @@ import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.util.threads.Threads;
-import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ZooLock;
 import org.apache.accumulo.fate.zookeeper.ZooLock.LockLossReason;
 import org.apache.accumulo.fate.zookeeper.ZooLock.LockWatcher;
@@ -417,7 +416,7 @@ public class Compactor extends AbstractServer
           throw new RuntimeException("Compaction failed", e);
         } finally {
           stopped.countDown();
-          // TODO: Any cleanup
+          // CBUG Any cleanup
         }
       }
     };
@@ -473,7 +472,14 @@ public class Compactor extends AbstractServer
         try {
           started.await(); // wait until the compactor is started
           long inputEntries = totalInputEntries.sum();
-          while (stopped.getCount() > 0) {
+
+          // This block of code will update the coordinator with the progress of external
+          // compaction every minute
+          //
+          // CBUG Is 1 minute too often for very large files? Since the update is stored in the
+          // RUNNING set, it's going to eat up memory. Should the time be dependent on the size
+          // of the input entries?
+          while (!stopped.await(1, TimeUnit.MINUTES)) {
             List<CompactionInfo> running =
                 org.apache.accumulo.server.compaction.Compactor.getRunningCompactions();
             if (!running.isEmpty()) {
@@ -493,7 +499,6 @@ public class Compactor extends AbstractServer
                 }
               }
             }
-            UtilWaitThread.sleep(60000);
           }
           try {
             compactionThread.join();
