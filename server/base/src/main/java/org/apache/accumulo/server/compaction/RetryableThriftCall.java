@@ -112,7 +112,7 @@ public class RetryableThriftCall<T> {
       }
       UtilWaitThread.sleep(waitTime);
       if (waitTime != maxWaitTime) {
-        waitTime = Math.max(waitTime * 2, maxWaitTime);
+        waitTime = Math.min(waitTime * 2, maxWaitTime);
       }
     } while (null == result);
     return result;

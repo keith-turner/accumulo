@@ -43,12 +43,15 @@ public class ExternalCompactionUtil {
   /**
    *
    * @param context
-   * @return
+   * @return null if Coordinator node not found, else HostAndPort
    */
   public static HostAndPort findCompactionCoordinator(ServerContext context) {
     final String lockPath = context.getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
     try {
       byte[] address = ZooLock.getLockData(context.getZooReaderWriter().getZooKeeper(), lockPath);
+      if (null == address) {
+        return null;
+      }
       String coordinatorAddress = new String(address);
       return HostAndPort.fromString(coordinatorAddress);
     } catch (KeeperException | InterruptedException e) {

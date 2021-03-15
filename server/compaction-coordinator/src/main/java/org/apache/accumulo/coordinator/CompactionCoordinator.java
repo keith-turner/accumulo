@@ -85,7 +85,8 @@ public class CompactionCoordinator extends AbstractServer
   private static final Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> QUEUES =
       new HashMap<>();
   /* index of tserver to queue and priority, exists to provide O(1) lookup into QUEUES */
-  private static final Map<TServerInstance,HashSet<QueueAndPriority>> INDEX = new HashMap<>();
+  private static final Map<TServerInstance,HashSet<QueueAndPriority>> INDEX =
+      new ConcurrentHashMap<>();
   /* Map of compactionId to RunningCompactions */
   private static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
       new ConcurrentHashMap<>();
@@ -193,23 +194,23 @@ public class CompactionCoordinator extends AbstractServer
     while (true) {
       tserverSet.getCurrentServers().forEach(tsi -> {
         try {
-          synchronized (QUEUES) {
-            TabletClientService.Client client = null;
-            try {
-              LOG.debug("contacting tserver " + tsi.getHostPort());
-              client = getTabletServerConnection(tsi);
-              List<TCompactionQueueSummary> summaries =
-                  client.getCompactionQueueInfo(TraceUtil.traceInfo(), getContext().rpcCreds());
-              summaries.forEach(summary -> {
-                QueueAndPriority qp =
-                    QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
+          TabletClientService.Client client = null;
+          try {
+            LOG.debug("contacting tserver " + tsi.getHostPort());
+            client = getTabletServerConnection(tsi);
+            List<TCompactionQueueSummary> summaries =
+                client.getCompactionQueueInfo(TraceUtil.traceInfo(), getContext().rpcCreds());
+            summaries.forEach(summary -> {
+              QueueAndPriority qp =
+                  QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
+              synchronized (QUEUES) {
                 QUEUES.computeIfAbsent(qp.getQueue(), k -> new TreeMap<>())
                     .computeIfAbsent(qp.getPriority(), k -> new LinkedHashSet<>()).add(tsi);
                 INDEX.computeIfAbsent(tsi, k -> new HashSet<>()).add(qp);
-              });
-            } finally {
-              ThriftUtil.returnClient(client);
-            }
+              }
+            });
+          } finally {
+            ThriftUtil.returnClient(client);
           }
         } catch (TException e) {
           LOG.warn("Error getting compaction summaries from tablet server: {}",
@@ -239,20 +240,20 @@ public class CompactionCoordinator extends AbstractServer
     // run() will iterate over the current and added tservers and add them to the internal
     // data structures. For tservers that are deleted, we need to remove them from the
     // internal data structures
-    synchronized (QUEUES) {
-      deleted.forEach(tsi -> {
-        INDEX.get(tsi).forEach(qp -> {
-          TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(qp.getQueue());
-          if (null != m) {
-            LinkedHashSet<TServerInstance> tservers = m.get(qp.getPriority());
-            if (null != tservers) {
+    deleted.forEach(tsi -> {
+      INDEX.get(tsi).forEach(qp -> {
+        TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(qp.getQueue());
+        if (null != m) {
+          LinkedHashSet<TServerInstance> tservers = m.get(qp.getPriority());
+          if (null != tservers) {
+            synchronized (QUEUES) {
               tservers.remove(tsi);
+              INDEX.remove(tsi);
             }
           }
-        });
-        INDEX.remove(tsi);
+        }
       });
-    }
+    });
   }
 
   /**
@@ -305,6 +306,11 @@ public class CompactionCoordinator extends AbstractServer
     }
 
     if (null == tserver) {
+      LOG.debug("No compactions found for queue {}, returning null to compactor {}", queue,
+          compactorAddress);
+      // CBUG Returning null here causes:
+      // [compaction.RetryableThriftCall] ERROR: Error in Thrift function, retrying in 60000ms. Error: org.apache.thrift.TApplicationException: getCompactionJob failed: unknown result
+
       return null;
     }
 
@@ -317,6 +323,10 @@ public class CompactionCoordinator extends AbstractServer
           new RunningCompaction(job, compactorAddress, tserver));
       LOG.debug("Returning external job {} to {}", job.externalCompactionId, compactorAddress);
       return job;
+    } catch (TException e) {
+      LOG.error("Error reserving compaction from tserver {}",
+          ExternalCompactionUtil.getHostPortString(tserver.getHostAndPort()), e);
+      throw e;
     } finally {
       ThriftUtil.returnClient(client);
     }

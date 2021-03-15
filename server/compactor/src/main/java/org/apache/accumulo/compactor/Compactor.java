@@ -548,6 +548,8 @@ public class Compactor extends AbstractServer
         }
       }
 
+    } catch (Exception e) {
+      LOG.error("Unhandled error occurred in Compactor", e);
     } finally {
       // close connection to coordinator
       if (null != coordinatorClient.get()) {
@@ -555,7 +557,7 @@ public class Compactor extends AbstractServer
       }
 
       // Shutdown local thrift server
-      LOG.debug("Stopping Thrift Servers");
+      LOG.info("Stopping Thrift Servers");
       TServerUtils.stopTServer(compactorAddress.server);
 
       try {
