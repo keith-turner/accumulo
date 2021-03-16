@@ -99,6 +99,20 @@ public class SharedRateLimiterFactory {
   }
 
   /**
+   * Remove the rate limiter from the set of active limiters, if it exists
+   *
+   * @param name
+   *          key for the rate limiter
+   */
+  public void remove(String name) {
+    synchronized (activeLimiters) {
+      if (activeLimiters.containsKey(name)) {
+        activeLimiters.remove(name);
+      }
+    }
+  }
+
+  /**
    * Walk through all of the currently active RateLimiters, having each update its current rate.
    * This is called periodically so that we can dynamically update as configuration changes.
    */

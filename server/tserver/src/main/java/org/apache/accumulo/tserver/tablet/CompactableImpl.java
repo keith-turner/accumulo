@@ -771,9 +771,11 @@ public class CompactableImpl implements Compactable {
         TabletLogger.compacted(getExtent(), cInfo.job, metaFile);
       } catch (Exception e) {
         metaFile = null;
+        log.error("Error committing external compaction {}", extCompactionId, e);
         throw new RuntimeException(e);
       } finally {
         completeCompaction(cInfo.job, cInfo.jobFiles, metaFile);
+        log.debug("Completed commit of external compaction{}", extCompactionId);
       }
     } else {
       log.debug("Ignoring request to commit external compaction that is unknown {}",

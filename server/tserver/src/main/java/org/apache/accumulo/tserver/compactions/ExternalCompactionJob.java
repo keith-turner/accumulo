@@ -47,6 +47,8 @@ public class ExternalCompactionJob {
   private CompactionKind kind;
   private List<IteratorSetting> iters;
 
+  public ExternalCompactionJob() {}
+
   public ExternalCompactionJob(Set<StoredTabletFile> jobFiles, boolean propogateDeletes,
       TabletFile compactTmpName, KeyExtent extent, ExternalCompactionId externalCompactionId,
       long priority, CompactionKind kind, List<IteratorSetting> iters) {

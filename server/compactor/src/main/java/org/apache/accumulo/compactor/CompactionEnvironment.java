@@ -18,6 +18,9 @@
  */
 package org.apache.accumulo.compactor;
 
+import java.io.Closeable;
+import java.io.IOException;
+
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
@@ -33,14 +36,22 @@ import org.apache.accumulo.server.compaction.Compactor.CompactionEnv;
 import org.apache.accumulo.server.iterators.SystemIteratorEnvironment;
 import org.apache.accumulo.server.iterators.TabletIteratorEnvironment;
 
-public class CompactionEnvironment implements CompactionEnv {
+public class CompactionEnvironment implements Closeable, CompactionEnv {
 
   private final ServerContext context;
   private final CompactionJobHolder jobHolder;
+  private final SharedRateLimiterFactory limiter;
 
   CompactionEnvironment(ServerContext context, CompactionJobHolder jobHolder) {
     this.context = context;
     this.jobHolder = jobHolder;
+    this.limiter = SharedRateLimiterFactory.getInstance(this.context.getConfiguration());
+  }
+
+  @Override
+  public void close() throws IOException {
+    limiter.remove("read_rate_limiter");
+    limiter.remove("write_rate_limiter");
   }
 
   @Override
@@ -55,14 +66,12 @@ public class CompactionEnvironment implements CompactionEnv {
 
   @Override
   public RateLimiter getReadLimiter() {
-    return SharedRateLimiterFactory.getInstance(context.getConfiguration())
-        .create("read_rate_limiter", () -> jobHolder.getJob().getReadRate());
+    return limiter.create("read_rate_limiter", () -> jobHolder.getJob().getReadRate());
   }
 
   @Override
   public RateLimiter getWriteLimiter() {
-    return SharedRateLimiterFactory.getInstance(context.getConfiguration())
-        .create("write_rate_limiter", () -> jobHolder.getJob().getWriteRate());
+    return limiter.create("write_rate_limiter", () -> jobHolder.getJob().getWriteRate());
   }
 
   @Override

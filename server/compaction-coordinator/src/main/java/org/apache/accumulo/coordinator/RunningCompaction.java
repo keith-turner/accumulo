@@ -20,6 +20,7 @@ package org.apache.accumulo.coordinator;
 
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.metadata.TServerInstance;
@@ -31,7 +32,8 @@ public class RunningCompaction {
   private final TExternalCompactionJob job;
   private final String compactorAddress;
   private final TServerInstance tserver;
-  private Map<Long,CompactionUpdate> updates = new TreeMap<>();
+  private final Map<Long,CompactionUpdate> updates = new TreeMap<>();
+  private final AtomicBoolean completed = new AtomicBoolean(Boolean.FALSE);
   private CompactionStats stats = null;
 
   RunningCompaction(TExternalCompactionJob job, String compactorAddress, TServerInstance tserver) {
@@ -67,6 +69,14 @@ public class RunningCompaction {
 
   public TServerInstance getTserver() {
     return tserver;
+  }
+
+  public boolean isCompleted() {
+    return completed.get();
+  }
+
+  public void setCompleted() {
+    completed.compareAndSet(false, true);
   }
 
 }

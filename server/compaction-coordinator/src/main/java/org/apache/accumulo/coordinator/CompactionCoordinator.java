@@ -189,6 +189,9 @@ public class CompactionCoordinator extends AbstractServer
     // TODO: On initial startup contact all running tservers to get information about the
     // compactions that are current running in external queues to populate the RUNNING map.
     // This is to handle the case where the coordinator dies or is restarted at runtime
+    //
+    // Alternatively, we could use the status messages in updateCompactionStatus to rebuild
+    // the RUNNING map.
 
     tserverSet.startListeningForTabletServerChanges();
 
@@ -251,7 +254,7 @@ public class CompactionCoordinator extends AbstractServer
       // Find any running compactions for the tserver
       final List<ExternalCompactionId> toCancel = new ArrayList<>();
       RUNNING.forEach((k, v) -> {
-        if (v.getCompactorAddress().equals(tsi)) {
+        if (v.getTserver().equals(tsi)) {
           toCancel.add(k);
         }
       });
@@ -295,63 +298,84 @@ public class CompactionCoordinator extends AbstractServer
     // CBUG need to use and check for system credentials
     LOG.debug("getCompactionJob " + queueName + " " + compactorAddress);
     String queue = queueName.intern();
-    TServerInstance tserver = null;
-    Long priority = null;
+    TExternalCompactionJob result = null;
     // CBUG Review synchronization on QUEUES
     synchronized (QUEUES) {
       TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(queue);
-      if (null != m) {
-        while (tserver == null) {
+      if (null != m && !m.isEmpty()) {
+        while (result == null) {
+
+          // m could become empty if we have contacted all tservers in this queue and
+          // there are no compactions
+          if (m.isEmpty()) {
+            LOG.debug("No tservers found for queue {}, returning empty job to compactor {}", queue,
+                compactorAddress);
+            result = new TExternalCompactionJob();
+            break;
+          }
+
           // Get the first TServerInstance from the highest priority queue
           Entry<Long,LinkedHashSet<TServerInstance>> entry = m.firstEntry();
-          priority = entry.getKey();
+          Long priority = entry.getKey();
           LinkedHashSet<TServerInstance> tservers = entry.getValue();
-          if (null == tservers || m.isEmpty()) {
+
+          if (null == tservers || tservers.isEmpty()) {
             // Clean up the map entry when no tservers for this queue and priority
             m.remove(entry.getKey(), entry.getValue());
             continue;
           } else {
-            tserver = tservers.iterator().next();
+            TServerInstance tserver = tservers.iterator().next();
+            LOG.debug("Found tserver {} with priority {} for queue {}", tserver.getHostAndPort(),
+                priority, queue);
             // Remove the tserver from the list, we are going to run a compaction on this server
             tservers.remove(tserver);
-            if (tservers.size() == 0) {
+            if (tservers.isEmpty()) {
               // Clean up the map entry when no tservers remaining for this queue and priority
+              // CBUG This may be redundant as cleanup happens in the 'if' clause above
               m.remove(entry.getKey(), entry.getValue());
             }
             HashSet<QueueAndPriority> qp = INDEX.get(tserver);
             qp.remove(QueueAndPriority.get(queue, priority));
-            if (qp.size() == 0) {
+            if (qp.isEmpty()) {
               // Remove the tserver from the index
               INDEX.remove(tserver);
             }
-            break;
+            LOG.debug("Getting compaction for queue {} from tserver {}", queue,
+                tserver.getHostAndPort());
+            // Get a compaction from the tserver
+            TabletClientService.Client client = null;
+            try {
+              client = getTabletServerConnection(tserver);
+              TExternalCompactionJob job = client.reserveCompactionJob(TraceUtil.traceInfo(),
+                  getContext().rpcCreds(), queue, priority, compactorAddress);
+              if (null == job.getExternalCompactionId()) {
+                LOG.debug("No compactions found for queue {} on tserver {}, trying next tserver",
+                    queue, tserver.getHostAndPort(), compactorAddress);
+                continue;
+              }
+              RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
+                  new RunningCompaction(job, compactorAddress, tserver));
+              LOG.debug("Returning external job {} to {}", job.externalCompactionId,
+                  compactorAddress);
+              result = job;
+              break;
+            } catch (TException e) {
+              LOG.error(
+                  "Error from tserver {} while trying to reserve compaction, trying next tserver",
+                  ExternalCompactionUtil.getHostPortString(tserver.getHostAndPort()), e);
+            } finally {
+              ThriftUtil.returnClient(client);
+            }
           }
         }
+      } else {
+        LOG.debug("No tservers found for queue {}, returning empty job to compactor {}", queue,
+            compactorAddress);
+        result = new TExternalCompactionJob();
       }
     }
+    return result;
 
-    if (null == tserver) {
-      LOG.debug("No compactions found for queue {}, returning empty job to compactor {}", queue,
-          compactorAddress);
-      return new TExternalCompactionJob();
-    }
-
-    TabletClientService.Client client = null;
-    try {
-      client = getTabletServerConnection(tserver);
-      TExternalCompactionJob job = client.reserveCompactionJob(TraceUtil.traceInfo(),
-          getContext().rpcCreds(), queue, priority, compactorAddress);
-      RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
-          new RunningCompaction(job, compactorAddress, tserver));
-      LOG.debug("Returning external job {} to {}", job.externalCompactionId, compactorAddress);
-      return job;
-    } catch (TException e) {
-      LOG.error("Error reserving compaction from tserver {}",
-          ExternalCompactionUtil.getHostPortString(tserver.getHostAndPort()), e);
-      throw e;
-    } finally {
-      ThriftUtil.returnClient(client);
-    }
   }
 
   protected TabletClientService.Client getTabletServerConnection(TServerInstance tserver)
@@ -377,44 +401,52 @@ public class CompactionCoordinator extends AbstractServer
     LOG.info("Compaction cancel requested, id: {}", externalCompactionId);
     RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
     if (null == rc) {
-      throw new UnknownCompactionIdException();
+      return;
     }
-    HostAndPort compactor = HostAndPort.fromString(rc.getCompactorAddress());
-    RetryableThriftCall<Void> cancelThriftCall = new RetryableThriftCall<>(1000,
-        RetryableThriftCall.MAX_WAIT_TIME, 0, new RetryableThriftFunction<Void>() {
-          @Override
-          public Void execute() throws TException {
-            Compactor.Client compactorConnection = null;
-            try {
-              compactorConnection = getCompactorConnection(compactor);
-              compactorConnection.cancel(rc.getJob().getExternalCompactionId());
-              return null;
-            } catch (TException e) {
-              throw e;
-            } finally {
-              ThriftUtil.returnClient(compactorConnection);
+    if (!rc.isCompleted()) {
+      HostAndPort compactor = HostAndPort.fromString(rc.getCompactorAddress());
+      RetryableThriftCall<String> cancelThriftCall = new RetryableThriftCall<>(1000,
+          RetryableThriftCall.MAX_WAIT_TIME, 0, new RetryableThriftFunction<String>() {
+            @Override
+            public String execute() throws TException {
+              Compactor.Client compactorConnection = null;
+              try {
+                compactorConnection = getCompactorConnection(compactor);
+                compactorConnection.cancel(rc.getJob().getExternalCompactionId());
+                return "";
+              } catch (TException e) {
+                throw e;
+              } finally {
+                ThriftUtil.returnClient(compactorConnection);
+              }
             }
-          }
-        });
-    try {
-      cancelThriftCall.run();
-    } catch (RetriesExceededException e) {
-      LOG.error("Unable to contact Compactor {} to cancel running compaction {}",
-          rc.getCompactorAddress(), rc.getJob(), e);
+          });
+      try {
+        cancelThriftCall.run();
+      } catch (RetriesExceededException e) {
+        LOG.error("Unable to contact Compactor {} to cancel running compaction {}",
+            rc.getCompactorAddress(), rc.getJob(), e);
+      }
     }
   }
 
+  /**
+   * TServer calls getCompactionStatus to get information about the compaction
+   *
+   * @param externalCompactionId
+   *          id
+   * @return compaction stats or null if not running
+   */
   @Override
   public List<Status> getCompactionStatus(String externalCompactionId) throws TException {
-    RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
-    if (null == rc) {
-      throw new UnknownCompactionIdException();
-    }
     List<Status> status = new ArrayList<>();
-    rc.getUpdates().forEach((k, v) -> {
-      status.add(new Status(v.getTimestamp(), rc.getJob().getExternalCompactionId(),
-          rc.getCompactorAddress(), v.getState(), v.getMessage()));
-    });
+    RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
+    if (null != rc) {
+      rc.getUpdates().forEach((k, v) -> {
+        status.add(new Status(v.getTimestamp(), rc.getJob().getExternalCompactionId(),
+            rc.getCompactorAddress(), v.getState(), v.getMessage()));
+      });
+    }
     return status;
   }
 
@@ -434,6 +466,7 @@ public class CompactionCoordinator extends AbstractServer
     RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc) {
       rc.setStats(stats);
+      rc.setCompleted();
     } else {
       LOG.error(
           "Compaction completed called by Compactor for {}, but no running compaction for that id.",
@@ -442,17 +475,19 @@ public class CompactionCoordinator extends AbstractServer
     }
     // Attempt up to ten times to contact the TServer and notify it that the compaction has
     // completed.
-    RetryableThriftCall<Void> completedThriftCall = new RetryableThriftCall<>(1000,
-        RetryableThriftCall.MAX_WAIT_TIME, 10, new RetryableThriftFunction<Void>() {
+    RetryableThriftCall<String> completedThriftCall = new RetryableThriftCall<>(1000,
+        RetryableThriftCall.MAX_WAIT_TIME, 10, new RetryableThriftFunction<String>() {
           @Override
-          public Void execute() throws TException {
+          public String execute() throws TException {
             TabletClientService.Client client = null;
             try {
               client = getTabletServerConnection(rc.getTserver());
               client.compactionJobFinished(TraceUtil.traceInfo(), getContext().rpcCreds(),
                   externalCompactionId, stats.fileSize, stats.entriesWritten);
               RUNNING.remove(ecid, rc);
-              return null;
+              LOG.info("TServer {} notified of compaction {} completion",
+                  rc.getTserver().getHostAndPort(), externalCompactionId);
+              return "";
             } catch (TException e) {
               throw e;
             } finally {
@@ -461,64 +496,6 @@ public class CompactionCoordinator extends AbstractServer
           }
         });
     try {
-      // CBUG Saw the following situation in testing:
-      // 1. Compactor ran a compaction and completed.
-      // 2. Compactor called this method
-      // 3. Thrift timeout occurred and the Compactor retried due to RetryableThriftCall
-      // 4. Upon retry this method returned UnknownCompactionIdException because no entry in RUNNING
-
-      // See Method below where tserver could poll coordinator to see if compaction is completed.
-
-      // "compactor" #38 prio=5 os_prio=0 cpu=157.59ms elapsed=197.99s tid=0x000055ea28438800
-      // nid=0x4dae runnable [0x00007fb0c5f2e000]
-      // java.lang.Thread.State: RUNNABLE
-      // at sun.nio.ch.EPoll.wait(java.base@11.0.10/Native Method)
-      // at sun.nio.ch.EPollSelectorImpl.doSelect(java.base@11.0.10/EPollSelectorImpl.java:120)
-      // at sun.nio.ch.SelectorImpl.lockAndDoSelect(java.base@11.0.10/SelectorImpl.java:124)
-      // - locked <0x00000000f449acc0> (a sun.nio.ch.Util$2)
-      // - locked <0x00000000f449aa60> (a sun.nio.ch.EPollSelectorImpl)
-      // at sun.nio.ch.SelectorImpl.select(java.base@11.0.10/SelectorImpl.java:136)
-      // at
-      // org.apache.hadoop.net.SocketIOWithTimeout$SelectorPool.select(SocketIOWithTimeout.java:336)
-      // at org.apache.hadoop.net.SocketIOWithTimeout.doIO(SocketIOWithTimeout.java:157)
-      // at org.apache.hadoop.net.SocketInputStream.read(SocketInputStream.java:161)
-      // at org.apache.hadoop.net.SocketInputStream.read(SocketInputStream.java:131)
-      // at java.io.FilterInputStream.read(java.base@11.0.10/FilterInputStream.java:133)
-      // at java.io.BufferedInputStream.fill(java.base@11.0.10/BufferedInputStream.java:252)
-      // at java.io.BufferedInputStream.read1(java.base@11.0.10/BufferedInputStream.java:292)
-      // at java.io.BufferedInputStream.read(java.base@11.0.10/BufferedInputStream.java:351)
-      // - locked <0x00000000f466c028> (a java.io.BufferedInputStream)
-      // at org.apache.thrift.transport.TIOStreamTransport.read(TIOStreamTransport.java:127)
-      // at org.apache.thrift.transport.TTransport.readAll(TTransport.java:86)
-      // at org.apache.thrift.transport.TFramedTransport.readFrame(TFramedTransport.java:132)
-      // at org.apache.thrift.transport.TFramedTransport.read(TFramedTransport.java:100)
-      // at org.apache.thrift.transport.TTransport.readAll(TTransport.java:86)
-      // at
-      // org.apache.accumulo.core.clientImpl.ThriftTransportPool$CachedTTransport.readAll(ThriftTransportPool.java:546)
-      // at org.apache.thrift.protocol.TCompactProtocol.readByte(TCompactProtocol.java:637)
-      // at org.apache.thrift.protocol.TCompactProtocol.readMessageBegin(TCompactProtocol.java:505)
-      // at org.apache.thrift.TServiceClient.receiveBase(TServiceClient.java:77)
-      // at
-      // org.apache.accumulo.core.compaction.thrift.CompactionCoordinator$Client.recv_compactionCompleted(CompactionCoordinator.java:118)
-      // at
-      // org.apache.accumulo.core.compaction.thrift.CompactionCoordinator$Client.compactionCompleted(CompactionCoordinator.java:104)
-      // at org.apache.accumulo.compactor.Compactor$3.execute(Compactor.java:296)
-      // at org.apache.accumulo.compactor.Compactor$3.execute(Compactor.java:291)
-      // at
-      // org.apache.accumulo.server.compaction.RetryableThriftCall.run(RetryableThriftCall.java:102)
-      // at org.apache.accumulo.compactor.Compactor.updateCompactionCompleted(Compactor.java:304)
-      // at org.apache.accumulo.compactor.Compactor.run(Compactor.java:509)
-
-      // "CompactionCoordinator-ClientPool-Worker-1" #47 daemon prio=5 os_prio=0 cpu=70.37ms
-      // elapsed=243.97s tid=0x00005590266cb800 nid=0x4db3 waiting on condition [0x00007f4c8cb6c000]
-      // java.lang.Thread.State: TIMED_WAITING (sleeping)
-      // at java.lang.Thread.sleep(java.base@11.0.10/Native Method)
-      // at org.apache.accumulo.fate.util.UtilWaitThread.sleep(UtilWaitThread.java:33)
-      // at
-      // org.apache.accumulo.server.compaction.RetryableThriftCall.run(RetryableThriftCall.java:113)
-      // at
-      // org.apache.accumulo.coordinator.CompactionCoordinator.compactionCompleted(CompactionCoordinator.java:462)
-
       completedThriftCall.run();
     } catch (RetriesExceededException e) {
       // TODO: What happens if tserver is no longer hosting tablet? I wonder if we should not notify
@@ -548,13 +525,14 @@ public class CompactionCoordinator extends AbstractServer
    *
    *
    * @param externalCompactionId
-   * @return CompactionStats or null if not completed
-   * @throws TException
+   * @return CompactionStats
+   * @throws UnknownCompactionIdException
+   *           if compaction is not running
    */
   public CompactionStats isCompactionCompleted(String externalCompactionId) throws TException {
     var ecid = ExternalCompactionId.of(externalCompactionId);
     RunningCompaction rc = RUNNING.get(ecid);
-    if (null != rc && null != rc.getStats()) {
+    if (null != rc && rc.isCompleted()) {
       RUNNING.remove(ecid, rc);
       return rc.getStats();
     } else if (rc == null) {
@@ -591,6 +569,9 @@ public class CompactionCoordinator extends AbstractServer
     if (null != rc) {
       rc.addUpdate(timestamp, message, state);
     } else {
+      // TODO: If the Coordinator was restarted, we could use these status messages
+      // to re-populate the RUNNING set. This would require the job, compactor address
+      // and TServerInstance
       throw new UnknownCompactionIdException();
     }
   }

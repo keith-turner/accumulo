@@ -1687,8 +1687,7 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
       return extCompaction.toThrift();
     }
 
-    // CBUG thrift may not support null return types https://thrift.apache.org/docs/features.html
-    return null;
+    return new TExternalCompactionJob();
   }
 
   @Override
