@@ -450,6 +450,10 @@ public class Compactor extends AbstractServer
         TExternalCompactionJob job;
         try {
           job = getNextJob();
+          if (!job.isSetExternalCompactionId()) {
+            LOG.info("No external compactions in queue {}", this.queueName);
+            continue;
+          }
         } catch (RetriesExceededException e2) {
           LOG.warn("Retries exceeded getting next job. Retrying...");
           continue;
