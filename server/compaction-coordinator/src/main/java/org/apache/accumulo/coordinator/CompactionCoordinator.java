@@ -20,7 +20,6 @@ package org.apache.accumulo.coordinator;
 
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -323,7 +322,7 @@ public class CompactionCoordinator extends AbstractServer
           m.remove(entry.getKey(), entry.getValue());
           continue;
         } else {
-          synchronized(qp) {
+          synchronized (qp) {
             TServerInstance tserver = tservers.iterator().next();
             LOG.debug("Found tserver {} with priority {} for queue {}", tserver.getHostAndPort(),
                 priority, queue);
