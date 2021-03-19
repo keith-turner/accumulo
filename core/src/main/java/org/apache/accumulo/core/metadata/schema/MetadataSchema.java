@@ -327,6 +327,11 @@ public class MetadataSchema {
       public static final Text NAME = new Text("chopped");
       public static final ColumnFQ CHOPPED_COLUMN = new ColumnFQ(NAME, new Text("chopped"));
     }
+
+    public static class ExternalCompactionColumnFamily {
+      public static final String STR_NAME = "ecomp";
+      public static final Text NAME = new Text(STR_NAME);
+    }
   }
 
   /**

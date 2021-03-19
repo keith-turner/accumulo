@@ -19,7 +19,6 @@
 package org.apache.accumulo.core.metadata.schema;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.COMPACT_QUAL;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.DIRECTORY_QUAL;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.FLUSH_QUAL;
@@ -62,11 +61,13 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Bu
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ClonedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CurrentLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.FutureLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ScanFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.util.HostAndPort;
@@ -109,6 +110,7 @@ public class TabletMetadata {
   private List<LogEntry> logs;
   private OptionalLong compact = OptionalLong.empty();
   private Double splitRatio = null;
+  private Map<ExternalCompactionId,ExternalCompactionMetadata> extCompactions;
 
   public enum LocationType {
     CURRENT, FUTURE, LAST
@@ -129,7 +131,8 @@ public class TabletMetadata {
     LOGS,
     COMPACT_ID,
     SPLIT_RATIO,
-    SUSPEND
+    SUSPEND,
+    ECOMP
   }
 
   public static class Location extends TServerInstance {
@@ -292,6 +295,11 @@ public class TabletMetadata {
     }
   }
 
+  public Map<ExternalCompactionId,ExternalCompactionMetadata> getExternalCompactions() {
+    ensureFetched(ColumnType.ECOMP);
+    return extCompactions;
+  }
+
   @VisibleForTesting
   public static TabletMetadata convertRow(Iterator<Entry<Key,Value>> rowIter,
       EnumSet<ColumnType> fetchedColumns, boolean buildKeyValueMap) {
@@ -306,6 +314,7 @@ public class TabletMetadata {
     var filesBuilder = ImmutableMap.<StoredTabletFile,DataFileValue>builder();
     var scansBuilder = ImmutableList.<StoredTabletFile>builder();
     var logsBuilder = ImmutableList.<LogEntry>builder();
+    var extCompBuilder = ImmutableMap.<ExternalCompactionId,ExternalCompactionMetadata>builder();
     final var loadedFilesBuilder = ImmutableMap.<TabletFile,Long>builder();
     ByteSequence row = null;
 
@@ -392,6 +401,10 @@ public class TabletMetadata {
         case LogColumnFamily.STR_NAME:
           logsBuilder.add(LogEntry.fromMetaWalEntry(kv));
           break;
+        case ExternalCompactionColumnFamily.STR_NAME:
+          extCompBuilder.put(ExternalCompactionId.of(qual),
+              ExternalCompactionMetadata.fromJson(val));
+          break;
         default:
           throw new IllegalStateException("Unexpected family " + fam);
       }
@@ -402,6 +415,7 @@ public class TabletMetadata {
     te.fetchedCols = fetchedColumns;
     te.scans = scansBuilder.build();
     te.logs = logsBuilder.build();
+    te.extCompactions = extCompBuilder.build();
     if (buildKeyValueMap) {
       te.keyValues = kvBuilder.build();
     }

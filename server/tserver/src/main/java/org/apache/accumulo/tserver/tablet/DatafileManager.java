@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -40,6 +41,7 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.replication.ReplicationConfigurationUtil;
 import org.apache.accumulo.core.util.MapCounter;
 import org.apache.accumulo.core.util.Pair;
@@ -396,8 +398,8 @@ class DatafileManager {
   }
 
   StoredTabletFile bringMajorCompactionOnline(Set<StoredTabletFile> oldDatafiles,
-      TabletFile tmpDatafile, TabletFile newDatafile, Long compactionId, DataFileValue dfv)
-      throws IOException {
+      TabletFile tmpDatafile, TabletFile newDatafile, Long compactionId, DataFileValue dfv,
+      Optional<ExternalCompactionId> ecid) throws IOException {
     final KeyExtent extent = tablet.getExtent();
     VolumeManager vm = tablet.getTabletServer().getContext().getVolumeManager();
     long t1, t2;
@@ -453,7 +455,7 @@ class DatafileManager {
     ManagerMetadataUtil.replaceDatafiles(tablet.getContext(), extent, oldDatafiles,
         filesInUseByScans, newFile, compactionId, dfv,
         tablet.getTabletServer().getClientAddressString(), lastLocation,
-        tablet.getTabletServer().getLock());
+        tablet.getTabletServer().getLock(), ecid);
     tablet.setLastCompactionID(compactionId);
     removeFilesAfterScan(filesInUseByScans);
 

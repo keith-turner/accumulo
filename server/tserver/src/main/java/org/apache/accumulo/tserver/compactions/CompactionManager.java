@@ -32,6 +32,7 @@ import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
@@ -41,7 +42,6 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.Retry;
 import org.apache.accumulo.server.ServerContext;
-import org.apache.accumulo.server.compaction.ExternalCompactionId;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.apache.accumulo.tserver.tablet.Tablet;
 import org.slf4j.Logger;
@@ -426,6 +426,10 @@ public class CompactionManager {
 
   ExternalCompactionExecutor getExternalExecutor(String queueName) {
     return getExternalExecutor(CompactionExecutorId.externalId(queueName));
+  }
+
+  public void registerExternalCompaction(ExternalCompactionId ecid, KeyExtent externt) {
+    runningExternalCompactions.put(ecid, externt);
   }
 
   public void commitExternalCompaction(ExternalCompactionId extCompactionId,

@@ -49,6 +49,8 @@ import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionDispatcher.DispatchParameters;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
@@ -60,7 +62,6 @@ import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.apache.accumulo.server.compaction.CompactionStats;
 import org.apache.accumulo.server.compaction.Compactor.CompactionCanceledException;
-import org.apache.accumulo.server.compaction.ExternalCompactionId;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.accumulo.tserver.compactions.Compactable;
 import org.apache.accumulo.tserver.compactions.CompactionManager;
@@ -119,6 +120,15 @@ public class CompactableImpl implements Compactable {
 
   private volatile boolean closed = false;
 
+  // TODO move to top of class
+  private static class ExternalCompactionInfo {
+    ExternalCompactionMetadata meta;
+    CompactionJob job;
+  }
+
+  private Map<ExternalCompactionId,ExternalCompactionInfo> externalCompactions =
+      new ConcurrentHashMap<>();
+
   // This interface exists for two purposes. First it allows abstraction of new and old
   // implementations for user pluggable file selection code. Second it facilitates placing code
   // outside of this class.
@@ -131,9 +141,32 @@ public class CompactableImpl implements Compactable {
 
   }
 
-  public CompactableImpl(Tablet tablet, CompactionManager manager) {
+  public CompactableImpl(Tablet tablet, CompactionManager manager,
+      Map<ExternalCompactionId,ExternalCompactionMetadata> extCompactions) {
     this.tablet = tablet;
     this.manager = manager;
+
+    var dataFileSizes = tablet.getDatafileManager().getDatafileSizes();
+
+    extCompactions.forEach((ecid, ecMeta) -> {
+      // CBUG ensure files for each external compaction are disjoint
+      allCompactingFiles.addAll(ecMeta.getJobFiles());
+      Collection<CompactableFile> files = ecMeta.getJobFiles().stream()
+          .map(f -> new CompactableFileImpl(f, dataFileSizes.get(f))).collect(Collectors.toList());
+      CompactionJob job = new CompactionJobImpl(ecMeta.getPriority(),
+          ecMeta.getCompactionExecutorId(), files, ecMeta.getKind());
+      runnningJobs.add(job);
+
+      ExternalCompactionInfo ecInfo = new ExternalCompactionInfo();
+      ecInfo.job = job;
+      ecInfo.meta = ecMeta;
+      externalCompactions.put(ecid, ecInfo);
+
+      manager.registerExternalCompaction(ecid, getExtent());
+    });
+
+    compactionRunning = !allCompactingFiles.isEmpty();
+
     this.servicesInUse = Suppliers.memoizeWithExpiration(() -> {
       HashSet<CompactionServiceId> servicesIds = new HashSet<>();
       for (CompactionKind kind : CompactionKind.values()) {
@@ -553,9 +586,6 @@ public class CompactableImpl implements Compactable {
     CompactionHelper localHelper;
     List<IteratorSetting> iters = List.of();
     CompactionConfig localCompactionCfg;
-    public TabletFile compactTmpName;
-    public CompactionJob job;
-    public TabletFile newFile;
   }
 
   private CompactionInfo reserveFilesForCompaction(CompactionServiceId service, CompactionJob job) {
@@ -720,9 +750,6 @@ public class CompactableImpl implements Compactable {
     }
   }
 
-  // TODO move to top of class
-  private Map<ExternalCompactionId,CompactionInfo> externalCompactions = new ConcurrentHashMap<>();
-
   @Override
   public ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service,
       CompactionJob job, String compactorId) {
@@ -734,18 +761,25 @@ public class CompactableImpl implements Compactable {
     // CBUG add external compaction info to metadata table
     try {
       // CBUG share code w/ CompactableUtil and/or move there
-      cInfo.newFile = tablet.getNextMapFilename(!cInfo.propogateDeletes ? "A" : "C");
-      cInfo.compactTmpName = new TabletFile(new Path(cInfo.newFile.getMetaInsert() + "_tmp"));
+      var newFile = tablet.getNextMapFilename(!cInfo.propogateDeletes ? "A" : "C");
+      var compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));
 
       ExternalCompactionId externalCompactionId = ExternalCompactionId.generate();
 
-      cInfo.job = job;
+      ExternalCompactionInfo ecInfo = new ExternalCompactionInfo();
 
-      externalCompactions.put(externalCompactionId, cInfo);
+      ecInfo.meta = new ExternalCompactionMetadata(cInfo.jobFiles, compactTmpName, newFile,
+          compactorId, job.getKind(), job.getPriority(), job.getExecutor());
+      tablet.getContext().getAmple().mutateTablet(getExtent())
+          .putExternalCompaction(externalCompactionId, ecInfo.meta).mutate();
+
+      ecInfo.job = job;
+
+      externalCompactions.put(externalCompactionId, ecInfo);
 
       // CBUG because this is an RPC the return may never get to the caller... however the caller
       // may be alive.... maybe the caller can set the externalCompactionId it working on in ZK
-      return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, cInfo.compactTmpName,
+      return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, compactTmpName,
           getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters);
 
     } catch (Exception e) {
@@ -758,25 +792,34 @@ public class CompactableImpl implements Compactable {
   public void commitExternalCompaction(ExternalCompactionId extCompactionId, long fileSize,
       long entries) {
     // CBUG double check w/ java docs that only one thread can remove
-    CompactionInfo cInfo = externalCompactions.remove(extCompactionId);
+    ExternalCompactionInfo ecInfo = externalCompactions.get(extCompactionId);
 
-    if (cInfo != null) {
-      log.debug("Attempting to commit external compaction {}", extCompactionId);
-      // TODO do a sanity check that files exists in dfs?
-      StoredTabletFile metaFile = null;
-      try {
-        metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(cInfo.jobFiles,
-            cInfo.compactTmpName, cInfo.newFile, compactionId,
-            new DataFileValue(fileSize, entries));
-        TabletLogger.compacted(getExtent(), cInfo.job, metaFile);
-      } catch (Exception e) {
-        metaFile = null;
-        log.error("Error committing external compaction {}", extCompactionId, e);
-        throw new RuntimeException(e);
-      } finally {
-        completeCompaction(cInfo.job, cInfo.jobFiles, metaFile);
-        log.debug("Completed commit of external compaction{}", extCompactionId);
+    if (ecInfo != null) {
+      synchronized (ecInfo) {
+        if (!externalCompactions.containsKey(extCompactionId)) {
+          // since this method is called by RPCs there could be multiple concurrent calls so defend
+          // against that
+          return;
+        }
+        log.debug("Attempting to commit external compaction {}", extCompactionId);
+        // TODO do a sanity check that files exists in dfs?
+        StoredTabletFile metaFile = null;
+        try {
+          metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(
+              ecInfo.meta.getJobFiles(), ecInfo.meta.getCompactTmpName(), ecInfo.meta.getNewFile(),
+              compactionId, new DataFileValue(fileSize, entries), Optional.of(extCompactionId));
+          TabletLogger.compacted(getExtent(), ecInfo.job, metaFile);
+        } catch (Exception e) {
+          metaFile = null;
+          log.error("Error committing external compaction {}", extCompactionId, e);
+          throw new RuntimeException(e);
+        } finally {
+          completeCompaction(ecInfo.job, ecInfo.meta.getJobFiles(), metaFile);
+          externalCompactions.remove(extCompactionId);
+          log.debug("Completed commit of external compaction{}", extCompactionId);
+        }
       }
+
     } else {
       log.debug("Ignoring request to commit external compaction that is unknown {}",
           extCompactionId);

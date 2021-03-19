@@ -616,7 +616,7 @@ public class CompactableUtils {
 
     metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(compactFiles.keySet(),
         compactTmpName, newFile, compactionId,
-        new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()));
+        new DataFileValue(mcs.getFileSize(), mcs.getEntriesWritten()), Optional.empty());
     return metaFile;
   }
 

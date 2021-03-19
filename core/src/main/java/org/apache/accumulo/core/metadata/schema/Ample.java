@@ -270,6 +270,11 @@ public interface Ample {
 
     TabletMutator deleteSuspension();
 
+    TabletMutator putExternalCompaction(ExternalCompactionId ecid,
+        ExternalCompactionMetadata ecMeta);
+
+    TabletMutator deleteExternalCompaction(ExternalCompactionId ecid);
+
     /**
      * This method persist (or queues for persisting) previous put and deletes against this object.
      * Unless this method is called, previous calls will never be persisted. The purpose of this

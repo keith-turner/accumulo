@@ -44,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Durability;
@@ -75,6 +76,8 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataTime;
 import org.apache.accumulo.core.protobuf.ProtobufUtil;
@@ -422,24 +425,35 @@ public class Tablet {
     // look for hints of a failure on the previous tablet server
     if (!logEntries.isEmpty()) {
       // look for any temp files hanging around
-      removeOldTemporaryFiles();
+      removeOldTemporaryFiles(data.getExternalCompactions());
     }
 
-    this.compactable = new CompactableImpl(this, tabletServer.getCompactionManager());
+    this.compactable = new CompactableImpl(this, tabletServer.getCompactionManager(),
+        data.getExternalCompactions());
   }
 
   public ServerContext getContext() {
     return context;
   }
 
-  private void removeOldTemporaryFiles() {
+  private void removeOldTemporaryFiles(
+      Map<ExternalCompactionId,ExternalCompactionMetadata> externalCompactions) {
     // remove any temporary files created by a previous tablet server
     try {
+
+      var extCompactionFiles = externalCompactions.values().stream()
+          .map(ecMeta -> ecMeta.getCompactTmpName().getPath()).collect(Collectors.toSet());
+
       for (Volume volume : getTabletServer().getVolumeManager().getVolumes()) {
         String dirUri = volume.getBasePath() + Constants.HDFS_TABLES_DIR + Path.SEPARATOR
             + extent.tableId() + Path.SEPARATOR + dirName;
 
         for (FileStatus tmp : volume.getFileSystem().globStatus(new Path(dirUri, "*_tmp"))) {
+
+          if (extCompactionFiles.contains(tmp.getPath())) {
+            continue;
+          }
+
           try {
             log.debug("Removing old temp file {}", tmp.getPath());
             volume.getFileSystem().delete(tmp.getPath(), false);

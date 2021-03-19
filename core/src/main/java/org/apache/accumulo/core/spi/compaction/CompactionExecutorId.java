@@ -36,6 +36,7 @@ public class CompactionExecutorId extends AbstractId<CompactionExecutorId> {
     super(canonical);
   }
 
+  // CBUG maybe all of the following methods should not be in SPI
   public boolean isExernalId() {
     return canonical().startsWith("e.");
   }
