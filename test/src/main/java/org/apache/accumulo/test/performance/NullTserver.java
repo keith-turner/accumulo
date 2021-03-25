@@ -303,6 +303,13 @@ public class NullTserver {
       // TODO Auto-generated method stub
 
     }
+
+    @Override
+    public void compactionJobFailed(TInfo tinfo, TCredentials credentials,
+        String externalCompactionId) throws TException {
+      // TODO Auto-generated method stub
+
+    }
   }
 
   static class Opts extends Help {

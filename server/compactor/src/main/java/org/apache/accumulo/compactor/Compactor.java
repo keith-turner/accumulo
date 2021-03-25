@@ -35,9 +35,11 @@ import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.compaction.thrift.CompactionCoordinator;
 import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.compaction.thrift.Compactor.Iface;
+import org.apache.accumulo.core.compaction.thrift.TRunningCompaction;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -48,9 +50,11 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.rpc.ThriftUtil;
+import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.trace.TraceUtil;
+import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.threads.ThreadPools;
@@ -146,6 +150,7 @@ public class Compactor extends AbstractServer
 
     try {
       zoo.mkdirs(compactorQueuePath);
+      // CBUG may be able to put jsut an ephmeral node here w/ no lock
       zoo.putPersistentData(zPath, new byte[] {}, NodeExistsPolicy.SKIP);
     } catch (KeeperException e) {
       if (e.code() == KeeperException.Code.NOAUTH) {
@@ -292,7 +297,8 @@ public class Compactor extends AbstractServer
           public String execute() throws TException {
             try {
               coordinatorClient.compareAndSet(null, getCoordinatorClient());
-              coordinatorClient.get().compactionCompleted(job.getExternalCompactionId(), stats);
+              coordinatorClient.get().compactionCompleted(job.getExternalCompactionId(), job.extent,
+                  stats);
               return "";
             } catch (TException e) {
               ThriftUtil.returnClient(coordinatorClient.getAndSet(null));
@@ -584,6 +590,29 @@ public class Compactor extends AbstractServer
   public static void main(String[] args) throws Exception {
     try (Compactor compactor = new Compactor(new CompactorServerOpts(), args)) {
       compactor.runServer();
+    }
+  }
+
+  @Override
+  public TRunningCompaction getRunningCompaction(TInfo tinfo, TCredentials credentials)
+      throws ThriftSecurityException, TException {
+    // CBUG need to check credentials!
+
+    // CBUG need to ensure the following are met... also add these props as comments stating they
+    // must be met
+    // 1. This method will block if a compaction is currently being reserved until the reservation
+    // is complete
+    // 2. This method will report it is runnning a compaction while it is in the process of
+    // committing that compaction.
+
+    synchronized (jobHolder) {
+      var job = jobHolder.getJob();
+      if (job == null) {
+        return new TRunningCompaction();
+      } else {
+        return new TRunningCompaction(job.externalCompactionId, job.extent);
+      }
+
     }
   }
 

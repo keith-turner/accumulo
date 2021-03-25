@@ -94,4 +94,8 @@ public interface Compactable {
       String compactorId);
 
   void commitExternalCompaction(ExternalCompactionId extCompactionId, long fileSize, long entries);
+
+  void externalCompactionFailed(ExternalCompactionId ecid);
+
+  boolean isActive(ExternalCompactionId ecid);
 }

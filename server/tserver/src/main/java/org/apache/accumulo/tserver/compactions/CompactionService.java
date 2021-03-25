@@ -70,6 +70,8 @@ public class CompactionService {
   private CompactionPlanner planner;
   private Map<CompactionExecutorId,CompactionExecutor> executors;
   private final CompactionServiceId myId;
+  // CBUG does this need to be populated w/ external compactions when a tablet is loaded OR should
+  // this even contain external compactions?
   private Map<KeyExtent,Collection<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
   private ServerContext serverCtx;
   private String plannerClassName;

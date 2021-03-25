@@ -535,14 +535,18 @@ service TabletClientService extends client.ClientService {
     1:client.ThriftSecurityException sec
   )
   
-  void compactionJobFinished(
+  oneway void compactionJobFinished(
     1:trace.TInfo tinfo
     2:security.TCredentials credentials
     3:string externalCompactionId
     4:i64 fileSize
     5:i64 entries
-  ) throws (
-    1:client.ThriftSecurityException sec
+  )
+
+  oneway void compactionJobFailed(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
   )
 }
 

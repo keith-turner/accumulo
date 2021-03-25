@@ -40,6 +40,8 @@ import org.apache.accumulo.core.compaction.thrift.Status;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.rpc.ThriftUtil;
@@ -96,6 +98,7 @@ public class CompactionCoordinator extends AbstractServer
 
   private ZooLock coordinatorLock;
   private LiveTServerSet tserverSet;
+  private CompactionFinalizer compactionFinalizer;
 
   protected CompactionCoordinator(ServerOpts opts, String[] args) {
     super("compaction-coordinator", opts, args);
@@ -193,6 +196,9 @@ public class CompactionCoordinator extends AbstractServer
     // the RUNNING map.
 
     tserverSet.startListeningForTabletServerChanges();
+
+    compactionFinalizer = new CompactionFinalizer(getContext());
+    new DeadCompactionDetector(getContext(), compactionFinalizer).start();
 
     while (true) {
       long start = System.currentTimeMillis();
@@ -458,8 +464,8 @@ public class CompactionCoordinator extends AbstractServer
    *          compaction stats
    */
   @Override
-  public void compactionCompleted(String externalCompactionId, CompactionStats stats)
-      throws TException {
+  public void compactionCompleted(String externalCompactionId, TKeyExtent textent,
+      CompactionStats stats) throws TException {
     LOG.info("Compaction completed, id: {}, stats: {}", externalCompactionId, stats);
     var ecid = ExternalCompactionId.of(externalCompactionId);
     RunningCompaction rc = RUNNING.get(ecid);
@@ -472,51 +478,9 @@ public class CompactionCoordinator extends AbstractServer
           externalCompactionId);
       throw new UnknownCompactionIdException();
     }
-    // Attempt up to ten times to contact the TServer and notify it that the compaction has
-    // completed.
-    RetryableThriftCall<String> completedThriftCall = new RetryableThriftCall<>(1000,
-        RetryableThriftCall.MAX_WAIT_TIME, 10, new RetryableThriftFunction<String>() {
-          @Override
-          public String execute() throws TException {
-            TabletClientService.Client client = null;
-            try {
-              client = getTabletServerConnection(rc.getTserver());
-              client.compactionJobFinished(TraceUtil.traceInfo(), getContext().rpcCreds(),
-                  externalCompactionId, stats.fileSize, stats.entriesWritten);
-              RUNNING.remove(ecid, rc);
-              LOG.info("TServer {} notified of compaction {} completion",
-                  rc.getTserver().getHostAndPort(), externalCompactionId);
-              return "";
-            } catch (TException e) {
-              throw e;
-            } finally {
-              ThriftUtil.returnClient(client);
-            }
-          }
-        });
-    try {
-      completedThriftCall.run();
-    } catch (RetriesExceededException e) {
-      // TODO: What happens if tserver is no longer hosting tablet? I wonder if we should not notify
-      // the tserver that the compaction has finished and instead let the tserver that is hosting
-      // the tablet poll for state updates. That way if the tablet is re-hosted, the tserver can
-      // check
-      // as part of the tablet loading process. This would also enable us to remove the running
-      // compaction from RUNNING when the tserver makes the call and gets the stats.
 
-      // TODO: If the call above fails, the RUNNING entry will be orphaned
-
-      /**
-       * One possible way to handle tserver down is to fall back to writing a completion entry to
-       * the metadata table. Could be something like row=~extcomp:<uuid> family=status
-       * qualifier=complete The Coordinator can periodically scan this portion of the metadata table
-       * and let tablets know. For expediency could still make RPC first to let tserver know its
-       * done and if that fails could fall back to writing to metadata table. The coordinator could
-       * read and write to the metadata table section.
-       */
-
-    }
-
+    compactionFinalizer.commitCompaction(ecid, KeyExtent.fromThrift(textent), stats.fileSize,
+        stats.entriesWritten);
   }
 
   /**

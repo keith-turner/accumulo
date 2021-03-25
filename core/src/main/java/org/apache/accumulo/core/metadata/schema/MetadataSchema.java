@@ -454,4 +454,16 @@ public class MetadataSchema {
     }
   }
 
+  public static class ExternalCompactionSection {
+    private static final Section section =
+        new Section(RESERVED_PREFIX + "ecomp", true, RESERVED_PREFIX + "ecomq", false);
+
+    public static Range getRange() {
+      return section.getRange();
+    }
+
+    public static String getRowPrefix() {
+      return section.getRowPrefix();
+    }
+  }
 }

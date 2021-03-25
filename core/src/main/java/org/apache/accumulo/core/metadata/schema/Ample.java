@@ -20,6 +20,7 @@ package org.apache.accumulo.core.metadata.schema;
 
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.stream.Stream;
 
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.TableId;
@@ -198,6 +199,20 @@ public interface Ample {
   }
 
   default Iterator<String> getGcCandidates(DataLevel level, String continuePoint) {
+    throw new UnsupportedOperationException();
+  }
+
+  default void
+      putExternalCompactionFinalStates(Collection<ExternalCompactionFinalState> finalStates) {
+    throw new UnsupportedOperationException();
+  }
+
+  default Stream<ExternalCompactionFinalState> getExternalCompactionFinalStates() {
+    throw new UnsupportedOperationException();
+  }
+
+  default void
+      deleteExternalCompactionFinalStates(Collection<ExternalCompactionId> statusesToDelete) {
     throw new UnsupportedOperationException();
   }
 

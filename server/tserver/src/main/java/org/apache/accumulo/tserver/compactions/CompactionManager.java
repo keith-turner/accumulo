@@ -444,9 +444,22 @@ public class CompactionManager {
     }
   }
 
+  public void externalCompactionFailed(ExternalCompactionId ecid,
+      Map<KeyExtent,Tablet> currentTablets) {
+    KeyExtent extent = runningExternalCompactions.get(ecid);
+    if (extent != null) {
+      Tablet tablet = currentTablets.get(extent);
+      if (tablet != null) {
+        tablet.asCompactable().externalCompactionFailed(ecid);
+      }
+      runningExternalCompactions.remove(ecid);
+    }
+  }
+
   public List<TCompactionQueueSummary> getCompactionQueueSummaries() {
     // TODO Auto-generated method stub
     return externalExecutors.values().stream().map(ece -> ece.summarize())
         .collect(Collectors.toList());
   }
+
 }

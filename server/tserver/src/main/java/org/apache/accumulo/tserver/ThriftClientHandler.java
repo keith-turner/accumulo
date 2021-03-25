@@ -1706,6 +1706,18 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
   }
 
   @Override
+  public void compactionJobFailed(TInfo tinfo, TCredentials credentials,
+      String externalCompactionId) throws TException {
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
+
+    server.getCompactionManager().externalCompactionFailed(
+        ExternalCompactionId.of(externalCompactionId), server.getOnlineTablets());
+  }
+
+  @Override
   public List<String> getActiveLogs(TInfo tinfo, TCredentials credentials) {
     String log = server.logger.getLogFile();
     // Might be null if there no active logger

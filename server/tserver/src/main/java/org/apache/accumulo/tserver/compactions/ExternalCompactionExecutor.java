@@ -22,6 +22,7 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
@@ -36,6 +37,7 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
     private CompactionServiceId csid;
     private Consumer<Compactable> completionCallback;
     private final long queuedTime;
+    private volatile ExternalCompactionId ecid;
 
     public ExternalJob(CompactionJob job, Compactable compactable, CompactionServiceId csid,
         Consumer<Compactable> completionCallback) {
@@ -48,7 +50,12 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
     @Override
     public Status getStatus() {
-      return status.get();
+      var s = status.get();
+      if (s == Status.RUNNING && ecid != null && !compactable.isActive(ecid)) {
+        s = Status.CANCELED;
+      }
+
+      return s;
     }
 
     @Override
@@ -121,8 +128,10 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
     if (extJob.getJob().getPriority() >= priority) {
       if (extJob.status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
-        return extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(),
-            compactorId);
+        var ecj =
+            extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(), compactorId);
+        extJob.ecid = ecj.getExternalCompactionId();
+        return ecj;
       } else {
         // TODO could this cause a stack overflow?
         return reserveExternalCompaction(priority, compactorId);

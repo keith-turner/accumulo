@@ -816,7 +816,7 @@ public class CompactableImpl implements Compactable {
         } finally {
           completeCompaction(ecInfo.job, ecInfo.meta.getJobFiles(), metaFile);
           externalCompactions.remove(extCompactionId);
-          log.debug("Completed commit of external compaction{}", extCompactionId);
+          log.debug("Completed commit of external compaction {}", extCompactionId);
         }
       }
 
@@ -824,6 +824,39 @@ public class CompactableImpl implements Compactable {
       log.debug("Ignoring request to commit external compaction that is unknown {}",
           extCompactionId);
     }
+
+    tablet.getContext().getAmple().deleteExternalCompactionFinalStates(List.of(extCompactionId));
+  }
+
+  @Override
+  public void externalCompactionFailed(ExternalCompactionId ecid) {
+    ExternalCompactionInfo ecInfo = externalCompactions.get(ecid);
+
+    if (ecInfo != null) {
+      synchronized (ecInfo) {
+        if (!externalCompactions.containsKey(ecid)) {
+          // since this method is called by RPCs there could be multiple concurrent calls so defend
+          // against that
+          return;
+        }
+
+        // CBUG review following code to ensure its idempotent
+        tablet.getContext().getAmple().mutateTablet(getExtent()).deleteExternalCompaction(ecid)
+            .mutate();
+        completeCompaction(ecInfo.job, ecInfo.meta.getJobFiles(), null);
+        externalCompactions.remove(ecid);
+        log.debug("Processed external compaction failure {}", ecid);
+      }
+    } else {
+      log.debug("Ignoring request to fail external compaction that is unknown {}", ecid);
+    }
+
+    tablet.getContext().getAmple().deleteExternalCompactionFinalStates(List.of(ecid));
+  }
+
+  @Override
+  public boolean isActive(ExternalCompactionId ecid) {
+    return externalCompactions.containsKey(ecid);
   }
 
   @Override
@@ -903,6 +936,7 @@ public class CompactableImpl implements Compactable {
 
     closed = true;
 
+    // CBUG this does not need to wait on external compactions!
     while (!allCompactingFiles.isEmpty()) {
       try {
         wait(50);

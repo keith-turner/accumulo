@@ -19,6 +19,7 @@
 namespace java org.apache.accumulo.core.compaction.thrift
 namespace cpp org.apache.accumulo.core.compaction.thrift
 
+include "client.thrift"
 include "data.thrift"
 include "security.thrift"
 include "tabletserver.thrift"
@@ -65,7 +66,8 @@ service CompactionCoordinator {
    */
   void compactionCompleted(
     1:string externalCompactionId
-    2:tabletserver.CompactionStats stats
+    2:data.TKeyExtent extent
+    3:tabletserver.CompactionStats stats
   ) throws (
     1:UnknownCompactionIdException e
   )
@@ -105,6 +107,11 @@ service CompactionCoordinator {
 
 }
 
+struct TRunningCompaction {
+  1:string externalCompactionId
+  2:data.TKeyExtent extent
+}
+
 service Compactor {
 
   /*
@@ -116,4 +123,10 @@ service Compactor {
     1:UnknownCompactionIdException e
   )
 
+  TRunningCompaction getRunningCompaction(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+  ) throws (
+    1:client.ThriftSecurityException sec
+  )
 }
