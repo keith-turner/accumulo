@@ -52,7 +52,7 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
     public Status getStatus() {
       var s = status.get();
       if (s == Status.RUNNING && ecid != null && !compactable.isActive(ecid)) {
-        s = Status.CANCELED;
+        s = Status.COMPLETE;
       }
 
       return s;
