@@ -717,13 +717,13 @@ public class Compactor extends AbstractServer
         job = JOB_HOLDER.getJob();
       }
       while (null == job) {
-        //CBUG: It's possible that the call from the coordinator could
+        // CBUG: It's possible that the call from the coordinator could
         // be stuck here waiting for a compaction to be reserved and stall the
         // DeadCompactionDetector from contacting other compactors.
         UtilWaitThread.sleep(50);
         synchronized (JOB_HOLDER) {
           job = JOB_HOLDER.getJob();
-        }        
+        }
       }
       return job;
     }
