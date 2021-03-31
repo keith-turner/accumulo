@@ -91,7 +91,7 @@ public interface Compactable {
   double getCompactionRatio();
 
   ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service, CompactionJob job,
-      String compactorId);
+      String compactorId, ExternalCompactionId externalCompactionId);
 
   void commitExternalCompaction(ExternalCompactionId extCompactionId, long fileSize, long entries);
 

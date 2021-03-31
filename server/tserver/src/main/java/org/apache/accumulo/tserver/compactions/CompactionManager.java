@@ -407,12 +407,12 @@ public class CompactionManager {
 
   // CBUG would be nice to create a CompactorId type and use that instead of string.
   public ExternalCompactionJob reserveExternalCompaction(String queueName, long priority,
-      String compactorId) {
-    log.debug("Attempting to reserved external compaction queue:{} priority:{} compactor:{}",
+      String compactorId, ExternalCompactionId externalCompactionId) {
+    log.debug("Attempting to reserve external compaction, queue:{} priority:{} compactor:{}",
         queueName, priority, compactorId);
 
     ExternalCompactionExecutor extCE = getExternalExecutor(queueName);
-    var ecJob = extCE.reserveExternalCompaction(priority, compactorId);
+    var ecJob = extCE.reserveExternalCompaction(priority, compactorId, externalCompactionId);
     if (ecJob != null) {
       runningExternalCompactions.put(ecJob.getExternalCompactionId(), ecJob.getExtent());
       log.debug("Reserved external compaction {}", ecJob.getExternalCompactionId());
@@ -442,6 +442,11 @@ public class CompactionManager {
       }
       runningExternalCompactions.remove(extCompactionId);
     }
+  }
+
+  public boolean isRunningExternalCompaction(ExternalCompactionId eci, KeyExtent ke) {
+    KeyExtent extent = runningExternalCompactions.get(eci);
+    return (null != extent && extent.compareTo(ke) == 0);
   }
 
   public void externalCompactionFailed(ExternalCompactionId ecid,

@@ -123,4 +123,9 @@ public class ExternalCompactionFinalState {
     return new ExternalCompactionFinalState(ecid, jd.extent.toKeyExtent(),
         FinalState.valueOf(jd.state), jd.fileSize, jd.entries);
   }
+
+  @Override
+  public String toString() {
+    return toJson();
+  }
 }

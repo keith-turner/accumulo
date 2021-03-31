@@ -115,7 +115,8 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
   }
 
-  ExternalCompactionJob reserveExternalCompaction(long priority, String compactorId) {
+  ExternalCompactionJob reserveExternalCompaction(long priority, String compactorId,
+      ExternalCompactionId externalCompactionId) {
 
     ExternalJob extJob = queue.poll();
     while (extJob != null && extJob.getStatus() != Status.QUEUED) {
@@ -128,13 +129,13 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
     if (extJob.getJob().getPriority() >= priority) {
       if (extJob.status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
-        var ecj =
-            extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(), compactorId);
+        var ecj = extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(),
+            compactorId, externalCompactionId);
         extJob.ecid = ecj.getExternalCompactionId();
         return ecj;
       } else {
         // TODO could this cause a stack overflow?
-        return reserveExternalCompaction(priority, compactorId);
+        return reserveExternalCompaction(priority, compactorId, externalCompactionId);
       }
     } else {
       // TODO this messes with the ordering.. maybe make the comparator compare on time also

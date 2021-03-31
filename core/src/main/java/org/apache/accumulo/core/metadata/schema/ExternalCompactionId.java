@@ -38,8 +38,8 @@ public class ExternalCompactionId extends AbstractId<ExternalCompactionId> {
 
   private static final long serialVersionUID = 1L;
 
-  public static ExternalCompactionId generate() {
-    return new ExternalCompactionId(UUID.randomUUID());
+  public static ExternalCompactionId generate(UUID uuid) {
+    return new ExternalCompactionId(uuid);
   }
 
   public static ExternalCompactionId of(String id) {

@@ -18,32 +18,22 @@
  */
 package org.apache.accumulo.coordinator;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-import org.apache.accumulo.core.Constants;
-import org.apache.accumulo.core.compaction.thrift.Compactor;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
-import org.apache.accumulo.core.rpc.ThriftUtil;
-import org.apache.accumulo.core.trace.TraceUtil;
+import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.Pair;
+import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.ServerContext;
-import org.apache.thrift.TException;
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.KeeperException.NoNodeException;
+import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,8 +41,8 @@ public class DeadCompactionDetector {
 
   private static final Logger log = LoggerFactory.getLogger(DeadCompactionDetector.class);
 
-  private ServerContext context;
-  private CompactionFinalizer finalizer;
+  private final ServerContext context;
+  private final CompactionFinalizer finalizer;
 
   private static class CompIdExtent extends Pair<ExternalCompactionId,KeyExtent> {
     CompIdExtent(ExternalCompactionId ecid, KeyExtent extent) {
@@ -69,91 +59,11 @@ public class DeadCompactionDetector {
     this.finalizer = finalizer;
   }
 
-  private List<HostAndPort> getCompactorAddrs() {
-    try {
-      List<HostAndPort> compactAddrs = new ArrayList<>();
-
-      String compactorQueuesPath = context.getZooKeeperRoot() + Constants.ZCOMPACTORS;
-
-      List<String> queues = context.getZooReaderWriter().getChildren(compactorQueuesPath);
-
-      for (String queue : queues) {
-        try {
-          List<String> compactors =
-              context.getZooReaderWriter().getChildren(compactorQueuesPath + "/" + queue);
-          for (String compactor : compactors) {
-            List<String> children = context.getZooReaderWriter()
-                .getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
-            if (!children.isEmpty()) {
-              log.debug("Found live compactor {} ", compactor);
-              compactAddrs.add(HostAndPort.fromString(compactor));
-            }
-          }
-        } catch (NoNodeException e) {
-          // CBUG change to trace
-          log.debug("Ignoring node that went missing", e);
-        }
-      }
-
-      return compactAddrs;
-    } catch (KeeperException e) {
-      throw new RuntimeException(e);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new RuntimeException(e);
-    }
-  }
-
-  private CompIdExtent getCompactionRunning(HostAndPort compactorAddr) {
-
-    Compactor.Client client = null;
-    try {
-      // CBUG should this retry?
-      client = ThriftUtil.getClient(new Compactor.Client.Factory(), compactorAddr, context);
-      var rc = client.getRunningCompaction(TraceUtil.traceInfo(), context.rpcCreds());
-      if (rc.externalCompactionId != null) {
-        log.debug("Compactor is running {}", rc.externalCompactionId);
-        return new CompIdExtent(ExternalCompactionId.of(rc.externalCompactionId),
-            KeyExtent.fromThrift(rc.extent));
-      }
-    } catch (TException e) {
-      log.debug("Failed to conact compactor {}", compactorAddr, e);
-    } finally {
-      ThriftUtil.returnClient(client);
-    }
-
-    return null;
-  }
-
-  private Stream<CompIdExtent> getCompactionsRunningOnCompactors() {
-    ExecutorService executor = Executors.newFixedThreadPool(16);
-
-    List<Future<CompIdExtent>> futures = new ArrayList<>();
-
-    var compactorAddrs = getCompactorAddrs();
-
-    for (HostAndPort compactorAddr : compactorAddrs) {
-      futures.add(executor.submit(() -> getCompactionRunning(compactorAddr)));
-    }
-
-    executor.shutdown();
-
-    return futures.stream().map(future -> {
-      try {
-        return future.get();
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
-      } catch (ExecutionException e) {
-        throw new RuntimeException(e);
-      }
-    }).filter(cie -> cie != null);
-  }
-
   private void detectDeadCompactions() {
 
     // The order of obtaining information is very important to avoid race conditions.
 
-    // find what external comapctions tablets think are running
+    // find what external compactions tablets think are running
     Set<CompIdExtent> tabletCompactions = context.getAmple().readTablets().forLevel(DataLevel.USER)
         .fetch(ColumnType.ECOMP, ColumnType.PREV_ROW).build().stream()
         .flatMap(tm -> tm.getExternalCompactions().keySet().stream()
@@ -167,7 +77,7 @@ public class DeadCompactionDetector {
 
     // Determine what compactions are currently running and remove those.
     //
-    // Inorder for this overall algorithm to be correct and avoid race conditions, the compactor
+    // In order for this overall algorithm to be correct and avoid race conditions, the compactor
     // must do two things when its asked what it is currently running.
     //
     // 1. If it is in the process of reserving a compaction, then it should wait for the
@@ -177,7 +87,13 @@ public class DeadCompactionDetector {
     //
     // If the two conditions above are not met, then legitimate running compactions could be
     // canceled.
-    getCompactionsRunningOnCompactors().forEach(tabletCompactions::remove);
+    Map<HostAndPort,TExternalCompactionJob> running =
+        ExternalCompactionUtil.getCompactionsRunningOnCompactors(context);
+    running.forEach((k, v) -> {
+      CompIdExtent cie = new CompIdExtent(ExternalCompactionId.of(v.getExternalCompactionId()),
+          KeyExtent.fromThrift(v.getExtent()));
+      tabletCompactions.remove(cie);
+    });
 
     // Determine which compactions are currently committing and remove those
     context.getAmple().getExternalCompactionFinalStates().map(CompIdExtent::new)
@@ -193,7 +109,7 @@ public class DeadCompactionDetector {
   }
 
   public void start() {
-    new Thread(() -> {
+    Threads.createThread("DeadCompactionDetector", () -> {
       while (!Thread.currentThread().isInterrupted()) {
 
         try {

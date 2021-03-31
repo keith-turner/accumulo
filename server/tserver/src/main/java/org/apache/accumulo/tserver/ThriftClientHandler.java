@@ -1672,7 +1672,7 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
 
   @Override
   public TExternalCompactionJob reserveCompactionJob(TInfo tinfo, TCredentials credentials,
-      String queueName, long priority, String compactor)
+      String queueName, long priority, String compactor, String externalCompactionId)
       throws ThriftSecurityException, TException {
 
     if (!security.canPerformSystemActions(credentials)) {
@@ -1680,8 +1680,10 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
 
-    var extCompaction =
-        server.getCompactionManager().reserveExternalCompaction(queueName, priority, compactor);
+    ExternalCompactionId eci = ExternalCompactionId.of(externalCompactionId);
+
+    var extCompaction = server.getCompactionManager().reserveExternalCompaction(queueName, priority,
+        compactor, eci);
 
     if (extCompaction != null) {
       return extCompaction.toThrift();
@@ -1715,6 +1717,17 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
 
     server.getCompactionManager().externalCompactionFailed(
         ExternalCompactionId.of(externalCompactionId), server.getOnlineTablets());
+  }
+
+  @Override
+  public boolean isRunningExternalCompaction(TInfo tinfo, TCredentials credentials,
+      String externalCompactionId, TKeyExtent extent) throws TException {
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
+    return server.getCompactionManager().isRunningExternalCompaction(
+        ExternalCompactionId.of(externalCompactionId), KeyExtent.fromThrift(extent));
   }
 
   @Override

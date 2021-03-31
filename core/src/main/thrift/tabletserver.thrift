@@ -531,6 +531,7 @@ service TabletClientService extends client.ClientService {
     3:string queueName
     4:i64 priority
     5:string compactor
+    6:string externalCompactionId
   ) throws (
     1:client.ThriftSecurityException sec
   )
@@ -548,6 +549,14 @@ service TabletClientService extends client.ClientService {
     2:security.TCredentials credentials
     3:string externalCompactionId
   )
+  
+  bool isRunningExternalCompaction(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
+    4:data.TKeyExtent extent
+  )
+  
 }
 
 typedef i32 TabletID

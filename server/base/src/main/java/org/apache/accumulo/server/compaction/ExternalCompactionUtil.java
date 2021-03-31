@@ -18,13 +18,33 @@
  */
 package org.apache.accumulo.server.compaction;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+
 import org.apache.accumulo.core.Constants;
+import org.apache.accumulo.core.compaction.thrift.Compactor;
+import org.apache.accumulo.core.rpc.ThriftUtil;
+import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
+import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.accumulo.core.util.Pair;
+import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.zookeeper.ZooLock;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.thrift.TException;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.KeeperException.NoNodeException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ExternalCompactionUtil {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ExternalCompactionUtil.class);
 
   /**
    * Utility for returning the address of a service in the form host:port
@@ -58,4 +78,105 @@ public class ExternalCompactionUtil {
       throw new RuntimeException(e);
     }
   }
+
+  /**
+   * @param context
+   * @return list of Compactors
+   */
+  public static List<HostAndPort> getCompactorAddrs(ServerContext context) {
+    try {
+      final List<HostAndPort> compactAddrs = new ArrayList<>();
+      final String compactorQueuesPath = context.getZooKeeperRoot() + Constants.ZCOMPACTORS;
+      List<String> queues = context.getZooReaderWriter().getChildren(compactorQueuesPath);
+      for (String queue : queues) {
+        try {
+          List<String> compactors =
+              context.getZooReaderWriter().getChildren(compactorQueuesPath + "/" + queue);
+          for (String compactor : compactors) {
+            List<String> children = context.getZooReaderWriter()
+                .getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
+            if (!children.isEmpty()) {
+              LOG.debug("Found live compactor {} ", compactor);
+              compactAddrs.add(HostAndPort.fromString(compactor));
+            }
+          }
+        } catch (NoNodeException e) {
+          // CBUG change to trace
+          LOG.debug("Ignoring node that went missing", e);
+        }
+      }
+
+      return compactAddrs;
+    } catch (KeeperException e) {
+      throw new RuntimeException(e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Get the compaction currently running on the Compactor
+   * 
+   * @param compactorAddr
+   *          compactor address
+   * @param context
+   *          context
+   * @return external compaction job or null if none running
+   */
+  public static TExternalCompactionJob getRunningCompaction(HostAndPort compactorAddr,
+      ServerContext context) {
+
+    Compactor.Client client = null;
+    try {
+      // CBUG should this retry?
+      client = ThriftUtil.getClient(new Compactor.Client.Factory(), compactorAddr, context);
+      TExternalCompactionJob job =
+          client.getRunningCompaction(TraceUtil.traceInfo(), context.rpcCreds());
+      if (job.getExternalCompactionId() != null) {
+        LOG.debug("Compactor is running {}", job.getExternalCompactionId());
+        return job;
+      }
+    } catch (TException e) {
+      LOG.debug("Failed to contact compactor {}", compactorAddr, e);
+    } finally {
+      ThriftUtil.returnClient(client);
+    }
+    return null;
+  }
+
+  /**
+   * @param context
+   *          server context
+   * @return map of compactor and external compaction jobs
+   */
+  public static Map<HostAndPort,TExternalCompactionJob>
+      getCompactionsRunningOnCompactors(ServerContext context) {
+
+    final List<Pair<HostAndPort,Future<TExternalCompactionJob>>> running = new ArrayList<>();
+    final ExecutorService executor =
+        ThreadPools.createFixedThreadPool(16, "CompactorRunningCompactions", false);
+
+    getCompactorAddrs(context).forEach(hp -> {
+      running.add(new Pair<HostAndPort,Future<TExternalCompactionJob>>(hp,
+          executor.submit(() -> getRunningCompaction(hp, context))));
+    });
+    executor.shutdown();
+
+    final Map<HostAndPort,TExternalCompactionJob> results = new HashMap<>();
+    running.forEach(p -> {
+      try {
+        TExternalCompactionJob job = p.getSecond().get();
+        if (null != job && null != job.getExternalCompactionId()) {
+          results.put(p.getFirst(), job);
+        }
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e);
+      }
+    });
+    return results;
+  }
+
 }

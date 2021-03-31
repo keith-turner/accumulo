@@ -290,7 +290,7 @@ public class NullTserver {
 
     @Override
     public TExternalCompactionJob reserveCompactionJob(TInfo tinfo, TCredentials credentials,
-        String queueName, long priority, String compactor)
+        String queueName, long priority, String compactor, String externalCompactionId)
         throws ThriftSecurityException, TException {
       // TODO Auto-generated method stub
       return null;
@@ -309,6 +309,13 @@ public class NullTserver {
         String externalCompactionId) throws TException {
       // TODO Auto-generated method stub
 
+    }
+
+    @Override
+    public boolean isRunningExternalCompaction(TInfo tinfo, TCredentials credentials,
+        String externalCompactionId, TKeyExtent extent) throws TException {
+      // TODO Auto-generated method stub
+      return false;
     }
   }
 

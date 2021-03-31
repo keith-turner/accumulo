@@ -56,7 +56,9 @@ service CompactionCoordinator {
    * Called by TabletServer to cancel a compaction for a tablet
    */
   void cancelCompaction(
-    1:string externalCompactionId
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
   ) throws (
     1:UnknownCompactionIdException e
   )
@@ -65,9 +67,11 @@ service CompactionCoordinator {
    * Called by Compactor on successful completion of compaction job
    */
   void compactionCompleted(
-    1:string externalCompactionId
-    2:data.TKeyExtent extent
-    3:tabletserver.CompactionStats stats
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials  
+    3:string externalCompactionId
+    4:data.TKeyExtent extent
+    5:tabletserver.CompactionStats stats
   ) throws (
     1:UnknownCompactionIdException e
   )
@@ -76,15 +80,20 @@ service CompactionCoordinator {
    * Called by Compactor to get the next compaction job
    */
   tabletserver.TExternalCompactionJob getCompactionJob(
-    1:string queueName
-    2:string compactor
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string queueName
+    4:string compactor
+    5:string externalCompactionId
   )
 
   /*
    * Called by TabletServer (or CLI) to get current status of compaction for a tablet
    */
   list<Status> getCompactionStatus(
-    1:string externalCompactionId
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
   ) throws (
     1:UnknownCompactionIdException e
   )
@@ -93,23 +102,28 @@ service CompactionCoordinator {
    * Called by Compactor to update the Coordinator with the state of the compaction
    */
   void updateCompactionStatus(
-    1:string externalCompactionId
-    2:CompactionState state
-    3:string message
-    4:i64 timestamp
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
+    4:CompactionState state
+    5:string message
+    6:i64 timestamp
   ) throws (
     1:UnknownCompactionIdException e
   )
   
   /*
-   *  TODO need a function to report failed compactions
+   * Called by Compactor on unsuccessful completion of compaction job
    */
+  void compactionFailed(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
+    4:data.TKeyExtent extent
+  ) throws (
+    1:UnknownCompactionIdException e
+  )
 
-}
-
-struct TRunningCompaction {
-  1:string externalCompactionId
-  2:data.TKeyExtent extent
 }
 
 service Compactor {
@@ -118,12 +132,14 @@ service Compactor {
    * Called by Coordinator to instruct the Compactor to stop working on the compaction.
    */
   void cancel(
-    1:string externalCompactionId
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string externalCompactionId
   ) throws (
     1:UnknownCompactionIdException e
   )
 
-  TRunningCompaction getRunningCompaction(
+  tabletserver.TExternalCompactionJob getRunningCompaction(
     1:trace.TInfo tinfo
     2:security.TCredentials credentials
   ) throws (

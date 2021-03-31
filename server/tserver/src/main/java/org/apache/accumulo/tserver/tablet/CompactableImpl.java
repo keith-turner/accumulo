@@ -752,7 +752,7 @@ public class CompactableImpl implements Compactable {
 
   @Override
   public ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service,
-      CompactionJob job, String compactorId) {
+      CompactionJob job, String compactorId, ExternalCompactionId externalCompactionId) {
 
     CompactionInfo cInfo = reserveFilesForCompaction(service, job);
     if (cInfo == null)
@@ -763,8 +763,6 @@ public class CompactableImpl implements Compactable {
       // CBUG share code w/ CompactableUtil and/or move there
       var newFile = tablet.getNextMapFilename(!cInfo.propogateDeletes ? "A" : "C");
       var compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));
-
-      ExternalCompactionId externalCompactionId = ExternalCompactionId.generate();
 
       ExternalCompactionInfo ecInfo = new ExternalCompactionInfo();
 
