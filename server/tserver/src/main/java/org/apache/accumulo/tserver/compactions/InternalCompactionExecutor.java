@@ -198,12 +198,16 @@ public class InternalCompactionExecutor implements CompactionExecutor {
   }
 
   @Override
-  public int getCompactionsRunning() {
+  public int getCompactionsRunning(CType ctype) {
+    if (ctype != CType.INTERNAL)
+      return 0;
     return threadPool.getActiveCount();
   }
 
   @Override
-  public int getCompactionsQueued() {
+  public int getCompactionsQueued(CType ctype) {
+    if (ctype != CType.INTERNAL)
+      return 0;
     return queuedTask.size();
   }
 

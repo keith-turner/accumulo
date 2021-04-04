@@ -18,6 +18,9 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -31,21 +34,19 @@ import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 
 public class ExternalCompactionExecutor implements CompactionExecutor {
 
+  private Set<ExternalJob> queuedTask = Collections.synchronizedSet(new HashSet<>());
+
   private class ExternalJob extends SubmittedJob implements Comparable<ExternalJob> {
     private AtomicReference<Status> status = new AtomicReference<>(Status.QUEUED);
     private Compactable compactable;
     private CompactionServiceId csid;
-    private Consumer<Compactable> completionCallback;
-    private final long queuedTime;
     private volatile ExternalCompactionId ecid;
 
-    public ExternalJob(CompactionJob job, Compactable compactable, CompactionServiceId csid,
-        Consumer<Compactable> completionCallback) {
+    public ExternalJob(CompactionJob job, Compactable compactable, CompactionServiceId csid) {
       super(job);
       this.compactable = compactable;
       this.csid = csid;
-      this.completionCallback = completionCallback;
-      queuedTime = System.currentTimeMillis();
+      queuedTask.add(this);
     }
 
     @Override
@@ -65,6 +66,9 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
       if (expectedStatus == Status.QUEUED) {
         canceled = status.compareAndSet(expectedStatus, Status.CANCELED);
+        if (canceled) {
+          queuedTask.remove(this);
+        }
       }
 
       return canceled;
@@ -92,28 +96,27 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
   @Override
   public SubmittedJob submit(CompactionServiceId csid, CompactionJob job, Compactable compactable,
       Consumer<Compactable> completionCallback) {
-    ExternalJob extJob = new ExternalJob(job, compactable, csid, completionCallback);
+    ExternalJob extJob = new ExternalJob(job, compactable, csid);
     queue.add(extJob);
     return extJob;
   }
 
   @Override
-  public int getCompactionsRunning() {
-    // TODO Auto-generated method stub
+  public int getCompactionsRunning(CType ctype) {
+    if (ctype == CType.EXTERNAL)
+      throw new UnsupportedOperationException();
     return 0;
   }
 
   @Override
-  public int getCompactionsQueued() {
-    // TODO Auto-generated method stub
-    return 0;
+  public int getCompactionsQueued(CType ctype) {
+    if (ctype != CType.EXTERNAL)
+      return 0;
+    return queuedTask.size();
   }
 
   @Override
-  public void stop() {
-    // TODO Auto-generated method stub
-
-  }
+  public void stop() {}
 
   ExternalCompactionJob reserveExternalCompaction(long priority, String compactorId,
       ExternalCompactionId externalCompactionId) {
@@ -132,6 +135,7 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
         var ecj = extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(),
             compactorId, externalCompactionId);
         extJob.ecid = ecj.getExternalCompactionId();
+        queuedTask.remove(extJob);
         return ecj;
       } else {
         // TODO could this cause a stack overflow?
@@ -142,16 +146,12 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
       queue.add(extJob);
     }
 
-    // TODO Auto-generated method stub
     return null;
   }
 
   // TODO maybe create non-thrift type to avoid thrift types all over the code
   public TCompactionQueueSummary summarize() {
-    // TODO maybe try to keep this precomputed to avoid looping over entire queue for each request
-    // TODO if count is not needed would not even need to loop over entire queue
-    // TODO cast to int is problematic
-    int count = (int) queue.stream().filter(extJob -> extJob.status.get() == Status.QUEUED).count();
+    int count = queuedTask.size();
 
     long priority = 0;
     ExternalJob topJob = queue.peek();

@@ -33,6 +33,7 @@ import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -855,6 +856,11 @@ public class CompactableImpl implements Compactable {
   @Override
   public boolean isActive(ExternalCompactionId ecid) {
     return externalCompactions.containsKey(ecid);
+  }
+
+  @Override
+  public void getExternalCompactionIds(Consumer<ExternalCompactionId> idConsumer) {
+    externalCompactions.forEach((ecid, eci) -> idConsumer.accept(ecid));
   }
 
   @Override

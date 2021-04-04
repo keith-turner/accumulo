@@ -53,7 +53,8 @@ public class CompactionFinalizer {
   private static final Logger LOG = LoggerFactory.getLogger(CompactionFinalizer.class);
 
   private final ServerContext context;
-  private final ExecutorService executor;
+  private final ExecutorService ntfyExecutor;
+  private final ExecutorService backgroundExecutor;
   private final BlockingQueue<ExternalCompactionFinalState> pendingNotifications;
 
   CompactionFinalizer(ServerContext context) {
@@ -62,13 +63,17 @@ public class CompactionFinalizer {
     // CBUG configure thread factory
     // CBUG make pool size configurable?
 
-    this.executor = ThreadPools.createFixedThreadPool(3, "CompactionFinalizer", false);
+    this.ntfyExecutor =
+        ThreadPools.createFixedThreadPool(3, "Compaction Finalizer Notifyer", false);
 
-    executor.execute(() -> {
+    this.backgroundExecutor =
+        ThreadPools.createFixedThreadPool(2, "Compaction Finalizer Background Task", false);
+
+    backgroundExecutor.execute(() -> {
       processPending();
     });
 
-    executor.execute(() -> {
+    backgroundExecutor.execute(() -> {
       notifyTservers();
     });
   }
@@ -145,7 +150,8 @@ public class CompactionFinalizer {
           if (tabletMetadata != null && tabletMetadata.getExtent().equals(ecfs.getExtent())
               && tabletMetadata.getLocation() != null
               && tabletMetadata.getLocation().getType() == LocationType.CURRENT) {
-            futures.add(executor.submit(() -> notifyTserver(tabletMetadata.getLocation(), ecfs)));
+            futures
+                .add(ntfyExecutor.submit(() -> notifyTserver(tabletMetadata.getLocation(), ecfs)));
           } else {
             // this is an unknown tablet so need to delete its final state marker from metadata
             // table

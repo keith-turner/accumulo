@@ -28,9 +28,13 @@ public interface CompactionExecutor {
   SubmittedJob submit(CompactionServiceId csid, CompactionJob job, Compactable compactable,
       Consumer<Compactable> completionCallback);
 
-  int getCompactionsRunning();
+  enum CType {
+    INTERNAL, EXTERNAL
+  }
 
-  int getCompactionsQueued();
+  int getCompactionsRunning(CType ctype);
+
+  int getCompactionsQueued(CType ctype);
 
   void stop();
 

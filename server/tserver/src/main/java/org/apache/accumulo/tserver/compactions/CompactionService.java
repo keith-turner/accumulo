@@ -58,6 +58,7 @@ import org.apache.accumulo.core.util.ratelimit.SharedRateLimiterFactory;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
+import org.apache.accumulo.tserver.compactions.CompactionExecutor.CType;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.slf4j.Logger;
@@ -70,8 +71,6 @@ public class CompactionService {
   private CompactionPlanner planner;
   private Map<CompactionExecutorId,CompactionExecutor> executors;
   private final CompactionServiceId myId;
-  // CBUG does this need to be populated w/ external compactions when a tablet is loaded OR should
-  // this even contain external compactions?
   private Map<KeyExtent,Collection<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
   private ServerContext serverCtx;
   private String plannerClassName;
@@ -210,6 +209,10 @@ public class CompactionService {
           }
         }
       } else if (status == Status.RUNNING) {
+        // Note the submitted jobs set may not contain external compactions that started on another
+        // tserver. However, this is ok as the purpose of this check is to look for compaction jobs
+        // that transitioned from QUEUED to RUNNING during planning. Any external compactions
+        // started on another tserver will not make this transition during planning.
         for (CompactionJob job : jobs) {
           if (!Collections.disjoint(submittedJob.getJob().getFiles(), job.getFiles())) {
             return false;
@@ -406,7 +409,6 @@ public class CompactionService {
     });
 
     Sets.difference(executors.keySet(), tmpExecutors.keySet()).forEach(ceid -> {
-      // TODO may not make sense for external
       executors.get(ceid).stop();
     });
 
@@ -424,11 +426,19 @@ public class CompactionService {
     executors.values().forEach(CompactionExecutor::stop);
   }
 
-  int getCompactionsRunning() {
-    return executors.values().stream().mapToInt(CompactionExecutor::getCompactionsRunning).sum();
+  int getCompactionsRunning(CType ctype) {
+    return executors.values().stream().mapToInt(ce -> ce.getCompactionsRunning(ctype)).sum();
   }
 
-  int getCompactionsQueued() {
-    return executors.values().stream().mapToInt(CompactionExecutor::getCompactionsQueued).sum();
+  int getCompactionsQueued(CType ctype) {
+    return executors.values().stream().mapToInt(ce -> ce.getCompactionsQueued(ctype)).sum();
+  }
+
+  public void getExternalExecutorsInUse(Consumer<CompactionExecutorId> idConsumer) {
+    executors.forEach((ceid, ce) -> {
+      if (ce instanceof ExternalCompactionExecutor) {
+        idConsumer.accept(ceid);
+      }
+    });
   }
 }

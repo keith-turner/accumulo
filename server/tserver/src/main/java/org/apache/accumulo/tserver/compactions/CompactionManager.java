@@ -19,6 +19,7 @@
 package org.apache.accumulo.tserver.compactions;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,6 +43,7 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.Retry;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.tserver.compactions.CompactionExecutor.CType;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.apache.accumulo.tserver.tablet.Tablet;
 import org.slf4j.Logger;
@@ -74,7 +76,6 @@ public class CompactionManager {
 
   private Map<CompactionExecutorId,ExternalCompactionExecutor> externalExecutors;
 
-  // TODO this may need to be garbage collected... also will need to be populated when tablet load
   private Map<ExternalCompactionId,KeyExtent> runningExternalCompactions;
 
   private class Config {
@@ -235,11 +236,15 @@ public class CompactionManager {
         long passed = TimeUnit.MILLISECONDS.convert(System.nanoTime() - lastCheckAllTime,
             TimeUnit.NANOSECONDS);
         if (passed >= maxTimeBetweenChecks) {
+          HashSet<ExternalCompactionId> observedEcids = new HashSet<>();
           for (Compactable compactable : compactables) {
             last = compactable;
             compact(compactable);
+            compactable.getExternalCompactionIds(observedEcids::add);
           }
           lastCheckAllTime = System.nanoTime();
+          // clean up any external compactions that are not currently running
+          runningExternalCompactions.keySet().retainAll(observedEcids);
         } else {
           var compactable =
               compactablesToCheck.poll(maxTimeBetweenChecks - passed, TimeUnit.MILLISECONDS);
@@ -370,6 +375,12 @@ public class CompactionManager {
         }
 
         this.services = Map.copyOf(tmpServices);
+
+        HashSet<CompactionExecutorId> activeExternalExecs = new HashSet<>();
+        services.values().forEach(cs -> cs.getExternalExecutorsInUse(activeExternalExecs::add));
+        // clean up an external compactors that are no longer in use by any compaction service
+        externalExecutors.keySet().retainAll(activeExternalExecs);
+
       }
     } catch (RuntimeException e) {
       log.error("Failed to reconfigure compaction services ", e);
@@ -398,14 +409,16 @@ public class CompactionManager {
   }
 
   public int getCompactionsRunning() {
-    return services.values().stream().mapToInt(CompactionService::getCompactionsRunning).sum();
+    return services.values().stream().mapToInt(cs -> cs.getCompactionsRunning(CType.INTERNAL)).sum()
+        + runningExternalCompactions.size();
   }
 
   public int getCompactionsQueued() {
-    return services.values().stream().mapToInt(CompactionService::getCompactionsQueued).sum();
+    return services.values().stream().mapToInt(cs -> cs.getCompactionsQueued(CType.INTERNAL)).sum()
+        + externalExecutors.values().stream()
+            .mapToInt(ee -> ee.getCompactionsQueued(CType.EXTERNAL)).sum();
   }
 
-  // CBUG would be nice to create a CompactorId type and use that instead of string.
   public ExternalCompactionJob reserveExternalCompaction(String queueName, long priority,
       String compactorId, ExternalCompactionId externalCompactionId) {
     log.debug("Attempting to reserve external compaction, queue:{} priority:{} compactor:{}",
@@ -439,6 +452,7 @@ public class CompactionManager {
       Tablet tablet = currentTablets.get(extent);
       if (tablet != null) {
         tablet.asCompactable().commitExternalCompaction(extCompactionId, fileSize, entries);
+        compactablesToCheck.add(tablet.asCompactable());
       }
       runningExternalCompactions.remove(extCompactionId);
     }
@@ -456,13 +470,13 @@ public class CompactionManager {
       Tablet tablet = currentTablets.get(extent);
       if (tablet != null) {
         tablet.asCompactable().externalCompactionFailed(ecid);
+        compactablesToCheck.add(tablet.asCompactable());
       }
       runningExternalCompactions.remove(ecid);
     }
   }
 
   public List<TCompactionQueueSummary> getCompactionQueueSummaries() {
-    // TODO Auto-generated method stub
     return externalExecutors.values().stream().map(ece -> ece.summarize())
         .collect(Collectors.toList());
   }
