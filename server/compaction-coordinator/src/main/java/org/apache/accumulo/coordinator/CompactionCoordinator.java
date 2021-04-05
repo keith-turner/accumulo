@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.coordinator;
 
+import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
+
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -135,11 +137,10 @@ public class CompactionCoordinator extends AbstractServer
    *
    * @param clientAddress
    *          address of this Compactor
-   * @return true if lock was acquired, else false
    * @throws KeeperException
    * @throws InterruptedException
    */
-  protected boolean getCoordinatorLock(HostAndPort clientAddress)
+  protected void getCoordinatorLock(HostAndPort clientAddress)
       throws KeeperException, InterruptedException {
     LOG.info("trying to get coordinator lock");
 
@@ -147,11 +148,23 @@ public class CompactionCoordinator extends AbstractServer
     final String lockPath = getContext().getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
     final UUID zooLockUUID = UUID.randomUUID();
 
-    CoordinatorLockWatcher coordinatorLockWatcher = new CoordinatorLockWatcher();
-    coordinatorLock = new ZooLock(getContext().getSiteConfiguration(), lockPath, zooLockUUID);
-    // TODO may want to wait like manager code when lock not acquired, this allows starting multiple
-    // coordinators.
-    return coordinatorLock.tryLock(coordinatorLockWatcher, coordinatorClientAddress.getBytes());
+    while (true) {
+
+      CoordinatorLockWatcher coordinatorLockWatcher = new CoordinatorLockWatcher();
+      coordinatorLock = new ZooLock(getContext().getSiteConfiguration(), lockPath, zooLockUUID);
+      coordinatorLock.lock(coordinatorLockWatcher, coordinatorClientAddress.getBytes());
+
+      coordinatorLockWatcher.waitForChange();
+      if (coordinatorLockWatcher.isAcquiredLock()) {
+        break;
+      }
+      if (!coordinatorLockWatcher.isFailedToAcquireLock()) {
+        throw new IllegalStateException("manager lock in unknown state");
+      }
+      coordinatorLock.tryToCancelAsyncLockOrUnlock();
+
+      sleepUninterruptibly(1000, TimeUnit.MILLISECONDS);
+    }
   }
 
   /**
@@ -193,9 +206,7 @@ public class CompactionCoordinator extends AbstractServer
     final HostAndPort clientAddress = coordinatorAddress.address;
 
     try {
-      if (!getCoordinatorLock(clientAddress)) {
-        throw new RuntimeException("Unable to get Coordinator lock.");
-      }
+      getCoordinatorLock(clientAddress);
     } catch (KeeperException | InterruptedException e) {
       throw new IllegalStateException("Exception getting Coordinator lock", e);
     }

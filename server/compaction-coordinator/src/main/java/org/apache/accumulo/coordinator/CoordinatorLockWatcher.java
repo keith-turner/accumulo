@@ -21,12 +21,16 @@ package org.apache.accumulo.coordinator;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.fate.zookeeper.ZooLock;
 import org.apache.accumulo.fate.zookeeper.ZooLock.LockLossReason;
+import org.apache.zookeeper.KeeperException.NoAuthException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class CoordinatorLockWatcher implements ZooLock.AccumuloLockWatcher {
 
   private static final Logger LOG = LoggerFactory.getLogger(CoordinatorLockWatcher.class);
+
+  private volatile boolean acquiredLock = false;
+  private volatile boolean failedToAcquireLock = false;
 
   @Override
   public void lostLock(LockLossReason reason) {
@@ -42,12 +46,49 @@ public class CoordinatorLockWatcher implements ZooLock.AccumuloLockWatcher {
 
   @Override
   public synchronized void acquiredLock() {
-    // This is overridden by the LockWatcherWrapper in ZooLock.tryLock()
+    LOG.debug("Acquired Coordinator lock");
+
+    if (acquiredLock || failedToAcquireLock) {
+      Halt.halt("Zoolock in unexpected state AL " + acquiredLock + " " + failedToAcquireLock, -1);
+    }
+
+    acquiredLock = true;
+    notifyAll();
   }
 
   @Override
   public synchronized void failedToAcquireLock(Exception e) {
-    // This is overridden by the LockWatcherWrapper in ZooLock.tryLock()
+    LOG.warn("Failed to get Coordinator lock", e);
+
+    if (e instanceof NoAuthException) {
+      String msg = "Failed to acquire Coordinator lock due to incorrect ZooKeeper authentication.";
+      LOG.error("{} Ensure instance.secret is consistent across Accumulo configuration", msg, e);
+      Halt.halt(msg, -1);
+    }
+
+    if (acquiredLock) {
+      Halt.halt("Zoolock in unexpected state FAL " + acquiredLock + " " + failedToAcquireLock, -1);
+    }
+
+    failedToAcquireLock = true;
+    notifyAll();
+  }
+
+  public synchronized void waitForChange() {
+    while (!acquiredLock && !failedToAcquireLock) {
+      try {
+        LOG.info("Coordinator lock held by someone else, waiting for a change in state");
+        wait();
+      } catch (InterruptedException e) {}
+    }
+  }
+
+  public boolean isAcquiredLock() {
+    return acquiredLock;
+  }
+
+  public boolean isFailedToAcquireLock() {
+    return failedToAcquireLock;
   }
 
 }

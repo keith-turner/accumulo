@@ -93,6 +93,8 @@ public class ExternalCompactionUtil {
           List<String> compactors =
               context.getZooReaderWriter().getChildren(compactorQueuesPath + "/" + queue);
           for (String compactor : compactors) {
+            // compactor is the address, we are checking to see if there is a child node which
+            // represents the compactor's lock as a check that it's alive.
             List<String> children = context.getZooReaderWriter()
                 .getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
             if (!children.isEmpty()) {
