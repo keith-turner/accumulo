@@ -21,7 +21,7 @@ package org.apache.accumulo.coordinator;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
@@ -40,7 +40,6 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
-import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.ServerContext;
@@ -93,12 +92,11 @@ public class CompactionFinalizer {
     pendingNotifications.offer(ecfs);
   }
 
-  public void
-      failCompactions(Set<? extends Pair<ExternalCompactionId,KeyExtent>> compactionsToFail) {
+  public void failCompactions(Map<ExternalCompactionId,KeyExtent> compactionsToFail) {
 
-    var finalStates =
-        compactionsToFail.stream().map(ctf -> new ExternalCompactionFinalState(ctf.getFirst(),
-            ctf.getSecond(), FinalState.FAILED, 0L, 0L)).collect(Collectors.toList());
+    var finalStates = compactionsToFail.entrySet().stream().map(
+        e -> new ExternalCompactionFinalState(e.getKey(), e.getValue(), FinalState.FAILED, 0L, 0L))
+        .collect(Collectors.toList());
 
     context.getAmple().putExternalCompactionFinalStates(finalStates);
 

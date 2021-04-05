@@ -64,7 +64,6 @@ import org.apache.accumulo.core.util.ServerServices;
 import org.apache.accumulo.core.util.ServerServices.Service;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.util.threads.Threads;
-import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ZooLock;
 import org.apache.accumulo.fate.zookeeper.ZooLock.LockLossReason;
 import org.apache.accumulo.fate.zookeeper.ZooLock.LockWatcher;
@@ -703,35 +702,37 @@ public class Compactor extends AbstractServer
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
 
-    // CBUG need to ensure the following are met... also add these props as comments stating they
-    // must be met
-    // 1. This method will block if a compaction is currently being reserved until the reservation
-    // is complete
-    // 2. This method will report it is running a compaction while it is in the process of
-    // committing that compaction.
+    // Return what is currently running, does not wait for jobs in the process of reserving. This
+    // method is called by a coordinator starting up to determine what is currently running on all
+    // compactors.
 
-    ExternalCompactionId eci = currentCompactionId.get();
-    if (null == eci) {
+    TExternalCompactionJob job = null;
+    synchronized (JOB_HOLDER) {
+      job = JOB_HOLDER.getJob();
+    }
+
+    if (null == job) {
       return new TExternalCompactionJob();
     } else {
-      // Then we are trying to reserve an external compaction, but have not yet
-      // started it. Wait until it's set to return the job
-      TExternalCompactionJob job = null;
-      synchronized (JOB_HOLDER) {
-        job = JOB_HOLDER.getJob();
-      }
-      while (null == job) {
-        // CBUG: It's possible that the call from the coordinator could
-        // be stuck here waiting for a compaction to be reserved and stall the
-        // DeadCompactionDetector from contacting other compactors.
-        UtilWaitThread.sleep(50);
-        synchronized (JOB_HOLDER) {
-          job = JOB_HOLDER.getJob();
-        }
-      }
       return job;
     }
 
+  }
+
+  @Override
+  public String getRunningCompactionId(TInfo tinfo, TCredentials credentials)
+      throws ThriftSecurityException, TException {
+
+    // Any returned id must cover the time period from before a job is reserved until after it
+    // commits. This method is called to detect dead compactions and depends on this behavior.
+    // For the purpose of detecting dead compactions its ok if ids are returned that never end up
+    // being related to a running compaction.
+    ExternalCompactionId eci = currentCompactionId.get();
+    if (null == eci) {
+      return "";
+    } else {
+      return eci.canonical();
+    }
   }
 
 }

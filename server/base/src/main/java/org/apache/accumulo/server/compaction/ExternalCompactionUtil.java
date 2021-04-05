@@ -19,7 +19,9 @@
 package org.apache.accumulo.server.compaction;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -28,6 +30,7 @@ import java.util.concurrent.Future;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.compaction.thrift.Compactor;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.trace.TraceUtil;
@@ -119,7 +122,7 @@ public class ExternalCompactionUtil {
 
   /**
    * Get the compaction currently running on the Compactor
-   * 
+   *
    * @param compactorAddr
    *          compactor address
    * @param context
@@ -138,6 +141,24 @@ public class ExternalCompactionUtil {
       if (job.getExternalCompactionId() != null) {
         LOG.debug("Compactor is running {}", job.getExternalCompactionId());
         return job;
+      }
+    } catch (TException e) {
+      LOG.debug("Failed to contact compactor {}", compactorAddr, e);
+    } finally {
+      ThriftUtil.returnClient(client);
+    }
+    return null;
+  }
+
+  private static ExternalCompactionId getRunningCompactionId(HostAndPort compactorAddr,
+      ServerContext context) {
+    Compactor.Client client = null;
+    try {
+      // CBUG should this retry?
+      client = ThriftUtil.getClient(new Compactor.Client.Factory(), compactorAddr, context);
+      String secid = client.getRunningCompactionId(TraceUtil.traceInfo(), context.rpcCreds());
+      if (!secid.isEmpty()) {
+        return ExternalCompactionId.of(secid);
       }
     } catch (TException e) {
       LOG.debug("Failed to contact compactor {}", compactorAddr, e);
@@ -181,4 +202,33 @@ public class ExternalCompactionUtil {
     return results;
   }
 
+  public static Collection<ExternalCompactionId>
+      getCompactionIdsRunningOnCompactors(ServerContext context) {
+    final ExecutorService executor =
+        ThreadPools.createFixedThreadPool(16, "CompactorRunningCompactions", false);
+
+    List<Future<ExternalCompactionId>> futures = new ArrayList<>();
+
+    getCompactorAddrs(context).forEach(hp -> {
+      futures.add(executor.submit(() -> getRunningCompactionId(hp, context)));
+    });
+    executor.shutdown();
+
+    HashSet<ExternalCompactionId> runningIds = new HashSet<>();
+
+    futures.forEach(future -> {
+      try {
+        ExternalCompactionId ceid = future.get();
+        if (ceid != null) {
+          runningIds.add(ceid);
+        }
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e);
+      }
+    });
+
+    return runningIds;
+  }
 }

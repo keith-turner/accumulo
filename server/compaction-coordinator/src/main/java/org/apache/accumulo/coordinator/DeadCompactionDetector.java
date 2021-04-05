@@ -18,18 +18,14 @@
  */
 package org.apache.accumulo.coordinator;
 
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
-import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
-import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
-import org.apache.accumulo.core.util.HostAndPort;
-import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.ServerContext;
@@ -44,16 +40,6 @@ public class DeadCompactionDetector {
   private final ServerContext context;
   private final CompactionFinalizer finalizer;
 
-  private static class CompIdExtent extends Pair<ExternalCompactionId,KeyExtent> {
-    CompIdExtent(ExternalCompactionId ecid, KeyExtent extent) {
-      super(ecid, extent);
-    }
-
-    public CompIdExtent(ExternalCompactionFinalState ecfs) {
-      super(ecfs.getExternalCompactionId(), ecfs.getExtent());
-    }
-  }
-
   public DeadCompactionDetector(ServerContext context, CompactionFinalizer finalizer) {
     this.context = context;
     this.finalizer = finalizer;
@@ -65,50 +51,45 @@ public class DeadCompactionDetector {
 
     log.trace("Starting to look for dead compactions");
 
+    Map<ExternalCompactionId,KeyExtent> tabletCompactions = new HashMap<>();
+
     // find what external compactions tablets think are running
-    Set<CompIdExtent> tabletCompactions = context.getAmple().readTablets().forLevel(DataLevel.USER)
-        .fetch(ColumnType.ECOMP, ColumnType.PREV_ROW).build().stream()
-        .flatMap(tm -> tm.getExternalCompactions().keySet().stream()
-            .map(ecid -> new CompIdExtent(ecid, tm.getExtent())))
-        .collect(Collectors.toSet());
+    context.getAmple().readTablets().forLevel(DataLevel.USER)
+        .fetch(ColumnType.ECOMP, ColumnType.PREV_ROW).build().forEach(tm -> {
+          tm.getExternalCompactions().keySet().forEach(ecid -> {
+            tabletCompactions.put(ecid, tm.getExtent());
+          });
+        });
 
     if (tabletCompactions.isEmpty()) {
       // no need to look for dead compactions when tablets don't have anything recorded as running
       return;
     }
 
-    if(log.isTraceEnabled()) {
-      tabletCompactions.forEach(cie -> log.trace("Saw {} for {}", cie.getFirst(), cie.getSecond()));
+    if (log.isTraceEnabled()) {
+      tabletCompactions.forEach((ecid, extent) -> log.trace("Saw {} for {}", ecid, extent));
     }
 
     // Determine what compactions are currently running and remove those.
     //
     // In order for this overall algorithm to be correct and avoid race conditions, the compactor
-    // must do two things when its asked what it is currently running.
-    //
-    // 1. If it is in the process of reserving a compaction, then it should wait for the
-    // reservation to complete before responding to this request.
-    // 2. If it is in the process of committing a compaction, then it should respond that it is
-    // running the compaction it is currently committing.
-    //
-    // If the two conditions above are not met, then legitimate running compactions could be
-    // canceled.
-    Map<HostAndPort,TExternalCompactionJob> running =
-        ExternalCompactionUtil.getCompactionsRunningOnCompactors(context);
-    running.forEach((k, v) -> {
-      CompIdExtent cie = new CompIdExtent(ExternalCompactionId.of(v.getExternalCompactionId()),
-          KeyExtent.fromThrift(v.getExtent()));
-      if(tabletCompactions.remove(cie)) {
-        log.trace("Removed {} running on a compactor", cie.getFirst());
+    // must return ids covering the time period from before reservation until after commit. If the
+    // ids do not cover this time period then legitimate running compactions could be canceled.
+    Collection<ExternalCompactionId> running =
+        ExternalCompactionUtil.getCompactionIdsRunningOnCompactors(context);
+
+    running.forEach((ecid) -> {
+      if (tabletCompactions.remove(ecid) != null) {
+        log.trace("Removed {} running on a compactor", ecid);
       }
     });
 
     // Determine which compactions are currently committing and remove those
-    context.getAmple().getExternalCompactionFinalStates().map(CompIdExtent::new)
-        .forEach(tabletCompactions::remove);
+    context.getAmple().getExternalCompactionFinalStates()
+        .map(ecfs -> ecfs.getExternalCompactionId()).forEach(tabletCompactions::remove);
 
-    tabletCompactions.forEach(
-        cid -> log.debug("Detected dead compaction {} {}", cid.getFirst(), cid.getSecond()));
+    tabletCompactions
+        .forEach((ecid, extent) -> log.debug("Detected dead compaction {} {}", ecid, extent));
 
     // Everything left in tabletCompactions is no longer running anywhere and should be failed.
     // Its possible that a compaction committed while going through the steps above, if so then

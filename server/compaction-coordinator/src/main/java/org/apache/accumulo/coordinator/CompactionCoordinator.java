@@ -22,7 +22,6 @@ import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -61,7 +60,6 @@ import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.HostAndPort;
-import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ZooLock;
@@ -646,8 +644,7 @@ public class CompactionCoordinator extends AbstractServer
     if (null != rc) {
       // CBUG: Should we remove rc from RUNNING here and remove the isCompactionCompleted method?
       rc.setCompleted();
-      compactionFinalizer.failCompactions(Collections
-          .singleton(new Pair<ExternalCompactionId,KeyExtent>(ecid, KeyExtent.fromThrift(extent))));
+      compactionFinalizer.failCompactions(Map.of(ecid, KeyExtent.fromThrift(extent)));
     } else {
       LOG.error(
           "Compaction failed called by Compactor for {}, but no running compaction for that id.",

@@ -145,4 +145,12 @@ service Compactor {
   ) throws (
     1:client.ThriftSecurityException sec
   )
+
+  string getRunningCompactionId(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+  ) throws (
+    1:client.ThriftSecurityException sec
+  )
+
 }
