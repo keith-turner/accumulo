@@ -63,6 +63,8 @@ public class DeadCompactionDetector {
 
     // The order of obtaining information is very important to avoid race conditions.
 
+    log.trace("Starting to look for dead compactions");
+
     // find what external compactions tablets think are running
     Set<CompIdExtent> tabletCompactions = context.getAmple().readTablets().forLevel(DataLevel.USER)
         .fetch(ColumnType.ECOMP, ColumnType.PREV_ROW).build().stream()
@@ -73,6 +75,10 @@ public class DeadCompactionDetector {
     if (tabletCompactions.isEmpty()) {
       // no need to look for dead compactions when tablets don't have anything recorded as running
       return;
+    }
+
+    if(log.isTraceEnabled()) {
+      tabletCompactions.forEach(cie -> log.trace("Saw {} for {}", cie.getFirst(), cie.getSecond()));
     }
 
     // Determine what compactions are currently running and remove those.
@@ -92,7 +98,9 @@ public class DeadCompactionDetector {
     running.forEach((k, v) -> {
       CompIdExtent cie = new CompIdExtent(ExternalCompactionId.of(v.getExternalCompactionId()),
           KeyExtent.fromThrift(v.getExtent()));
-      tabletCompactions.remove(cie);
+      if(tabletCompactions.remove(cie)) {
+        log.trace("Removed {} running on a compactor", cie.getFirst());
+      }
     });
 
     // Determine which compactions are currently committing and remove those

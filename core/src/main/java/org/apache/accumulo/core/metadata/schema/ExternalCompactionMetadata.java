@@ -118,4 +118,9 @@ public class ExternalCompactionMetadata {
         CompactionKind.valueOf(jData.kind), jData.priority,
         CompactionExecutorId.externalId(jData.executorId));
   }
+
+  @Override
+  public String toString() {
+    return toJson();
+  }
 }

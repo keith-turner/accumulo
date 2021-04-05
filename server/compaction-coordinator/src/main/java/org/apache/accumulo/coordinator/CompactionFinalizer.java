@@ -147,16 +147,21 @@ public class CompactionFinalizer {
               .forTablet(ecfs.getExtent()).fetch(ColumnType.LOCATION, ColumnType.PREV_ROW).build()
               .stream().findFirst().orElse(null);
 
-          if (tabletMetadata != null && tabletMetadata.getExtent().equals(ecfs.getExtent())
-              && tabletMetadata.getLocation() != null
+          if (tabletMetadata == null || !tabletMetadata.getExtent().equals(ecfs.getExtent())) {
+            // this is an unknown tablet so need to delete its final state marker from metadata
+            // table
+            LOG.debug(
+                "Unable to find tserver for external compaction {}, deleting completion entry",
+                ecfs);
+            statusesToDelete.add(ecfs.getExternalCompactionId());
+          } else if (tabletMetadata.getLocation() != null
               && tabletMetadata.getLocation().getType() == LocationType.CURRENT) {
             futures
                 .add(ntfyExecutor.submit(() -> notifyTserver(tabletMetadata.getLocation(), ecfs)));
           } else {
-            // this is an unknown tablet so need to delete its final state marker from metadata
-            // table
-            LOG.warn("Unable to find tserver for compaction {}", ecfs);
-            statusesToDelete.add(ecfs.getExternalCompactionId());
+            LOG.trace(
+                "External compaction {} is completed, but there is no location for tablet.  Unable to notify tablet, will try again later.",
+                ecfs);
           }
         }
 

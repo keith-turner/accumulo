@@ -163,6 +163,8 @@ public class CompactableImpl implements Compactable {
       ecInfo.meta = ecMeta;
       externalCompactions.put(ecid, ecInfo);
 
+      log.debug("Loaded tablet {} has existing external compaction {} {}", getExtent(), ecid,
+          ecMeta);
       manager.registerExternalCompaction(ecid, getExtent());
     });
 
