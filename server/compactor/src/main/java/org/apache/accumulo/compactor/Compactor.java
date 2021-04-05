@@ -257,7 +257,7 @@ public class Compactor extends AbstractServer
 
   /**
    * Cancel the compaction with this id.
-   * 
+   *
    * @param externalCompactionId
    * @throws TException
    */
@@ -497,7 +497,7 @@ public class Compactor extends AbstractServer
 
   /**
    * Returns the number of seconds to wait in between progress checks based on input file sizes
-   * 
+   *
    * @param numBytes
    * @return number of seconds to wait between progress checks
    */
@@ -583,8 +583,9 @@ public class Compactor extends AbstractServer
                   percentComplete = Float.toString((info.getEntriesRead() / inputEntries) * 100);
                 }
                 String message = String.format(
-                    "Compaction in progress, read %d of %d input entries ( %s % ), written %d entries",
-                    info.getEntriesRead(), inputEntries, percentComplete, info.getEntriesWritten());
+                    "Compaction in progress, read %d of %d input entries ( %s %s ), written %d entries",
+                    info.getEntriesRead(), inputEntries, percentComplete, "%",
+                    info.getEntriesWritten());
                 LOG.info(message);
                 try {
                   updateCompactionState(job, CompactionState.IN_PROGRESS, message);

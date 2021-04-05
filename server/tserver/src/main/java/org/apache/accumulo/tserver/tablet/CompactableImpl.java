@@ -940,8 +940,8 @@ public class CompactableImpl implements Compactable {
 
     closed = true;
 
-    // CBUG this does not need to wait on external compactions!
-    while (!allCompactingFiles.isEmpty()) {
+    // wait while internal jobs are running
+    while (runnningJobs.stream().anyMatch(job -> !job.getExecutor().isExernalId())) {
       try {
         wait(50);
       } catch (InterruptedException e) {
