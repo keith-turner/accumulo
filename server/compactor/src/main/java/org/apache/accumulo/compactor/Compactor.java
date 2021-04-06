@@ -78,6 +78,7 @@ import org.apache.accumulo.server.compaction.RetryableThriftCall;
 import org.apache.accumulo.server.compaction.RetryableThriftCall.RetriesExceededException;
 import org.apache.accumulo.server.compaction.RetryableThriftFunction;
 import org.apache.accumulo.server.conf.TableConfiguration;
+import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.rpc.ServerAddress;
 import org.apache.accumulo.server.rpc.TCredentialsUpdatingWrapper;
 import org.apache.accumulo.server.rpc.TServerUtils;
@@ -96,7 +97,7 @@ import com.beust.jcommander.Parameter;
 public class Compactor extends AbstractServer
     implements org.apache.accumulo.core.compaction.thrift.Compactor.Iface {
 
-  private static class CompactorServerOpts extends ServerOpts {
+  static class CompactorServerOpts extends ServerOpts {
     @Parameter(required = true, names = {"-q", "--queue"}, description = "compaction queue name")
     private String queueName = null;
 
@@ -104,8 +105,6 @@ public class Compactor extends AbstractServer
       return queueName;
     }
   }
-
-  public static final String COMPACTOR_SERVICE = "COMPACTOR_SVC";
 
   private static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
   private static final long TIME_BETWEEN_GC_CHECKS = 5000;
@@ -118,22 +117,37 @@ public class Compactor extends AbstractServer
   private final String queueName;
   private final AtomicReference<CompactionCoordinator.Client> coordinatorClient =
       new AtomicReference<>();
-  private final SecurityOperation security;
-  private final AtomicReference<ExternalCompactionId> currentCompactionId = new AtomicReference<>();
+  protected final AtomicReference<ExternalCompactionId> currentCompactionId =
+      new AtomicReference<>();
 
+  private SecurityOperation security;
   private ZooLock compactorLock;
   private ServerAddress compactorAddress = null;
+
+  // Exposed for tests
+  protected volatile Boolean shutdown = false;
 
   Compactor(CompactorServerOpts opts, String[] args) {
     super("compactor", opts, args);
     queueName = opts.getQueueName();
+    aconf = getConfiguration();
+    setupSecurity();
+    startGCLogger();
+    printStartupMsg();
+  }
+
+  private void setupSecurity() {
     getContext().setupCrypto();
     security = AuditedSecurityOperation.getInstance(getContext());
+  }
 
-    aconf = getConfiguration();
+  private void startGCLogger() {
     ThreadPools.createGeneralScheduledExecutorService(aconf).scheduleWithFixedDelay(
         () -> gcLogger.logGCInfo(getConfiguration()), 0, TIME_BETWEEN_GC_CHECKS,
         TimeUnit.MILLISECONDS);
+  }
+
+  private void printStartupMsg() {
     LOG.info("Version " + Constants.VERSION);
     LOG.info("Instance " + getContext().getInstanceID());
   }
@@ -500,8 +514,15 @@ public class Compactor extends AbstractServer
    * @param numBytes
    * @return number of seconds to wait between progress checks
    */
-  private long calculateProgressCheckTime(long numBytes) {
-    return Math.max(1, (numBytes % TEN_MEGABYTES));
+  protected long calculateProgressCheckTime(long numBytes) {
+    return Math.max(1, (numBytes / TEN_MEGABYTES));
+  }
+
+  protected Supplier<UUID> getNextId() {
+    Supplier<UUID> supplier = () -> {
+      return UUID.randomUUID();
+    };
+    return supplier;
   }
 
   @Override
@@ -512,7 +533,7 @@ public class Compactor extends AbstractServer
     } catch (UnknownHostException e1) {
       throw new RuntimeException("Failed to start the compactor client service", e1);
     }
-    final HostAndPort clientAddress = compactorAddress.address;
+    final HostAndPort clientAddress = compactorAddress.getAddress();
 
     try {
       announceExistence(clientAddress);
@@ -525,17 +546,14 @@ public class Compactor extends AbstractServer
 
       final AtomicReference<Throwable> err = new AtomicReference<>();
 
-      while (true) {
+      while (!shutdown) {
         currentCompactionId.set(null);
         err.set(null);
         JOB_HOLDER.reset();
 
         TExternalCompactionJob job;
         try {
-          Supplier<UUID> supplier = () -> {
-            return UUID.randomUUID();
-          };
-          job = getNextJob(supplier);
+          job = getNextJob(getNextId());
           if (!job.isSetExternalCompactionId()) {
             LOG.info("No external compactions in queue {}", this.queueName);
             continue;
@@ -563,8 +581,8 @@ public class Compactor extends AbstractServer
           JOB_HOLDER.set(job, compactionThread);
         }
 
-        compactionThread.start(); // start the compactionThread
         try {
+          compactionThread.start(); // start the compactionThread
           started.await(); // wait until the compactor is started
           final long inputEntries = totalInputEntries.sum();
           final long waitTime = calculateProgressCheckTime(totalInputBytes.sum());
@@ -587,6 +605,7 @@ public class Compactor extends AbstractServer
                     info.getEntriesWritten());
                 LOG.info(message);
                 try {
+                  LOG.info("Updating coordinator with compaction progress: {}.", message);
                   updateCompactionState(job, CompactionState.IN_PROGRESS, message);
                 } catch (RetriesExceededException e) {
                   LOG.warn("Error updating coordinator with compaction progress, error: {}",
@@ -596,8 +615,10 @@ public class Compactor extends AbstractServer
             }
           }
           compactionThread.join();
+          LOG.info("Compaction thread finished.");
 
-          if (compactionThread.isInterrupted()) {
+          if (compactionThread.isInterrupted()
+              || ((err.get() != null && err.get().getClass().equals(InterruptedException.class)))) {
             LOG.warn("Compaction thread was interrupted, sending CANCELLED state");
             try {
               updateCompactionState(job, CompactionState.CANCELLED, "Compaction cancelled");
@@ -609,6 +630,7 @@ public class Compactor extends AbstractServer
             }
           } else if (err.get() != null) {
             try {
+              LOG.info("Updating coordinator with compaction failure.");
               updateCompactionState(job, CompactionState.FAILED,
                   "Compaction failed due to: " + err.get().getMessage());
               updateCompactionFailed(job);
@@ -619,6 +641,7 @@ public class Compactor extends AbstractServer
             }
           } else {
             try {
+              LOG.info("Updating coordinator with compaction completion.");
               updateCompactionCompleted(job, JOB_HOLDER.getStats());
             } catch (RetriesExceededException e) {
               LOG.error(
@@ -633,7 +656,7 @@ public class Compactor extends AbstractServer
               currentCompactionId.set(null);
             }
           }
-        } catch (InterruptedException e1) {
+        } catch (RuntimeException e1) {
           LOG.error(
               "Compactor thread was interrupted waiting for compaction to start, cancelling job",
               e1);
@@ -662,7 +685,10 @@ public class Compactor extends AbstractServer
 
       try {
         LOG.debug("Closing filesystems");
-        getContext().getVolumeManager().close();
+        VolumeManager mgr = getContext().getVolumeManager();
+        if (null != mgr) {
+          mgr.close();
+        }
       } catch (IOException e) {
         LOG.warn("Failed to close filesystem : {}", e.getMessage(), e);
       }
@@ -670,7 +696,9 @@ public class Compactor extends AbstractServer
       gcLogger.logGCInfo(getConfiguration());
       LOG.info("stop requested. exiting ... ");
       try {
-        compactorLock.unlock();
+        if (null != compactorLock) {
+          compactorLock.unlock();
+        }
       } catch (Exception e) {
         LOG.warn("Failed to release compactor lock", e);
       }
@@ -716,12 +744,16 @@ public class Compactor extends AbstractServer
     } else {
       return job;
     }
-
   }
 
   @Override
   public String getRunningCompactionId(TInfo tinfo, TCredentials credentials)
       throws ThriftSecurityException, TException {
+    // do not expect users to call this directly, expect other tservers to call this method
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
 
     // Any returned id must cover the time period from before a job is reserved until after it
     // commits. This method is called to detect dead compactions and depends on this behavior.
@@ -734,5 +766,4 @@ public class Compactor extends AbstractServer
       return eci.canonical();
     }
   }
-
 }
