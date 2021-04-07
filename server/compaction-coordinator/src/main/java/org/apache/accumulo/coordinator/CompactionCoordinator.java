@@ -65,7 +65,6 @@ import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ZooLock;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
-import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.server.compaction.RetryableThriftCall;
@@ -95,39 +94,58 @@ public class CompactionCoordinator extends AbstractServer
   public static final long TSERVER_CHECK_INTERVAL = 60000;
 
   /* Map of external queue name -> priority -> tservers */
-  private static final Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> QUEUES =
+  protected static final Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> QUEUES =
       new ConcurrentHashMap<>();
   /* index of tserver to queue and priority, exists to provide O(1) lookup into QUEUES */
-  private static final Map<TServerInstance,HashSet<QueueAndPriority>> INDEX =
+  protected static final Map<TServerInstance,HashSet<QueueAndPriority>> INDEX =
       new ConcurrentHashMap<>();
   /* Map of compactionId to RunningCompactions */
-  private static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
+  protected static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
       new ConcurrentHashMap<>();
 
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
-  private final AccumuloConfiguration aconf;
-  private final CompactionFinalizer compactionFinalizer;
-  private final LiveTServerSet tserverSet;
-  private final SecurityOperation security;
+  protected SecurityOperation security;
+  protected final AccumuloConfiguration aconf;
+  protected CompactionFinalizer compactionFinalizer;
+  protected LiveTServerSet tserverSet;
 
   private ZooLock coordinatorLock;
 
+  // Exposed for tests
+  protected volatile Boolean shutdown = false;
+
   protected CompactionCoordinator(ServerOpts opts, String[] args) {
     super("compaction-coordinator", opts, args);
-    ServerContext context = getContext();
-    context.setupCrypto();
-
-    compactionFinalizer = new CompactionFinalizer(context);
-    tserverSet = new LiveTServerSet(context, this);
-    security = AuditedSecurityOperation.getInstance(getContext());
-
     aconf = getConfiguration();
+    compactionFinalizer = createCompactionFinalizer();
+    tserverSet = createLiveTServerSet();
+    setupSecurity();
+    startGCLogger();
+    printStartupMsg();
+  }
+
+  protected CompactionFinalizer createCompactionFinalizer() {
+    return new CompactionFinalizer(getContext());
+  }
+
+  protected LiveTServerSet createLiveTServerSet() {
+    return new LiveTServerSet(getContext(), this);
+  }
+
+  protected void setupSecurity() {
+    getContext().setupCrypto();
+    security = AuditedSecurityOperation.getInstance(getContext());
+  }
+
+  protected void startGCLogger() {
     ThreadPools.createGeneralScheduledExecutorService(aconf).scheduleWithFixedDelay(
         () -> gcLogger.logGCInfo(getConfiguration()), 0, TIME_BETWEEN_CHECKS,
         TimeUnit.MILLISECONDS);
-    LOG.info("Version " + Constants.VERSION);
-    LOG.info("Instance " + context.getInstanceID());
+  }
 
+  protected void printStartupMsg() {
+    LOG.info("Version " + Constants.VERSION);
+    LOG.info("Instance " + getContext().getInstanceID());
   }
 
   /**
@@ -230,9 +248,7 @@ public class CompactionCoordinator extends AbstractServer
           // Attempt to find the TServer hosting the tablet based on the metadata table
           // CBUG use #1974 for more efficient metadata reads
           KeyExtent extent = KeyExtent.fromThrift(job.getExtent());
-          TabletMetadata tabletMetadata = getContext().getAmple().readTablets().forTablet(extent)
-              .fetch(ColumnType.LOCATION, ColumnType.PREV_ROW).build().stream().findFirst()
-              .orElse(null);
+          TabletMetadata tabletMetadata = getMetadataEntryForExtent(extent);
 
           if (tabletMetadata != null && tabletMetadata.getExtent().equals(extent)
               && tabletMetadata.getLocation() != null
@@ -303,7 +319,8 @@ public class CompactionCoordinator extends AbstractServer
     tserverSet.startListeningForTabletServerChanges();
     new DeadCompactionDetector(getContext(), compactionFinalizer).start();
 
-    while (true) {
+    LOG.info("Starting loop to check tservers for compaction summaries");
+    while (!shutdown) {
       long start = System.currentTimeMillis();
       tserverSet.getCurrentServers().forEach(tsi -> {
         try {
@@ -331,12 +348,23 @@ public class CompactionCoordinator extends AbstractServer
               tsi.getHostAndPort(), e);
         }
       });
+      long checkInterval = getTServerCheckInterval();
       long duration = (System.currentTimeMillis() - start);
-      if (TSERVER_CHECK_INTERVAL - duration > 0) {
-        UtilWaitThread.sleep(TSERVER_CHECK_INTERVAL - duration);
+      if (checkInterval - duration > 0) {
+        LOG.debug("Waiting {}ms for next tserver check", (checkInterval - duration));
+        UtilWaitThread.sleep(checkInterval - duration);
       }
     }
+    LOG.info("Shutting down");
+  }
 
+  protected long getTServerCheckInterval() {
+    return TSERVER_CHECK_INTERVAL;
+  }
+
+  protected TabletMetadata getMetadataEntryForExtent(KeyExtent extent) {
+    return getContext().getAmple().readTablets().forTablet(extent)
+        .fetch(ColumnType.LOCATION, ColumnType.PREV_ROW).build().stream().findFirst().orElse(null);
   }
 
   /**
@@ -404,13 +432,13 @@ public class CompactionCoordinator extends AbstractServer
   public TExternalCompactionJob getCompactionJob(TInfo tinfo, TCredentials credentials,
       String queueName, String compactorAddress, String externalCompactionId) throws TException {
 
-    // do not expect users to call this directly, expect other tservers to call this method
+    // do not expect users to call this directly, expect compactors to call this method
     if (!security.canPerformSystemActions(credentials)) {
       throw new AccumuloSecurityException(credentials.getPrincipal(),
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
 
-    LOG.debug("getCompactionJob " + queueName + " " + compactorAddress);
+    LOG.debug("getCompactionJob called for queue {} by compactor {}", queueName, compactorAddress);
     final String queue = queueName.intern();
     TExternalCompactionJob result = null;
     final TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(queue);
@@ -439,8 +467,8 @@ public class CompactionCoordinator extends AbstractServer
         } else {
           synchronized (qp) {
             final TServerInstance tserver = tservers.iterator().next();
-            LOG.debug("Found tserver {} with priority {} for queue {}", tserver.getHostAndPort(),
-                priority, queue);
+            LOG.debug("Found tserver {} with priority {} compaction for queue {}",
+                tserver.getHostAndPort(), priority, queue);
             // Remove the tserver from the list, we are going to run a compaction on this server
             tservers.remove(tserver);
             if (tservers.isEmpty()) {

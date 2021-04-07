@@ -176,6 +176,15 @@ public class CompactorTest {
     }
 
     @Override
+    protected void setupSecurity() {}
+
+    @Override
+    protected void startGCLogger() {}
+
+    @Override
+    protected void printStartupMsg() {}
+
+    @Override
     public ServerContext getContext() {
       return this.ctx;
     }
@@ -305,8 +314,6 @@ public class CompactorTest {
     PowerMock.suppress(PowerMock.methods(Halt.class, "halt"));
     PowerMock.suppress(PowerMock.methods(TServerUtils.class, "stopTServer"));
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
-    PowerMock.suppress(
-        PowerMock.methods(Compactor.class, "setupSecurity", "startGCLogger", "printStartupMsg"));
 
     ServerAddress client = PowerMock.createNiceMock(ServerAddress.class);
     HostAndPort address = HostAndPort.fromString("localhost:10240");
@@ -354,8 +361,6 @@ public class CompactorTest {
     PowerMock.suppress(PowerMock.methods(Halt.class, "halt"));
     PowerMock.suppress(PowerMock.methods(TServerUtils.class, "stopTServer"));
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
-    PowerMock.suppress(
-        PowerMock.methods(Compactor.class, "setupSecurity", "startGCLogger", "printStartupMsg"));
 
     ServerAddress client = PowerMock.createNiceMock(ServerAddress.class);
     HostAndPort address = HostAndPort.fromString("localhost:10240");
@@ -404,8 +409,6 @@ public class CompactorTest {
     PowerMock.suppress(PowerMock.methods(Halt.class, "halt"));
     PowerMock.suppress(PowerMock.methods(TServerUtils.class, "stopTServer"));
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
-    PowerMock.suppress(
-        PowerMock.methods(Compactor.class, "setupSecurity", "startGCLogger", "printStartupMsg"));
 
     ServerAddress client = PowerMock.createNiceMock(ServerAddress.class);
     HostAndPort address = HostAndPort.fromString("localhost:10240");

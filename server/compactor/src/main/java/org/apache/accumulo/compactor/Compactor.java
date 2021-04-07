@@ -136,18 +136,18 @@ public class Compactor extends AbstractServer
     printStartupMsg();
   }
 
-  private void setupSecurity() {
+  protected void setupSecurity() {
     getContext().setupCrypto();
     security = AuditedSecurityOperation.getInstance(getContext());
   }
 
-  private void startGCLogger() {
+  protected void startGCLogger() {
     ThreadPools.createGeneralScheduledExecutorService(aconf).scheduleWithFixedDelay(
         () -> gcLogger.logGCInfo(getConfiguration()), 0, TIME_BETWEEN_GC_CHECKS,
         TimeUnit.MILLISECONDS);
   }
 
-  private void printStartupMsg() {
+  protected void printStartupMsg() {
     LOG.info("Version " + Constants.VERSION);
     LOG.info("Instance " + getContext().getInstanceID());
   }
