@@ -21,6 +21,7 @@ package org.apache.accumulo.coordinator;
 import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -92,6 +93,8 @@ public class CompactionCoordinator extends AbstractServer
   private static final Logger LOG = LoggerFactory.getLogger(CompactionCoordinator.class);
   private static final long TIME_BETWEEN_CHECKS = 5000;
   public static final long TSERVER_CHECK_INTERVAL = 60000;
+  private static final long FIFTEEN_MINUTES =
+      TimeUnit.MILLISECONDS.convert(Duration.of(15, TimeUnit.MINUTES.toChronoUnit()));
 
   /* Map of external queue name -> priority -> tservers */
   protected static final Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> QUEUES =
@@ -102,6 +105,9 @@ public class CompactionCoordinator extends AbstractServer
   /* Map of compactionId to RunningCompactions */
   protected static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
       new ConcurrentHashMap<>();
+
+  /* Map of queue name to last time compactor called to get a compaction job */
+  private static final Map<String,Long> TIME_COMPACTOR_LAST_CHECKED = new ConcurrentHashMap<>();
 
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
   protected SecurityOperation security;
@@ -361,6 +367,7 @@ public class CompactionCoordinator extends AbstractServer
               QueueAndPriority qp =
                   QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
               synchronized (qp) {
+                TIME_COMPACTOR_LAST_CHECKED.computeIfAbsent(qp.getQueue(), k -> 0L);
                 QUEUES.computeIfAbsent(qp.getQueue(), k -> new TreeMap<>())
                     .computeIfAbsent(qp.getPriority(), k -> new LinkedHashSet<>()).add(tsi);
                 INDEX.computeIfAbsent(tsi, k -> new HashSet<>()).add(qp);
@@ -374,6 +381,15 @@ public class CompactionCoordinator extends AbstractServer
               tsi.getHostAndPort(), e);
         }
       });
+
+      long now = System.currentTimeMillis();
+      TIME_COMPACTOR_LAST_CHECKED.forEach((k, v) -> {
+        if ((now - v) > getMissingCompactorWarningTime()) {
+          LOG.warn("No compactors have checked in with coordinator for queue {} in {}ms", k,
+              getMissingCompactorWarningTime());
+        }
+      });
+
       long checkInterval = getTServerCheckInterval();
       long duration = (System.currentTimeMillis() - start);
       if (checkInterval - duration > 0) {
@@ -382,6 +398,10 @@ public class CompactionCoordinator extends AbstractServer
       }
     }
     LOG.info("Shutting down");
+  }
+
+  protected long getMissingCompactorWarningTime() {
+    return FIFTEEN_MINUTES;
   }
 
   protected long getTServerCheckInterval() {
@@ -463,9 +483,10 @@ public class CompactionCoordinator extends AbstractServer
       throw new AccumuloSecurityException(credentials.getPrincipal(),
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
-
-    LOG.debug("getCompactionJob called for queue {} by compactor {}", queueName, compactorAddress);
     final String queue = queueName.intern();
+    LOG.debug("getCompactionJob called for queue {} by compactor {}", queue, compactorAddress);
+    TIME_COMPACTOR_LAST_CHECKED.put(queue, System.currentTimeMillis());
+
     TExternalCompactionJob result = null;
     final TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(queue);
     if (null != m && !m.isEmpty()) {
