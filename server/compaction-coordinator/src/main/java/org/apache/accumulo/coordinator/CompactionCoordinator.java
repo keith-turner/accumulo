@@ -430,17 +430,8 @@ public class CompactionCoordinator extends AbstractServer
 
     // run() will iterate over the current and added tservers and add them to the internal
     // data structures. For tservers that are deleted, we need to remove them from QUEUES
-    // and INDEX and cancel and RUNNING compactions as we currently don't have a way
-    // to notify a tabletserver that a compaction has completed when the tablet is re-hosted.
+    // and INDEX
     deleted.forEach(tsi -> {
-      // Find any running compactions for the tserver
-      final List<ExternalCompactionId> toCancel = new ArrayList<>();
-      RUNNING.forEach((k, v) -> {
-        if (v.getTserver().equals(tsi)) {
-          toCancel.add(k);
-        }
-      });
-      // Remove the tserver from the QUEUES and INDEX
       INDEX.get(tsi).forEach(qp -> {
         TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(qp.getQueue());
         if (null != m) {
@@ -448,20 +439,11 @@ public class CompactionCoordinator extends AbstractServer
           if (null != tservers) {
             synchronized (qp) {
               tservers.remove(tsi);
-              INDEX.remove(tsi);
             }
           }
         }
       });
-      // Cancel running compactions
-      toCancel.forEach(id -> {
-        try {
-          cancelCompaction(id.canonical());
-        } catch (TException e) {
-          LOG.error("Error cancelling running compaction {} due to tserver {} removal.", id, tsi,
-              e);
-        }
-      });
+      INDEX.remove(tsi);
     });
   }
 
