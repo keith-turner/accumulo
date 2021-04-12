@@ -89,7 +89,9 @@ public class CompactionFinalizer {
 
     // queue RPC if queue is not full
     LOG.info("Queueing tserver notification for completed external compaction: {}", ecfs);
-    pendingNotifications.offer(ecfs);
+    if (!pendingNotifications.offer(ecfs)) {
+      LOG.info("Queue full, notification to tablet server will not occur.");
+    }
   }
 
   public void failCompactions(Map<ExternalCompactionId,KeyExtent> compactionsToFail) {

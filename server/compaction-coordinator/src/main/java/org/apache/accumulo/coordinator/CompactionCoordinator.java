@@ -130,6 +130,16 @@ public class CompactionCoordinator extends AbstractServer
     printStartupMsg();
   }
 
+  protected CompactionCoordinator(ServerOpts opts, String[] args, AccumuloConfiguration conf) {
+    super("compaction-coordinator", opts, args);
+    aconf = conf;
+    compactionFinalizer = createCompactionFinalizer();
+    tserverSet = createLiveTServerSet();
+    setupSecurity();
+    startGCLogger();
+    printStartupMsg();
+  }
+
   protected CompactionFinalizer createCompactionFinalizer() {
     return new CompactionFinalizer(getContext());
   }
@@ -160,7 +170,9 @@ public class CompactionCoordinator extends AbstractServer
    * @param clientAddress
    *          address of this Compactor
    * @throws KeeperException
+   *           zookeeper error
    * @throws InterruptedException
+   *           thread interrupted
    */
   protected void getCoordinatorLock(HostAndPort clientAddress)
       throws KeeperException, InterruptedException {
@@ -195,6 +207,7 @@ public class CompactionCoordinator extends AbstractServer
    *
    * @return address of this CompactionCoordinator client service
    * @throws UnknownHostException
+   *           host unknown
    */
   protected ServerAddress startCoordinatorClientService() throws UnknownHostException {
     Iface rpcProxy = TraceUtil.wrapService(this);
@@ -343,10 +356,10 @@ public class CompactionCoordinator extends AbstractServer
           }
         });
       }
+      tservers.clear();
     } else {
       LOG.info("No running tablet servers found, continuing startup");
     }
-    tservers.clear();
 
     tserverSet.startListeningForTabletServerChanges();
     new DeadCompactionDetector(getContext(), compactionFinalizer).start();
@@ -556,6 +569,7 @@ public class CompactionCoordinator extends AbstractServer
    *          tserver instance
    * @return thrift client
    * @throws TTransportException
+   *           thrift error
    */
   protected TabletClientService.Client getTabletServerConnection(TServerInstance tserver)
       throws TTransportException {
@@ -572,6 +586,7 @@ public class CompactionCoordinator extends AbstractServer
    *          compactor address
    * @return thrift client
    * @throws TTransportException
+   *           thrift error
    */
   protected Compactor.Client getCompactorConnection(HostAndPort compactorAddress)
       throws TTransportException {
@@ -582,6 +597,15 @@ public class CompactionCoordinator extends AbstractServer
 
   /**
    * Called by the TabletServer to cancel the running compaction.
+   *
+   * @param tinfo
+   *          trace info
+   * @param credentials
+   *          tcredentials object
+   * @param externalCompactionId
+   *          compaction id
+   * @throws TException
+   *           thrift error
    */
   @Override
   public void cancelCompaction(TInfo tinfo, TCredentials credentials, String externalCompactionId)
@@ -631,9 +655,15 @@ public class CompactionCoordinator extends AbstractServer
   /**
    * TServer calls getCompactionStatus to get information about the compaction
    *
+   * @param tinfo
+   *          trace info
+   * @param credentials
+   *          tcredentials object
    * @param externalCompactionId
-   *          id
+   *          compaction id
    * @return compaction stats or null if not running
+   * @throws TException
+   *           thrift error
    */
   @Override
   public List<Status> getCompactionStatus(TInfo tinfo, TCredentials credentials,
@@ -657,10 +687,20 @@ public class CompactionCoordinator extends AbstractServer
   /**
    * Compactor calls compactionCompleted passing in the CompactionStats
    *
-   * @param job
-   *          compaction job
+   * @param tinfo
+   *          trace info
+   * @param credentials
+   *          tcredentials object
+   * @param externalCompactionId
+   *          compaction id
+   * @param textent
+   *          tablet extent
    * @param stats
    *          compaction stats
+   * @throws UnknownCompactionIdException
+   *           if compaction is not running
+   * @throws TException
+   *           thrift error
    */
   @Override
   public void compactionCompleted(TInfo tinfo, TCredentials credentials,
@@ -715,9 +755,12 @@ public class CompactionCoordinator extends AbstractServer
    *
    *
    * @param externalCompactionId
+   *          compaction id
    * @return CompactionStats
    * @throws UnknownCompactionIdException
    *           if compaction is not running
+   * @throws TException
+   *           thrift error
    */
   public CompactionStats isCompactionCompleted(String externalCompactionId) throws TException {
     final var ecid = ExternalCompactionId.of(externalCompactionId);
@@ -743,14 +786,22 @@ public class CompactionCoordinator extends AbstractServer
   /**
    * Compactor calls to update the status of the assigned compaction
    *
-   * @param job
-   *          compaction job
+   * @param tinfo
+   *          trace info
+   * @param credentials
+   *          tcredentials object
+   * @param externalCompactionId
+   *          compaction id
    * @param state
    *          compaction state
    * @param message
    *          informational message
    * @param timestamp
    *          timestamp of the message
+   * @throws UnknownCompactionIdException
+   *           if compaction is not running
+   * @throws TException
+   *           thrift error
    */
   @Override
   public void updateCompactionStatus(TInfo tinfo, TCredentials credentials,

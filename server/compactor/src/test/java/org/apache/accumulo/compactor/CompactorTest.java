@@ -18,6 +18,10 @@
  */
 package org.apache.accumulo.compactor;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
 import java.net.UnknownHostException;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -45,7 +49,6 @@ import org.apache.accumulo.server.rpc.ServerAddress;
 import org.apache.accumulo.server.rpc.TServerUtils;
 import org.apache.zookeeper.KeeperException;
 import org.easymock.EasyMock;
-import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -157,7 +160,6 @@ public class CompactorTest {
     private final Supplier<UUID> uuid;
     private final ServerAddress address;
     private final TExternalCompactionJob job;
-    private final AccumuloConfiguration conf;
     private final ServerContext ctx;
     private final ExternalCompactionId eci;
     private volatile boolean completedCalled = false;
@@ -166,11 +168,10 @@ public class CompactorTest {
 
     SuccessfulCompactor(Supplier<UUID> uuid, ServerAddress address, TExternalCompactionJob job,
         AccumuloConfiguration conf, ServerContext ctx, ExternalCompactionId eci) {
-      super(new CompactorServerOpts(), new String[] {"-q", "testQ"});
+      super(new CompactorServerOpts(), new String[] {"-q", "testQ"}, conf);
       this.uuid = uuid;
       this.address = address;
       this.job = job;
-      this.conf = conf;
       this.ctx = ctx;
       this.eci = eci;
     }
@@ -187,11 +188,6 @@ public class CompactorTest {
     @Override
     public ServerContext getContext() {
       return this.ctx;
-    }
-
-    @Override
-    public AccumuloConfiguration getConfiguration() {
-      return this.conf;
     }
 
     @Override
@@ -291,11 +287,11 @@ public class CompactorTest {
   public void testCheckTime() throws Exception {
     // Instantiates class without calling constructor
     Compactor c = Whitebox.newInstance(Compactor.class);
-    Assert.assertEquals(1, c.calculateProgressCheckTime(1024));
-    Assert.assertEquals(1, c.calculateProgressCheckTime(1048576));
-    Assert.assertEquals(1, c.calculateProgressCheckTime(10485760));
-    Assert.assertEquals(10, c.calculateProgressCheckTime(104857600));
-    Assert.assertEquals(102, c.calculateProgressCheckTime(1024 * 1024 * 1024));
+    assertEquals(1, c.calculateProgressCheckTime(1024));
+    assertEquals(1, c.calculateProgressCheckTime(1048576));
+    assertEquals(1, c.calculateProgressCheckTime(10485760));
+    assertEquals(10, c.calculateProgressCheckTime(104857600));
+    assertEquals(102, c.calculateProgressCheckTime(1024 * 1024 * 1024));
   }
 
   @Test
@@ -341,8 +337,8 @@ public class CompactorTest {
     PowerMock.verifyAll();
     c.close();
 
-    Assert.assertTrue(c.isCompletedCalled());
-    Assert.assertFalse(c.isFailedCalled());
+    assertTrue(c.isCompletedCalled());
+    assertFalse(c.isFailedCalled());
   }
 
   @Test
@@ -388,9 +384,9 @@ public class CompactorTest {
     PowerMock.verifyAll();
     c.close();
 
-    Assert.assertFalse(c.isCompletedCalled());
-    Assert.assertTrue(c.isFailedCalled());
-    Assert.assertEquals(CompactionState.FAILED, c.getLatestState());
+    assertFalse(c.isCompletedCalled());
+    assertTrue(c.isFailedCalled());
+    assertEquals(CompactionState.FAILED, c.getLatestState());
   }
 
   @Test
@@ -436,9 +432,9 @@ public class CompactorTest {
     PowerMock.verifyAll();
     c.close();
 
-    Assert.assertFalse(c.isCompletedCalled());
-    Assert.assertTrue(c.isFailedCalled());
-    Assert.assertEquals(CompactionState.CANCELLED, c.getLatestState());
+    assertFalse(c.isCompletedCalled());
+    assertTrue(c.isFailedCalled());
+    assertEquals(CompactionState.CANCELLED, c.getLatestState());
   }
 
 }

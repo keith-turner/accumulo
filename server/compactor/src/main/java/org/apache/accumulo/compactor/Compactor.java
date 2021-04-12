@@ -136,6 +136,15 @@ public class Compactor extends AbstractServer
     printStartupMsg();
   }
 
+  protected Compactor(CompactorServerOpts opts, String[] args, AccumuloConfiguration conf) {
+    super("compactor", opts, args);
+    queueName = opts.getQueueName();
+    aconf = conf;
+    setupSecurity();
+    startGCLogger();
+    printStartupMsg();
+  }
+
   protected void setupSecurity() {
     getContext().setupCrypto();
     security = AuditedSecurityOperation.getInstance(getContext());
@@ -159,7 +168,9 @@ public class Compactor extends AbstractServer
    *          address of this Compactor
    *
    * @throws KeeperException
+   *           zookeeper error
    * @throws InterruptedException
+   *           thread interrupted
    */
   protected void announceExistence(HostAndPort clientAddress)
       throws KeeperException, InterruptedException {
@@ -227,6 +238,7 @@ public class Compactor extends AbstractServer
    *
    * @return address of this compactor client service
    * @throws UnknownHostException
+   *           host unknown
    */
   protected ServerAddress startCompactorClientService() throws UnknownHostException {
     Iface rpcProxy = TraceUtil.wrapService(this);
@@ -273,7 +285,11 @@ public class Compactor extends AbstractServer
    * Cancel the compaction with this id.
    *
    * @param externalCompactionId
+   *          compaction id
+   * @throws UnknownCompactionIdException
+   *           if the externalCompactionId does not match the currently executing compaction
    * @throws TException
+   *           thrift error
    */
   private void cancel(String externalCompactionId) throws TException {
     synchronized (JOB_HOLDER) {
@@ -299,6 +315,7 @@ public class Compactor extends AbstractServer
    * @param message
    *          updated message
    * @throws RetriesExceededException
+   *           thrown when retries have been exceeded
    */
   protected void updateCompactionState(TExternalCompactionJob job, CompactionState state,
       String message) throws RetriesExceededException {
@@ -330,6 +347,7 @@ public class Compactor extends AbstractServer
    * @param job
    *          current compaction job
    * @throws RetriesExceededException
+   *           thrown when retries have been exceeded
    */
   protected void updateCompactionFailed(TExternalCompactionJob job)
       throws RetriesExceededException {
@@ -359,6 +377,7 @@ public class Compactor extends AbstractServer
    * @param stats
    *          compaction stats
    * @throws RetriesExceededException
+   *           thrown when retries have been exceeded
    */
   protected void updateCompactionCompleted(TExternalCompactionJob job, CompactionStats stats)
       throws RetriesExceededException {
@@ -383,12 +402,11 @@ public class Compactor extends AbstractServer
   /**
    * Get the next job to run
    *
-   * @param coordinatorClient
-   *          address of the CompactionCoordinator
-   * @param compactorAddress
-   *          address of this Compactor
+   * @param uuid
+   *          uuid supplier
    * @return CompactionJob
    * @throws RetriesExceededException
+   *           thrown when retries have been exceeded
    */
   protected TExternalCompactionJob getNextJob(Supplier<UUID> uuid) throws RetriesExceededException {
     RetryableThriftCall<TExternalCompactionJob> nextJobThriftCall =
@@ -513,6 +531,7 @@ public class Compactor extends AbstractServer
    * Returns the number of seconds to wait in between progress checks based on input file sizes
    *
    * @param numBytes
+   *          number of bytes in input file
    * @return number of seconds to wait between progress checks
    */
   protected long calculateProgressCheckTime(long numBytes) {

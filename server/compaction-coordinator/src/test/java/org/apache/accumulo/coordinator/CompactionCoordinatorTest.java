@@ -18,6 +18,11 @@
  */
 package org.apache.accumulo.coordinator;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
 import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -57,7 +62,6 @@ import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
 import org.easymock.EasyMock;
-import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -79,7 +83,6 @@ public class CompactionCoordinatorTest {
   public class TestCoordinator extends CompactionCoordinator {
 
     private final ServerContext ctx;
-    private final AccumuloConfiguration conf;
     private final ServerAddress client;
     private final TabletClientService.Client tabletServerClient;
 
@@ -87,8 +90,7 @@ public class CompactionCoordinatorTest {
         LiveTServerSet tservers, ServerAddress client,
         TabletClientService.Client tabletServerClient, ServerContext ctx,
         AuditedSecurityOperation security) {
-      super(new ServerOpts(), new String[] {});
-      this.conf = conf;
+      super(new ServerOpts(), new String[] {}, conf);
       this.compactionFinalizer = finalizer;
       this.tserverSet = tservers;
       this.client = client;
@@ -123,11 +125,6 @@ public class CompactionCoordinatorTest {
     protected void printStartupMsg() {}
 
     @Override
-    public AccumuloConfiguration getConfiguration() {
-      return this.conf;
-    }
-
-    @Override
     public ServerContext getContext() {
       return this.ctx;
     }
@@ -144,13 +141,6 @@ public class CompactionCoordinatorTest {
     @Override
     protected Client getTabletServerConnection(TServerInstance tserver) throws TTransportException {
       return tabletServerClient;
-    }
-
-    @Override
-    protected org.apache.accumulo.core.compaction.thrift.Compactor.Client
-        getCompactorConnection(HostAndPort compactorAddress) throws TTransportException {
-      // TODO Auto-generated method stub
-      return super.getCompactorConnection(compactorAddress);
     }
 
     @Override
@@ -221,13 +211,13 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
-    Assert.assertEquals(0, coordinator.getQueues().size());
-    Assert.assertEquals(0, coordinator.getIndex().size());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(0, coordinator.getQueues().size());
+    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(0, coordinator.getRunning().size());
     coordinator.run();
-    Assert.assertEquals(0, coordinator.getQueues().size());
-    Assert.assertEquals(0, coordinator.getIndex().size());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(0, coordinator.getQueues().size());
+    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(0, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
     coordinator.getQueues().clear();
@@ -274,27 +264,27 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
-    Assert.assertEquals(0, coordinator.getQueues().size());
-    Assert.assertEquals(0, coordinator.getIndex().size());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(0, coordinator.getQueues().size());
+    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(0, coordinator.getRunning().size());
     coordinator.run();
-    Assert.assertEquals(1, coordinator.getQueues().size());
+    assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
     Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
-    Assert.assertNotNull(m);
-    Assert.assertEquals(1, m.size());
-    Assert.assertTrue(m.containsKey(1L));
+    assertNotNull(m);
+    assertEquals(1, m.size());
+    assertTrue(m.containsKey(1L));
     Set<TServerInstance> t = m.get(1L);
-    Assert.assertNotNull(t);
-    Assert.assertEquals(1, t.size());
+    assertNotNull(t);
+    assertEquals(1, t.size());
     TServerInstance queuedTsi = t.iterator().next();
-    Assert.assertEquals(tsi.getHostPortSession(), queuedTsi.getHostPortSession());
-    Assert.assertEquals(1, coordinator.getIndex().size());
-    Assert.assertTrue(coordinator.getIndex().containsKey(queuedTsi));
+    assertEquals(tsi.getHostPortSession(), queuedTsi.getHostPortSession());
+    assertEquals(1, coordinator.getIndex().size());
+    assertTrue(coordinator.getIndex().containsKey(queuedTsi));
     Set<QueueAndPriority> i = coordinator.getIndex().get(queuedTsi);
-    Assert.assertEquals(1, i.size());
-    Assert.assertEquals(qp, i.iterator().next());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(1, i.size());
+    assertEquals(qp, i.iterator().next());
+    assertEquals(0, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
     coordinator.getQueues().clear();
@@ -352,27 +342,27 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
-    Assert.assertEquals(0, coordinator.getQueues().size());
-    Assert.assertEquals(0, coordinator.getIndex().size());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(0, coordinator.getQueues().size());
+    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(0, coordinator.getRunning().size());
     coordinator.run();
-    Assert.assertEquals(1, coordinator.getQueues().size());
+    assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
     Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
-    Assert.assertNotNull(m);
-    Assert.assertEquals(1, m.size());
-    Assert.assertTrue(m.containsKey(1L));
+    assertNotNull(m);
+    assertEquals(1, m.size());
+    assertTrue(m.containsKey(1L));
     Set<TServerInstance> t = m.get(1L);
-    Assert.assertNotNull(t);
-    Assert.assertEquals(1, t.size());
+    assertNotNull(t);
+    assertEquals(1, t.size());
     TServerInstance queuedTsi = t.iterator().next();
-    Assert.assertEquals(instance.getHostPortSession(), queuedTsi.getHostPortSession());
-    Assert.assertEquals(1, coordinator.getIndex().size());
-    Assert.assertTrue(coordinator.getIndex().containsKey(queuedTsi));
+    assertEquals(instance.getHostPortSession(), queuedTsi.getHostPortSession());
+    assertEquals(1, coordinator.getIndex().size());
+    assertTrue(coordinator.getIndex().containsKey(queuedTsi));
     Set<QueueAndPriority> i = coordinator.getIndex().get(queuedTsi);
-    Assert.assertEquals(1, i.size());
-    Assert.assertEquals(qp, i.iterator().next());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(1, i.size());
+    assertEquals(qp, i.iterator().next());
+    assertEquals(0, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
     coordinator.getQueues().clear();
@@ -439,27 +429,27 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
-    Assert.assertEquals(0, coordinator.getQueues().size());
-    Assert.assertEquals(0, coordinator.getIndex().size());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(0, coordinator.getQueues().size());
+    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(0, coordinator.getRunning().size());
     coordinator.run();
-    Assert.assertEquals(1, coordinator.getQueues().size());
+    assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
     Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
-    Assert.assertNotNull(m);
-    Assert.assertEquals(1, m.size());
-    Assert.assertTrue(m.containsKey(1L));
+    assertNotNull(m);
+    assertEquals(1, m.size());
+    assertTrue(m.containsKey(1L));
     Set<TServerInstance> t = m.get(1L);
-    Assert.assertNotNull(t);
-    Assert.assertEquals(1, t.size());
+    assertNotNull(t);
+    assertEquals(1, t.size());
     TServerInstance queuedTsi = t.iterator().next();
-    Assert.assertEquals(instance.getHostPortSession(), queuedTsi.getHostPortSession());
-    Assert.assertEquals(1, coordinator.getIndex().size());
-    Assert.assertTrue(coordinator.getIndex().containsKey(queuedTsi));
+    assertEquals(instance.getHostPortSession(), queuedTsi.getHostPortSession());
+    assertEquals(1, coordinator.getIndex().size());
+    assertTrue(coordinator.getIndex().containsKey(queuedTsi));
     Set<QueueAndPriority> i = coordinator.getIndex().get(queuedTsi);
-    Assert.assertEquals(1, i.size());
-    Assert.assertEquals(qp, i.iterator().next());
-    Assert.assertEquals(1, coordinator.getRunning().size());
+    assertEquals(1, i.size());
+    assertEquals(qp, i.iterator().next());
+    assertEquals(1, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
     coordinator.getQueues().clear();
@@ -518,44 +508,44 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
-    Assert.assertEquals(0, coordinator.getQueues().size());
-    Assert.assertEquals(0, coordinator.getIndex().size());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(0, coordinator.getQueues().size());
+    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(0, coordinator.getRunning().size());
     // Use coordinator.run() to populate the internal data structures. This is tested in a different
     // test.
     coordinator.run();
 
-    Assert.assertEquals(1, coordinator.getQueues().size());
+    assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
     Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
-    Assert.assertNotNull(m);
-    Assert.assertEquals(1, m.size());
-    Assert.assertTrue(m.containsKey(1L));
+    assertNotNull(m);
+    assertEquals(1, m.size());
+    assertTrue(m.containsKey(1L));
     Set<TServerInstance> t = m.get(1L);
-    Assert.assertNotNull(t);
-    Assert.assertEquals(1, t.size());
+    assertNotNull(t);
+    assertEquals(1, t.size());
     TServerInstance queuedTsi = t.iterator().next();
-    Assert.assertEquals(tsi.getHostPortSession(), queuedTsi.getHostPortSession());
-    Assert.assertEquals(1, coordinator.getIndex().size());
-    Assert.assertTrue(coordinator.getIndex().containsKey(queuedTsi));
+    assertEquals(tsi.getHostPortSession(), queuedTsi.getHostPortSession());
+    assertEquals(1, coordinator.getIndex().size());
+    assertTrue(coordinator.getIndex().containsKey(queuedTsi));
     Set<QueueAndPriority> i = coordinator.getIndex().get(queuedTsi);
-    Assert.assertEquals(1, i.size());
-    Assert.assertEquals(qp, i.iterator().next());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    assertEquals(1, i.size());
+    assertEquals(qp, i.iterator().next());
+    assertEquals(0, coordinator.getRunning().size());
 
     // Get the next job
     TExternalCompactionJob createdJob =
         coordinator.getCompactionJob(trace, creds, "R2DQ", "localhost:10241", eci.toString());
-    Assert.assertEquals(eci.toString(), createdJob.getExternalCompactionId());
+    assertEquals(eci.toString(), createdJob.getExternalCompactionId());
 
-    Assert.assertEquals(1, coordinator.getQueues().size());
-    Assert.assertEquals(0, coordinator.getIndex().size());
-    Assert.assertEquals(1, coordinator.getRunning().size());
+    assertEquals(1, coordinator.getQueues().size());
+    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(1, coordinator.getRunning().size());
     Entry<ExternalCompactionId,RunningCompaction> entry =
         coordinator.getRunning().entrySet().iterator().next();
-    Assert.assertEquals(eci.toString(), entry.getKey().toString());
-    Assert.assertEquals("localhost:10241", entry.getValue().getCompactorAddress());
-    Assert.assertEquals(eci.toString(), entry.getValue().getJob().getExternalCompactionId());
+    assertEquals(eci.toString(), entry.getKey().toString());
+    assertEquals("localhost:10241", entry.getValue().getCompactorAddress());
+    assertEquals(eci.toString(), entry.getValue().getJob().getExternalCompactionId());
 
     PowerMock.verifyAll();
     coordinator.getQueues().clear();
@@ -595,7 +585,7 @@ public class CompactionCoordinatorTest {
     coordinator.getRunning().clear();
     TExternalCompactionJob job = coordinator.getCompactionJob(TraceUtil.traceInfo(), creds, "R2DQ",
         "localhost:10240", UUID.randomUUID().toString());
-    Assert.assertNull(job.getExternalCompactionId());
+    assertNull(job.getExternalCompactionId());
 
     PowerMock.verifyAll();
     coordinator.close();

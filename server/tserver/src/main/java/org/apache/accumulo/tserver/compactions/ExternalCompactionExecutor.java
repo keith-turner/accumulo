@@ -79,6 +79,26 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
       return Long.compare(o.getJob().getPriority(), getJob().getPriority());
     }
 
+    @Override
+    public boolean equals(Object obj) {
+      if (null == obj) {
+        return false;
+      }
+      if (obj == this) {
+        return true;
+      }
+      if (obj instanceof ExternalJob) {
+        ExternalJob other = (ExternalJob) obj;
+        return (this.compareTo(other) == 0);
+      }
+      return false;
+    }
+
+    @Override
+    public int hashCode() {
+      return Long.hashCode(this.getJob().getPriority());
+    }
+
   }
 
   private PriorityBlockingQueue<ExternalJob> queue;
