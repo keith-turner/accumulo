@@ -71,6 +71,7 @@ import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.fate.zookeeper.ZooUtil.NodeExistsPolicy;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
+import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.compaction.CompactionInfo;
 import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
@@ -89,6 +90,10 @@ import org.apache.hadoop.fs.Path;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.Watcher.WatcherType;
+import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -601,7 +606,52 @@ public class Compactor extends AbstractServer
           JOB_HOLDER.set(job, compactionThread);
         }
 
+        final String tableId = new String(job.getExtent().getTable(), UTF_8);
+        final ServerContext ctxRef = getContext();
+        String tablePath = getContext().getZooKeeperRoot() + Constants.ZTABLES + "/" + tableId;
+        Watcher tableNodeWatcher = new Watcher() {
+          @Override
+          public void process(WatchedEvent event) {
+            switch (event.getType()) {
+              case NodeDeleted:
+                LOG.info("Zookeeper node for table {} deleted, cancelling compaction.", tableId);
+                JOB_HOLDER.cancel();
+                break;
+              default:
+                // Watcher got fired for some other event, need to recreate the Watcher
+                try {
+                  Stat s = ctxRef.getZooReaderWriter().getZooKeeper().exists(tablePath, this);
+                  if (s == null) {
+                    LOG.info("Zookeeper node for table {} deleted before compaction started.",
+                        tableId);
+                    // if stat is null from the zookeeper.exists(path, Watcher) call, then we just
+                    // created a Watcher on a node that does not exist. Delete the watcher we just
+                    // created.
+                    ctxRef.getZooReaderWriter().getZooKeeper().removeWatches(tablePath, this,
+                        WatcherType.Any, true);
+                  }
+                } catch (Exception e) {
+                  LOG.error("Error communicating with ZooKeeper and unable to recreate Watcher", e);
+                  // CBUG: Should we exit?
+                }
+                break;
+            }
+          }
+        };
         try {
+          // Add a watcher in ZooKeeper on the table id so that we can cancel this compaction
+          // if the table is deleted
+          Stat s =
+              getContext().getZooReaderWriter().getZooKeeper().exists(tablePath, tableNodeWatcher);
+          if (s == null) {
+            LOG.info("Zookeeper node for table {} deleted before compaction started.", tableId);
+            // if stat is null from the zookeeper.exists(path, Watcher) call, then we just
+            // created a Watcher on a node that does not exist. Delete the watcher we just created.
+            getContext().getZooReaderWriter().getZooKeeper().removeWatches(tablePath,
+                tableNodeWatcher, WatcherType.Any, true);
+            continue;
+          }
+
           compactionThread.start(); // start the compactionThread
           started.await(); // wait until the compactor is started
           final long inputEntries = totalInputEntries.sum();
@@ -686,6 +736,8 @@ public class Compactor extends AbstractServer
             LOG.error("Error cancelling compaction.", e2);
           }
         } finally {
+          getContext().getZooReaderWriter().getZooKeeper().removeWatches(tablePath,
+              tableNodeWatcher, WatcherType.Any, true);
           currentCompactionId.set(null);
         }
 
