@@ -19,13 +19,13 @@
 package org.apache.accumulo.coordinator;
 
 import org.apache.accumulo.core.util.Halt;
-import org.apache.accumulo.fate.zookeeper.ZooLock;
-import org.apache.accumulo.fate.zookeeper.ZooLock.LockLossReason;
+import org.apache.accumulo.fate.zookeeper.ServiceLock;
+import org.apache.accumulo.fate.zookeeper.ServiceLock.LockLossReason;
 import org.apache.zookeeper.KeeperException.NoAuthException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class CoordinatorLockWatcher implements ZooLock.AccumuloLockWatcher {
+public class CoordinatorLockWatcher implements ServiceLock.AccumuloLockWatcher {
 
   private static final Logger LOG = LoggerFactory.getLogger(CoordinatorLockWatcher.class);
 

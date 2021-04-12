@@ -37,7 +37,7 @@ import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.ThreadPools;
-import org.apache.accumulo.fate.zookeeper.ZooLock;
+import org.apache.accumulo.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.thrift.TException;
 import org.apache.zookeeper.KeeperException;
@@ -71,7 +71,8 @@ public class ExternalCompactionUtil {
   public static HostAndPort findCompactionCoordinator(ServerContext context) {
     final String lockPath = context.getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
     try {
-      byte[] address = ZooLock.getLockData(context.getZooReaderWriter().getZooKeeper(), lockPath);
+      byte[] address = ServiceLock.getLockData(context.getZooReaderWriter().getZooKeeper(),
+          ServiceLock.path(lockPath));
       if (null == address) {
         return null;
       }

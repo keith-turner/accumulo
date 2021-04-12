@@ -54,6 +54,12 @@ import org.apache.commons.cli.Options;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
+/**
+ * @deprecated since 2.0; this command shouldn't be used; The script command is deprecated; use
+ *             jshell for scripting instead
+ */
+
+@Deprecated(since = "2.1.0")
 public class ScriptCommand extends Command {
 
   // Command to allow user to run scripts, see JSR-223
@@ -68,6 +74,8 @@ public class ScriptCommand extends Command {
   public int execute(String fullCommand, CommandLine cl, Shell shellState) throws Exception {
 
     boolean invoke = false;
+
+    Shell.log.warn("The script command is deprecated; use jshell for scripting instead");
     ScriptEngineManager mgr = new ScriptEngineManager();
 
     if (cl.hasOption(list.getOpt())) {
@@ -137,7 +145,7 @@ public class ScriptCommand extends Command {
           return 1;
         }
         Reader reader = new FileReader(f, UTF_8);
-        try {
+        try (reader) {
           engine.eval(reader, ctx);
           if (invoke) {
             this.invokeFunctionOrMethod(shellState, engine, cl, argArray);
@@ -146,7 +154,6 @@ public class ScriptCommand extends Command {
           shellState.printException(ex);
           return 1;
         } finally {
-          reader.close();
           if (writer != null) {
             writer.close();
           }
@@ -186,7 +193,6 @@ public class ScriptCommand extends Command {
     return 0;
   }
 
-  @SuppressWarnings("deprecation")
   private void putConnector(Bindings b, AccumuloClient client) {
     try {
       b.put("connection", org.apache.accumulo.core.client.Connector.from(client));
@@ -197,17 +203,12 @@ public class ScriptCommand extends Command {
 
   @Override
   public String description() {
-    return "execute JSR-223 scripts";
+    return "(deprecated) execute JSR-223 scripts";
   }
 
   @Override
   public int numArgs() {
     return 0;
-  }
-
-  @Override
-  public String getName() {
-    return "script";
   }
 
   @Override

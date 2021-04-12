@@ -62,7 +62,7 @@ import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.util.UtilWaitThread;
-import org.apache.accumulo.fate.zookeeper.ZooLock;
+import org.apache.accumulo.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerOpts;
@@ -109,7 +109,7 @@ public class CompactionCoordinator extends AbstractServer
   protected CompactionFinalizer compactionFinalizer;
   protected LiveTServerSet tserverSet;
 
-  private ZooLock coordinatorLock;
+  private ServiceLock coordinatorLock;
 
   // Exposed for tests
   protected volatile Boolean shutdown = false;
@@ -167,7 +167,8 @@ public class CompactionCoordinator extends AbstractServer
     while (true) {
 
       CoordinatorLockWatcher coordinatorLockWatcher = new CoordinatorLockWatcher();
-      coordinatorLock = new ZooLock(getContext().getSiteConfiguration(), lockPath, zooLockUUID);
+      coordinatorLock = new ServiceLock(getContext().getZooReaderWriter().getZooKeeper(),
+          ServiceLock.path(lockPath), zooLockUUID);
       coordinatorLock.lock(coordinatorLockWatcher, coordinatorClientAddress.getBytes());
 
       coordinatorLockWatcher.waitForChange();
