@@ -500,7 +500,8 @@ public class Compactor extends AbstractServer
           job.getIteratorSettings().getIterators()
               .forEach(tis -> iters.add(SystemIteratorUtil.toIteratorSetting(tis)));
 
-          try (CompactionEnvironment cenv = new CompactionEnvironment(getContext(), JOB_HOLDER)) {
+          try (CompactionEnvironment cenv =
+              new CompactionEnvironment(getContext(), JOB_HOLDER, queueName)) {
             org.apache.accumulo.server.compaction.Compactor compactor =
                 new org.apache.accumulo.server.compaction.Compactor(getContext(),
                     KeyExtent.fromThrift(job.getExtent()), files, outputFile,

@@ -65,8 +65,6 @@ public class ExternalCompactionUtil {
 
   /**
    *
-   * @param context
-   *          server context
    * @return null if Coordinator node not found, else HostAndPort
    */
   public static HostAndPort findCompactionCoordinator(ServerContext context) {
@@ -85,8 +83,6 @@ public class ExternalCompactionUtil {
   }
 
   /**
-   * @param context
-   *          server context
    * @return list of Compactors
    */
   public static List<HostAndPort> getCompactorAddrs(ServerContext context) {

@@ -36,16 +36,36 @@ import org.apache.accumulo.server.compaction.Compactor.CompactionEnv;
 import org.apache.accumulo.server.iterators.SystemIteratorEnvironment;
 import org.apache.accumulo.server.iterators.TabletIteratorEnvironment;
 
+import com.google.common.annotations.VisibleForTesting;
+
 public class CompactionEnvironment implements Closeable, CompactionEnv {
 
   private final ServerContext context;
   private final CompactionJobHolder jobHolder;
   private final SharedRateLimiterFactory limiter;
+  private String queueName;
 
-  CompactionEnvironment(ServerContext context, CompactionJobHolder jobHolder) {
+  public static class CompactorIterEnv extends TabletIteratorEnvironment {
+
+    private String queueName;
+
+    public CompactorIterEnv(ServerContext context, IteratorScope scope, boolean fullMajC,
+        AccumuloConfiguration tableConfig, TableId tableId, CompactionKind kind, String queueName) {
+      super(context, scope, fullMajC, tableConfig, tableId, kind);
+      this.queueName = queueName;
+    }
+
+    @VisibleForTesting
+    public String getQueueName() {
+      return queueName;
+    }
+  }
+
+  CompactionEnvironment(ServerContext context, CompactionJobHolder jobHolder, String queueName) {
     this.context = context;
     this.jobHolder = jobHolder;
     this.limiter = SharedRateLimiterFactory.getInstance(this.context.getConfiguration());
+    this.queueName = queueName;
   }
 
   @Override
@@ -77,9 +97,9 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
   @Override
   public SystemIteratorEnvironment createIteratorEnv(ServerContext context,
       AccumuloConfiguration acuTableConf, TableId tableId) {
-    return new TabletIteratorEnvironment(context, IteratorScope.majc,
+    return new CompactorIterEnv(context, IteratorScope.majc,
         !jobHolder.getJob().isPropagateDeletes(), acuTableConf, tableId,
-        CompactionKind.valueOf(jobHolder.getJob().getKind().name()));
+        CompactionKind.valueOf(jobHolder.getJob().getKind().name()), queueName);
   }
 
   @Override
