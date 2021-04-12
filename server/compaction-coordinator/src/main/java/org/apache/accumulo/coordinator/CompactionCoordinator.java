@@ -248,6 +248,7 @@ public class CompactionCoordinator extends AbstractServer
           // Attempt to find the TServer hosting the tablet based on the metadata table
           // CBUG use #1974 for more efficient metadata reads
           KeyExtent extent = KeyExtent.fromThrift(job.getExtent());
+          LOG.debug("Getting tablet metadata for extent: {}", extent);
           TabletMetadata tabletMetadata = getMetadataEntryForExtent(extent);
 
           if (tabletMetadata != null && tabletMetadata.getExtent().equals(extent)
@@ -262,14 +263,23 @@ public class CompactionCoordinator extends AbstractServer
             if (null != tsi) {
               TabletClientService.Client client = null;
               try {
+                LOG.debug(
+                    "Checking to see if tserver {} is running external compaction for extent: {}",
+                    tsi.getHostAndPort(), extent);
                 client = getTabletServerConnection(tsi);
                 boolean tserverMatch = client.isRunningExternalCompaction(TraceUtil.traceInfo(),
                     getContext().rpcCreds(), job.getExternalCompactionId(), job.getExtent());
                 if (tserverMatch) {
+                  LOG.debug(
+                      "Tablet server {} is running external compaction for extent: {}, adding to running list",
+                      tsi.getHostAndPort(), extent);
                   RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
                       new RunningCompaction(job, ExternalCompactionUtil.getHostPortString(hp),
                           tsi));
                   matchFound = true;
+                } else {
+                  LOG.debug("Tablet server {} is NOT running external compaction for extent: {}",
+                      tsi.getHostAndPort(), extent);
                 }
               } catch (TException e) {
                 LOG.warn("Failed to notify tserver {}",
@@ -277,18 +287,30 @@ public class CompactionCoordinator extends AbstractServer
               } finally {
                 ThriftUtil.returnClient(client);
               }
+            } else {
+              LOG.info("Tablet server {} is not currently in live tserver set",
+                  tabletMetadata.getLocation().getHostAndPort());
             }
+          } else {
+            LOG.info("No current location for extent: {}", extent);
           }
 
           // As a fallback, try them all
           if (!matchFound) {
+            LOG.debug("Checking all tservers for external running compaction, extent: {}", extent);
             for (TServerInstance tsi : tservers) {
               TabletClientService.Client client = null;
               try {
                 client = getTabletServerConnection(tsi);
+                LOG.debug(
+                    "Checking to see if tserver {} is running external compaction for extent: {}",
+                    tsi.getHostAndPort(), extent);
                 boolean tserverMatch = client.isRunningExternalCompaction(TraceUtil.traceInfo(),
                     getContext().rpcCreds(), job.getExternalCompactionId(), job.getExtent());
                 if (tserverMatch) {
+                  LOG.debug(
+                      "Tablet server {} is running external compaction for extent: {}, adding to running list",
+                      tsi.getHostAndPort(), extent);
                   RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
                       new RunningCompaction(job, ExternalCompactionUtil.getHostPortString(hp),
                           tsi));
@@ -305,6 +327,9 @@ public class CompactionCoordinator extends AbstractServer
           }
 
           if (!matchFound) {
+            LOG.warn(
+                "There is an external compaction running on a compactor, but could not find corresponding tablet server. Extent: {}, Compactor: {}, Compaction: {}",
+                extent, hp, job);
             // There is an external compaction running on a Compactor, but we can't resolve it to a
             // TServer?
             // CBUG: Cancel the compaction?

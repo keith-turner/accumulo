@@ -58,7 +58,6 @@ import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
 import org.easymock.EasyMock;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -180,6 +179,11 @@ public class CompactionCoordinatorTest {
         @Override
         public Location getLocation() {
           return new Location("localhost:9997", "", LocationType.CURRENT);
+        }
+
+        @Override
+        public KeyExtent getExtent() {
+          return extent;
         }
       };
     }
@@ -378,9 +382,7 @@ public class CompactionCoordinatorTest {
   }
 
   @Test
-  @Ignore
   public void testCoordinatorRestartOneRunningCompaction() throws Exception {
-    // TODO: Need to finish this test.
 
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
@@ -406,6 +408,7 @@ public class CompactionCoordinatorTest {
     Map<HostAndPort,TExternalCompactionJob> runningCompactions = new HashMap<>();
     ExternalCompactionId eci = ExternalCompactionId.generate(UUID.randomUUID());
     TExternalCompactionJob job = PowerMock.createNiceMock(TExternalCompactionJob.class);
+    EasyMock.expect(job.getExternalCompactionId()).andReturn(eci.toString()).anyTimes();
     TKeyExtent extent = new TKeyExtent();
     extent.setTable("1".getBytes());
     EasyMock.expect(job.getExtent()).andReturn(extent);
@@ -418,6 +421,8 @@ public class CompactionCoordinatorTest {
     EasyMock.expect(client.getAddress()).andReturn(address).anyTimes();
 
     EasyMock.expect(instance.getHostPort()).andReturn("localhost:9997").anyTimes();
+    EasyMock.expect(ExternalCompactionUtil.getHostPortString(EasyMock.isA(HostAndPort.class)))
+        .andReturn("localhost:9997");
 
     TabletClientService.Client tsc = PowerMock.createNiceMock(TabletClientService.Client.class);
     TCompactionQueueSummary queueSummary = PowerMock.createNiceMock(TCompactionQueueSummary.class);
@@ -425,6 +430,8 @@ public class CompactionCoordinatorTest {
         .andReturn(Collections.singletonList(queueSummary)).anyTimes();
     EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ");
     EasyMock.expect(queueSummary.getPriority()).andReturn(1L);
+    EasyMock.expect(tsc.isRunningExternalCompaction(EasyMock.anyObject(), EasyMock.anyObject(),
+        EasyMock.anyObject(), EasyMock.anyObject())).andReturn(true);
 
     AuditedSecurityOperation security = PowerMock.createNiceMock(AuditedSecurityOperation.class);
 
@@ -452,7 +459,7 @@ public class CompactionCoordinatorTest {
     Set<QueueAndPriority> i = coordinator.getIndex().get(queuedTsi);
     Assert.assertEquals(1, i.size());
     Assert.assertEquals(qp, i.iterator().next());
-    Assert.assertEquals(0, coordinator.getRunning().size());
+    Assert.assertEquals(1, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
     coordinator.getQueues().clear();
