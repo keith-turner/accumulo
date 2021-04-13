@@ -105,9 +105,9 @@ public class TabletClientService {
 
     public TExternalCompactionJob reserveCompactionJob(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String queueName, long priority, java.lang.String compactor, java.lang.String externalCompactionId) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, org.apache.thrift.TException;
 
-    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, long fileSize, long entries) throws org.apache.thrift.TException;
+    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, long fileSize, long entries) throws org.apache.thrift.TException;
 
-    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId) throws org.apache.thrift.TException;
+    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent) throws org.apache.thrift.TException;
 
     public boolean isRunningExternalCompaction(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent) throws org.apache.thrift.TException;
 
@@ -191,9 +191,9 @@ public class TabletClientService {
 
     public void reserveCompactionJob(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String queueName, long priority, java.lang.String compactor, java.lang.String externalCompactionId, org.apache.thrift.async.AsyncMethodCallback<TExternalCompactionJob> resultHandler) throws org.apache.thrift.TException;
 
-    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, long fileSize, long entries, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
+    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, long fileSize, long entries, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
 
-    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
+    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException;
 
     public void isRunningExternalCompaction(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.thrift.async.AsyncMethodCallback<java.lang.Boolean> resultHandler) throws org.apache.thrift.TException;
 
@@ -1169,33 +1169,35 @@ public class TabletClientService {
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "reserveCompactionJob failed: unknown result");
     }
 
-    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, long fileSize, long entries) throws org.apache.thrift.TException
+    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, long fileSize, long entries) throws org.apache.thrift.TException
     {
-      send_compactionJobFinished(tinfo, credentials, externalCompactionId, fileSize, entries);
+      send_compactionJobFinished(tinfo, credentials, externalCompactionId, extent, fileSize, entries);
     }
 
-    public void send_compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, long fileSize, long entries) throws org.apache.thrift.TException
+    public void send_compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, long fileSize, long entries) throws org.apache.thrift.TException
     {
       compactionJobFinished_args args = new compactionJobFinished_args();
       args.setTinfo(tinfo);
       args.setCredentials(credentials);
       args.setExternalCompactionId(externalCompactionId);
+      args.setExtent(extent);
       args.setFileSize(fileSize);
       args.setEntries(entries);
       sendBaseOneway("compactionJobFinished", args);
     }
 
-    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId) throws org.apache.thrift.TException
+    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent) throws org.apache.thrift.TException
     {
-      send_compactionJobFailed(tinfo, credentials, externalCompactionId);
+      send_compactionJobFailed(tinfo, credentials, externalCompactionId, extent);
     }
 
-    public void send_compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId) throws org.apache.thrift.TException
+    public void send_compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent) throws org.apache.thrift.TException
     {
       compactionJobFailed_args args = new compactionJobFailed_args();
       args.setTinfo(tinfo);
       args.setCredentials(credentials);
       args.setExternalCompactionId(externalCompactionId);
+      args.setExtent(extent);
       sendBaseOneway("compactionJobFailed", args);
     }
 
@@ -2804,9 +2806,9 @@ public class TabletClientService {
       }
     }
 
-    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, long fileSize, long entries, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
+    public void compactionJobFinished(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, long fileSize, long entries, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
       checkReady();
-      compactionJobFinished_call method_call = new compactionJobFinished_call(tinfo, credentials, externalCompactionId, fileSize, entries, resultHandler, this, ___protocolFactory, ___transport);
+      compactionJobFinished_call method_call = new compactionJobFinished_call(tinfo, credentials, externalCompactionId, extent, fileSize, entries, resultHandler, this, ___protocolFactory, ___transport);
       this.___currentMethod = method_call;
       ___manager.call(method_call);
     }
@@ -2815,13 +2817,15 @@ public class TabletClientService {
       private org.apache.accumulo.core.trace.thrift.TInfo tinfo;
       private org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials;
       private java.lang.String externalCompactionId;
+      private org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent;
       private long fileSize;
       private long entries;
-      public compactionJobFinished_call(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, long fileSize, long entries, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+      public compactionJobFinished_call(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, long fileSize, long entries, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
         super(client, protocolFactory, transport, resultHandler, true);
         this.tinfo = tinfo;
         this.credentials = credentials;
         this.externalCompactionId = externalCompactionId;
+        this.extent = extent;
         this.fileSize = fileSize;
         this.entries = entries;
       }
@@ -2832,6 +2836,7 @@ public class TabletClientService {
         args.setTinfo(tinfo);
         args.setCredentials(credentials);
         args.setExternalCompactionId(externalCompactionId);
+        args.setExtent(extent);
         args.setFileSize(fileSize);
         args.setEntries(entries);
         args.write(prot);
@@ -2848,9 +2853,9 @@ public class TabletClientService {
       }
     }
 
-    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
+    public void compactionJobFailed(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
       checkReady();
-      compactionJobFailed_call method_call = new compactionJobFailed_call(tinfo, credentials, externalCompactionId, resultHandler, this, ___protocolFactory, ___transport);
+      compactionJobFailed_call method_call = new compactionJobFailed_call(tinfo, credentials, externalCompactionId, extent, resultHandler, this, ___protocolFactory, ___transport);
       this.___currentMethod = method_call;
       ___manager.call(method_call);
     }
@@ -2859,11 +2864,13 @@ public class TabletClientService {
       private org.apache.accumulo.core.trace.thrift.TInfo tinfo;
       private org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials;
       private java.lang.String externalCompactionId;
-      public compactionJobFailed_call(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
+      private org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent;
+      public compactionJobFailed_call(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.lang.String externalCompactionId, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler, org.apache.thrift.async.TAsyncClient client, org.apache.thrift.protocol.TProtocolFactory protocolFactory, org.apache.thrift.transport.TNonblockingTransport transport) throws org.apache.thrift.TException {
         super(client, protocolFactory, transport, resultHandler, true);
         this.tinfo = tinfo;
         this.credentials = credentials;
         this.externalCompactionId = externalCompactionId;
+        this.extent = extent;
       }
 
       public void write_args(org.apache.thrift.protocol.TProtocol prot) throws org.apache.thrift.TException {
@@ -2872,6 +2879,7 @@ public class TabletClientService {
         args.setTinfo(tinfo);
         args.setCredentials(credentials);
         args.setExternalCompactionId(externalCompactionId);
+        args.setExtent(extent);
         args.write(prot);
         prot.writeMessageEnd();
       }
@@ -4062,7 +4070,7 @@ public class TabletClientService {
       }
 
       public org.apache.thrift.TBase getResult(I iface, compactionJobFinished_args args) throws org.apache.thrift.TException {
-        iface.compactionJobFinished(args.tinfo, args.credentials, args.externalCompactionId, args.fileSize, args.entries);
+        iface.compactionJobFinished(args.tinfo, args.credentials, args.externalCompactionId, args.extent, args.fileSize, args.entries);
         return null;
       }
     }
@@ -4086,7 +4094,7 @@ public class TabletClientService {
       }
 
       public org.apache.thrift.TBase getResult(I iface, compactionJobFailed_args args) throws org.apache.thrift.TException {
-        iface.compactionJobFailed(args.tinfo, args.credentials, args.externalCompactionId);
+        iface.compactionJobFailed(args.tinfo, args.credentials, args.externalCompactionId, args.extent);
         return null;
       }
     }
@@ -6338,7 +6346,7 @@ public class TabletClientService {
       }
 
       public void start(I iface, compactionJobFinished_args args, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
-        iface.compactionJobFinished(args.tinfo, args.credentials, args.externalCompactionId, args.fileSize, args.entries,resultHandler);
+        iface.compactionJobFinished(args.tinfo, args.credentials, args.externalCompactionId, args.extent, args.fileSize, args.entries,resultHandler);
       }
     }
 
@@ -6372,7 +6380,7 @@ public class TabletClientService {
       }
 
       public void start(I iface, compactionJobFailed_args args, org.apache.thrift.async.AsyncMethodCallback<Void> resultHandler) throws org.apache.thrift.TException {
-        iface.compactionJobFailed(args.tinfo, args.credentials, args.externalCompactionId,resultHandler);
+        iface.compactionJobFailed(args.tinfo, args.credentials, args.externalCompactionId, args.extent,resultHandler);
       }
     }
 
@@ -47515,8 +47523,9 @@ public class TabletClientService {
     private static final org.apache.thrift.protocol.TField TINFO_FIELD_DESC = new org.apache.thrift.protocol.TField("tinfo", org.apache.thrift.protocol.TType.STRUCT, (short)1);
     private static final org.apache.thrift.protocol.TField CREDENTIALS_FIELD_DESC = new org.apache.thrift.protocol.TField("credentials", org.apache.thrift.protocol.TType.STRUCT, (short)2);
     private static final org.apache.thrift.protocol.TField EXTERNAL_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("externalCompactionId", org.apache.thrift.protocol.TType.STRING, (short)3);
-    private static final org.apache.thrift.protocol.TField FILE_SIZE_FIELD_DESC = new org.apache.thrift.protocol.TField("fileSize", org.apache.thrift.protocol.TType.I64, (short)4);
-    private static final org.apache.thrift.protocol.TField ENTRIES_FIELD_DESC = new org.apache.thrift.protocol.TField("entries", org.apache.thrift.protocol.TType.I64, (short)5);
+    private static final org.apache.thrift.protocol.TField EXTENT_FIELD_DESC = new org.apache.thrift.protocol.TField("extent", org.apache.thrift.protocol.TType.STRUCT, (short)4);
+    private static final org.apache.thrift.protocol.TField FILE_SIZE_FIELD_DESC = new org.apache.thrift.protocol.TField("fileSize", org.apache.thrift.protocol.TType.I64, (short)5);
+    private static final org.apache.thrift.protocol.TField ENTRIES_FIELD_DESC = new org.apache.thrift.protocol.TField("entries", org.apache.thrift.protocol.TType.I64, (short)6);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new compactionJobFinished_argsStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new compactionJobFinished_argsTupleSchemeFactory();
@@ -47524,6 +47533,7 @@ public class TabletClientService {
     public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.trace.thrift.TInfo tinfo; // required
     public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials; // required
     public @org.apache.thrift.annotation.Nullable java.lang.String externalCompactionId; // required
+    public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent; // required
     public long fileSize; // required
     public long entries; // required
 
@@ -47532,8 +47542,9 @@ public class TabletClientService {
       TINFO((short)1, "tinfo"),
       CREDENTIALS((short)2, "credentials"),
       EXTERNAL_COMPACTION_ID((short)3, "externalCompactionId"),
-      FILE_SIZE((short)4, "fileSize"),
-      ENTRIES((short)5, "entries");
+      EXTENT((short)4, "extent"),
+      FILE_SIZE((short)5, "fileSize"),
+      ENTRIES((short)6, "entries");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -47555,9 +47566,11 @@ public class TabletClientService {
             return CREDENTIALS;
           case 3: // EXTERNAL_COMPACTION_ID
             return EXTERNAL_COMPACTION_ID;
-          case 4: // FILE_SIZE
+          case 4: // EXTENT
+            return EXTENT;
+          case 5: // FILE_SIZE
             return FILE_SIZE;
-          case 5: // ENTRIES
+          case 6: // ENTRIES
             return ENTRIES;
           default:
             return null;
@@ -47612,6 +47625,8 @@ public class TabletClientService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.securityImpl.thrift.TCredentials.class)));
       tmpMap.put(_Fields.EXTERNAL_COMPACTION_ID, new org.apache.thrift.meta_data.FieldMetaData("externalCompactionId", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+      tmpMap.put(_Fields.EXTENT, new org.apache.thrift.meta_data.FieldMetaData("extent", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent.class)));
       tmpMap.put(_Fields.FILE_SIZE, new org.apache.thrift.meta_data.FieldMetaData("fileSize", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
       tmpMap.put(_Fields.ENTRIES, new org.apache.thrift.meta_data.FieldMetaData("entries", org.apache.thrift.TFieldRequirementType.DEFAULT, 
@@ -47627,6 +47642,7 @@ public class TabletClientService {
       org.apache.accumulo.core.trace.thrift.TInfo tinfo,
       org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials,
       java.lang.String externalCompactionId,
+      org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent,
       long fileSize,
       long entries)
     {
@@ -47634,6 +47650,7 @@ public class TabletClientService {
       this.tinfo = tinfo;
       this.credentials = credentials;
       this.externalCompactionId = externalCompactionId;
+      this.extent = extent;
       this.fileSize = fileSize;
       setFileSizeIsSet(true);
       this.entries = entries;
@@ -47654,6 +47671,9 @@ public class TabletClientService {
       if (other.isSetExternalCompactionId()) {
         this.externalCompactionId = other.externalCompactionId;
       }
+      if (other.isSetExtent()) {
+        this.extent = new org.apache.accumulo.core.dataImpl.thrift.TKeyExtent(other.extent);
+      }
       this.fileSize = other.fileSize;
       this.entries = other.entries;
     }
@@ -47667,6 +47687,7 @@ public class TabletClientService {
       this.tinfo = null;
       this.credentials = null;
       this.externalCompactionId = null;
+      this.extent = null;
       setFileSizeIsSet(false);
       this.fileSize = 0;
       setEntriesIsSet(false);
@@ -47748,6 +47769,31 @@ public class TabletClientService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public org.apache.accumulo.core.dataImpl.thrift.TKeyExtent getExtent() {
+      return this.extent;
+    }
+
+    public compactionJobFinished_args setExtent(@org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent) {
+      this.extent = extent;
+      return this;
+    }
+
+    public void unsetExtent() {
+      this.extent = null;
+    }
+
+    /** Returns true if field extent is set (has been assigned a value) and false otherwise */
+    public boolean isSetExtent() {
+      return this.extent != null;
+    }
+
+    public void setExtentIsSet(boolean value) {
+      if (!value) {
+        this.extent = null;
+      }
+    }
+
     public long getFileSize() {
       return this.fileSize;
     }
@@ -47820,6 +47866,14 @@ public class TabletClientService {
         }
         break;
 
+      case EXTENT:
+        if (value == null) {
+          unsetExtent();
+        } else {
+          setExtent((org.apache.accumulo.core.dataImpl.thrift.TKeyExtent)value);
+        }
+        break;
+
       case FILE_SIZE:
         if (value == null) {
           unsetFileSize();
@@ -47851,6 +47905,9 @@ public class TabletClientService {
       case EXTERNAL_COMPACTION_ID:
         return getExternalCompactionId();
 
+      case EXTENT:
+        return getExtent();
+
       case FILE_SIZE:
         return getFileSize();
 
@@ -47874,6 +47931,8 @@ public class TabletClientService {
         return isSetCredentials();
       case EXTERNAL_COMPACTION_ID:
         return isSetExternalCompactionId();
+      case EXTENT:
+        return isSetExtent();
       case FILE_SIZE:
         return isSetFileSize();
       case ENTRIES:
@@ -47924,6 +47983,15 @@ public class TabletClientService {
           return false;
       }
 
+      boolean this_present_extent = true && this.isSetExtent();
+      boolean that_present_extent = true && that.isSetExtent();
+      if (this_present_extent || that_present_extent) {
+        if (!(this_present_extent && that_present_extent))
+          return false;
+        if (!this.extent.equals(that.extent))
+          return false;
+      }
+
       boolean this_present_fileSize = true;
       boolean that_present_fileSize = true;
       if (this_present_fileSize || that_present_fileSize) {
@@ -47960,6 +48028,10 @@ public class TabletClientService {
       hashCode = hashCode * 8191 + ((isSetExternalCompactionId()) ? 131071 : 524287);
       if (isSetExternalCompactionId())
         hashCode = hashCode * 8191 + externalCompactionId.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetExtent()) ? 131071 : 524287);
+      if (isSetExtent())
+        hashCode = hashCode * 8191 + extent.hashCode();
 
       hashCode = hashCode * 8191 + org.apache.thrift.TBaseHelper.hashCode(fileSize);
 
@@ -48002,6 +48074,16 @@ public class TabletClientService {
       }
       if (isSetExternalCompactionId()) {
         lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.externalCompactionId, other.externalCompactionId);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = java.lang.Boolean.valueOf(isSetExtent()).compareTo(other.isSetExtent());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetExtent()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.extent, other.extent);
         if (lastComparison != 0) {
           return lastComparison;
         }
@@ -48071,6 +48153,14 @@ public class TabletClientService {
       }
       first = false;
       if (!first) sb.append(", ");
+      sb.append("extent:");
+      if (this.extent == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.extent);
+      }
+      first = false;
+      if (!first) sb.append(", ");
       sb.append("fileSize:");
       sb.append(this.fileSize);
       first = false;
@@ -48090,6 +48180,9 @@ public class TabletClientService {
       }
       if (credentials != null) {
         credentials.validate();
+      }
+      if (extent != null) {
+        extent.validate();
       }
     }
 
@@ -48155,7 +48248,16 @@ public class TabletClientService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
-            case 4: // FILE_SIZE
+            case 4: // EXTENT
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                struct.extent = new org.apache.accumulo.core.dataImpl.thrift.TKeyExtent();
+                struct.extent.read(iprot);
+                struct.setExtentIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
+            case 5: // FILE_SIZE
               if (schemeField.type == org.apache.thrift.protocol.TType.I64) {
                 struct.fileSize = iprot.readI64();
                 struct.setFileSizeIsSet(true);
@@ -48163,7 +48265,7 @@ public class TabletClientService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
-            case 5: // ENTRIES
+            case 6: // ENTRIES
               if (schemeField.type == org.apache.thrift.protocol.TType.I64) {
                 struct.entries = iprot.readI64();
                 struct.setEntriesIsSet(true);
@@ -48201,6 +48303,11 @@ public class TabletClientService {
           oprot.writeString(struct.externalCompactionId);
           oprot.writeFieldEnd();
         }
+        if (struct.extent != null) {
+          oprot.writeFieldBegin(EXTENT_FIELD_DESC);
+          struct.extent.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldBegin(FILE_SIZE_FIELD_DESC);
         oprot.writeI64(struct.fileSize);
         oprot.writeFieldEnd();
@@ -48234,13 +48341,16 @@ public class TabletClientService {
         if (struct.isSetExternalCompactionId()) {
           optionals.set(2);
         }
-        if (struct.isSetFileSize()) {
+        if (struct.isSetExtent()) {
           optionals.set(3);
         }
-        if (struct.isSetEntries()) {
+        if (struct.isSetFileSize()) {
           optionals.set(4);
         }
-        oprot.writeBitSet(optionals, 5);
+        if (struct.isSetEntries()) {
+          optionals.set(5);
+        }
+        oprot.writeBitSet(optionals, 6);
         if (struct.isSetTinfo()) {
           struct.tinfo.write(oprot);
         }
@@ -48249,6 +48359,9 @@ public class TabletClientService {
         }
         if (struct.isSetExternalCompactionId()) {
           oprot.writeString(struct.externalCompactionId);
+        }
+        if (struct.isSetExtent()) {
+          struct.extent.write(oprot);
         }
         if (struct.isSetFileSize()) {
           oprot.writeI64(struct.fileSize);
@@ -48261,7 +48374,7 @@ public class TabletClientService {
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, compactionJobFinished_args struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(5);
+        java.util.BitSet incoming = iprot.readBitSet(6);
         if (incoming.get(0)) {
           struct.tinfo = new org.apache.accumulo.core.trace.thrift.TInfo();
           struct.tinfo.read(iprot);
@@ -48277,10 +48390,15 @@ public class TabletClientService {
           struct.setExternalCompactionIdIsSet(true);
         }
         if (incoming.get(3)) {
+          struct.extent = new org.apache.accumulo.core.dataImpl.thrift.TKeyExtent();
+          struct.extent.read(iprot);
+          struct.setExtentIsSet(true);
+        }
+        if (incoming.get(4)) {
           struct.fileSize = iprot.readI64();
           struct.setFileSizeIsSet(true);
         }
-        if (incoming.get(4)) {
+        if (incoming.get(5)) {
           struct.entries = iprot.readI64();
           struct.setEntriesIsSet(true);
         }
@@ -48298,6 +48416,7 @@ public class TabletClientService {
     private static final org.apache.thrift.protocol.TField TINFO_FIELD_DESC = new org.apache.thrift.protocol.TField("tinfo", org.apache.thrift.protocol.TType.STRUCT, (short)1);
     private static final org.apache.thrift.protocol.TField CREDENTIALS_FIELD_DESC = new org.apache.thrift.protocol.TField("credentials", org.apache.thrift.protocol.TType.STRUCT, (short)2);
     private static final org.apache.thrift.protocol.TField EXTERNAL_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("externalCompactionId", org.apache.thrift.protocol.TType.STRING, (short)3);
+    private static final org.apache.thrift.protocol.TField EXTENT_FIELD_DESC = new org.apache.thrift.protocol.TField("extent", org.apache.thrift.protocol.TType.STRUCT, (short)4);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new compactionJobFailed_argsStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new compactionJobFailed_argsTupleSchemeFactory();
@@ -48305,12 +48424,14 @@ public class TabletClientService {
     public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.trace.thrift.TInfo tinfo; // required
     public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials; // required
     public @org.apache.thrift.annotation.Nullable java.lang.String externalCompactionId; // required
+    public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
       TINFO((short)1, "tinfo"),
       CREDENTIALS((short)2, "credentials"),
-      EXTERNAL_COMPACTION_ID((short)3, "externalCompactionId");
+      EXTERNAL_COMPACTION_ID((short)3, "externalCompactionId"),
+      EXTENT((short)4, "extent");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -48332,6 +48453,8 @@ public class TabletClientService {
             return CREDENTIALS;
           case 3: // EXTERNAL_COMPACTION_ID
             return EXTERNAL_COMPACTION_ID;
+          case 4: // EXTENT
+            return EXTENT;
           default:
             return null;
         }
@@ -48382,6 +48505,8 @@ public class TabletClientService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.securityImpl.thrift.TCredentials.class)));
       tmpMap.put(_Fields.EXTERNAL_COMPACTION_ID, new org.apache.thrift.meta_data.FieldMetaData("externalCompactionId", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+      tmpMap.put(_Fields.EXTENT, new org.apache.thrift.meta_data.FieldMetaData("extent", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(compactionJobFailed_args.class, metaDataMap);
     }
@@ -48392,12 +48517,14 @@ public class TabletClientService {
     public compactionJobFailed_args(
       org.apache.accumulo.core.trace.thrift.TInfo tinfo,
       org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials,
-      java.lang.String externalCompactionId)
+      java.lang.String externalCompactionId,
+      org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent)
     {
       this();
       this.tinfo = tinfo;
       this.credentials = credentials;
       this.externalCompactionId = externalCompactionId;
+      this.extent = extent;
     }
 
     /**
@@ -48413,6 +48540,9 @@ public class TabletClientService {
       if (other.isSetExternalCompactionId()) {
         this.externalCompactionId = other.externalCompactionId;
       }
+      if (other.isSetExtent()) {
+        this.extent = new org.apache.accumulo.core.dataImpl.thrift.TKeyExtent(other.extent);
+      }
     }
 
     public compactionJobFailed_args deepCopy() {
@@ -48424,6 +48554,7 @@ public class TabletClientService {
       this.tinfo = null;
       this.credentials = null;
       this.externalCompactionId = null;
+      this.extent = null;
     }
 
     @org.apache.thrift.annotation.Nullable
@@ -48501,6 +48632,31 @@ public class TabletClientService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public org.apache.accumulo.core.dataImpl.thrift.TKeyExtent getExtent() {
+      return this.extent;
+    }
+
+    public compactionJobFailed_args setExtent(@org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent) {
+      this.extent = extent;
+      return this;
+    }
+
+    public void unsetExtent() {
+      this.extent = null;
+    }
+
+    /** Returns true if field extent is set (has been assigned a value) and false otherwise */
+    public boolean isSetExtent() {
+      return this.extent != null;
+    }
+
+    public void setExtentIsSet(boolean value) {
+      if (!value) {
+        this.extent = null;
+      }
+    }
+
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
       case TINFO:
@@ -48527,6 +48683,14 @@ public class TabletClientService {
         }
         break;
 
+      case EXTENT:
+        if (value == null) {
+          unsetExtent();
+        } else {
+          setExtent((org.apache.accumulo.core.dataImpl.thrift.TKeyExtent)value);
+        }
+        break;
+
       }
     }
 
@@ -48541,6 +48705,9 @@ public class TabletClientService {
 
       case EXTERNAL_COMPACTION_ID:
         return getExternalCompactionId();
+
+      case EXTENT:
+        return getExtent();
 
       }
       throw new java.lang.IllegalStateException();
@@ -48559,6 +48726,8 @@ public class TabletClientService {
         return isSetCredentials();
       case EXTERNAL_COMPACTION_ID:
         return isSetExternalCompactionId();
+      case EXTENT:
+        return isSetExtent();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -48605,6 +48774,15 @@ public class TabletClientService {
           return false;
       }
 
+      boolean this_present_extent = true && this.isSetExtent();
+      boolean that_present_extent = true && that.isSetExtent();
+      if (this_present_extent || that_present_extent) {
+        if (!(this_present_extent && that_present_extent))
+          return false;
+        if (!this.extent.equals(that.extent))
+          return false;
+      }
+
       return true;
     }
 
@@ -48623,6 +48801,10 @@ public class TabletClientService {
       hashCode = hashCode * 8191 + ((isSetExternalCompactionId()) ? 131071 : 524287);
       if (isSetExternalCompactionId())
         hashCode = hashCode * 8191 + externalCompactionId.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetExtent()) ? 131071 : 524287);
+      if (isSetExtent())
+        hashCode = hashCode * 8191 + extent.hashCode();
 
       return hashCode;
     }
@@ -48661,6 +48843,16 @@ public class TabletClientService {
       }
       if (isSetExternalCompactionId()) {
         lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.externalCompactionId, other.externalCompactionId);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = java.lang.Boolean.valueOf(isSetExtent()).compareTo(other.isSetExtent());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetExtent()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.extent, other.extent);
         if (lastComparison != 0) {
           return lastComparison;
         }
@@ -48709,6 +48901,14 @@ public class TabletClientService {
         sb.append(this.externalCompactionId);
       }
       first = false;
+      if (!first) sb.append(", ");
+      sb.append("extent:");
+      if (this.extent == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.extent);
+      }
+      first = false;
       sb.append(")");
       return sb.toString();
     }
@@ -48721,6 +48921,9 @@ public class TabletClientService {
       }
       if (credentials != null) {
         credentials.validate();
+      }
+      if (extent != null) {
+        extent.validate();
       }
     }
 
@@ -48784,6 +48987,15 @@ public class TabletClientService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
+            case 4: // EXTENT
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                struct.extent = new org.apache.accumulo.core.dataImpl.thrift.TKeyExtent();
+                struct.extent.read(iprot);
+                struct.setExtentIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
             default:
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
           }
@@ -48814,6 +49026,11 @@ public class TabletClientService {
           oprot.writeString(struct.externalCompactionId);
           oprot.writeFieldEnd();
         }
+        if (struct.extent != null) {
+          oprot.writeFieldBegin(EXTENT_FIELD_DESC);
+          struct.extent.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldStop();
         oprot.writeStructEnd();
       }
@@ -48841,7 +49058,10 @@ public class TabletClientService {
         if (struct.isSetExternalCompactionId()) {
           optionals.set(2);
         }
-        oprot.writeBitSet(optionals, 3);
+        if (struct.isSetExtent()) {
+          optionals.set(3);
+        }
+        oprot.writeBitSet(optionals, 4);
         if (struct.isSetTinfo()) {
           struct.tinfo.write(oprot);
         }
@@ -48851,12 +49071,15 @@ public class TabletClientService {
         if (struct.isSetExternalCompactionId()) {
           oprot.writeString(struct.externalCompactionId);
         }
+        if (struct.isSetExtent()) {
+          struct.extent.write(oprot);
+        }
       }
 
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, compactionJobFailed_args struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(3);
+        java.util.BitSet incoming = iprot.readBitSet(4);
         if (incoming.get(0)) {
           struct.tinfo = new org.apache.accumulo.core.trace.thrift.TInfo();
           struct.tinfo.read(iprot);
@@ -48870,6 +49093,11 @@ public class TabletClientService {
         if (incoming.get(2)) {
           struct.externalCompactionId = iprot.readString();
           struct.setExternalCompactionIdIsSet(true);
+        }
+        if (incoming.get(3)) {
+          struct.extent = new org.apache.accumulo.core.dataImpl.thrift.TKeyExtent();
+          struct.extent.read(iprot);
+          struct.setExtentIsSet(true);
         }
       }
     }

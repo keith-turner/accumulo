@@ -33,6 +33,7 @@ import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
@@ -446,8 +447,11 @@ public class CompactionManager {
   }
 
   public void commitExternalCompaction(ExternalCompactionId extCompactionId,
-      Map<KeyExtent,Tablet> currentTablets, long fileSize, long entries) {
+      TKeyExtent extentCompacted, Map<KeyExtent,Tablet> currentTablets, long fileSize,
+      long entries) {
     KeyExtent extent = runningExternalCompactions.get(extCompactionId);
+    // CBUG Use extentCompacted to perform additional validation that the extent has not
+    // merged, split, or otherwise changed.
     if (extent != null) {
       Tablet tablet = currentTablets.get(extent);
       if (tablet != null) {
@@ -465,8 +469,10 @@ public class CompactionManager {
     return (null != extent && extent.compareTo(ke) == 0);
   }
 
-  public void externalCompactionFailed(ExternalCompactionId ecid,
+  public void externalCompactionFailed(ExternalCompactionId ecid, TKeyExtent extentCompacted,
       Map<KeyExtent,Tablet> currentTablets) {
+    // CBUG Use extentCompacted to perform additional validation that the extent has not
+    // merged, split, or otherwise changed.
     KeyExtent extent = runningExternalCompactions.get(ecid);
     if (extent != null) {
       Tablet tablet = currentTablets.get(extent);

@@ -1694,7 +1694,7 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
 
   @Override
   public void compactionJobFinished(TInfo tinfo, TCredentials credentials,
-      String externalCompactionId, long fileSize, long entries)
+      String externalCompactionId, TKeyExtent extent, long fileSize, long entries)
       throws ThriftSecurityException, TException {
 
     if (!security.canPerformSystemActions(credentials)) {
@@ -1703,20 +1703,20 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
     }
 
     server.getCompactionManager().commitExternalCompaction(
-        ExternalCompactionId.of(externalCompactionId), server.getOnlineTablets(), fileSize,
+        ExternalCompactionId.of(externalCompactionId), extent, server.getOnlineTablets(), fileSize,
         entries);
   }
 
   @Override
   public void compactionJobFailed(TInfo tinfo, TCredentials credentials,
-      String externalCompactionId) throws TException {
+      String externalCompactionId, TKeyExtent extent) throws TException {
     if (!security.canPerformSystemActions(credentials)) {
       throw new AccumuloSecurityException(credentials.getPrincipal(),
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
 
     server.getCompactionManager().externalCompactionFailed(
-        ExternalCompactionId.of(externalCompactionId), server.getOnlineTablets());
+        ExternalCompactionId.of(externalCompactionId), extent, server.getOnlineTablets());
   }
 
   @Override
