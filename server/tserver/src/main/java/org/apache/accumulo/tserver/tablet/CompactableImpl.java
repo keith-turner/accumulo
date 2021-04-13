@@ -523,7 +523,8 @@ public class CompactableImpl implements Compactable {
                 Map<String,String> hints = Map.of();
                 if (kind == CompactionKind.USER)
                   hints = compactionConfig.getExecutionHints();
-                return Optional.of(new Compactable.Files(files, candidates, runningJobsCopy, hints));
+                return Optional
+                    .of(new Compactable.Files(files, candidates, runningJobsCopy, hints));
               } else {
                 return Optional.of(new Compactable.Files(files, Set.of(), runningJobsCopy));
               }
