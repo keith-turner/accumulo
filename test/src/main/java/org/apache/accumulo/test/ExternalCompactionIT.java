@@ -77,6 +77,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         IteratorEnvironment env) throws IOException {
       super.init(source, options, env);
 
+      // this cast should fail if the compaction is running in the tserver
       CompactorIterEnv cienv = (CompactorIterEnv) env;
 
       Preconditions.checkArgument(!cienv.getQueueName().isEmpty());
