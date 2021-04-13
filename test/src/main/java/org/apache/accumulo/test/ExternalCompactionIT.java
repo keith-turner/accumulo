@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import org.apache.accumulo.compactor.CompactionEnvironment.CompactorIterEnv;
 import org.apache.accumulo.compactor.Compactor;
@@ -49,6 +51,7 @@ import org.apache.accumulo.core.spi.compaction.SimpleCompactionDispatcher;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.test.functional.ConfigurableMacBase;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Text;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -122,6 +125,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
       compact(client, table1, 2, "DCQ1");
       verify(client, table1, 2);
+
+      SortedSet<Text> splits = new TreeSet<>();
+      splits.add(new Text("r:4"));
+      client.tableOperations().addSplits(table2, splits);
 
       compact(client, table2, 3, "DCQ2");
       verify(client, table2, 3);
