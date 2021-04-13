@@ -114,11 +114,12 @@ public class CompactionFinalizer {
       if (ecfs.getFinalState() == FinalState.FINISHED) {
         LOG.info("Notifying tserver {} that compaction {} has finished.", loc, ecfs);
         client.compactionJobFinished(TraceUtil.traceInfo(), context.rpcCreds(),
-            ecfs.getExternalCompactionId().canonical(), ecfs.getFileSize(), ecfs.getEntries());
+            ecfs.getExternalCompactionId().canonical(), ecfs.getExtent().toThrift(),
+            ecfs.getFileSize(), ecfs.getEntries());
       } else if (ecfs.getFinalState() == FinalState.FAILED) {
         LOG.info("Notifying tserver {} that compaction {} has failed.", loc, ecfs);
         client.compactionJobFailed(TraceUtil.traceInfo(), context.rpcCreds(),
-            ecfs.getExternalCompactionId().canonical());
+            ecfs.getExternalCompactionId().canonical(), ecfs.getExtent().toThrift());
       } else {
         throw new IllegalArgumentException(ecfs.getFinalState().name());
       }

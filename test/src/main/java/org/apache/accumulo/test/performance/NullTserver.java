@@ -298,7 +298,7 @@ public class NullTserver {
 
     @Override
     public void compactionJobFinished(TInfo tinfo, TCredentials credentials,
-        String externalCompactionId, long fileSize, long entries)
+        String externalCompactionId, TKeyExtent extent, long fileSize, long entries)
         throws ThriftSecurityException, TException {
       // TODO Auto-generated method stub
 
@@ -306,7 +306,7 @@ public class NullTserver {
 
     @Override
     public void compactionJobFailed(TInfo tinfo, TCredentials credentials,
-        String externalCompactionId) throws TException {
+        String externalCompactionId, TKeyExtent extent) throws TException {
       // TODO Auto-generated method stub
 
     }

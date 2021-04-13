@@ -540,14 +540,16 @@ service TabletClientService extends client.ClientService {
     1:trace.TInfo tinfo
     2:security.TCredentials credentials
     3:string externalCompactionId
-    4:i64 fileSize
-    5:i64 entries
+    4:data.TKeyExtent extent
+    5:i64 fileSize
+    6:i64 entries
   )
 
   oneway void compactionJobFailed(
     1:trace.TInfo tinfo
     2:security.TCredentials credentials
     3:string externalCompactionId
+    4:data.TKeyExtent extent
   )
   
   bool isRunningExternalCompaction(
