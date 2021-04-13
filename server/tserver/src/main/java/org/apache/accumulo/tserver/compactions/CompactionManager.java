@@ -459,8 +459,6 @@ public class CompactionManager {
         compactablesToCheck.add(tablet.asCompactable());
       }
       runningExternalCompactions.remove(extCompactionId);
-    } else {
-      ctx.getAmple().deleteExternalCompactionFinalStates(List.of(extCompactionId));
     }
   }
 
@@ -481,8 +479,6 @@ public class CompactionManager {
         compactablesToCheck.add(tablet.asCompactable());
       }
       runningExternalCompactions.remove(ecid);
-    } else {
-      ctx.getAmple().deleteExternalCompactionFinalStates(List.of(ecid));
     }
   }
 

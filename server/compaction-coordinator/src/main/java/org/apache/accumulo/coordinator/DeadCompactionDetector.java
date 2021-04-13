@@ -20,7 +20,10 @@ package org.apache.accumulo.coordinator;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
@@ -97,6 +100,34 @@ public class DeadCompactionDetector {
     finalizer.failCompactions(tabletCompactions);
   }
 
+  private void detectDanglingFinalStateMarkers() {
+    Iterator<ExternalCompactionId> iter = context.getAmple().getExternalCompactionFinalStates()
+        .map(ecfs -> ecfs.getExternalCompactionId()).iterator();
+    Set<ExternalCompactionId> danglingEcids = new HashSet<>();
+
+    while (iter.hasNext()) {
+      danglingEcids.add(iter.next());
+
+      if (danglingEcids.size() > 10000) {
+        checkForDanglingMarkers(danglingEcids);
+        danglingEcids.clear();
+      }
+    }
+
+    checkForDanglingMarkers(danglingEcids);
+  }
+
+  private void checkForDanglingMarkers(Set<ExternalCompactionId> danglingEcids) {
+    context.getAmple().readTablets().forLevel(DataLevel.USER).fetch(ColumnType.ECOMP).build()
+        .stream().flatMap(tm -> tm.getExternalCompactions().keySet().stream())
+        .forEach(danglingEcids::remove);
+
+    danglingEcids.forEach(
+        ecid -> log.debug("Detected dangling external compaction final state marker {}", ecid));
+
+    context.getAmple().deleteExternalCompactionFinalStates(danglingEcids);
+  }
+
   public void start() {
     Threads.createThread("DeadCompactionDetector", () -> {
       while (!Thread.currentThread().isInterrupted()) {
@@ -105,6 +136,12 @@ public class DeadCompactionDetector {
           detectDeadCompactions();
         } catch (RuntimeException e) {
           log.warn("Failed to look for dead compactions", e);
+        }
+
+        try {
+          detectDanglingFinalStateMarkers();
+        } catch (RuntimeException e) {
+          log.warn("Failed to look for dangling compaction final state markers", e);
         }
 
         // TODO make bigger

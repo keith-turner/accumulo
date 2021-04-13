@@ -130,6 +130,8 @@ public class CompactableImpl implements Compactable {
   private Map<ExternalCompactionId,ExternalCompactionInfo> externalCompactions =
       new ConcurrentHashMap<>();
 
+  private Set<ExternalCompactionId> externalCompactionsCommitting = new HashSet<>();
+
   // This interface exists for two purposes. First it allows abstraction of new and old
   // implementations for user pluggable file selection code. Second it facilitates placing code
   // outside of this class.
@@ -792,16 +794,22 @@ public class CompactableImpl implements Compactable {
   @Override
   public void commitExternalCompaction(ExternalCompactionId extCompactionId, long fileSize,
       long entries) {
-    // CBUG double check w/ java docs that only one thread can remove
-    ExternalCompactionInfo ecInfo = externalCompactions.get(extCompactionId);
 
-    if (ecInfo != null) {
-      synchronized (ecInfo) {
-        if (!externalCompactions.containsKey(extCompactionId)) {
-          // since this method is called by RPCs there could be multiple concurrent calls so defend
-          // against that
-          return;
-        }
+    synchronized (this) {
+      if (closed)
+        return;
+
+      // defend against multiple threads trying to commit the same ECID and force tablet close to
+      // wait on any pending commits
+      if (!externalCompactionsCommitting.add(extCompactionId)) {
+        return;
+      }
+    }
+    try {
+
+      ExternalCompactionInfo ecInfo = externalCompactions.get(extCompactionId);
+
+      if (ecInfo != null) {
         log.debug("Attempting to commit external compaction {}", extCompactionId);
         // TODO do a sanity check that files exists in dfs?
         StoredTabletFile metaFile = null;
@@ -819,40 +827,55 @@ public class CompactableImpl implements Compactable {
           externalCompactions.remove(extCompactionId);
           log.debug("Completed commit of external compaction {}", extCompactionId);
         }
+      } else {
+        log.debug("Ignoring request to commit external compaction that is unknown {}",
+            extCompactionId);
       }
 
-    } else {
-      log.debug("Ignoring request to commit external compaction that is unknown {}",
-          extCompactionId);
+      tablet.getContext().getAmple().deleteExternalCompactionFinalStates(List.of(extCompactionId));
+    } finally {
+      synchronized (this) {
+        Preconditions.checkState(externalCompactionsCommitting.remove(extCompactionId));
+        Preconditions.checkState(!closed);
+        notifyAll();
+      }
     }
-
-    tablet.getContext().getAmple().deleteExternalCompactionFinalStates(List.of(extCompactionId));
   }
 
   @Override
   public void externalCompactionFailed(ExternalCompactionId ecid) {
-    ExternalCompactionInfo ecInfo = externalCompactions.get(ecid);
 
-    if (ecInfo != null) {
-      synchronized (ecInfo) {
-        if (!externalCompactions.containsKey(ecid)) {
-          // since this method is called by RPCs there could be multiple concurrent calls so defend
-          // against that
-          return;
-        }
+    synchronized (this) {
+      if (closed)
+        return;
 
+      if (!externalCompactionsCommitting.add(ecid)) {
+        return;
+      }
+    }
+    try {
+
+      ExternalCompactionInfo ecInfo = externalCompactions.get(ecid);
+
+      if (ecInfo != null) {
         // CBUG review following code to ensure its idempotent
         tablet.getContext().getAmple().mutateTablet(getExtent()).deleteExternalCompaction(ecid)
             .mutate();
         completeCompaction(ecInfo.job, ecInfo.meta.getJobFiles(), null);
         externalCompactions.remove(ecid);
         log.debug("Processed external compaction failure {}", ecid);
+      } else {
+        log.debug("Ignoring request to fail external compaction that is unknown {}", ecid);
       }
-    } else {
-      log.debug("Ignoring request to fail external compaction that is unknown {}", ecid);
-    }
 
-    tablet.getContext().getAmple().deleteExternalCompactionFinalStates(List.of(ecid));
+      tablet.getContext().getAmple().deleteExternalCompactionFinalStates(List.of(ecid));
+    } finally {
+      synchronized (this) {
+        Preconditions.checkState(externalCompactionsCommitting.remove(ecid));
+        Preconditions.checkState(!closed);
+        notifyAll();
+      }
+    }
   }
 
   @Override
@@ -942,8 +965,10 @@ public class CompactableImpl implements Compactable {
 
     closed = true;
 
-    // wait while internal jobs are running
-    while (runnningJobs.stream().anyMatch(job -> !job.getExecutor().isExernalId())) {
+    // wait while internal jobs are running or external compactions are committing, but do not wait
+    // on external compactions that are running
+    while (runnningJobs.stream().anyMatch(job -> !job.getExecutor().isExernalId())
+        || !externalCompactionsCommitting.isEmpty()) {
       try {
         wait(50);
       } catch (InterruptedException e) {
