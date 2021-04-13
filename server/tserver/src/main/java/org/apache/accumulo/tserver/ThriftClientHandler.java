@@ -1703,8 +1703,8 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
     }
 
     server.getCompactionManager().commitExternalCompaction(
-        ExternalCompactionId.of(externalCompactionId), extent, server.getOnlineTablets(), fileSize,
-        entries);
+        ExternalCompactionId.of(externalCompactionId), KeyExtent.fromThrift(extent),
+        server.getOnlineTablets(), fileSize, entries);
   }
 
   @Override
@@ -1716,7 +1716,8 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
     }
 
     server.getCompactionManager().externalCompactionFailed(
-        ExternalCompactionId.of(externalCompactionId), extent, server.getOnlineTablets());
+        ExternalCompactionId.of(externalCompactionId), KeyExtent.fromThrift(extent),
+        server.getOnlineTablets());
   }
 
   @Override

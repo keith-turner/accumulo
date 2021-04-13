@@ -33,7 +33,6 @@ import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
@@ -50,6 +49,7 @@ import org.apache.accumulo.tserver.tablet.Tablet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 
 public class CompactionManager {
@@ -447,12 +447,12 @@ public class CompactionManager {
   }
 
   public void commitExternalCompaction(ExternalCompactionId extCompactionId,
-      TKeyExtent extentCompacted, Map<KeyExtent,Tablet> currentTablets, long fileSize,
+      KeyExtent extentCompacted, Map<KeyExtent,Tablet> currentTablets, long fileSize,
       long entries) {
     KeyExtent extent = runningExternalCompactions.get(extCompactionId);
-    // CBUG Use extentCompacted to perform additional validation that the extent has not
-    // merged, split, or otherwise changed.
     if (extent != null) {
+      Preconditions.checkState(extent.equals(extentCompacted),
+          "Unexpected extent seen on compaction commit %s %s", extent, extentCompacted);
       Tablet tablet = currentTablets.get(extent);
       if (tablet != null) {
         tablet.asCompactable().commitExternalCompaction(extCompactionId, fileSize, entries);
@@ -469,12 +469,12 @@ public class CompactionManager {
     return (null != extent && extent.compareTo(ke) == 0);
   }
 
-  public void externalCompactionFailed(ExternalCompactionId ecid, TKeyExtent extentCompacted,
+  public void externalCompactionFailed(ExternalCompactionId ecid, KeyExtent extentCompacted,
       Map<KeyExtent,Tablet> currentTablets) {
-    // CBUG Use extentCompacted to perform additional validation that the extent has not
-    // merged, split, or otherwise changed.
     KeyExtent extent = runningExternalCompactions.get(ecid);
     if (extent != null) {
+      Preconditions.checkState(extent.equals(extentCompacted),
+          "Unexpected extent seen on compaction commit %s %s", extent, extentCompacted);
       Tablet tablet = currentTablets.get(extent);
       if (tablet != null) {
         tablet.asCompactable().externalCompactionFailed(ecid);

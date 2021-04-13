@@ -28,9 +28,13 @@ import org.apache.accumulo.compactor.Compactor;
 import org.apache.accumulo.coordinator.CompactionCoordinator;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
+import org.apache.accumulo.core.client.AccumuloException;
+import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.data.Key;
@@ -38,6 +42,7 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.Filter;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
+import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.SimpleCompactionDispatcher;
@@ -57,9 +62,15 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         DefaultCompactionPlanner.class.getName());
     cfg.setProperty("tserver.compaction.major.service.cs1.planner.opts.executors",
         "[{'name':'all','externalQueue':'DCQ1'}]");
+    cfg.setProperty("tserver.compaction.major.service.cs2.planner",
+        DefaultCompactionPlanner.class.getName());
+    cfg.setProperty("tserver.compaction.major.service.cs2.planner.opts.executors",
+        "[{'name':'all','externalQueue':'DCQ2'}]");
   }
 
   public static class TestFilter extends Filter {
+
+    int modulus = 1;
 
     @Override
     public void init(SortedKeyValueIterator<Key,Value> source, Map<String,String> options,
@@ -71,11 +82,22 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       Preconditions.checkArgument(!cienv.getQueueName().isEmpty());
       Preconditions
           .checkArgument(options.getOrDefault("expectedQ", "").equals(cienv.getQueueName()));
+
+      Preconditions.checkArgument(cienv.isFullMajorCompaction());
+      Preconditions.checkArgument(cienv.isUserCompaction());
+      Preconditions.checkArgument(cienv.getIteratorScope() == IteratorScope.majc);
+      Preconditions.checkArgument(!cienv.isSamplingEnabled());
+
+      // if the init function is never called at all, then not setting the modulus option should
+      // cause the test to fail
+      if (options.containsKey("modulus")) {
+        modulus = Integer.parseInt(options.get("modulus"));
+      }
     }
 
     @Override
     public boolean accept(Key k, Value v) {
-      return Integer.parseInt(v.toString()) % 2 == 0;
+      return Integer.parseInt(v.toString()) % modulus == 0;
     }
 
   }
@@ -83,44 +105,80 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
   @Test
   public void testExternalCompaction() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
-      Map<String,String> props =
-          Map.of("table.compaction.dispatcher", SimpleCompactionDispatcher.class.getName(),
-              "table.compaction.dispatcher.opts.service", "cs1");
-      NewTableConfiguration ntc = new NewTableConfiguration().setProperties(props);
 
-      String tableName = "ectt";
+      String table1 = "ectt1";
+      createTable(client, table1, "cs1");
 
-      client.tableOperations().create(tableName, ntc);
+      String table2 = "ectt2";
+      createTable(client, table2, "cs2");
 
-      try (BatchWriter bw = client.createBatchWriter(tableName)) {
-        for (int i = 0; i < 10; i++) {
-          Mutation m = new Mutation("r:" + i);
-          m.put("", "", "" + i);
-          bw.addMutation(m);
-        }
-      }
-
-      client.tableOperations().flush(tableName);
+      wrtieData(client, table1);
+      wrtieData(client, table2);
 
       cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(Compactor.class, "-q", "DCQ2");
       cluster.exec(CompactionCoordinator.class);
 
-      IteratorSetting iterSetting = new IteratorSetting(100, TestFilter.class);
-      // make sure iterator options make it to compactor process
-      iterSetting.addOption("expectedQ", "DCQ1");
-      CompactionConfig config =
-          new CompactionConfig().setIterators(List.of(iterSetting)).setWait(true);
-      client.tableOperations().compact(tableName, config);
+      compact(client, table1, 2, "DCQ1");
+      verify(client, table1, 2);
 
-      try (Scanner scanner = client.createScanner(tableName)) {
-        int count = 0;
-        for (Entry<Key,Value> entry : scanner) {
-          Assert.assertTrue(Integer.parseInt(entry.getValue().toString()) % 2 == 0);
-          count++;
-        }
+      compact(client, table2, 3, "DCQ2");
+      verify(client, table2, 3);
 
-        Assert.assertEquals(5, count);
+    }
+  }
+
+  private void verify(AccumuloClient client, String table1, int modulus)
+      throws TableNotFoundException, AccumuloSecurityException, AccumuloException {
+    try (Scanner scanner = client.createScanner(table1)) {
+      int count = 0;
+      for (Entry<Key,Value> entry : scanner) {
+        Assert.assertTrue(Integer.parseInt(entry.getValue().toString()) % modulus == 0);
+        count++;
+      }
+
+      int expectedCount = 0;
+      for (int i = 0; i < 10; i++) {
+        if (i % modulus == 0)
+          expectedCount++;
+      }
+
+      Assert.assertEquals(expectedCount, count);
+    }
+  }
+
+  private void compact(AccumuloClient client, String table1, int modulus, String expectedQueue)
+      throws AccumuloSecurityException, TableNotFoundException, AccumuloException {
+    IteratorSetting iterSetting = new IteratorSetting(100, TestFilter.class);
+    // make sure iterator options make it to compactor process
+    iterSetting.addOption("expectedQ", expectedQueue);
+    iterSetting.addOption("modulus", modulus + "");
+    CompactionConfig config =
+        new CompactionConfig().setIterators(List.of(iterSetting)).setWait(true);
+    client.tableOperations().compact(table1, config);
+  }
+
+  private void createTable(AccumuloClient client, String tableName, String service)
+      throws Exception {
+    Map<String,String> props =
+        Map.of("table.compaction.dispatcher", SimpleCompactionDispatcher.class.getName(),
+            "table.compaction.dispatcher.opts.service", service);
+    NewTableConfiguration ntc = new NewTableConfiguration().setProperties(props);
+
+    client.tableOperations().create(tableName, ntc);
+
+  }
+
+  private void wrtieData(AccumuloClient client, String table1) throws MutationsRejectedException,
+      TableNotFoundException, AccumuloException, AccumuloSecurityException {
+    try (BatchWriter bw = client.createBatchWriter(table1)) {
+      for (int i = 0; i < 10; i++) {
+        Mutation m = new Mutation("r:" + i);
+        m.put("", "", "" + i);
+        bw.addMutation(m);
       }
     }
+
+    client.tableOperations().flush(table1);
   }
 }
