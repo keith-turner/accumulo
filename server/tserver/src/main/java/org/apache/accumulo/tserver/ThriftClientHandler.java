@@ -160,7 +160,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.cache.Cache;
 import com.google.common.collect.Collections2;
 
-class ThriftClientHandler extends ClientServiceHandler implements TabletClientService.Iface {
+public class ThriftClientHandler extends ClientServiceHandler implements TabletClientService.Iface {
 
   private static final Logger log = LoggerFactory.getLogger(ThriftClientHandler.class);
   private static final long MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS = 1000;
@@ -169,7 +169,7 @@ class ThriftClientHandler extends ClientServiceHandler implements TabletClientSe
   private final WriteTracker writeTracker = new WriteTracker();
   private final RowLocks rowLocks = new RowLocks();
 
-  ThriftClientHandler(TabletServer server) {
+  public ThriftClientHandler(TabletServer server) {
     super(server.getContext(), new TransactionWatcher(server.getContext()));
     this.server = server;
     log.debug("{} created", ThriftClientHandler.class.getName());

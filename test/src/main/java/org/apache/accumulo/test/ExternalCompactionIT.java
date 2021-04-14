@@ -18,12 +18,17 @@
  */
 package org.apache.accumulo.test;
 
+import static org.apache.accumulo.minicluster.ServerType.TABLET_SERVER;
+
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import org.apache.accumulo.compactor.CompactionEnvironment.CompactorIterEnv;
 import org.apache.accumulo.compactor.Compactor;
@@ -46,18 +51,35 @@ import org.apache.accumulo.core.iterators.Filter;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
+import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
+import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.SimpleCompactionDispatcher;
+import org.apache.accumulo.core.util.threads.Threads;
+import org.apache.accumulo.fate.util.UtilWaitThread;
+import org.apache.accumulo.minicluster.ServerType;
+import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl.ProcessInfo;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.test.functional.ConfigurableMacBase;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.apache.hadoop.io.Text;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
 public class ExternalCompactionIT extends ConfigurableMacBase {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ExternalCompactionIT.class);
 
   @Override
   protected void configure(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
@@ -69,6 +91,8 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         DefaultCompactionPlanner.class.getName());
     cfg.setProperty("tserver.compaction.major.service.cs2.planner.opts.executors",
         "[{'name':'all','externalQueue':'DCQ2'}]");
+    // use raw local file system so walogs sync and flush will work
+    hadoopCoreSite.set("fs.file.impl", RawLocalFileSystem.class.getName());
   }
 
   public static class TestFilter extends Filter {
@@ -116,23 +140,107 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       String table2 = "ectt2";
       createTable(client, table2, "cs2");
 
-      wrtieData(client, table1);
-      wrtieData(client, table2);
+      writeData(client, table1);
+      writeData(client, table2);
 
       cluster.exec(Compactor.class, "-q", "DCQ1");
       cluster.exec(Compactor.class, "-q", "DCQ2");
       cluster.exec(CompactionCoordinator.class);
 
-      compact(client, table1, 2, "DCQ1");
+      compact(client, table1, 2, "DCQ1", true);
       verify(client, table1, 2);
 
       SortedSet<Text> splits = new TreeSet<>();
       splits.add(new Text("r:4"));
       client.tableOperations().addSplits(table2, splits);
 
-      compact(client, table2, 3, "DCQ2");
+      compact(client, table2, 3, "DCQ2", true);
       verify(client, table2, 3);
 
+    }
+  }
+
+  @Test
+  //@Ignore // waiting for solution to issue #2019
+  public void testExternalCompactionDeadTServer() throws Exception {
+    // Shut down the normal TServers
+    getCluster().getProcesses().get(TABLET_SERVER).forEach(p -> {
+      try {
+        getCluster().killProcess(TABLET_SERVER, p);
+      } catch (Exception e) {
+        Assert.fail("Failed to shutdown tablet server");
+      }
+    });
+    // Start our TServer that will not commit the compaction
+    ProcessInfo process = cluster.exec(ExternalCompactionTServer.class);
+
+    final String table3 = "ectt3";
+    try (final AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      createTable(client, table3, "cs1");
+      writeData(client, table3);
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+      compact(client, table3, 2, "DCQ1", false);
+
+      // ExternalCompactionTServer will not commit the compaction. Wait for the
+      // metadata table entries to show up.
+      LOG.info("Waiting for external compaction to complete.");
+      Stream<ExternalCompactionFinalState> fs =
+          getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
+      while (fs.count() == 0) {
+        LOG.info("Waiting for compaction completed marker to appear");
+        UtilWaitThread.sleep(1000);
+        fs = getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
+      }
+
+      // We need to wait until the metadata entries show up
+      LOG.info("Validating metadata table contents.");
+      TabletsMetadata tm = getCluster().getServerContext().getAmple().readTablets()
+          .forLevel(DataLevel.USER).fetch(ColumnType.ECOMP).build();
+      List<TabletMetadata> md = new ArrayList<>();
+      tm.forEach(t -> md.add(t));
+      Assert.assertEquals(1, md.size());
+      TabletMetadata m = md.get(0);
+      Map<ExternalCompactionId,ExternalCompactionMetadata> em = m.getExternalCompactions();
+      Assert.assertEquals(1, em.size());
+      List<ExternalCompactionFinalState> finished = new ArrayList<>();
+      getCluster().getServerContext().getAmple().getExternalCompactionFinalStates()
+          .forEach(f -> finished.add(f));
+      Assert.assertEquals(1, finished.size());
+      Assert.assertEquals(em.entrySet().iterator().next().getKey(),
+          finished.get(0).getExternalCompactionId());
+      tm.close();
+
+      // Force a flush on the metadata table before killing our tserver
+      client.tableOperations().compact("accumulo.metadata", new CompactionConfig().setWait(true));
+    }
+
+    // Stop our TabletServer. Need to perform a normal shutdown so that the WAL is closed normally.
+    LOG.info("Stopping our tablet server");
+    Process tsp = process.getProcess();
+    if (tsp.supportsNormalTermination()) {
+      cluster.stopProcessWithTimeout(tsp, 60, TimeUnit.SECONDS);
+    } else {
+      LOG.info("Stopping tserver manually");
+      new ProcessBuilder("kill", Long.toString(tsp.pid())).start();
+      tsp.waitFor();
+    }
+
+    // Start a TabletServer to commit the compaction.
+    LOG.info("Starting normal tablet server");
+    getCluster().getClusterControl().start(ServerType.TABLET_SERVER);
+
+    // Wait for the compaction to be committed.
+    LOG.info("Waiting for compaction completed marker to disappear");
+    Stream<ExternalCompactionFinalState> fs =
+        getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
+    while (fs.count() != 0) {
+      LOG.info("Waiting for compaction completed marker to disappear");
+      UtilWaitThread.sleep(1000);
+      fs = getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
+    }
+    try (final AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      verify(client, table3, 2);
     }
   }
 
@@ -155,14 +263,15 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     }
   }
 
-  private void compact(AccumuloClient client, String table1, int modulus, String expectedQueue)
+  private void compact(final AccumuloClient client, String table1, int modulus,
+      String expectedQueue, boolean wait)
       throws AccumuloSecurityException, TableNotFoundException, AccumuloException {
     IteratorSetting iterSetting = new IteratorSetting(100, TestFilter.class);
     // make sure iterator options make it to compactor process
     iterSetting.addOption("expectedQ", expectedQueue);
     iterSetting.addOption("modulus", modulus + "");
     CompactionConfig config =
-        new CompactionConfig().setIterators(List.of(iterSetting)).setWait(true);
+        new CompactionConfig().setIterators(List.of(iterSetting)).setWait(wait);
     client.tableOperations().compact(table1, config);
   }
 
@@ -177,7 +286,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
   }
 
-  private void wrtieData(AccumuloClient client, String table1) throws MutationsRejectedException,
+  private void writeData(AccumuloClient client, String table1) throws MutationsRejectedException,
       TableNotFoundException, AccumuloException, AccumuloSecurityException {
     try (BatchWriter bw = client.createBatchWriter(table1)) {
       for (int i = 0; i < 10; i++) {
