@@ -60,7 +60,6 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.SimpleCompactionDispatcher;
-import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl.ProcessInfo;
@@ -80,6 +79,12 @@ import com.google.common.base.Preconditions;
 public class ExternalCompactionIT extends ConfigurableMacBase {
 
   private static final Logger LOG = LoggerFactory.getLogger(ExternalCompactionIT.class);
+
+  private static final int MAX_DATA = 1000;
+
+  private static String row(int r) {
+    return String.format("r:%04d", r);
+  }
 
   @Override
   protected void configure(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
@@ -151,7 +156,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       verify(client, table1, 2);
 
       SortedSet<Text> splits = new TreeSet<>();
-      splits.add(new Text("r:4"));
+      splits.add(new Text(row(MAX_DATA / 2)));
       client.tableOperations().addSplits(table2, splits);
 
       compact(client, table2, 3, "DCQ2", true);
@@ -160,8 +165,44 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     }
   }
 
+  // test times out, need to improve how a single tablet w/ lots of compactions is handled...
+  // currently waits 1 min between each compaction per tserver
+  @Ignore
   @Test
-  //@Ignore // waiting for solution to issue #2019
+  public void testManytablets() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      String table1 = "ectt4";
+
+      SortedSet<Text> splits = new TreeSet<>();
+      int jump = MAX_DATA / 200;
+
+      for (int r = jump; r < MAX_DATA; r += jump) {
+        splits.add(new Text(row(r)));
+      }
+
+      createTable(client, table1, "cs1", splits);
+
+      writeData(client, table1);
+
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+
+      compact(client, table1, 3, "DCQ1", true);
+
+      verify(client, table1, 3);
+    }
+  }
+
+  // CBUG add test that configures output file for external compaction
+
+  // CBUG add test that verifies iterators configured on table (not on user compaction) are used in
+  // external compaction
+
+  @Test
+  // @Ignore // waiting for solution to issue #2019
   public void testExternalCompactionDeadTServer() throws Exception {
     // Shut down the normal TServers
     getCluster().getProcesses().get(TABLET_SERVER).forEach(p -> {
@@ -254,7 +295,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       }
 
       int expectedCount = 0;
-      for (int i = 0; i < 10; i++) {
+      for (int i = 0; i < MAX_DATA; i++) {
         if (i % modulus == 0)
           expectedCount++;
       }
@@ -286,11 +327,22 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
   }
 
+  private void createTable(AccumuloClient client, String tableName, String service,
+      SortedSet<Text> splits) throws Exception {
+    Map<String,String> props =
+        Map.of("table.compaction.dispatcher", SimpleCompactionDispatcher.class.getName(),
+            "table.compaction.dispatcher.opts.service", service);
+    NewTableConfiguration ntc = new NewTableConfiguration().setProperties(props).withSplits(splits);
+
+    client.tableOperations().create(tableName, ntc);
+
+  }
+
   private void writeData(AccumuloClient client, String table1) throws MutationsRejectedException,
       TableNotFoundException, AccumuloException, AccumuloSecurityException {
     try (BatchWriter bw = client.createBatchWriter(table1)) {
-      for (int i = 0; i < 10; i++) {
-        Mutation m = new Mutation("r:" + i);
+      for (int i = 0; i < MAX_DATA; i++) {
+        Mutation m = new Mutation(row(i));
         m.put("", "", "" + i);
         bw.addMutation(m);
       }

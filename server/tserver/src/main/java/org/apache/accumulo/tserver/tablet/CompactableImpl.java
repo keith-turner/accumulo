@@ -22,16 +22,20 @@ import static org.apache.accumulo.tserver.TabletStatsKeeper.Operation.MAJOR;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -58,6 +62,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
+import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.compaction.CompactionJobImpl;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
@@ -69,6 +74,7 @@ import org.apache.accumulo.tserver.compactions.CompactionManager;
 import org.apache.accumulo.tserver.compactions.ExternalCompactionJob;
 import org.apache.accumulo.tserver.managermessage.TabletStatusMessage;
 import org.apache.hadoop.fs.Path;
+import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -151,23 +157,42 @@ public class CompactableImpl implements Compactable {
 
     var dataFileSizes = tablet.getDatafileManager().getDatafileSizes();
 
+    Map<ExternalCompactionId,String> extCompactionsToRemove = new HashMap<>();
+
+    initializeSelection(extCompactions, tablet, extCompactionsToRemove);
+
+    sanityCheckExternalCompactions(extCompactions, dataFileSizes.keySet(), extCompactionsToRemove);
+
+    extCompactionsToRemove.forEach((ecid, reason) -> {
+      log.warn("Removing external compaction {} for {} because {} meta: {}", ecid,
+          tablet.getExtent(), reason, extCompactions.get(ecid).toJson());
+    });
+
+    if (!extCompactionsToRemove.isEmpty()) {
+      var tabletMutator = tablet.getContext().getAmple().mutateTablet(tablet.getExtent());
+      extCompactionsToRemove.keySet().forEach(tabletMutator::deleteExternalCompaction);
+      tabletMutator.mutate();
+    }
+
     extCompactions.forEach((ecid, ecMeta) -> {
-      // CBUG ensure files for each external compaction are disjoint
-      allCompactingFiles.addAll(ecMeta.getJobFiles());
-      Collection<CompactableFile> files = ecMeta.getJobFiles().stream()
-          .map(f -> new CompactableFileImpl(f, dataFileSizes.get(f))).collect(Collectors.toList());
-      CompactionJob job = new CompactionJobImpl(ecMeta.getPriority(),
-          ecMeta.getCompactionExecutorId(), files, ecMeta.getKind());
-      runnningJobs.add(job);
+      if (!extCompactionsToRemove.containsKey(ecid)) {
+        allCompactingFiles.addAll(ecMeta.getJobFiles());
+        Collection<CompactableFile> files =
+            ecMeta.getJobFiles().stream().map(f -> new CompactableFileImpl(f, dataFileSizes.get(f)))
+                .collect(Collectors.toList());
+        CompactionJob job = new CompactionJobImpl(ecMeta.getPriority(),
+            ecMeta.getCompactionExecutorId(), files, ecMeta.getKind());
+        runnningJobs.add(job);
 
-      ExternalCompactionInfo ecInfo = new ExternalCompactionInfo();
-      ecInfo.job = job;
-      ecInfo.meta = ecMeta;
-      externalCompactions.put(ecid, ecInfo);
+        ExternalCompactionInfo ecInfo = new ExternalCompactionInfo();
+        ecInfo.job = job;
+        ecInfo.meta = ecMeta;
+        externalCompactions.put(ecid, ecInfo);
 
-      log.debug("Loaded tablet {} has existing external compaction {} {}", getExtent(), ecid,
-          ecMeta);
-      manager.registerExternalCompaction(ecid, getExtent());
+        log.debug("Loaded tablet {} has existing external compaction {} {}", getExtent(), ecid,
+            ecMeta);
+        manager.registerExternalCompaction(ecid, getExtent());
+      }
     });
 
     compactionRunning = !allCompactingFiles.isEmpty();
@@ -179,6 +204,29 @@ public class CompactableImpl implements Compactable {
       }
       return Set.copyOf(servicesIds);
     }, 2, TimeUnit.SECONDS);
+  }
+
+  private void sanityCheckExternalCompactions(
+      Map<ExternalCompactionId,ExternalCompactionMetadata> extCompactions,
+      Set<StoredTabletFile> tabletFiles, Map<ExternalCompactionId,String> extCompactionsToRemove) {
+
+    Set<StoredTabletFile> seen = new HashSet<>();
+    AtomicBoolean overlap = new AtomicBoolean(false);
+
+    extCompactions.forEach((ecid, ecMeta) -> {
+      if (!tabletFiles.containsAll(ecMeta.getJobFiles())) {
+        extCompactionsToRemove.putIfAbsent(ecid, "Has files outside of tablet files");
+      } else if (!Collections.disjoint(seen, ecMeta.getJobFiles())) {
+        overlap.set(true);
+      }
+    });
+
+    if (overlap.get()) {
+      extCompactions.keySet().forEach(ecid -> {
+        extCompactionsToRemove.putIfAbsent(ecid, "Some external compaction files overlap");
+      });
+    }
+
   }
 
   void initiateChop() {
@@ -318,6 +366,131 @@ public class CompactableImpl implements Compactable {
           }
         }
       }
+    }
+  }
+
+  private void initializeSelection(
+      Map<ExternalCompactionId,ExternalCompactionMetadata> extCompactions, Tablet tablet,
+      Map<ExternalCompactionId,String> externalCompactionsToRemove) {
+    CompactionKind extKind = null;
+    boolean unexpectedExternal = false;
+    Set<StoredTabletFile> tmpSelectedFiles = null;
+    Boolean selAll = null;
+    Long cid = null;
+    Boolean propDel = null;
+    int count = 0;
+
+    ArrayList<String> reasons = new ArrayList<>();
+
+    for (Entry<ExternalCompactionId,ExternalCompactionMetadata> entry : extCompactions.entrySet()) {
+      var ecMeta = entry.getValue();
+
+      // CBUG what about chop?
+      if (ecMeta.getKind() != CompactionKind.USER && ecMeta.getKind() != CompactionKind.SELECTOR) {
+        continue;
+      }
+
+      count++;
+
+      if (extKind == null || extKind == ecMeta.getKind()) {
+        extKind = ecMeta.getKind();
+      } else {
+        reasons.add("Saw USER and SELECTOR");
+        unexpectedExternal = true;
+        break;
+      }
+
+      if (tmpSelectedFiles == null) {
+        tmpSelectedFiles = Sets.union(ecMeta.getJobFiles(), ecMeta.getNextFiles());
+      } else if (!Sets.union(ecMeta.getJobFiles(), ecMeta.getNextFiles())
+          .equals(tmpSelectedFiles)) {
+        reasons.add("Selected set of files differs");
+        unexpectedExternal = true;
+        break;
+      }
+
+      if (selAll == null) {
+        selAll = ecMeta.isSelectedAll();
+      } else if (selAll != ecMeta.isSelectedAll()) {
+        unexpectedExternal = true;
+        reasons.add("Disagreement on selectedAll");
+        break;
+      }
+
+      if (ecMeta.getKind() == CompactionKind.USER) {
+        if (ecMeta.getCompactionId() == null) {
+          unexpectedExternal = true;
+          reasons.add("Missing compactionId");
+          break;
+        } else if (cid == null) {
+          cid = ecMeta.getCompactionId();
+        } else if (!cid.equals(ecMeta.getCompactionId())) {
+          unexpectedExternal = true;
+          reasons.add("Disagreement on compactionId");
+          break;
+        }
+      } else if (ecMeta.getCompactionId() != null) {
+        unexpectedExternal = true;
+        reasons.add("Unexpected compactionId");
+        break;
+      }
+
+      if (propDel == null) {
+        propDel = ecMeta.isPropogateDeletes();
+      } else if (propDel != ecMeta.isPropogateDeletes()) {
+        unexpectedExternal = true;
+        reasons.add("Disagreement on propogateDeletes");
+        break;
+      }
+
+    }
+
+    if (propDel != null && !propDel && count > 1) {
+      unexpectedExternal = true;
+      reasons.add("Concurrent compactions not propogatingDeletes");
+    }
+
+    Pair<Long,CompactionConfig> idAndCfg = null;
+    if (extKind != null && extKind == CompactionKind.USER) {
+      try {
+        idAndCfg = tablet.getCompactionID();
+        if (!idAndCfg.getFirst().equals(cid)) {
+          unexpectedExternal = true;
+          reasons.add("Compaction id mismatch with zookeeper");
+        }
+      } catch (NoNodeException e) {
+        unexpectedExternal = true;
+        reasons.add("No compaction id in zookeeper");
+      }
+    }
+
+    if (unexpectedExternal) {
+      String reason = reasons.toString();
+      extCompactions.entrySet().stream().filter(e -> {
+        var kind = e.getValue().getKind();
+        return kind == CompactionKind.SELECTOR || kind == CompactionKind.USER;
+      }).map(Entry::getKey).forEach(ecid -> externalCompactionsToRemove.putIfAbsent(ecid, reason));
+      return;
+    }
+
+    if (extKind != null) {
+
+      if (extKind == CompactionKind.USER) {
+        this.chelper = CompactableUtils.getHelper(extKind, tablet, cid, idAndCfg.getSecond());
+        this.compactionConfig = idAndCfg.getSecond();
+        this.compactionId = cid;
+      } else if (extKind == CompactionKind.SELECTOR) {
+        this.chelper = CompactableUtils.getHelper(extKind, tablet, null, null);
+      }
+
+      this.selectedFiles.clear();
+      this.selectedFiles.addAll(tmpSelectedFiles);
+      this.selectKind = extKind;
+      this.selectedAll = selAll;
+      this.selectStatus = SpecialStatus.SELECTED;
+
+      log.debug("Selected compaction status initialized from external compactions {} {} {} {}",
+          getExtent(), selectStatus, selectedAll, asFileNames(selectedFiles));
     }
   }
 
@@ -585,12 +758,13 @@ public class CompactableImpl implements Compactable {
 
   private static class CompactionInfo {
     Set<StoredTabletFile> jobFiles;
-    Long compactionId = null;
     Long checkCompactionId = null;
     boolean propogateDeletes = true;
     CompactionHelper localHelper;
     List<IteratorSetting> iters = List.of();
     CompactionConfig localCompactionCfg;
+    boolean selectedAll;
+    Set<StoredTabletFile> selectedFiles;
   }
 
   private CompactionInfo reserveFilesForCompaction(CompactionServiceId service, CompactionJob job) {
@@ -667,6 +841,10 @@ public class CompactableImpl implements Compactable {
               && cInfo.jobFiles.containsAll(selectedFiles)) {
             cInfo.propogateDeletes = false;
           }
+
+          cInfo.selectedFiles = Set.copyOf(selectedFiles);
+          cInfo.selectedAll = selectedAll;
+
           break;
         default:
           if (((CompactionJobImpl) job).selectedAll()) {
@@ -674,11 +852,9 @@ public class CompactableImpl implements Compactable {
             // dropped.
             cInfo.propogateDeletes = false;
           }
-      }
 
-      if (job.getKind() == CompactionKind.USER && selectKind == job.getKind()
-          && selectedFiles.equals(cInfo.jobFiles)) {
-        cInfo.compactionId = this.compactionId;
+          // CBUG what about chop?
+          cInfo.selectedFiles = Set.of();
       }
 
       if (job.getKind() == CompactionKind.USER) {
@@ -735,8 +911,8 @@ public class CompactableImpl implements Compactable {
       TabletLogger.compacting(getExtent(), job, cInfo.localCompactionCfg);
       tablet.incrementStatusMajor();
 
-      metaFile = CompactableUtils.compact(tablet, job, cInfo.jobFiles, cInfo.compactionId,
-          cInfo.propogateDeletes, cInfo.localHelper, cInfo.iters,
+      metaFile = CompactableUtils.compact(tablet, job, cInfo.jobFiles, cInfo.checkCompactionId,
+          cInfo.selectedFiles, cInfo.propogateDeletes, cInfo.localHelper, cInfo.iters,
           new CompactionCheck(service, job.getKind(), cInfo.checkCompactionId), readLimiter,
           writeLimiter, stats);
 
@@ -771,8 +947,10 @@ public class CompactableImpl implements Compactable {
 
       ExternalCompactionInfo ecInfo = new ExternalCompactionInfo();
 
-      ecInfo.meta = new ExternalCompactionMetadata(cInfo.jobFiles, compactTmpName, newFile,
-          compactorId, job.getKind(), job.getPriority(), job.getExecutor());
+      ecInfo.meta = new ExternalCompactionMetadata(cInfo.jobFiles,
+          Sets.difference(cInfo.selectedFiles, cInfo.jobFiles), compactTmpName, newFile,
+          compactorId, job.getKind(), job.getPriority(), job.getExecutor(), cInfo.propogateDeletes,
+          cInfo.selectedAll, cInfo.checkCompactionId);
       tablet.getContext().getAmple().mutateTablet(getExtent())
           .putExternalCompaction(externalCompactionId, ecInfo.meta).mutate();
 
@@ -780,8 +958,6 @@ public class CompactableImpl implements Compactable {
 
       externalCompactions.put(externalCompactionId, ecInfo);
 
-      // CBUG because this is an RPC the return may never get to the caller... however the caller
-      // may be alive.... maybe the caller can set the externalCompactionId it working on in ZK
       return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, compactTmpName,
           getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters);
 
@@ -814,9 +990,12 @@ public class CompactableImpl implements Compactable {
         // TODO do a sanity check that files exists in dfs?
         StoredTabletFile metaFile = null;
         try {
+          // possibly do some sanity checks here
           metaFile = tablet.getDatafileManager().bringMajorCompactionOnline(
               ecInfo.meta.getJobFiles(), ecInfo.meta.getCompactTmpName(), ecInfo.meta.getNewFile(),
-              compactionId, new DataFileValue(fileSize, entries), Optional.of(extCompactionId));
+              ecInfo.meta.getCompactionId(),
+              Sets.union(ecInfo.meta.getJobFiles(), ecInfo.meta.getNextFiles()),
+              new DataFileValue(fileSize, entries), Optional.of(extCompactionId));
           TabletLogger.compacted(getExtent(), ecInfo.job, metaFile);
         } catch (Exception e) {
           metaFile = null;

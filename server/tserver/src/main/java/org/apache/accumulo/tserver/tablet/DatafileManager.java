@@ -398,8 +398,9 @@ class DatafileManager {
   }
 
   StoredTabletFile bringMajorCompactionOnline(Set<StoredTabletFile> oldDatafiles,
-      TabletFile tmpDatafile, TabletFile newDatafile, Long compactionId, DataFileValue dfv,
-      Optional<ExternalCompactionId> ecid) throws IOException {
+      TabletFile tmpDatafile, TabletFile newDatafile, Long compactionId,
+      Set<StoredTabletFile> selectedFiles, DataFileValue dfv, Optional<ExternalCompactionId> ecid)
+      throws IOException {
     final KeyExtent extent = tablet.getExtent();
     VolumeManager vm = tablet.getTabletServer().getContext().getVolumeManager();
     long t1, t2;
@@ -420,6 +421,9 @@ class DatafileManager {
     TServerInstance lastLocation = null;
     // calling insert to get the new file before inserting into the metadata
     StoredTabletFile newFile = newDatafile.insert();
+
+    Long compactionIdToWrite = null;
+
     synchronized (tablet) {
       t1 = System.currentTimeMillis();
 
@@ -445,6 +449,10 @@ class DatafileManager {
 
       lastLocation = tablet.resetLastLocation();
 
+      if (compactionId != null && Collections.disjoint(selectedFiles, datafileSizes.keySet())) {
+        compactionIdToWrite = compactionId;
+      }
+
       t2 = System.currentTimeMillis();
     }
 
@@ -453,10 +461,10 @@ class DatafileManager {
     if (!filesInUseByScans.isEmpty())
       log.debug("Adding scan refs to metadata {} {}", extent, filesInUseByScans);
     ManagerMetadataUtil.replaceDatafiles(tablet.getContext(), extent, oldDatafiles,
-        filesInUseByScans, newFile, compactionId, dfv,
+        filesInUseByScans, newFile, compactionIdToWrite, dfv,
         tablet.getTabletServer().getClientAddressString(), lastLocation,
         tablet.getTabletServer().getLock(), ecid);
-    tablet.setLastCompactionID(compactionId);
+    tablet.setLastCompactionID(compactionIdToWrite);
     removeFilesAfterScan(filesInUseByScans);
 
     if (log.isTraceEnabled()) {

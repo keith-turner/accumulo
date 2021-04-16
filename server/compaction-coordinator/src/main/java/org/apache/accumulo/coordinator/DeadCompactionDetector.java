@@ -125,6 +125,7 @@ public class DeadCompactionDetector {
     danglingEcids.forEach(
         ecid -> log.debug("Detected dangling external compaction final state marker {}", ecid));
 
+    // todo add logging in impl
     context.getAmple().deleteExternalCompactionFinalStates(danglingEcids);
   }
 
