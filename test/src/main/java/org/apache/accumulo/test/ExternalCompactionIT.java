@@ -69,7 +69,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.apache.hadoop.io.Text;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -165,9 +164,6 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     }
   }
 
-  // test times out, need to improve how a single tablet w/ lots of compactions is handled...
-  // currently waits 1 min between each compaction per tserver
-  @Ignore
   @Test
   public void testManytablets() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {

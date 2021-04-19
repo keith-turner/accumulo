@@ -18,16 +18,17 @@
  */
 package org.apache.accumulo.coordinator;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
@@ -37,27 +38,24 @@ import com.google.common.collect.Sets;
 public class QueueSummaries {
 
   // keep track of the last tserver retunred for qeueue
- final Map<String, PrioTserver> LAST = new HashMap<>();
+  final Map<String,PrioTserver> LAST = new HashMap<>();
 
- //CBUG may not need concurrent hash map depending on how sync is done
   /* Map of external queue name -> priority -> tservers */
-  final Map<String,TreeMap<Long,TreeSet<TServerInstance>>> QUEUES =
-      new ConcurrentHashMap<>();
+  final Map<String,TreeMap<Long,TreeSet<TServerInstance>>> QUEUES = new HashMap<>();
   /* index of tserver to queue and priority, exists to provide O(1) lookup into QUEUES */
-  final Map<TServerInstance,Set<QueueAndPriority>> INDEX =
-      new ConcurrentHashMap<>();
+  final Map<TServerInstance,Set<QueueAndPriority>> INDEX = new HashMap<>();
 
   private Entry<Long,TreeSet<TServerInstance>> getNextTserverEntry(String queue) {
     TreeMap<Long,TreeSet<TServerInstance>> m = QUEUES.get(queue);
-    if(m == null) {
+    if (m == null) {
       return null;
     }
 
     Iterator<Entry<Long,TreeSet<TServerInstance>>> iter = m.entrySet().iterator();
 
-    while(iter.hasNext()) {
+    while (iter.hasNext()) {
       Entry<Long,TreeSet<TServerInstance>> next = iter.next();
-      if(next.getValue().isEmpty()) {
+      if (next.getValue().isEmpty()) {
         iter.remove();
       } else {
         return next;
@@ -70,24 +68,41 @@ public class QueueSummaries {
 
   }
 
-
   static class PrioTserver {
-
-    final TServerInstance tserver;
+    TServerInstance tserver;
     final long prio;
 
     public PrioTserver(TServerInstance t, long p) {
       this.tserver = t;
       this.prio = p;
     }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (obj instanceof PrioTserver) {
+        PrioTserver opt = (PrioTserver) obj;
+        return tserver.equals(opt.tserver) && prio == opt.prio;
+      }
+
+      return false;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(tserver, prio);
+    }
+
+    @Override
+    public String toString() {
+      return tserver + " " + prio;
+    }
   }
 
-  //CBUG may want to to do finer grained sync...
   synchronized PrioTserver getNextTserver(String queue) {
 
     Entry<Long,TreeSet<TServerInstance>> entry = getNextTserverEntry(queue);
 
-    if(entry == null) {
+    if (entry == null) {
       // no tserver, so remove any last entry if it exists
       LAST.remove(queue);
       return null;
@@ -100,9 +115,9 @@ public class QueueSummaries {
 
     TServerInstance nextTserver = null;
 
-    if(last != null && last.prio == priority) {
+    if (last != null && last.prio == priority) {
       TServerInstance higher = tservers.higher(last.tserver);
-      if(higher == null) {
+      if (higher == null) {
         nextTserver = tservers.first();
       } else {
         nextTserver = higher;
@@ -118,7 +133,6 @@ public class QueueSummaries {
     return result;
   }
 
-
   synchronized void update(TServerInstance tsi, List<TCompactionQueueSummary> summaries) {
 
     Set<QueueAndPriority> newQP = new HashSet<>();
@@ -131,36 +145,36 @@ public class QueueSummaries {
     Set<QueueAndPriority> currentQP = INDEX.getOrDefault(tsi, Set.of());
 
     // remove anything the tserver did not report
-    for(QueueAndPriority qp : Sets.difference(currentQP, newQP)) {
+    for (QueueAndPriority qp : List.copyOf(Sets.difference(currentQP, newQP))) {
       removeSummary(tsi, qp.getQueue(), qp.getPriority());
     }
 
     INDEX.put(tsi, newQP);
 
     newQP.forEach(qp -> {
-      QUEUES.computeIfAbsent(qp.getQueue(), k -> new TreeMap<>())
-      .computeIfAbsent(qp.getPriority(), k -> new TreeSet<>()).add(tsi);
+      QUEUES.computeIfAbsent(qp.getQueue(), k -> new TreeMap<>(Comparator.reverseOrder()))
+          .computeIfAbsent(qp.getPriority(), k -> new TreeSet<>()).add(tsi);
     });
   }
 
   synchronized void removeSummary(TServerInstance tsi, String queue, long priority) {
     TreeMap<Long,TreeSet<TServerInstance>> m = QUEUES.get(queue);
-    if(m != null) {
+    if (m != null) {
       TreeSet<TServerInstance> s = m.get(priority);
-      if(s != null) {
-        if(s.remove(tsi) && s.isEmpty()) {
+      if (s != null) {
+        if (s.remove(tsi) && s.isEmpty()) {
           m.remove(priority);
         }
       }
 
-      if(m.isEmpty()) {
+      if (m.isEmpty()) {
         QUEUES.remove(queue);
       }
     }
 
     Set<QueueAndPriority> qaps = INDEX.get(tsi);
-    if(qaps != null) {
-      if(qaps.remove(QueueAndPriority.get(queue, priority)) && qaps.isEmpty()) {
+    if (qaps != null) {
+      if (qaps.remove(QueueAndPriority.get(queue, priority)) && qaps.isEmpty()) {
         INDEX.remove(tsi);
       }
     }
@@ -168,12 +182,12 @@ public class QueueSummaries {
 
   synchronized void remove(Set<TServerInstance> deleted) {
     deleted.forEach(tsi -> {
-      INDEX.get(tsi).forEach(qp -> {
+      INDEX.getOrDefault(tsi, Set.of()).forEach(qp -> {
         TreeMap<Long,TreeSet<TServerInstance>> m = QUEUES.get(qp.getQueue());
         if (null != m) {
           TreeSet<TServerInstance> tservers = m.get(qp.getPriority());
           if (null != tservers) {
-              tservers.remove(tsi);
+            tservers.remove(tsi);
           }
         }
       });

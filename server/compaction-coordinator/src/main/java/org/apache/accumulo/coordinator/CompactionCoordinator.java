@@ -382,6 +382,7 @@ public class CompactionCoordinator extends AbstractServer
         } catch (TException e) {
           LOG.warn("Error getting external compaction summaries from tablet server: {}",
               tsi.getHostAndPort(), e);
+          queueSummaries.remove(Set.of(tsi));
         }
       });
 
@@ -488,8 +489,10 @@ public class CompactionCoordinator extends AbstractServer
         result = job;
         break;
       } catch (TException e) {
-        LOG.error("Error from tserver {} while trying to reserve compaction, trying next tserver",
+        LOG.warn("Error from tserver {} while trying to reserve compaction, trying next tserver",
             ExternalCompactionUtil.getHostPortString(tserver.getHostAndPort()), e);
+        queueSummaries.removeSummary(tserver, queueName, prioTserver.prio);
+        prioTserver = queueSummaries.getNextTserver(queueName);
       } finally {
         ThriftUtil.returnClient(client);
       }
