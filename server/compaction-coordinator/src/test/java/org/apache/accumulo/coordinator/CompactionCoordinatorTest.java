@@ -152,11 +152,13 @@ public class CompactionCoordinatorTest {
         TKeyExtent extent) throws TException {}
 
     public Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> getQueues() {
-      return QUEUES;
+      // CBUG todo refactor test
+      return null;
     }
 
     public Map<TServerInstance,HashSet<QueueAndPriority>> getIndex() {
-      return INDEX;
+      // CBUG todo refactor test
+      return null;
     }
 
     public Map<ExternalCompactionId,RunningCompaction> getRunning() {

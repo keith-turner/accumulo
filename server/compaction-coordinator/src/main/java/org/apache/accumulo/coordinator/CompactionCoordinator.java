@@ -23,17 +23,14 @@ import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.accumulo.coordinator.QueueSummaries.PrioTserver;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.clientImpl.ThriftTransportPool;
@@ -96,12 +93,7 @@ public class CompactionCoordinator extends AbstractServer
   private static final long FIFTEEN_MINUTES =
       TimeUnit.MILLISECONDS.convert(Duration.of(15, TimeUnit.MINUTES.toChronoUnit()));
 
-  /* Map of external queue name -> priority -> tservers */
-  protected static final Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> QUEUES =
-      new ConcurrentHashMap<>();
-  /* index of tserver to queue and priority, exists to provide O(1) lookup into QUEUES */
-  protected static final Map<TServerInstance,HashSet<QueueAndPriority>> INDEX =
-      new ConcurrentHashMap<>();
+  QueueSummaries queueSummaries = new QueueSummaries();
   /* Map of compactionId to RunningCompactions */
   protected static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
       new ConcurrentHashMap<>();
@@ -381,9 +373,7 @@ public class CompactionCoordinator extends AbstractServer
                   QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
               synchronized (qp) {
                 TIME_COMPACTOR_LAST_CHECKED.computeIfAbsent(qp.getQueue(), k -> 0L);
-                QUEUES.computeIfAbsent(qp.getQueue(), k -> new TreeMap<>())
-                    .computeIfAbsent(qp.getPriority(), k -> new LinkedHashSet<>()).add(tsi);
-                INDEX.computeIfAbsent(tsi, k -> new HashSet<>()).add(qp);
+                queueSummaries.update(tsi, summaries);
               }
             });
           } finally {
@@ -444,20 +434,7 @@ public class CompactionCoordinator extends AbstractServer
     // run() will iterate over the current and added tservers and add them to the internal
     // data structures. For tservers that are deleted, we need to remove them from QUEUES
     // and INDEX
-    deleted.forEach(tsi -> {
-      INDEX.get(tsi).forEach(qp -> {
-        TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(qp.getQueue());
-        if (null != m) {
-          LinkedHashSet<TServerInstance> tservers = m.get(qp.getPriority());
-          if (null != tservers) {
-            synchronized (qp) {
-              tservers.remove(tsi);
-            }
-          }
-        }
-      });
-      INDEX.remove(tsi);
-    });
+    queueSummaries.remove(deleted);
   }
 
   /**
@@ -483,81 +460,47 @@ public class CompactionCoordinator extends AbstractServer
     TIME_COMPACTOR_LAST_CHECKED.put(queue, System.currentTimeMillis());
 
     TExternalCompactionJob result = null;
-    final TreeMap<Long,LinkedHashSet<TServerInstance>> m = QUEUES.get(queue);
-    if (null != m && !m.isEmpty()) {
-      while (result == null) {
 
-        // m could become empty if we have contacted all tservers in this queue and
-        // there are no compactions
-        if (m.isEmpty()) {
-          LOG.debug("No tservers found for queue {}, returning empty job to compactor {}", queue,
-              compactorAddress);
-          result = new TExternalCompactionJob();
-          break;
-        }
+    PrioTserver prioTserver = queueSummaries.getNextTserver(queueName);
 
-        // Get the first TServerInstance from the highest priority queue
-        final Entry<Long,LinkedHashSet<TServerInstance>> entry = m.firstEntry();
-        final Long priority = entry.getKey();
-        final LinkedHashSet<TServerInstance> tservers = entry.getValue();
-        final QueueAndPriority qp = QueueAndPriority.get(queue, priority);
+    while (prioTserver != null) {
+      TServerInstance tserver = prioTserver.tserver;
 
-        if (null == tservers || tservers.isEmpty()) {
-          // Clean up the map entry when no tservers for this queue and priority
-          m.remove(entry.getKey(), entry.getValue());
+      LOG.debug("Getting compaction for queue {} from tserver {}", queue, tserver.getHostAndPort());
+      // Get a compaction from the tserver
+      TabletClientService.Client client = null;
+      try {
+        client = getTabletServerConnection(tserver);
+        TExternalCompactionJob job =
+            client.reserveCompactionJob(TraceUtil.traceInfo(), getContext().rpcCreds(), queue,
+                prioTserver.prio, compactorAddress, externalCompactionId);
+        if (null == job.getExternalCompactionId()) {
+          LOG.debug("No compactions found for queue {} on tserver {}, trying next tserver", queue,
+              tserver.getHostAndPort(), compactorAddress);
+
+          queueSummaries.removeSummary(tserver, queueName, prioTserver.prio);
+          prioTserver = queueSummaries.getNextTserver(queueName);
           continue;
-        } else {
-          synchronized (qp) {
-            final TServerInstance tserver = tservers.iterator().next();
-            LOG.debug("Found tserver {} with priority {} compaction for queue {}",
-                tserver.getHostAndPort(), priority, queue);
-            // Remove the tserver from the list, we are going to run a compaction on this server
-            tservers.remove(tserver);
-            if (tservers.isEmpty()) {
-              // Clean up the map entry when no tservers remaining for this queue and priority
-              // CBUG This may be redundant as cleanup happens in the 'if' clause above
-              m.remove(entry.getKey(), entry.getValue());
-            }
-            final HashSet<QueueAndPriority> queues = INDEX.get(tserver);
-            queues.remove(QueueAndPriority.get(queue, priority));
-            if (queues.isEmpty()) {
-              // Remove the tserver from the index
-              INDEX.remove(tserver);
-            }
-            LOG.debug("Getting compaction for queue {} from tserver {}", queue,
-                tserver.getHostAndPort());
-            // Get a compaction from the tserver
-            TabletClientService.Client client = null;
-            try {
-              client = getTabletServerConnection(tserver);
-              TExternalCompactionJob job = client.reserveCompactionJob(TraceUtil.traceInfo(),
-                  getContext().rpcCreds(), queue, priority, compactorAddress, externalCompactionId);
-              if (null == job.getExternalCompactionId()) {
-                LOG.debug("No compactions found for queue {} on tserver {}, trying next tserver",
-                    queue, tserver.getHostAndPort(), compactorAddress);
-                continue;
-              }
-              RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
-                  new RunningCompaction(job, compactorAddress, tserver));
-              LOG.debug("Returning external job {} to {}", job.externalCompactionId,
-                  compactorAddress);
-              result = job;
-              break;
-            } catch (TException e) {
-              LOG.error(
-                  "Error from tserver {} while trying to reserve compaction, trying next tserver",
-                  ExternalCompactionUtil.getHostPortString(tserver.getHostAndPort()), e);
-            } finally {
-              ThriftUtil.returnClient(client);
-            }
-          }
         }
+        RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
+            new RunningCompaction(job, compactorAddress, tserver));
+        LOG.debug("Returning external job {} to {}", job.externalCompactionId, compactorAddress);
+        result = job;
+        break;
+      } catch (TException e) {
+        LOG.error("Error from tserver {} while trying to reserve compaction, trying next tserver",
+            ExternalCompactionUtil.getHostPortString(tserver.getHostAndPort()), e);
+      } finally {
+        ThriftUtil.returnClient(client);
       }
-    } else {
+    }
+
+    if (result == null) {
       LOG.debug("No tservers found for queue {}, returning empty job to compactor {}", queue,
           compactorAddress);
       result = new TExternalCompactionJob();
     }
+
     return result;
 
   }
