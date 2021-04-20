@@ -115,7 +115,8 @@ public class Compactor extends AbstractServer
   private static final long TIME_BETWEEN_GC_CHECKS = 5000;
   private static final CompactionJobHolder JOB_HOLDER = new CompactionJobHolder();
   private static final long TEN_MEGABYTES = 10485760;
-
+  private static final CompactionCoordinator.Client.Factory COORDINATOR_CLIENT_FACTORY = new CompactionCoordinator.Client.Factory();
+  
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
   private final UUID compactorId = UUID.randomUUID();
   private final AccumuloConfiguration aconf;
@@ -337,9 +338,8 @@ public class Compactor extends AbstractServer
                   getContext().rpcCreds(), job.getExternalCompactionId(), state, message,
                   System.currentTimeMillis());
               return "";
-            } catch (TException e) {
+            } finally {
               ThriftUtil.returnClient(coordinatorClient.getAndSet(null));
-              throw e;
             }
           }
         });
@@ -365,9 +365,8 @@ public class Compactor extends AbstractServer
               coordinatorClient.get().compactionFailed(TraceUtil.traceInfo(),
                   getContext().rpcCreds(), job.getExternalCompactionId(), job.extent);
               return "";
-            } catch (TException e) {
+            } finally {
               ThriftUtil.returnClient(coordinatorClient.getAndSet(null));
-              throw e;
             }
           }
         });
@@ -395,9 +394,8 @@ public class Compactor extends AbstractServer
               coordinatorClient.get().compactionCompleted(TraceUtil.traceInfo(),
                   getContext().rpcCreds(), job.getExternalCompactionId(), job.extent, stats);
               return "";
-            } catch (TException e) {
+            } finally {
               ThriftUtil.returnClient(coordinatorClient.getAndSet(null));
-              throw e;
             }
           }
         });
@@ -430,8 +428,9 @@ public class Compactor extends AbstractServer
                       eci.toString());
                 } catch (TException e) {
                   currentCompactionId.set(null);
-                  ThriftUtil.returnClient(coordinatorClient.getAndSet(null));
                   throw e;
+                } finally {
+                  ThriftUtil.returnClient(coordinatorClient.getAndSet(null));
                 }
               }
             });
@@ -451,8 +450,7 @@ public class Compactor extends AbstractServer
       throw new TTransportException("Unable to get CompactionCoordinator address from ZooKeeper");
     }
     LOG.info("CompactionCoordinator address is: {}", coordinatorHost);
-    return ThriftUtil.getClient(new CompactionCoordinator.Client.Factory(), coordinatorHost,
-        getContext());
+    return ThriftUtil.getClient(COORDINATOR_CLIENT_FACTORY, coordinatorHost, getContext());
   }
 
   /**

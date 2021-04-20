@@ -101,7 +101,7 @@ public class RetryableThriftCall<T> {
       try {
         result = function.execute();
       } catch (TException e) {
-        LOG.error("Error in Thrift function, retrying in {}ms. Error: {}", waitTime, e);
+        LOG.error("Error in Thrift function, retrying in {}ms. Error: {}", waitTime, e, e);
         if (!retryForever) {
           numRetries++;
           if (numRetries > maxNumRetries) {
@@ -110,9 +110,11 @@ public class RetryableThriftCall<T> {
           }
         }
       }
-      UtilWaitThread.sleep(waitTime);
-      if (waitTime != maxWaitTime) {
-        waitTime = Math.min(waitTime * 2, maxWaitTime);
+      if (result == null) {
+        UtilWaitThread.sleep(waitTime);
+        if (waitTime != maxWaitTime) {
+          waitTime = Math.min(waitTime * 2, maxWaitTime);
+        }
       }
     } while (null == result);
     return result;
