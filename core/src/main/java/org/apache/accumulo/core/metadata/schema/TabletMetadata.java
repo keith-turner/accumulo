@@ -306,15 +306,14 @@ public class TabletMetadata {
     Objects.requireNonNull(rowIter);
 
     TabletMetadata te = new TabletMetadata();
-    ImmutableSortedMap.Builder<Key,Value> kvBuilder = null;
-    if (buildKeyValueMap) {
-      kvBuilder = ImmutableSortedMap.naturalOrder();
-    }
+    final ImmutableSortedMap.Builder<Key,Value> kvBuilder =
+        buildKeyValueMap ? ImmutableSortedMap.naturalOrder() : null;
 
-    var filesBuilder = ImmutableMap.<StoredTabletFile,DataFileValue>builder();
-    var scansBuilder = ImmutableList.<StoredTabletFile>builder();
-    var logsBuilder = ImmutableList.<LogEntry>builder();
-    var extCompBuilder = ImmutableMap.<ExternalCompactionId,ExternalCompactionMetadata>builder();
+    final var filesBuilder = ImmutableMap.<StoredTabletFile,DataFileValue>builder();
+    final var scansBuilder = ImmutableList.<StoredTabletFile>builder();
+    final var logsBuilder = ImmutableList.<LogEntry>builder();
+    final var extCompBuilder =
+        ImmutableMap.<ExternalCompactionId,ExternalCompactionMetadata>builder();
     final var loadedFilesBuilder = ImmutableMap.<TabletFile,Long>builder();
     ByteSequence row = null;
 

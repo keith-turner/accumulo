@@ -22,7 +22,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.conf.SiteConfiguration;
-import org.apache.accumulo.core.master.thrift.ManagerGoalState;
+import org.apache.accumulo.core.manager.thrift.ManagerGoalState;
 import org.apache.accumulo.core.singletons.SingletonManager;
 import org.apache.accumulo.core.singletons.SingletonManager.Mode;
 import org.apache.accumulo.fate.zookeeper.ZooUtil.NodeExistsPolicy;
@@ -44,9 +44,10 @@ public class SetGoalState {
     }
 
     try {
-      var context = new ServerContext(SiteConfiguration.auto());
+      var siteConfig = SiteConfiguration.auto();
+      SecurityUtil.serverLogin(siteConfig);
+      var context = new ServerContext(siteConfig);
       RenameMasterDirInZK.renameMasterDirInZK(context);
-      SecurityUtil.serverLogin(context.getConfiguration());
       ServerUtil.waitForZookeeperAndHdfs(context);
       context.getZooReaderWriter().putPersistentData(
           context.getZooKeeperRoot() + Constants.ZMANAGER_GOAL_STATE, args[0].getBytes(UTF_8),

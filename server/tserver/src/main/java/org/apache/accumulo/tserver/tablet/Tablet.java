@@ -45,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Durability;
@@ -137,7 +138,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableSet;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -509,7 +509,7 @@ public class Tablet {
         if (cfset != null) {
           mmfi.seek(range, cfset, true);
         } else {
-          mmfi.seek(range, LocalityGroupUtil.EMPTY_CF_SET, false);
+          mmfi.seek(range, Set.of(), false);
         }
 
         while (mmfi.hasTop()) {
@@ -712,7 +712,7 @@ public class Tablet {
     }
 
     if (scanParams.getColumnSet().isEmpty()) {
-      iter.seek(range, LocalityGroupUtil.EMPTY_CF_SET, false);
+      iter.seek(range, Set.of(), false);
     } else {
       iter.seek(range, LocalityGroupUtil.families(scanParams.getColumnSet()), true);
     }
@@ -1882,10 +1882,8 @@ public class Tablet {
 
     var prev = referencedLogs;
 
-    var builder = ImmutableSet.<DfsLogger>builder();
-    builder.addAll(currentLogs);
-    builder.addAll(otherLogs);
-    referencedLogs = builder.build();
+    referencedLogs = Stream.concat(currentLogs.stream(), otherLogs.stream())
+        .collect(Collectors.toUnmodifiableSet());
 
     if (TabletLogger.isWalRefLoggingEnabled() && !prev.equals(referencedLogs)) {
       TabletLogger.walRefsChanged(extent,

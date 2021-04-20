@@ -19,6 +19,7 @@
 package org.apache.accumulo.tserver;
 
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toUnmodifiableMap;
 import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.io.IOException;
@@ -80,7 +81,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.collect.ImmutableMap;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -158,7 +158,7 @@ public class TabletServerResourceManager {
   }
 
   private ExecutorService createPriorityExecutor(ScanExecutorConfig sec,
-      Map<String,Queue<?>> scanExecQueues) {
+      Map<String,Queue<Runnable>> scanExecQueues) {
 
     BlockingQueue<Runnable> queue;
 
@@ -208,17 +208,6 @@ public class TabletServerResourceManager {
         (ThreadPoolExecutor) es);
     return es;
 
-  }
-
-  protected Map<String,ExecutorService> createScanExecutors(
-      Collection<ScanExecutorConfig> scanExecCfg, Map<String,Queue<?>> scanExecQueues) {
-    var builder = ImmutableMap.<String,ExecutorService>builder();
-
-    for (ScanExecutorConfig sec : scanExecCfg) {
-      builder.put(sec.name, createPriorityExecutor(sec, scanExecQueues));
-    }
-
-    return builder.build();
   }
 
   private static class ScanExecutorImpl implements ScanExecutor {
@@ -271,17 +260,6 @@ public class TabletServerResourceManager {
       return config;
     }
 
-  }
-
-  private Map<String,ScanExecutor> createScanExecutorChoices(
-      Collection<ScanExecutorConfig> scanExecCfg, Map<String,Queue<?>> scanExecQueues) {
-    var builder = ImmutableMap.<String,ScanExecutor>builder();
-
-    for (ScanExecutorConfig sec : scanExecCfg) {
-      builder.put(sec.name, new ScanExecutorImpl(sec, scanExecQueues.get(sec.name)));
-    }
-
-    return builder.build();
   }
 
   @SuppressFBWarnings(value = "DM_GC",
@@ -393,9 +371,11 @@ public class TabletServerResourceManager {
         "summary partition", (ThreadPoolExecutor) summaryParitionPool);
 
     Collection<ScanExecutorConfig> scanExecCfg = acuConf.getScanExecutors();
-    Map<String,Queue<?>> scanExecQueues = new HashMap<>();
-    scanExecutors = createScanExecutors(scanExecCfg, scanExecQueues);
-    scanExecutorChoices = createScanExecutorChoices(scanExecCfg, scanExecQueues);
+    Map<String,Queue<Runnable>> scanExecQueues = new HashMap<>();
+    scanExecutors = scanExecCfg.stream().collect(
+        toUnmodifiableMap(cfg -> cfg.name, cfg -> createPriorityExecutor(cfg, scanExecQueues)));
+    scanExecutorChoices = scanExecCfg.stream().collect(toUnmodifiableMap(cfg -> cfg.name,
+        cfg -> new ScanExecutorImpl(cfg, scanExecQueues.get(cfg.name))));
 
     int maxOpenFiles = acuConf.getCount(Property.TSERV_SCAN_MAX_OPENFILES);
 

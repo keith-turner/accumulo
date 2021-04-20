@@ -151,7 +151,7 @@
     <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
     <surefire.forkCount>1C</surefire.forkCount>
     <surefire.groups />
-    <surefire.reuseForks>true</surefire.reuseForks>
+    <surefire.reuseForks>false</surefire.reuseForks>
     <!-- 3.0.0-M5 causes RowHashIT.test and ShellServerIT.scansWithClassLoaderContext to fail -->
     <surefire.version>3.0.0-M4</surefire.version>
     <!-- Thrift version -->
@@ -828,15 +828,6 @@
             <forkCount>${surefire.forkCount}</forkCount>
             <reuseForks>${surefire.reuseForks}</reuseForks>
             <excludedGroups>${surefire.excludedGroups}</excludedGroups>
-            <!-- Tests to exclude due to not working with reuseForks being True -->
-            <excludes>
-              <exclude>**/TableIdTest.java</exclude>
-              <exclude>**/HadoopCredentialProviderTest.java</exclude>
-              <exclude>**/IdleRatioScanPrioritizerTest.java</exclude>
-              <exclude>**/AssignmentWatcherTest.java</exclude>
-              <exclude>**/TestCfCqSlice.java</exclude>
-              <exclude>**/TestCfCqSliceSeekingFilter.java</exclude>
-            </excludes>
             <groups>${surefire.groups}</groups>
             <systemPropertyVariables>
               <java.io.tmpdir>${project.build.directory}</java.io.tmpdir>
@@ -852,15 +843,6 @@
             <reuseForks>${failsafe.reuseForks}</reuseForks>
             <excludedGroups>${failsafe.excludedGroups}</excludedGroups>
             <groups>${failsafe.groups}</groups>
-            <!-- Tests that work excluded above to be included here -->
-            <includes>
-              <include>**/TableIdTest.java</include>
-              <include>**/HadoopCredentialProviderTest.java</include>
-              <include>**/IdleRatioScanPrioritizerTest.java</include>
-              <include>**/AssignmentWatcherTest.java</include>
-              <include>**/TestCfCqSlice.java</include>
-              <include>**/TestCfCqSliceSeekingFilter.java</include>
-            </includes>
             <systemPropertyVariables>
               <java.io.tmpdir>${project.build.directory}</java.io.tmpdir>
             </systemPropertyVariables>
@@ -1541,6 +1523,36 @@
             </plugin>
           </plugins>
         </pluginManagement>
+      </build>
+    </profile>
+    <profile>
+      <id>add-thrift-java-source</id>
+      <activation>
+        <file>
+          <exists>src/main/thrift-gen-java</exists>
+        </file>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>add-thrift-java-source</id>
+                <goals>
+                  <goal>add-source</goal>
+                </goals>
+                <phase>generate-sources</phase>
+                <configuration>
+                  <sources>
+                    <source>src/main/thrift-gen-java</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
       </build>
     </profile>
     <profile>
