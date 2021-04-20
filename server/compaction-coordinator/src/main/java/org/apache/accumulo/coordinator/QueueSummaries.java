@@ -53,7 +53,7 @@ public class QueueSummaries {
 
     Iterator<Entry<Long,TreeSet<TServerInstance>>> iter = m.entrySet().iterator();
 
-    while (iter.hasNext()) {
+    if (iter.hasNext()) {
       Entry<Long,TreeSet<TServerInstance>> next = iter.next();
       if (next.getValue().isEmpty()) {
         throw new IllegalStateException(
