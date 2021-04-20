@@ -115,8 +115,9 @@ public class Compactor extends AbstractServer
   private static final long TIME_BETWEEN_GC_CHECKS = 5000;
   private static final CompactionJobHolder JOB_HOLDER = new CompactionJobHolder();
   private static final long TEN_MEGABYTES = 10485760;
-  private static final CompactionCoordinator.Client.Factory COORDINATOR_CLIENT_FACTORY = new CompactionCoordinator.Client.Factory();
-  
+  private static final CompactionCoordinator.Client.Factory COORDINATOR_CLIENT_FACTORY =
+      new CompactionCoordinator.Client.Factory();
+
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
   private final UUID compactorId = UUID.randomUUID();
   private final AccumuloConfiguration aconf;

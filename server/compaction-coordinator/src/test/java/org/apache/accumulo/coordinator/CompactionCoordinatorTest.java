@@ -26,12 +26,11 @@ import static org.junit.Assert.assertTrue;
 import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
@@ -151,18 +150,22 @@ public class CompactionCoordinatorTest {
     public void compactionFailed(TInfo tinfo, TCredentials credentials, String externalCompactionId,
         TKeyExtent extent) throws TException {}
 
-    public Map<String,TreeMap<Long,LinkedHashSet<TServerInstance>>> getQueues() {
-      // CBUG todo refactor test
-      return null;
+    public Map<String,TreeMap<Long,TreeSet<TServerInstance>>> getQueues() {
+      return CompactionCoordinator.QUEUE_SUMMARIES.QUEUES;
     }
 
-    public Map<TServerInstance,HashSet<QueueAndPriority>> getIndex() {
-      // CBUG todo refactor test
-      return null;
+    public Map<TServerInstance,Set<QueueAndPriority>> getIndex() {
+      return CompactionCoordinator.QUEUE_SUMMARIES.INDEX;
     }
 
     public Map<ExternalCompactionId,RunningCompaction> getRunning() {
       return RUNNING;
+    }
+
+    public void resetInternals() {
+      getQueues().clear();
+      getIndex().clear();
+      getRunning().clear();
     }
 
     @Override
@@ -187,7 +190,8 @@ public class CompactionCoordinatorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
     PowerMock.suppress(PowerMock.methods(ThriftUtil.class, "returnClient"));
-    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions"));
+    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions",
+        "detectDanglingFinalStateMarkers"));
 
     AccumuloConfiguration conf = PowerMock.createNiceMock(AccumuloConfiguration.class);
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
@@ -213,6 +217,7 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
+    coordinator.resetInternals();
     assertEquals(0, coordinator.getQueues().size());
     assertEquals(0, coordinator.getIndex().size());
     assertEquals(0, coordinator.getRunning().size());
@@ -222,9 +227,7 @@ public class CompactionCoordinatorTest {
     assertEquals(0, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
-    coordinator.getQueues().clear();
-    coordinator.getIndex().clear();
-    coordinator.getRunning().clear();
+    coordinator.resetInternals();
     coordinator.close();
   }
 
@@ -233,7 +236,8 @@ public class CompactionCoordinatorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
     PowerMock.suppress(PowerMock.methods(ThriftUtil.class, "returnClient"));
-    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions"));
+    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions",
+        "detectDanglingFinalStateMarkers"));
 
     AccumuloConfiguration conf = PowerMock.createNiceMock(AccumuloConfiguration.class);
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
@@ -257,8 +261,8 @@ public class CompactionCoordinatorTest {
     TCompactionQueueSummary queueSummary = PowerMock.createNiceMock(TCompactionQueueSummary.class);
     EasyMock.expect(tsc.getCompactionQueueInfo(EasyMock.anyObject(), EasyMock.anyObject()))
         .andReturn(Collections.singletonList(queueSummary)).anyTimes();
-    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ");
-    EasyMock.expect(queueSummary.getPriority()).andReturn(1L);
+    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ").anyTimes();
+    EasyMock.expect(queueSummary.getPriority()).andReturn(1L).anyTimes();
 
     AuditedSecurityOperation security = PowerMock.createNiceMock(AuditedSecurityOperation.class);
 
@@ -266,13 +270,14 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
+    coordinator.resetInternals();
     assertEquals(0, coordinator.getQueues().size());
     assertEquals(0, coordinator.getIndex().size());
     assertEquals(0, coordinator.getRunning().size());
     coordinator.run();
     assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
-    Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
+    Map<Long,TreeSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
     assertNotNull(m);
     assertEquals(1, m.size());
     assertTrue(m.containsKey(1L));
@@ -289,9 +294,7 @@ public class CompactionCoordinatorTest {
     assertEquals(0, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
-    coordinator.getQueues().clear();
-    coordinator.getIndex().clear();
-    coordinator.getRunning().clear();
+    coordinator.resetInternals();
     coordinator.close();
   }
 
@@ -300,7 +303,8 @@ public class CompactionCoordinatorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
     PowerMock.suppress(PowerMock.methods(ThriftUtil.class, "returnClient"));
-    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions"));
+    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions",
+        "detectDanglingFinalStateMarkers"));
 
     AccumuloConfiguration conf = PowerMock.createNiceMock(AccumuloConfiguration.class);
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
@@ -319,9 +323,6 @@ public class CompactionCoordinatorTest {
 
     PowerMock.mockStatic(ExternalCompactionUtil.class);
     Map<HostAndPort,TExternalCompactionJob> runningCompactions = new HashMap<>();
-    // ExternalCompactionId eci = ExternalCompactionId.generate(UUID.randomUUID());
-    // TExternalCompactionJob job = PowerMock.createNiceMock(TExternalCompactionJob.class);
-    // runningCompactions.put(tserverAddress, job);
     EasyMock.expect(ExternalCompactionUtil.getCompactionsRunningOnCompactors(ctx))
         .andReturn(runningCompactions);
 
@@ -335,8 +336,8 @@ public class CompactionCoordinatorTest {
     TCompactionQueueSummary queueSummary = PowerMock.createNiceMock(TCompactionQueueSummary.class);
     EasyMock.expect(tsc.getCompactionQueueInfo(EasyMock.anyObject(), EasyMock.anyObject()))
         .andReturn(Collections.singletonList(queueSummary)).anyTimes();
-    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ");
-    EasyMock.expect(queueSummary.getPriority()).andReturn(1L);
+    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ").anyTimes();
+    EasyMock.expect(queueSummary.getPriority()).andReturn(1L).anyTimes();
 
     AuditedSecurityOperation security = PowerMock.createNiceMock(AuditedSecurityOperation.class);
 
@@ -344,13 +345,14 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
+    coordinator.resetInternals();
     assertEquals(0, coordinator.getQueues().size());
     assertEquals(0, coordinator.getIndex().size());
     assertEquals(0, coordinator.getRunning().size());
     coordinator.run();
     assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
-    Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
+    Map<Long,TreeSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
     assertNotNull(m);
     assertEquals(1, m.size());
     assertTrue(m.containsKey(1L));
@@ -367,9 +369,7 @@ public class CompactionCoordinatorTest {
     assertEquals(0, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
-    coordinator.getQueues().clear();
-    coordinator.getIndex().clear();
-    coordinator.getRunning().clear();
+    coordinator.resetInternals();
     coordinator.close();
   }
 
@@ -379,7 +379,8 @@ public class CompactionCoordinatorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
     PowerMock.suppress(PowerMock.methods(ThriftUtil.class, "returnClient"));
-    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions"));
+    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions",
+        "detectDanglingFinalStateMarkers"));
 
     AccumuloConfiguration conf = PowerMock.createNiceMock(AccumuloConfiguration.class);
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
@@ -420,8 +421,8 @@ public class CompactionCoordinatorTest {
     TCompactionQueueSummary queueSummary = PowerMock.createNiceMock(TCompactionQueueSummary.class);
     EasyMock.expect(tsc.getCompactionQueueInfo(EasyMock.anyObject(), EasyMock.anyObject()))
         .andReturn(Collections.singletonList(queueSummary)).anyTimes();
-    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ");
-    EasyMock.expect(queueSummary.getPriority()).andReturn(1L);
+    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ").anyTimes();
+    EasyMock.expect(queueSummary.getPriority()).andReturn(1L).anyTimes();
     EasyMock.expect(tsc.isRunningExternalCompaction(EasyMock.anyObject(), EasyMock.anyObject(),
         EasyMock.anyObject(), EasyMock.anyObject())).andReturn(true);
 
@@ -431,13 +432,14 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
+    coordinator.resetInternals();
     assertEquals(0, coordinator.getQueues().size());
     assertEquals(0, coordinator.getIndex().size());
     assertEquals(0, coordinator.getRunning().size());
     coordinator.run();
     assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
-    Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
+    Map<Long,TreeSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
     assertNotNull(m);
     assertEquals(1, m.size());
     assertTrue(m.containsKey(1L));
@@ -454,9 +456,7 @@ public class CompactionCoordinatorTest {
     assertEquals(1, coordinator.getRunning().size());
 
     PowerMock.verifyAll();
-    coordinator.getQueues().clear();
-    coordinator.getIndex().clear();
-    coordinator.getRunning().clear();
+    coordinator.resetInternals();
     coordinator.close();
   }
 
@@ -465,7 +465,8 @@ public class CompactionCoordinatorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
     PowerMock.suppress(PowerMock.methods(ThriftUtil.class, "returnClient"));
-    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions"));
+    PowerMock.suppress(PowerMock.methods(DeadCompactionDetector.class, "detectDeadCompactions",
+        "detectDanglingFinalStateMarkers"));
 
     AccumuloConfiguration conf = PowerMock.createNiceMock(AccumuloConfiguration.class);
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
@@ -491,8 +492,8 @@ public class CompactionCoordinatorTest {
     TCompactionQueueSummary queueSummary = PowerMock.createNiceMock(TCompactionQueueSummary.class);
     EasyMock.expect(tsc.getCompactionQueueInfo(EasyMock.anyObject(), EasyMock.anyObject()))
         .andReturn(Collections.singletonList(queueSummary)).anyTimes();
-    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ");
-    EasyMock.expect(queueSummary.getPriority()).andReturn(1L);
+    EasyMock.expect(queueSummary.getQueue()).andReturn("R2DQ").anyTimes();
+    EasyMock.expect(queueSummary.getPriority()).andReturn(1L).anyTimes();
 
     ExternalCompactionId eci = ExternalCompactionId.generate(UUID.randomUUID());
     TExternalCompactionJob job = PowerMock.createNiceMock(TExternalCompactionJob.class);
@@ -510,6 +511,7 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
+    coordinator.resetInternals();
     assertEquals(0, coordinator.getQueues().size());
     assertEquals(0, coordinator.getIndex().size());
     assertEquals(0, coordinator.getRunning().size());
@@ -519,7 +521,7 @@ public class CompactionCoordinatorTest {
 
     assertEquals(1, coordinator.getQueues().size());
     QueueAndPriority qp = QueueAndPriority.get("R2DQ".intern(), 1L);
-    Map<Long,LinkedHashSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
+    Map<Long,TreeSet<TServerInstance>> m = coordinator.getQueues().get("R2DQ".intern());
     assertNotNull(m);
     assertEquals(1, m.size());
     assertTrue(m.containsKey(1L));
@@ -541,7 +543,7 @@ public class CompactionCoordinatorTest {
     assertEquals(eci.toString(), createdJob.getExternalCompactionId());
 
     assertEquals(1, coordinator.getQueues().size());
-    assertEquals(0, coordinator.getIndex().size());
+    assertEquals(1, coordinator.getIndex().size());
     assertEquals(1, coordinator.getRunning().size());
     Entry<ExternalCompactionId,RunningCompaction> entry =
         coordinator.getRunning().entrySet().iterator().next();
@@ -550,9 +552,7 @@ public class CompactionCoordinatorTest {
     assertEquals(eci.toString(), entry.getValue().getJob().getExternalCompactionId());
 
     PowerMock.verifyAll();
-    coordinator.getQueues().clear();
-    coordinator.getIndex().clear();
-    coordinator.getRunning().clear();
+    coordinator.resetInternals();
     coordinator.close();
 
   }
@@ -582,14 +582,13 @@ public class CompactionCoordinatorTest {
 
     TestCoordinator coordinator =
         new TestCoordinator(conf, finalizer, tservers, client, tsc, ctx, security);
-    coordinator.getQueues().clear();
-    coordinator.getIndex().clear();
-    coordinator.getRunning().clear();
+    coordinator.resetInternals();
     TExternalCompactionJob job = coordinator.getCompactionJob(TraceUtil.traceInfo(), creds, "R2DQ",
         "localhost:10240", UUID.randomUUID().toString());
     assertNull(job.getExternalCompactionId());
 
     PowerMock.verifyAll();
+    coordinator.resetInternals();
     coordinator.close();
   }
 

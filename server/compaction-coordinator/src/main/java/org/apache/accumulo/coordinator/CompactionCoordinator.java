@@ -93,7 +93,8 @@ public class CompactionCoordinator extends AbstractServer
   private static final long FIFTEEN_MINUTES =
       TimeUnit.MILLISECONDS.convert(Duration.of(15, TimeUnit.MINUTES.toChronoUnit()));
 
-  QueueSummaries queueSummaries = new QueueSummaries();
+  protected static final QueueSummaries QUEUE_SUMMARIES = new QueueSummaries();
+
   /* Map of compactionId to RunningCompactions */
   protected static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
       new ConcurrentHashMap<>();
@@ -373,7 +374,7 @@ public class CompactionCoordinator extends AbstractServer
                   QueueAndPriority.get(summary.getQueue().intern(), summary.getPriority());
               synchronized (qp) {
                 TIME_COMPACTOR_LAST_CHECKED.computeIfAbsent(qp.getQueue(), k -> 0L);
-                queueSummaries.update(tsi, summaries);
+                QUEUE_SUMMARIES.update(tsi, summaries);
               }
             });
           } finally {
@@ -382,7 +383,7 @@ public class CompactionCoordinator extends AbstractServer
         } catch (TException e) {
           LOG.warn("Error getting external compaction summaries from tablet server: {}",
               tsi.getHostAndPort(), e);
-          queueSummaries.remove(Set.of(tsi));
+          QUEUE_SUMMARIES.remove(Set.of(tsi));
         }
       });
 
@@ -435,7 +436,7 @@ public class CompactionCoordinator extends AbstractServer
     // run() will iterate over the current and added tservers and add them to the internal
     // data structures. For tservers that are deleted, we need to remove them from QUEUES
     // and INDEX
-    queueSummaries.remove(deleted);
+    QUEUE_SUMMARIES.remove(deleted);
   }
 
   /**
@@ -462,7 +463,7 @@ public class CompactionCoordinator extends AbstractServer
 
     TExternalCompactionJob result = null;
 
-    PrioTserver prioTserver = queueSummaries.getNextTserver(queueName);
+    PrioTserver prioTserver = QUEUE_SUMMARIES.getNextTserver(queueName);
 
     while (prioTserver != null) {
       TServerInstance tserver = prioTserver.tserver;
@@ -479,8 +480,8 @@ public class CompactionCoordinator extends AbstractServer
           LOG.debug("No compactions found for queue {} on tserver {}, trying next tserver", queue,
               tserver.getHostAndPort(), compactorAddress);
 
-          queueSummaries.removeSummary(tserver, queueName, prioTserver.prio);
-          prioTserver = queueSummaries.getNextTserver(queueName);
+          QUEUE_SUMMARIES.removeSummary(tserver, queueName, prioTserver.prio);
+          prioTserver = QUEUE_SUMMARIES.getNextTserver(queueName);
           continue;
         }
         RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
@@ -491,8 +492,8 @@ public class CompactionCoordinator extends AbstractServer
       } catch (TException e) {
         LOG.warn("Error from tserver {} while trying to reserve compaction, trying next tserver",
             ExternalCompactionUtil.getHostPortString(tserver.getHostAndPort()), e);
-        queueSummaries.removeSummary(tserver, queueName, prioTserver.prio);
-        prioTserver = queueSummaries.getNextTserver(queueName);
+        QUEUE_SUMMARIES.removeSummary(tserver, queueName, prioTserver.prio);
+        prioTserver = QUEUE_SUMMARIES.getNextTserver(queueName);
       } finally {
         ThriftUtil.returnClient(client);
       }
