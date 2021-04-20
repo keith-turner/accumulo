@@ -56,16 +56,13 @@ public class QueueSummaries {
     while (iter.hasNext()) {
       Entry<Long,TreeSet<TServerInstance>> next = iter.next();
       if (next.getValue().isEmpty()) {
-        iter.remove();
-      } else {
-        return next;
+        throw new IllegalStateException(
+            "Unexpected empty tserver set for queue " + queue + " and prio " + next.getKey());
       }
+      return next;
     }
 
-    QUEUES.remove(queue);
-
-    return null;
-
+    throw new IllegalStateException("Unexpected empty map for queue " + queue);
   }
 
   static class PrioTserver {
@@ -187,7 +184,13 @@ public class QueueSummaries {
         if (null != m) {
           TreeSet<TServerInstance> tservers = m.get(qp.getPriority());
           if (null != tservers) {
-            tservers.remove(tsi);
+            if (tservers.remove(tsi) && tservers.isEmpty()) {
+              m.remove(qp.getPriority());
+            }
+
+            if (m.isEmpty()) {
+              QUEUES.remove(qp.getQueue());
+            }
           }
         }
       });

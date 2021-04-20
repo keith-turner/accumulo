@@ -180,5 +180,13 @@ public class QueueSummariesTest {
       Assert.assertNull(queueSum.getNextTserver("q2"));
       Assert.assertNull(queueSum.getNextTserver("q3"));
     }
+
+    queueSum.remove(Set.of(ntsi("ts1")));
+
+    for (int i = 0; i < 3; i++) {
+      Assert.assertNull(queueSum.getNextTserver("q1"));
+      Assert.assertNull(queueSum.getNextTserver("q2"));
+      Assert.assertNull(queueSum.getNextTserver("q3"));
+    }
   }
 }
