@@ -44,6 +44,7 @@ import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
@@ -192,13 +193,51 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     }
   }
 
+  @Test
+  public void testDeleteTableDuringExternalCompaction() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+
+      String table1 = "ectt5";
+      createTable(client, table1, "cs1");
+      // set compaction ratio to 1 so that majc occurs naturally, not user compaction
+      client.tableOperations().setProperty(table1, Property.TABLE_MAJC_RATIO.toString(), "1.0");
+      // cause multiple rfiles to be created
+      writeData(client, table1);
+      writeData(client, table1);
+      writeData(client, table1);
+      writeData(client, table1);
+
+      // The ExternalDoNothingCompactor creates a compaction thread that
+      // sleeps for 5 minutes. The compaction should occur naturally.
+      // Wait for the coordinator to insert the running compaction metadata
+      // entry into the metadata table, then delete the table.
+      cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+
+      List<TabletMetadata> md = new ArrayList<>();
+      TabletsMetadata tm = getCluster().getServerContext().getAmple().readTablets()
+          .forLevel(DataLevel.USER).fetch(ColumnType.ECOMP).build();
+      tm.forEach(t -> md.add(t));
+
+      while (md.size() == 0) {
+        tm.close();
+        md.clear();
+        tm = getCluster().getServerContext().getAmple().readTablets().forLevel(DataLevel.USER)
+            .fetch(ColumnType.ECOMP).build();
+        tm.forEach(t -> md.add(t));
+      }
+      client.tableOperations().delete(table1);
+      // CBUG: How to verify? Metadata tablets are gone...
+      UtilWaitThread.sleep(1000); // to see the logs
+    }
+  }
+
   // CBUG add test that configures output file for external compaction
 
   // CBUG add test that verifies iterators configured on table (not on user compaction) are used in
   // external compaction
 
   @Test
-  // @Ignore // waiting for solution to issue #2019
   public void testExternalCompactionDeadTServer() throws Exception {
     // Shut down the normal TServers
     getCluster().getProcesses().get(TABLET_SERVER).forEach(p -> {
@@ -230,7 +269,6 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         fs = getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
       }
 
-      // We need to wait until the metadata entries show up
       LOG.info("Validating metadata table contents.");
       TabletsMetadata tm = getCluster().getServerContext().getAmple().readTablets()
           .forLevel(DataLevel.USER).fetch(ColumnType.ECOMP).build();

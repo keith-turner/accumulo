@@ -102,7 +102,7 @@ import com.beust.jcommander.Parameter;
 public class Compactor extends AbstractServer
     implements org.apache.accumulo.core.compaction.thrift.Compactor.Iface {
 
-  static class CompactorServerOpts extends ServerOpts {
+  public static class CompactorServerOpts extends ServerOpts {
     @Parameter(required = true, names = {"-q", "--queue"}, description = "compaction queue name")
     private String queueName = null;
 
@@ -113,10 +113,11 @@ public class Compactor extends AbstractServer
 
   private static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
   private static final long TIME_BETWEEN_GC_CHECKS = 5000;
-  private static final CompactionJobHolder JOB_HOLDER = new CompactionJobHolder();
   private static final long TEN_MEGABYTES = 10485760;
   private static final CompactionCoordinator.Client.Factory COORDINATOR_CLIENT_FACTORY =
       new CompactionCoordinator.Client.Factory();
+
+  protected static final CompactionJobHolder JOB_HOLDER = new CompactionJobHolder();
 
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
   private final UUID compactorId = UUID.randomUUID();
@@ -134,7 +135,7 @@ public class Compactor extends AbstractServer
   // Exposed for tests
   protected volatile Boolean shutdown = false;
 
-  Compactor(CompactorServerOpts opts, String[] args) {
+  protected Compactor(CompactorServerOpts opts, String[] args) {
     super("compactor", opts, args);
     queueName = opts.getQueueName();
     aconf = getConfiguration();
@@ -599,8 +600,8 @@ public class Compactor extends AbstractServer
         final CountDownLatch stopped = new CountDownLatch(1);
 
         final Thread compactionThread = Threads.createThread(
-            "Compaction job for tablet " + job.getExtent().toString(), this.createCompactionJob(job,
-                totalInputEntries, totalInputBytes, started, stopped, err));
+            "Compaction job for tablet " + job.getExtent().toString(),
+            createCompactionJob(job, totalInputEntries, totalInputBytes, started, stopped, err));
 
         synchronized (JOB_HOLDER) {
           JOB_HOLDER.set(job, compactionThread);
@@ -608,7 +609,8 @@ public class Compactor extends AbstractServer
 
         final String tableId = new String(job.getExtent().getTable(), UTF_8);
         final ServerContext ctxRef = getContext();
-        String tablePath = getContext().getZooKeeperRoot() + Constants.ZTABLES + "/" + tableId;
+        final String tablePath =
+            getContext().getZooKeeperRoot() + Constants.ZTABLES + "/" + tableId;
         Watcher tableNodeWatcher = new Watcher() {
           @Override
           public void process(WatchedEvent event) {
@@ -682,12 +684,14 @@ public class Compactor extends AbstractServer
                       e.getMessage());
                 }
               }
+            } else {
+              LOG.warn("Waiting on compaction thread to finish, but no RUNNING compaction");
             }
           }
           compactionThread.join();
           LOG.info("Compaction thread finished.");
 
-          if (compactionThread.isInterrupted()
+          if (compactionThread.isInterrupted() || JOB_HOLDER.isCancelled()
               || ((err.get() != null && err.get().getClass().equals(InterruptedException.class)))) {
             LOG.warn("Compaction thread was interrupted, sending CANCELLED state");
             try {
@@ -736,8 +740,12 @@ public class Compactor extends AbstractServer
             LOG.error("Error cancelling compaction.", e2);
           }
         } finally {
-          getContext().getZooReaderWriter().getZooKeeper().removeWatches(tablePath,
-              tableNodeWatcher, WatcherType.Any, true);
+          try {
+            getContext().getZooReaderWriter().getZooKeeper().removeWatches(tablePath,
+                tableNodeWatcher, WatcherType.Any, true);
+          } catch (KeeperException e) {
+            LOG.error("Error removing watch from {}.", tablePath, e);
+          }
           currentCompactionId.set(null);
         }
 
