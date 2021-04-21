@@ -30,20 +30,17 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
 
   private static final org.apache.thrift.protocol.TField QUEUE_FIELD_DESC = new org.apache.thrift.protocol.TField("queue", org.apache.thrift.protocol.TType.STRING, (short)1);
   private static final org.apache.thrift.protocol.TField PRIORITY_FIELD_DESC = new org.apache.thrift.protocol.TField("priority", org.apache.thrift.protocol.TType.I64, (short)2);
-  private static final org.apache.thrift.protocol.TField COUNT_FIELD_DESC = new org.apache.thrift.protocol.TField("count", org.apache.thrift.protocol.TType.I32, (short)3);
 
   private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new TCompactionQueueSummaryStandardSchemeFactory();
   private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new TCompactionQueueSummaryTupleSchemeFactory();
 
   public @org.apache.thrift.annotation.Nullable java.lang.String queue; // required
   public long priority; // required
-  public int count; // required
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     QUEUE((short)1, "queue"),
-    PRIORITY((short)2, "priority"),
-    COUNT((short)3, "count");
+    PRIORITY((short)2, "priority");
 
     private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -63,8 +60,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
           return QUEUE;
         case 2: // PRIORITY
           return PRIORITY;
-        case 3: // COUNT
-          return COUNT;
         default:
           return null;
       }
@@ -107,7 +102,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
 
   // isset id assignments
   private static final int __PRIORITY_ISSET_ID = 0;
-  private static final int __COUNT_ISSET_ID = 1;
   private byte __isset_bitfield = 0;
   public static final java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
@@ -116,8 +110,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     tmpMap.put(_Fields.PRIORITY, new org.apache.thrift.meta_data.FieldMetaData("priority", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
-    tmpMap.put(_Fields.COUNT, new org.apache.thrift.meta_data.FieldMetaData("count", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32)));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
     org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(TCompactionQueueSummary.class, metaDataMap);
   }
@@ -127,15 +119,12 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
 
   public TCompactionQueueSummary(
     java.lang.String queue,
-    long priority,
-    int count)
+    long priority)
   {
     this();
     this.queue = queue;
     this.priority = priority;
     setPriorityIsSet(true);
-    this.count = count;
-    setCountIsSet(true);
   }
 
   /**
@@ -147,7 +136,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
       this.queue = other.queue;
     }
     this.priority = other.priority;
-    this.count = other.count;
   }
 
   public TCompactionQueueSummary deepCopy() {
@@ -159,8 +147,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
     this.queue = null;
     setPriorityIsSet(false);
     this.priority = 0;
-    setCountIsSet(false);
-    this.count = 0;
   }
 
   @org.apache.thrift.annotation.Nullable
@@ -211,29 +197,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
     __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __PRIORITY_ISSET_ID, value);
   }
 
-  public int getCount() {
-    return this.count;
-  }
-
-  public TCompactionQueueSummary setCount(int count) {
-    this.count = count;
-    setCountIsSet(true);
-    return this;
-  }
-
-  public void unsetCount() {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __COUNT_ISSET_ID);
-  }
-
-  /** Returns true if field count is set (has been assigned a value) and false otherwise */
-  public boolean isSetCount() {
-    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __COUNT_ISSET_ID);
-  }
-
-  public void setCountIsSet(boolean value) {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __COUNT_ISSET_ID, value);
-  }
-
   public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
     switch (field) {
     case QUEUE:
@@ -252,14 +215,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
       }
       break;
 
-    case COUNT:
-      if (value == null) {
-        unsetCount();
-      } else {
-        setCount((java.lang.Integer)value);
-      }
-      break;
-
     }
   }
 
@@ -271,9 +226,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
 
     case PRIORITY:
       return getPriority();
-
-    case COUNT:
-      return getCount();
 
     }
     throw new java.lang.IllegalStateException();
@@ -290,8 +242,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
       return isSetQueue();
     case PRIORITY:
       return isSetPriority();
-    case COUNT:
-      return isSetCount();
     }
     throw new java.lang.IllegalStateException();
   }
@@ -329,15 +279,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
         return false;
     }
 
-    boolean this_present_count = true;
-    boolean that_present_count = true;
-    if (this_present_count || that_present_count) {
-      if (!(this_present_count && that_present_count))
-        return false;
-      if (this.count != that.count)
-        return false;
-    }
-
     return true;
   }
 
@@ -350,8 +291,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
       hashCode = hashCode * 8191 + queue.hashCode();
 
     hashCode = hashCode * 8191 + org.apache.thrift.TBaseHelper.hashCode(priority);
-
-    hashCode = hashCode * 8191 + count;
 
     return hashCode;
   }
@@ -380,16 +319,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
     }
     if (isSetPriority()) {
       lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.priority, other.priority);
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-    }
-    lastComparison = java.lang.Boolean.valueOf(isSetCount()).compareTo(other.isSetCount());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    if (isSetCount()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.count, other.count);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -425,10 +354,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
     if (!first) sb.append(", ");
     sb.append("priority:");
     sb.append(this.priority);
-    first = false;
-    if (!first) sb.append(", ");
-    sb.append("count:");
-    sb.append(this.count);
     first = false;
     sb.append(")");
     return sb.toString();
@@ -491,14 +416,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 3: // COUNT
-            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.count = iprot.readI32();
-              struct.setCountIsSet(true);
-            } else { 
-              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
-            }
-            break;
           default:
             org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
         }
@@ -521,9 +438,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
       }
       oprot.writeFieldBegin(PRIORITY_FIELD_DESC);
       oprot.writeI64(struct.priority);
-      oprot.writeFieldEnd();
-      oprot.writeFieldBegin(COUNT_FIELD_DESC);
-      oprot.writeI32(struct.count);
       oprot.writeFieldEnd();
       oprot.writeFieldStop();
       oprot.writeStructEnd();
@@ -549,25 +463,19 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
       if (struct.isSetPriority()) {
         optionals.set(1);
       }
-      if (struct.isSetCount()) {
-        optionals.set(2);
-      }
-      oprot.writeBitSet(optionals, 3);
+      oprot.writeBitSet(optionals, 2);
       if (struct.isSetQueue()) {
         oprot.writeString(struct.queue);
       }
       if (struct.isSetPriority()) {
         oprot.writeI64(struct.priority);
       }
-      if (struct.isSetCount()) {
-        oprot.writeI32(struct.count);
-      }
     }
 
     @Override
     public void read(org.apache.thrift.protocol.TProtocol prot, TCompactionQueueSummary struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-      java.util.BitSet incoming = iprot.readBitSet(3);
+      java.util.BitSet incoming = iprot.readBitSet(2);
       if (incoming.get(0)) {
         struct.queue = iprot.readString();
         struct.setQueueIsSet(true);
@@ -575,10 +483,6 @@ public class TCompactionQueueSummary implements org.apache.thrift.TBase<TCompact
       if (incoming.get(1)) {
         struct.priority = iprot.readI64();
         struct.setPriorityIsSet(true);
-      }
-      if (incoming.get(2)) {
-        struct.count = iprot.readI32();
-        struct.setCountIsSet(true);
       }
     }
   }

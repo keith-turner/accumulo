@@ -86,18 +86,7 @@ service CompactionCoordinator {
     4:string compactor
     5:string externalCompactionId
   )
-
-  /*
-   * Called by TabletServer (or CLI) to get current status of compaction for a tablet
-   */
-  list<Status> getCompactionStatus(
-    1:trace.TInfo tinfo
-    2:security.TCredentials credentials
-    3:string externalCompactionId
-  ) throws (
-    1:UnknownCompactionIdException e
-  )
-     
+  
   /*
    * Called by Compactor to update the Coordinator with the state of the compaction
    */

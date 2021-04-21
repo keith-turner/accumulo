@@ -45,7 +45,7 @@ public class QueueSummariesTest {
     List<TCompactionQueueSummary> summaries = new ArrayList<>();
 
     for (int i = 0; i < data.length; i += 2) {
-      summaries.add(new TCompactionQueueSummary(data[i], Long.parseLong(data[i + 1]), 0));
+      summaries.add(new TCompactionQueueSummary(data[i], Long.parseLong(data[i + 1])));
     }
 
     queueSum.update(tsi, summaries);

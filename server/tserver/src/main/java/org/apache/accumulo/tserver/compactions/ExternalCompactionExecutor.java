@@ -171,8 +171,6 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
   // TODO maybe create non-thrift type to avoid thrift types all over the code
   public TCompactionQueueSummary summarize() {
-    int count = queuedTask.size();
-
     long priority = 0;
     ExternalJob topJob = queue.peek();
     while (topJob != null && topJob.getStatus() != Status.QUEUED) {
@@ -184,7 +182,7 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
       priority = topJob.getJob().getPriority();
     }
 
-    return new TCompactionQueueSummary(ceid.getExernalName(), priority, count);
+    return new TCompactionQueueSummary(ceid.getExernalName(), priority);
   }
 
 }

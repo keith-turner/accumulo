@@ -22,7 +22,6 @@ import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +37,6 @@ import org.apache.accumulo.core.clientImpl.thrift.SecurityErrorCode;
 import org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Iface;
 import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.compaction.thrift.Compactor;
-import org.apache.accumulo.core.compaction.thrift.Status;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -597,38 +595,6 @@ public class CompactionCoordinator extends AbstractServer
             rc.getCompactorAddress(), rc.getJob(), e);
       }
     }
-  }
-
-  /**
-   * TServer calls getCompactionStatus to get information about the compaction
-   *
-   * @param tinfo
-   *          trace info
-   * @param credentials
-   *          tcredentials object
-   * @param externalCompactionId
-   *          compaction id
-   * @return compaction stats or null if not running
-   * @throws TException
-   *           thrift error
-   */
-  @Override
-  public List<Status> getCompactionStatus(TInfo tinfo, TCredentials credentials,
-      String externalCompactionId) throws TException {
-    // do not expect users to call this directly, expect other tservers to call this method
-    if (!security.canPerformSystemActions(credentials)) {
-      throw new AccumuloSecurityException(credentials.getPrincipal(),
-          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
-    }
-    final List<Status> status = new ArrayList<>();
-    final RunningCompaction rc = RUNNING.get(ExternalCompactionId.of(externalCompactionId));
-    if (null != rc) {
-      rc.getUpdates().forEach((k, v) -> {
-        status.add(new Status(v.getTimestamp(), rc.getJob().getExternalCompactionId(),
-            rc.getCompactorAddress(), v.getState(), v.getMessage()));
-      });
-    }
-    return status;
   }
 
   /**

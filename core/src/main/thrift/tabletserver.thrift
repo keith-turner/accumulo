@@ -192,7 +192,6 @@ enum CompactionKind {
 struct TCompactionQueueSummary {
   1:string queue
   2:i64 priority
-  3:i32 count
 }
 
 struct CompactionStats{
