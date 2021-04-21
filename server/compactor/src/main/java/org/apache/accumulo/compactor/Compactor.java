@@ -40,8 +40,8 @@ import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.clientImpl.thrift.SecurityErrorCode;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.compaction.thrift.CompactionCoordinator;
-import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.compaction.thrift.Compactor.Iface;
+import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -54,7 +54,7 @@ import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
@@ -325,7 +325,7 @@ public class Compactor extends AbstractServer
    * @throws RetriesExceededException
    *           thrown when retries have been exceeded
    */
-  protected void updateCompactionState(TExternalCompactionJob job, CompactionState state,
+  protected void updateCompactionState(TExternalCompactionJob job, TCompactionState state,
       String message) throws RetriesExceededException {
     // CBUG the return type was changed from Void to String just to make this work. When type was
     // Void and returned null, it would retry forever. Could specialize RetryableThriftCall for case
@@ -385,7 +385,7 @@ public class Compactor extends AbstractServer
    * @throws RetriesExceededException
    *           thrown when retries have been exceeded
    */
-  protected void updateCompactionCompleted(TExternalCompactionJob job, CompactionStats stats)
+  protected void updateCompactionCompleted(TExternalCompactionJob job, TCompactionStats stats)
       throws RetriesExceededException {
     RetryableThriftCall<String> thriftCall = new RetryableThriftCall<>(1000,
         RetryableThriftCall.MAX_WAIT_TIME, 25, new RetryableThriftFunction<String>() {
@@ -482,7 +482,7 @@ public class Compactor extends AbstractServer
       public void run() {
         try {
           LOG.info("Starting up compaction runnable for job: {}", job);
-          updateCompactionState(job, CompactionState.STARTED, "Compaction started");
+          updateCompactionState(job, TCompactionState.STARTED, "Compaction started");
 
           final TableId tableId = TableId.of(new String(job.getExtent().getTable(), UTF_8));
           final TableConfiguration tConfig = getContext().getTableConfiguration(tableId);
@@ -511,7 +511,7 @@ public class Compactor extends AbstractServer
             started.countDown();
 
             org.apache.accumulo.server.compaction.CompactionStats stat = compactor.call();
-            CompactionStats cs = new CompactionStats();
+            TCompactionStats cs = new TCompactionStats();
             cs.setEntriesRead(stat.getEntriesRead());
             cs.setEntriesWritten(stat.getEntriesWritten());
             cs.setFileSize(stat.getFileSize());
@@ -519,7 +519,7 @@ public class Compactor extends AbstractServer
           }
           LOG.info("Compaction completed successfully {} ", job.getExternalCompactionId());
           // Update state when completed
-          updateCompactionState(job, CompactionState.SUCCEEDED,
+          updateCompactionState(job, TCompactionState.SUCCEEDED,
               "Compaction completed successfully");
         } catch (Exception e) {
           LOG.error("Compaction failed", e);
@@ -678,7 +678,7 @@ public class Compactor extends AbstractServer
                 LOG.info(message);
                 try {
                   LOG.info("Updating coordinator with compaction progress: {}.", message);
-                  updateCompactionState(job, CompactionState.IN_PROGRESS, message);
+                  updateCompactionState(job, TCompactionState.IN_PROGRESS, message);
                 } catch (RetriesExceededException e) {
                   LOG.warn("Error updating coordinator with compaction progress, error: {}",
                       e.getMessage());
@@ -695,7 +695,7 @@ public class Compactor extends AbstractServer
               || ((err.get() != null && err.get().getClass().equals(InterruptedException.class)))) {
             LOG.warn("Compaction thread was interrupted, sending CANCELLED state");
             try {
-              updateCompactionState(job, CompactionState.CANCELLED, "Compaction cancelled");
+              updateCompactionState(job, TCompactionState.CANCELLED, "Compaction cancelled");
               updateCompactionFailed(job);
             } catch (RetriesExceededException e) {
               LOG.error("Error updating coordinator with compaction cancellation.", e);
@@ -705,7 +705,7 @@ public class Compactor extends AbstractServer
           } else if (err.get() != null) {
             try {
               LOG.info("Updating coordinator with compaction failure.");
-              updateCompactionState(job, CompactionState.FAILED,
+              updateCompactionState(job, TCompactionState.FAILED,
                   "Compaction failed due to: " + err.get().getMessage());
               updateCompactionFailed(job);
             } catch (RetriesExceededException e) {

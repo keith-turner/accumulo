@@ -25,7 +25,7 @@ include "security.thrift"
 include "tabletserver.thrift"
 include "trace.thrift"
 
-enum CompactionState {
+enum TCompactionState {
   # Coordinator should set state to ASSIGNED when getCompactionJob is called by Compactor
   ASSIGNED
   # Compactor should set state to STARTED when compaction has successfully begun
@@ -44,7 +44,7 @@ struct Status {
   1:i64 timestamp
   2:string externalCompactionId
   3:string compactor
-  4:CompactionState state
+  4:TCompactionState state
   5:string message
 }
 
@@ -71,7 +71,7 @@ service CompactionCoordinator {
     2:security.TCredentials credentials  
     3:string externalCompactionId
     4:data.TKeyExtent extent
-    5:tabletserver.CompactionStats stats
+    5:tabletserver.TCompactionStats stats
   ) throws (
     1:UnknownCompactionIdException e
   )
@@ -94,7 +94,7 @@ service CompactionCoordinator {
     1:trace.TInfo tinfo
     2:security.TCredentials credentials
     3:string externalCompactionId
-    4:CompactionState state
+    4:TCompactionState state
     5:string message
     6:i64 timestamp
   ) throws (

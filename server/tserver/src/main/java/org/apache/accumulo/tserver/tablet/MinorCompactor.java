@@ -38,7 +38,7 @@ import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.metadata.TabletFile;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionReason;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServerContext;
@@ -100,15 +100,15 @@ public class MinorCompactor extends Compactor {
           }
 
           @Override
-          public CompactionReason getReason() {
+          public TCompactionReason getReason() {
             switch (mincReason) {
               case USER:
-                return CompactionReason.USER;
+                return TCompactionReason.USER;
               case CLOSE:
-                return CompactionReason.CLOSE;
+                return TCompactionReason.CLOSE;
               case SYSTEM:
               default:
-                return CompactionReason.SYSTEM;
+                return TCompactionReason.SYSTEM;
             }
           }
         }, Collections.emptyList(), tableConfig);

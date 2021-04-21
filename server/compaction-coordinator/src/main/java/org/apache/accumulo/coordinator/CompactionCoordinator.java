@@ -35,8 +35,8 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.clientImpl.ThriftTransportPool;
 import org.apache.accumulo.core.clientImpl.thrift.SecurityErrorCode;
 import org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Iface;
-import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.compaction.thrift.Compactor;
+import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -49,8 +49,8 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
@@ -617,7 +617,7 @@ public class CompactionCoordinator extends AbstractServer
    */
   @Override
   public void compactionCompleted(TInfo tinfo, TCredentials credentials,
-      String externalCompactionId, TKeyExtent textent, CompactionStats stats) throws TException {
+      String externalCompactionId, TKeyExtent textent, TCompactionStats stats) throws TException {
     // do not expect users to call this directly, expect other tservers to call this method
     if (!security.canPerformSystemActions(credentials)) {
       throw new AccumuloSecurityException(credentials.getPrincipal(),
@@ -675,7 +675,7 @@ public class CompactionCoordinator extends AbstractServer
    * @throws TException
    *           thrift error
    */
-  public CompactionStats isCompactionCompleted(String externalCompactionId) throws TException {
+  public TCompactionStats isCompactionCompleted(String externalCompactionId) throws TException {
     final var ecid = ExternalCompactionId.of(externalCompactionId);
     final RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc && rc.isCompleted()) {
@@ -692,7 +692,7 @@ public class CompactionCoordinator extends AbstractServer
       LOG.debug("isCompactionCompleted called by TServer for {}, but compaction is not complete.",
           externalCompactionId);
       // Return empty stats as a marker that it's not done.
-      return new CompactionStats();
+      return new TCompactionStats();
     }
   }
 
@@ -718,7 +718,7 @@ public class CompactionCoordinator extends AbstractServer
    */
   @Override
   public void updateCompactionStatus(TInfo tinfo, TCredentials credentials,
-      String externalCompactionId, CompactionState state, String message, long timestamp)
+      String externalCompactionId, TCompactionState state, String message, long timestamp)
       throws TException {
     // do not expect users to call this directly, expect other tservers to call this method
     if (!security.canPerformSystemActions(credentials)) {

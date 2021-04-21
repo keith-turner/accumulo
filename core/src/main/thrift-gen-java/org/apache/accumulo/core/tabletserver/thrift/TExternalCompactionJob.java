@@ -53,17 +53,17 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   public @org.apache.thrift.annotation.Nullable IteratorConfig iteratorSettings; // required
   /**
    * 
-   * @see CompactionType
+   * @see TCompactionType
    */
-  public @org.apache.thrift.annotation.Nullable CompactionType type; // required
+  public @org.apache.thrift.annotation.Nullable TCompactionType type; // required
   /**
    * 
-   * @see CompactionReason
+   * @see TCompactionReason
    */
-  public @org.apache.thrift.annotation.Nullable CompactionReason reason; // required
+  public @org.apache.thrift.annotation.Nullable TCompactionReason reason; // required
   public @org.apache.thrift.annotation.Nullable java.lang.String outputFile; // required
   public boolean propagateDeletes; // required
-  public @org.apache.thrift.annotation.Nullable CompactionKind kind; // required
+  public @org.apache.thrift.annotation.Nullable TCompactionKind kind; // required
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -76,12 +76,12 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     ITERATOR_SETTINGS((short)7, "iteratorSettings"),
     /**
      * 
-     * @see CompactionType
+     * @see TCompactionType
      */
     TYPE((short)8, "type"),
     /**
      * 
-     * @see CompactionReason
+     * @see TCompactionReason
      */
     REASON((short)9, "reason"),
     OUTPUT_FILE((short)10, "outputFile"),
@@ -191,15 +191,15 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     tmpMap.put(_Fields.ITERATOR_SETTINGS, new org.apache.thrift.meta_data.FieldMetaData("iteratorSettings", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, IteratorConfig.class)));
     tmpMap.put(_Fields.TYPE, new org.apache.thrift.meta_data.FieldMetaData("type", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, CompactionType.class)));
+        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, TCompactionType.class)));
     tmpMap.put(_Fields.REASON, new org.apache.thrift.meta_data.FieldMetaData("reason", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, CompactionReason.class)));
+        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, TCompactionReason.class)));
     tmpMap.put(_Fields.OUTPUT_FILE, new org.apache.thrift.meta_data.FieldMetaData("outputFile", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     tmpMap.put(_Fields.PROPAGATE_DELETES, new org.apache.thrift.meta_data.FieldMetaData("propagateDeletes", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.BOOL)));
     tmpMap.put(_Fields.KIND, new org.apache.thrift.meta_data.FieldMetaData("kind", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.ENUM        , "CompactionKind")));
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.ENUM        , "TCompactionKind")));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
     org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(TExternalCompactionJob.class, metaDataMap);
   }
@@ -215,11 +215,11 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     int readRate,
     int writeRate,
     IteratorConfig iteratorSettings,
-    CompactionType type,
-    CompactionReason reason,
+    TCompactionType type,
+    TCompactionReason reason,
     java.lang.String outputFile,
     boolean propagateDeletes,
-    CompactionKind kind)
+    TCompactionKind kind)
   {
     this();
     this.externalCompactionId = externalCompactionId;
@@ -490,18 +490,18 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
 
   /**
    * 
-   * @see CompactionType
+   * @see TCompactionType
    */
   @org.apache.thrift.annotation.Nullable
-  public CompactionType getType() {
+  public TCompactionType getType() {
     return this.type;
   }
 
   /**
    * 
-   * @see CompactionType
+   * @see TCompactionType
    */
-  public TExternalCompactionJob setType(@org.apache.thrift.annotation.Nullable CompactionType type) {
+  public TExternalCompactionJob setType(@org.apache.thrift.annotation.Nullable TCompactionType type) {
     this.type = type;
     return this;
   }
@@ -523,18 +523,18 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
 
   /**
    * 
-   * @see CompactionReason
+   * @see TCompactionReason
    */
   @org.apache.thrift.annotation.Nullable
-  public CompactionReason getReason() {
+  public TCompactionReason getReason() {
     return this.reason;
   }
 
   /**
    * 
-   * @see CompactionReason
+   * @see TCompactionReason
    */
-  public TExternalCompactionJob setReason(@org.apache.thrift.annotation.Nullable CompactionReason reason) {
+  public TExternalCompactionJob setReason(@org.apache.thrift.annotation.Nullable TCompactionReason reason) {
     this.reason = reason;
     return this;
   }
@@ -603,11 +603,11 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   }
 
   @org.apache.thrift.annotation.Nullable
-  public CompactionKind getKind() {
+  public TCompactionKind getKind() {
     return this.kind;
   }
 
-  public TExternalCompactionJob setKind(@org.apache.thrift.annotation.Nullable CompactionKind kind) {
+  public TExternalCompactionJob setKind(@org.apache.thrift.annotation.Nullable TCompactionKind kind) {
     this.kind = kind;
     return this;
   }
@@ -689,7 +689,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (value == null) {
         unsetType();
       } else {
-        setType((CompactionType)value);
+        setType((TCompactionType)value);
       }
       break;
 
@@ -697,7 +697,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (value == null) {
         unsetReason();
       } else {
-        setReason((CompactionReason)value);
+        setReason((TCompactionReason)value);
       }
       break;
 
@@ -721,7 +721,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (value == null) {
         unsetKind();
       } else {
-        setKind((CompactionKind)value);
+        setKind((TCompactionKind)value);
       }
       break;
 
@@ -1329,7 +1329,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
             break;
           case 8: // TYPE
             if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.type = org.apache.accumulo.core.tabletserver.thrift.CompactionType.findByValue(iprot.readI32());
+              struct.type = org.apache.accumulo.core.tabletserver.thrift.TCompactionType.findByValue(iprot.readI32());
               struct.setTypeIsSet(true);
             } else { 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
@@ -1337,7 +1337,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
             break;
           case 9: // REASON
             if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.reason = org.apache.accumulo.core.tabletserver.thrift.CompactionReason.findByValue(iprot.readI32());
+              struct.reason = org.apache.accumulo.core.tabletserver.thrift.TCompactionReason.findByValue(iprot.readI32());
               struct.setReasonIsSet(true);
             } else { 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
@@ -1361,7 +1361,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
             break;
           case 12: // KIND
             if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.kind = org.apache.accumulo.core.tabletserver.thrift.CompactionKind.findByValue(iprot.readI32());
+              struct.kind = org.apache.accumulo.core.tabletserver.thrift.TCompactionKind.findByValue(iprot.readI32());
               struct.setKindIsSet(true);
             } else { 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
@@ -1585,11 +1585,11 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         struct.setIteratorSettingsIsSet(true);
       }
       if (incoming.get(7)) {
-        struct.type = org.apache.accumulo.core.tabletserver.thrift.CompactionType.findByValue(iprot.readI32());
+        struct.type = org.apache.accumulo.core.tabletserver.thrift.TCompactionType.findByValue(iprot.readI32());
         struct.setTypeIsSet(true);
       }
       if (incoming.get(8)) {
-        struct.reason = org.apache.accumulo.core.tabletserver.thrift.CompactionReason.findByValue(iprot.readI32());
+        struct.reason = org.apache.accumulo.core.tabletserver.thrift.TCompactionReason.findByValue(iprot.readI32());
         struct.setReasonIsSet(true);
       }
       if (incoming.get(9)) {
@@ -1601,7 +1601,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         struct.setPropagateDeletesIsSet(true);
       }
       if (incoming.get(11)) {
-        struct.kind = org.apache.accumulo.core.tabletserver.thrift.CompactionKind.findByValue(iprot.readI32());
+        struct.kind = org.apache.accumulo.core.tabletserver.thrift.TCompactionKind.findByValue(iprot.readI32());
         struct.setKindIsSet(true);
       }
     }

@@ -18,15 +18,15 @@
  */
 package org.apache.accumulo.coordinator;
 
-import org.apache.accumulo.core.compaction.thrift.CompactionState;
+import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 
 public class CompactionUpdate {
 
   private final Long timestamp;
   private final String message;
-  private final CompactionState state;
+  private final TCompactionState state;
 
-  CompactionUpdate(Long timestamp, String message, CompactionState state) {
+  CompactionUpdate(Long timestamp, String message, TCompactionState state) {
     super();
     this.timestamp = timestamp;
     this.message = message;
@@ -41,7 +41,7 @@ public class CompactionUpdate {
     return message;
   }
 
-  public CompactionState getState() {
+  public TCompactionState getState() {
     return state;
   }
 

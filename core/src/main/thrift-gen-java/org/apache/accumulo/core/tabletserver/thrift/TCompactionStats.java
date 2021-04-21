@@ -25,15 +25,15 @@
 package org.apache.accumulo.core.tabletserver.thrift;
 
 @SuppressWarnings({"cast", "rawtypes", "serial", "unchecked", "unused"})
-public class CompactionStats implements org.apache.thrift.TBase<CompactionStats, CompactionStats._Fields>, java.io.Serializable, Cloneable, Comparable<CompactionStats> {
-  private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("CompactionStats");
+public class TCompactionStats implements org.apache.thrift.TBase<TCompactionStats, TCompactionStats._Fields>, java.io.Serializable, Cloneable, Comparable<TCompactionStats> {
+  private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("TCompactionStats");
 
   private static final org.apache.thrift.protocol.TField ENTRIES_READ_FIELD_DESC = new org.apache.thrift.protocol.TField("entriesRead", org.apache.thrift.protocol.TType.I64, (short)1);
   private static final org.apache.thrift.protocol.TField ENTRIES_WRITTEN_FIELD_DESC = new org.apache.thrift.protocol.TField("entriesWritten", org.apache.thrift.protocol.TType.I64, (short)2);
   private static final org.apache.thrift.protocol.TField FILE_SIZE_FIELD_DESC = new org.apache.thrift.protocol.TField("fileSize", org.apache.thrift.protocol.TType.I64, (short)3);
 
-  private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new CompactionStatsStandardSchemeFactory();
-  private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new CompactionStatsTupleSchemeFactory();
+  private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new TCompactionStatsStandardSchemeFactory();
+  private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new TCompactionStatsTupleSchemeFactory();
 
   public long entriesRead; // required
   public long entriesWritten; // required
@@ -120,13 +120,13 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
     tmpMap.put(_Fields.FILE_SIZE, new org.apache.thrift.meta_data.FieldMetaData("fileSize", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
-    org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(CompactionStats.class, metaDataMap);
+    org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(TCompactionStats.class, metaDataMap);
   }
 
-  public CompactionStats() {
+  public TCompactionStats() {
   }
 
-  public CompactionStats(
+  public TCompactionStats(
     long entriesRead,
     long entriesWritten,
     long fileSize)
@@ -143,15 +143,15 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
   /**
    * Performs a deep copy on <i>other</i>.
    */
-  public CompactionStats(CompactionStats other) {
+  public TCompactionStats(TCompactionStats other) {
     __isset_bitfield = other.__isset_bitfield;
     this.entriesRead = other.entriesRead;
     this.entriesWritten = other.entriesWritten;
     this.fileSize = other.fileSize;
   }
 
-  public CompactionStats deepCopy() {
-    return new CompactionStats(this);
+  public TCompactionStats deepCopy() {
+    return new TCompactionStats(this);
   }
 
   @Override
@@ -168,7 +168,7 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
     return this.entriesRead;
   }
 
-  public CompactionStats setEntriesRead(long entriesRead) {
+  public TCompactionStats setEntriesRead(long entriesRead) {
     this.entriesRead = entriesRead;
     setEntriesReadIsSet(true);
     return this;
@@ -191,7 +191,7 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
     return this.entriesWritten;
   }
 
-  public CompactionStats setEntriesWritten(long entriesWritten) {
+  public TCompactionStats setEntriesWritten(long entriesWritten) {
     this.entriesWritten = entriesWritten;
     setEntriesWrittenIsSet(true);
     return this;
@@ -214,7 +214,7 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
     return this.fileSize;
   }
 
-  public CompactionStats setFileSize(long fileSize) {
+  public TCompactionStats setFileSize(long fileSize) {
     this.fileSize = fileSize;
     setFileSizeIsSet(true);
     return this;
@@ -299,12 +299,12 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
   public boolean equals(java.lang.Object that) {
     if (that == null)
       return false;
-    if (that instanceof CompactionStats)
-      return this.equals((CompactionStats)that);
+    if (that instanceof TCompactionStats)
+      return this.equals((TCompactionStats)that);
     return false;
   }
 
-  public boolean equals(CompactionStats that) {
+  public boolean equals(TCompactionStats that) {
     if (that == null)
       return false;
     if (this == that)
@@ -354,7 +354,7 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
   }
 
   @Override
-  public int compareTo(CompactionStats other) {
+  public int compareTo(TCompactionStats other) {
     if (!getClass().equals(other.getClass())) {
       return getClass().getName().compareTo(other.getClass().getName());
     }
@@ -409,7 +409,7 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
 
   @Override
   public java.lang.String toString() {
-    java.lang.StringBuilder sb = new java.lang.StringBuilder("CompactionStats(");
+    java.lang.StringBuilder sb = new java.lang.StringBuilder("TCompactionStats(");
     boolean first = true;
 
     sb.append("entriesRead:");
@@ -450,15 +450,15 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
     }
   }
 
-  private static class CompactionStatsStandardSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
-    public CompactionStatsStandardScheme getScheme() {
-      return new CompactionStatsStandardScheme();
+  private static class TCompactionStatsStandardSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
+    public TCompactionStatsStandardScheme getScheme() {
+      return new TCompactionStatsStandardScheme();
     }
   }
 
-  private static class CompactionStatsStandardScheme extends org.apache.thrift.scheme.StandardScheme<CompactionStats> {
+  private static class TCompactionStatsStandardScheme extends org.apache.thrift.scheme.StandardScheme<TCompactionStats> {
 
-    public void read(org.apache.thrift.protocol.TProtocol iprot, CompactionStats struct) throws org.apache.thrift.TException {
+    public void read(org.apache.thrift.protocol.TProtocol iprot, TCompactionStats struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TField schemeField;
       iprot.readStructBegin();
       while (true)
@@ -503,7 +503,7 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
       struct.validate();
     }
 
-    public void write(org.apache.thrift.protocol.TProtocol oprot, CompactionStats struct) throws org.apache.thrift.TException {
+    public void write(org.apache.thrift.protocol.TProtocol oprot, TCompactionStats struct) throws org.apache.thrift.TException {
       struct.validate();
 
       oprot.writeStructBegin(STRUCT_DESC);
@@ -522,16 +522,16 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
 
   }
 
-  private static class CompactionStatsTupleSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
-    public CompactionStatsTupleScheme getScheme() {
-      return new CompactionStatsTupleScheme();
+  private static class TCompactionStatsTupleSchemeFactory implements org.apache.thrift.scheme.SchemeFactory {
+    public TCompactionStatsTupleScheme getScheme() {
+      return new TCompactionStatsTupleScheme();
     }
   }
 
-  private static class CompactionStatsTupleScheme extends org.apache.thrift.scheme.TupleScheme<CompactionStats> {
+  private static class TCompactionStatsTupleScheme extends org.apache.thrift.scheme.TupleScheme<TCompactionStats> {
 
     @Override
-    public void write(org.apache.thrift.protocol.TProtocol prot, CompactionStats struct) throws org.apache.thrift.TException {
+    public void write(org.apache.thrift.protocol.TProtocol prot, TCompactionStats struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol oprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
       java.util.BitSet optionals = new java.util.BitSet();
       if (struct.isSetEntriesRead()) {
@@ -556,7 +556,7 @@ public class CompactionStats implements org.apache.thrift.TBase<CompactionStats,
     }
 
     @Override
-    public void read(org.apache.thrift.protocol.TProtocol prot, CompactionStats struct) throws org.apache.thrift.TException {
+    public void read(org.apache.thrift.protocol.TProtocol prot, TCompactionStats struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
       java.util.BitSet incoming = iprot.readBitSet(3);
       if (incoming.get(0)) {

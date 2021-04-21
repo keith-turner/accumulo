@@ -72,7 +72,7 @@ import org.apache.accumulo.core.summary.Gatherer;
 import org.apache.accumulo.core.summary.SummarizerFactory;
 import org.apache.accumulo.core.summary.SummaryCollection;
 import org.apache.accumulo.core.summary.SummaryReader;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionReason;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServerContext;
@@ -575,16 +575,16 @@ public class CompactableUtils {
       }
 
       @Override
-      public CompactionReason getReason() {
+      public TCompactionReason getReason() {
         switch (job.getKind()) {
           case USER:
-            return CompactionReason.USER;
+            return TCompactionReason.USER;
           case CHOP:
-            return CompactionReason.CHOP;
+            return TCompactionReason.CHOP;
           case SELECTOR:
           case SYSTEM:
           default:
-            return CompactionReason.SYSTEM;
+            return TCompactionReason.SYSTEM;
         }
       }
     };

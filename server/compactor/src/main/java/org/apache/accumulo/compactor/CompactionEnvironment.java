@@ -28,7 +28,7 @@ import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionReason;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.core.util.ratelimit.SharedRateLimiterFactory;
 import org.apache.accumulo.server.ServerContext;
@@ -108,16 +108,16 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
   }
 
   @Override
-  public CompactionReason getReason() {
+  public TCompactionReason getReason() {
     switch (jobHolder.getJob().getKind()) {
       case USER:
-        return CompactionReason.USER;
+        return TCompactionReason.USER;
       case CHOP:
-        return CompactionReason.CHOP;
+        return TCompactionReason.CHOP;
       case SELECTOR:
       case SYSTEM:
       default:
-        return CompactionReason.SYSTEM;
+        return TCompactionReason.SYSTEM;
     }
   }
 

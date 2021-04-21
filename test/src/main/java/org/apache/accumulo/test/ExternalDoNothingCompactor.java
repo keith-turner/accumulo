@@ -23,8 +23,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.accumulo.compactor.Compactor;
-import org.apache.accumulo.core.compaction.thrift.CompactionState;
 import org.apache.accumulo.core.compaction.thrift.Compactor.Iface;
+import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.compaction.Compactor.CompactionCanceledException;
@@ -49,7 +49,7 @@ public class ExternalDoNothingCompactor extends Compactor implements Iface {
       public void run() {
         try {
           LOG.info("Starting up compaction runnable for job: {}", job);
-          updateCompactionState(job, CompactionState.STARTED, "Compaction started");
+          updateCompactionState(job, TCompactionState.STARTED, "Compaction started");
 
           LOG.info("Starting compactor");
           started.countDown();

@@ -99,14 +99,14 @@ struct ActiveScan {
   15:string classLoaderContext
 }
 
-enum CompactionType {
+enum TCompactionType {
   MINOR
   MERGE
   MAJOR
   FULL
 }
 
-enum CompactionReason {
+enum TCompactionReason {
   USER
   SYSTEM
   CHOP
@@ -127,8 +127,8 @@ struct ActiveCompaction {
   2:i64 age
   3:list<string> inputFiles
   4:string outputFile
-  5:CompactionType type
-  6:CompactionReason reason
+  5:TCompactionType type
+  6:TCompactionReason reason
   7:string localityGroup
   8:i64 entriesRead
   9:i64 entriesWritten
@@ -174,15 +174,15 @@ struct TExternalCompactionJob {
   5:i32 readRate
   6:i32 writeRate
   7:IteratorConfig iteratorSettings
-  8:CompactionType type
-  # Need to add SELECTOR To CompactionReason, delete CompactionKind?
-  9:CompactionReason reason
+  8:TCompactionType type
+  # Need to add SELECTOR To TCompactionReason, delete TCompactionKind?
+  9:TCompactionReason reason
   10:string outputFile
   11:bool propagateDeletes
-  12:CompactionKind kind
+  12:TCompactionKind kind
 }
 
-enum CompactionKind {
+enum TCompactionKind {
   CHOP
   SELECTOR
   SYSTEM
@@ -194,7 +194,7 @@ struct TCompactionQueueSummary {
   2:i64 priority
 }
 
-struct CompactionStats{
+struct TCompactionStats{
   1:i64 entriesRead;
   2:i64 entriesWritten;
   3:i64 fileSize;

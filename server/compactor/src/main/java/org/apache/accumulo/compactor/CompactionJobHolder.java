@@ -20,7 +20,7 @@ package org.apache.accumulo.compactor;
 
 import java.util.Objects;
 
-import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 
 public class CompactionJobHolder {
@@ -28,7 +28,7 @@ public class CompactionJobHolder {
   private TExternalCompactionJob job;
   private Thread compactionThread;
   private volatile Boolean cancelled = Boolean.FALSE;
-  private CompactionStats stats = null;
+  private TCompactionStats stats = null;
 
   CompactionJobHolder() {}
 
@@ -47,11 +47,11 @@ public class CompactionJobHolder {
     return compactionThread;
   }
 
-  public CompactionStats getStats() {
+  public TCompactionStats getStats() {
     return stats;
   }
 
-  public void setStats(CompactionStats stats) {
+  public void setStats(TCompactionStats stats) {
     this.stats = stats;
   }
 

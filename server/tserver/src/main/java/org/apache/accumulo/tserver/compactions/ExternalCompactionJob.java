@@ -30,10 +30,10 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionReason;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionType;
 import org.apache.accumulo.core.tabletserver.thrift.InputFile;
 import org.apache.accumulo.core.tabletserver.thrift.IteratorConfig;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionType;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 
 public class ExternalCompactionJob {
@@ -69,18 +69,18 @@ public class ExternalCompactionJob {
     int writeRate = 0;
 
     // TODO how are these two used?
-    CompactionType type = propogateDeletes ? CompactionType.MAJOR : CompactionType.FULL;
-    CompactionReason reason;
+    TCompactionType type = propogateDeletes ? TCompactionType.MAJOR : TCompactionType.FULL;
+    TCompactionReason reason;
     switch (kind) {
       case USER:
-        reason = CompactionReason.USER;
+        reason = TCompactionReason.USER;
         break;
       case CHOP:
-        reason = CompactionReason.CHOP;
+        reason = TCompactionReason.CHOP;
         break;
       case SYSTEM:
       case SELECTOR:
-        reason = CompactionReason.SYSTEM;
+        reason = TCompactionReason.SYSTEM;
         break;
       default:
         throw new IllegalStateException();
@@ -98,7 +98,7 @@ public class ExternalCompactionJob {
     return new TExternalCompactionJob(externalCompactionId.toString(), extent.toThrift(), files,
         (int) priority, readRate, writeRate, iteratorSettings, type, reason,
         compactTmpName.getPathStr(), propogateDeletes,
-        org.apache.accumulo.core.tabletserver.thrift.CompactionKind.valueOf(kind.name()));
+        org.apache.accumulo.core.tabletserver.thrift.TCompactionKind.valueOf(kind.name()));
   }
 
   public ExternalCompactionId getExternalCompactionId() {

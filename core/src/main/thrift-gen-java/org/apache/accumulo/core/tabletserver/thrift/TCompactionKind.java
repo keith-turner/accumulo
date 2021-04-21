@@ -22,20 +22,18 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  *  @generated
  */
-package org.apache.accumulo.core.compaction.thrift;
+package org.apache.accumulo.core.tabletserver.thrift;
 
 
-public enum CompactionState implements org.apache.thrift.TEnum {
-  ASSIGNED(0),
-  STARTED(1),
-  IN_PROGRESS(2),
-  SUCCEEDED(3),
-  FAILED(4),
-  CANCELLED(5);
+public enum TCompactionKind implements org.apache.thrift.TEnum {
+  CHOP(0),
+  SELECTOR(1),
+  SYSTEM(2),
+  USER(3);
 
   private final int value;
 
-  private CompactionState(int value) {
+  private TCompactionKind(int value) {
     this.value = value;
   }
 
@@ -51,20 +49,16 @@ public enum CompactionState implements org.apache.thrift.TEnum {
    * @return null if the value is not found.
    */
   @org.apache.thrift.annotation.Nullable
-  public static CompactionState findByValue(int value) { 
+  public static TCompactionKind findByValue(int value) { 
     switch (value) {
       case 0:
-        return ASSIGNED;
+        return CHOP;
       case 1:
-        return STARTED;
+        return SELECTOR;
       case 2:
-        return IN_PROGRESS;
+        return SYSTEM;
       case 3:
-        return SUCCEEDED;
-      case 4:
-        return FAILED;
-      case 5:
-        return CANCELLED;
+        return USER;
       default:
         return null;
     }

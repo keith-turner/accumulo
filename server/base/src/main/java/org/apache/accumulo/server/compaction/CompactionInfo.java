@@ -29,8 +29,8 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.IterInfo;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.tabletserver.thrift.ActiveCompaction;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionReason;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionType;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionType;
 
 public class CompactionInfo {
 
@@ -38,7 +38,7 @@ public class CompactionInfo {
   private final String localityGroup;
   private final long entriesRead;
   private final long entriesWritten;
-  private final CompactionReason reason;
+  private final TCompactionReason reason;
 
   CompactionInfo(Compactor compactor) {
     this.localityGroup = compactor.getCurrentLocalityGroup();
@@ -74,17 +74,17 @@ public class CompactionInfo {
 
   public ActiveCompaction toThrift() {
 
-    CompactionType type;
+    TCompactionType type;
 
     if (compactor.hasIMM())
       if (!compactor.getFilesToCompact().isEmpty())
-        type = CompactionType.MERGE;
+        type = TCompactionType.MERGE;
       else
-        type = CompactionType.MINOR;
+        type = TCompactionType.MINOR;
     else if (!compactor.willPropogateDeletes())
-      type = CompactionType.FULL;
+      type = TCompactionType.FULL;
     else
-      type = CompactionType.MAJOR;
+      type = TCompactionType.MAJOR;
 
     List<IterInfo> iiList = new ArrayList<>();
     Map<String,Map<String,String>> iterOptions = new HashMap<>();

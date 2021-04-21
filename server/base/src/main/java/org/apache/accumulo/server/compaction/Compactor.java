@@ -53,7 +53,7 @@ import org.apache.accumulo.core.iteratorsImpl.system.TimeSettingIterator;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionReason;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
 import org.apache.accumulo.core.util.LocalityGroupUtil.LocalityGroupConfigurationError;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
@@ -93,7 +93,7 @@ public class Compactor implements Callable<CompactionStats> {
 
     SortedKeyValueIterator<Key,Value> getMinCIterator();
 
-    CompactionReason getReason();
+    TCompactionReason getReason();
   }
 
   private final Map<StoredTabletFile,DataFileValue> filesToCompact;
@@ -438,7 +438,7 @@ public class Compactor implements Callable<CompactionStats> {
     return this.iterators;
   }
 
-  public CompactionReason getReason() {
+  public TCompactionReason getReason() {
     return env.getReason();
   }
 

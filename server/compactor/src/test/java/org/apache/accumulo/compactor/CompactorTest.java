@@ -31,12 +31,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
-import org.apache.accumulo.core.compaction.thrift.CompactionState;
+import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
-import org.apache.accumulo.core.tabletserver.thrift.CompactionStats;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.HostAndPort;
@@ -169,7 +169,7 @@ public class CompactorTest {
     private final ExternalCompactionId eci;
     private volatile boolean completedCalled = false;
     private volatile boolean failedCalled = false;
-    private CompactionState latestState = null;
+    private TCompactionState latestState = null;
 
     SuccessfulCompactor(Supplier<UUID> uuid, ServerAddress address, TExternalCompactionJob job,
         AccumuloConfiguration conf, ServerContext ctx, ExternalCompactionId eci) {
@@ -232,7 +232,7 @@ public class CompactorTest {
     }
 
     @Override
-    protected void updateCompactionState(TExternalCompactionJob job, CompactionState state,
+    protected void updateCompactionState(TExternalCompactionJob job, TCompactionState state,
         String message) throws RetriesExceededException {
       latestState = state;
     }
@@ -244,12 +244,12 @@ public class CompactorTest {
     }
 
     @Override
-    protected void updateCompactionCompleted(TExternalCompactionJob job, CompactionStats stats)
+    protected void updateCompactionCompleted(TExternalCompactionJob job, TCompactionStats stats)
         throws RetriesExceededException {
       completedCalled = true;
     }
 
-    public CompactionState getLatestState() {
+    public TCompactionState getLatestState() {
       return latestState;
     }
 
@@ -415,7 +415,7 @@ public class CompactorTest {
 
     assertFalse(c.isCompletedCalled());
     assertTrue(c.isFailedCalled());
-    assertEquals(CompactionState.FAILED, c.getLatestState());
+    assertEquals(TCompactionState.FAILED, c.getLatestState());
   }
 
   @Test
@@ -471,7 +471,7 @@ public class CompactorTest {
 
     assertFalse(c.isCompletedCalled());
     assertTrue(c.isFailedCalled());
-    assertEquals(CompactionState.CANCELLED, c.getLatestState());
+    assertEquals(TCompactionState.CANCELLED, c.getLatestState());
   }
 
 }

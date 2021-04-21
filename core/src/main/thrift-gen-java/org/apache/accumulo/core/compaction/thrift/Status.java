@@ -42,9 +42,9 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
   public @org.apache.thrift.annotation.Nullable java.lang.String compactor; // required
   /**
    * 
-   * @see CompactionState
+   * @see TCompactionState
    */
-  public @org.apache.thrift.annotation.Nullable CompactionState state; // required
+  public @org.apache.thrift.annotation.Nullable TCompactionState state; // required
   public @org.apache.thrift.annotation.Nullable java.lang.String message; // required
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
@@ -54,7 +54,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     COMPACTOR((short)3, "compactor"),
     /**
      * 
-     * @see CompactionState
+     * @see TCompactionState
      */
     STATE((short)4, "state"),
     MESSAGE((short)5, "message");
@@ -136,7 +136,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     tmpMap.put(_Fields.COMPACTOR, new org.apache.thrift.meta_data.FieldMetaData("compactor", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     tmpMap.put(_Fields.STATE, new org.apache.thrift.meta_data.FieldMetaData("state", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, CompactionState.class)));
+        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, TCompactionState.class)));
     tmpMap.put(_Fields.MESSAGE, new org.apache.thrift.meta_data.FieldMetaData("message", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
@@ -150,7 +150,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
     long timestamp,
     java.lang.String externalCompactionId,
     java.lang.String compactor,
-    CompactionState state,
+    TCompactionState state,
     java.lang.String message)
   {
     this();
@@ -271,18 +271,18 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
 
   /**
    * 
-   * @see CompactionState
+   * @see TCompactionState
    */
   @org.apache.thrift.annotation.Nullable
-  public CompactionState getState() {
+  public TCompactionState getState() {
     return this.state;
   }
 
   /**
    * 
-   * @see CompactionState
+   * @see TCompactionState
    */
-  public Status setState(@org.apache.thrift.annotation.Nullable CompactionState state) {
+  public Status setState(@org.apache.thrift.annotation.Nullable TCompactionState state) {
     this.state = state;
     return this;
   }
@@ -357,7 +357,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
       if (value == null) {
         unsetState();
       } else {
-        setState((CompactionState)value);
+        setState((TCompactionState)value);
       }
       break;
 
@@ -688,7 +688,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
             break;
           case 4: // STATE
             if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.state = org.apache.accumulo.core.compaction.thrift.CompactionState.findByValue(iprot.readI32());
+              struct.state = org.apache.accumulo.core.compaction.thrift.TCompactionState.findByValue(iprot.readI32());
               struct.setStateIsSet(true);
             } else { 
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
@@ -808,7 +808,7 @@ public class Status implements org.apache.thrift.TBase<Status, Status._Fields>, 
         struct.setCompactorIsSet(true);
       }
       if (incoming.get(3)) {
-        struct.state = org.apache.accumulo.core.compaction.thrift.CompactionState.findByValue(iprot.readI32());
+        struct.state = org.apache.accumulo.core.compaction.thrift.TCompactionState.findByValue(iprot.readI32());
         struct.setStateIsSet(true);
       }
       if (incoming.get(4)) {
