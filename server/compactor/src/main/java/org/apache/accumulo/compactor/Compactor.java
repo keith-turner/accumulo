@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
@@ -52,8 +53,11 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.trace.TraceUtil;
@@ -71,7 +75,6 @@ import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.fate.zookeeper.ZooUtil.NodeExistsPolicy;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
-import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.compaction.CompactionInfo;
 import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
@@ -90,10 +93,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
-import org.apache.zookeeper.Watcher.WatcherType;
-import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,6 +112,8 @@ public class Compactor extends AbstractServer
 
   private static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
   private static final long TIME_BETWEEN_GC_CHECKS = 5000;
+  private static final long TIME_BETWEEN_CANCEL_CHECKS = 5 * 60 * 1000;
+
   private static final long TEN_MEGABYTES = 10485760;
   private static final CompactionCoordinator.Client.Factory COORDINATOR_CLIENT_FACTORY =
       new CompactionCoordinator.Client.Factory();
@@ -140,7 +141,9 @@ public class Compactor extends AbstractServer
     queueName = opts.getQueueName();
     aconf = getConfiguration();
     setupSecurity();
-    startGCLogger();
+    var schedExecutor = ThreadPools.createGeneralScheduledExecutorService(aconf);
+    startGCLogger(schedExecutor);
+    startCancelChecker(schedExecutor, TIME_BETWEEN_CANCEL_CHECKS);
     printStartupMsg();
   }
 
@@ -149,7 +152,9 @@ public class Compactor extends AbstractServer
     queueName = opts.getQueueName();
     aconf = conf;
     setupSecurity();
-    startGCLogger();
+    var schedExecutor = ThreadPools.createGeneralScheduledExecutorService(aconf);
+    startGCLogger(schedExecutor);
+    startCancelChecker(schedExecutor, TIME_BETWEEN_CANCEL_CHECKS);
     printStartupMsg();
   }
 
@@ -158,10 +163,60 @@ public class Compactor extends AbstractServer
     security = AuditedSecurityOperation.getInstance(getContext());
   }
 
-  protected void startGCLogger() {
-    ThreadPools.createGeneralScheduledExecutorService(aconf).scheduleWithFixedDelay(
-        () -> gcLogger.logGCInfo(getConfiguration()), 0, TIME_BETWEEN_GC_CHECKS,
+  protected void startGCLogger(ScheduledThreadPoolExecutor schedExecutor) {
+    schedExecutor.scheduleWithFixedDelay(() -> gcLogger.logGCInfo(getConfiguration()), 0,
+        TIME_BETWEEN_GC_CHECKS, TimeUnit.MILLISECONDS);
+  }
+
+  protected void startCancelChecker(ScheduledThreadPoolExecutor schedExecutor,
+      long timeBetweenChecks) {
+    schedExecutor.scheduleWithFixedDelay(() -> checkIfCanceled(), 0, timeBetweenChecks,
         TimeUnit.MILLISECONDS);
+  }
+
+  private void checkIfCanceled() {
+    TExternalCompactionJob job = JOB_HOLDER.getJob();
+    if (job != null) {
+      try {
+        var extent = KeyExtent.fromThrift(job.getExtent());
+        var ecid = ExternalCompactionId.of(job.getExternalCompactionId());
+
+        TabletMetadata tabletMeta =
+            getContext().getAmple().readTablet(extent, ColumnType.ECOMP, ColumnType.PREV_ROW);
+        if (tabletMeta == null || !tabletMeta.getExtent().equals(extent)
+            || !tabletMeta.getExternalCompactions().containsKey(ecid)) {
+          // table was deleted OR tablet was split or merged OR tablet no longer thinks compaction
+          // is running for some reason
+          LOG.info("Cancelling compaction {} that no longer has a metadata entry at {}", ecid,
+              extent);
+          JOB_HOLDER.cancel(job.getExternalCompactionId());
+          return;
+        }
+
+        if (job.getKind() == TCompactionKind.USER) {
+          String zTablePath = Constants.ZROOT + "/" + getContext().getInstanceID()
+              + Constants.ZTABLES + "/" + extent.tableId() + Constants.ZTABLE_COMPACT_CANCEL_ID;
+          byte[] id = getContext().getZooCache().get(zTablePath);
+          if (id == null) {
+            // table probably deleted
+            LOG.info("Cancelling compaction {} for table that no longer exists {}", ecid, extent);
+            JOB_HOLDER.cancel(job.getExternalCompactionId());
+            return;
+          } else {
+            var cancelId = Long.parseLong(new String(id, UTF_8));
+
+            if (cancelId >= job.getUserCompactionId()) {
+              LOG.info("Cancelling compaction {} because user compaction was canceled");
+              JOB_HOLDER.cancel(job.getExternalCompactionId());
+              return;
+            }
+          }
+        }
+      } catch (RuntimeException e) {
+        LOG.warn("Failed to check if compaction {} for {} was canceled.",
+            job.getExternalCompactionId(), KeyExtent.fromThrift(job.getExtent()), e);
+      }
+    }
   }
 
   protected void printStartupMsg() {
@@ -300,17 +355,11 @@ public class Compactor extends AbstractServer
    *           thrift error
    */
   private void cancel(String externalCompactionId) throws TException {
-    synchronized (JOB_HOLDER) {
-      if (JOB_HOLDER.isSet()
-          && JOB_HOLDER.getJob().getExternalCompactionId().equals(externalCompactionId)) {
-        LOG.info("Cancel requested for compaction job {}", externalCompactionId);
-        JOB_HOLDER.cancel();
-        JOB_HOLDER.getThread().interrupt();
-      } else {
-        throw new UnknownCompactionIdException();
-      }
+    if (JOB_HOLDER.cancel(externalCompactionId)) {
+      LOG.info("Cancel requested for compaction job {}", externalCompactionId);
+    } else {
+      throw new UnknownCompactionIdException();
     }
-
   }
 
   /**
@@ -603,57 +652,9 @@ public class Compactor extends AbstractServer
             "Compaction job for tablet " + job.getExtent().toString(),
             createCompactionJob(job, totalInputEntries, totalInputBytes, started, stopped, err));
 
-        synchronized (JOB_HOLDER) {
-          JOB_HOLDER.set(job, compactionThread);
-        }
+        JOB_HOLDER.set(job, compactionThread);
 
-        final String tableId = new String(job.getExtent().getTable(), UTF_8);
-        final ServerContext ctxRef = getContext();
-        final String tablePath =
-            getContext().getZooKeeperRoot() + Constants.ZTABLES + "/" + tableId;
-        Watcher tableNodeWatcher = new Watcher() {
-          @Override
-          public void process(WatchedEvent event) {
-            switch (event.getType()) {
-              case NodeDeleted:
-                LOG.info("Zookeeper node for table {} deleted, cancelling compaction.", tableId);
-                JOB_HOLDER.cancel();
-                break;
-              default:
-                // Watcher got fired for some other event, need to recreate the Watcher
-                try {
-                  Stat s = ctxRef.getZooReaderWriter().getZooKeeper().exists(tablePath, this);
-                  if (s == null) {
-                    LOG.info("Zookeeper node for table {} deleted before compaction started.",
-                        tableId);
-                    // if stat is null from the zookeeper.exists(path, Watcher) call, then we just
-                    // created a Watcher on a node that does not exist. Delete the watcher we just
-                    // created.
-                    ctxRef.getZooReaderWriter().getZooKeeper().removeWatches(tablePath, this,
-                        WatcherType.Any, true);
-                  }
-                } catch (Exception e) {
-                  LOG.error("Error communicating with ZooKeeper and unable to recreate Watcher", e);
-                  // CBUG: Should we exit?
-                }
-                break;
-            }
-          }
-        };
         try {
-          // Add a watcher in ZooKeeper on the table id so that we can cancel this compaction
-          // if the table is deleted
-          Stat s =
-              getContext().getZooReaderWriter().getZooKeeper().exists(tablePath, tableNodeWatcher);
-          if (s == null) {
-            LOG.info("Zookeeper node for table {} deleted before compaction started.", tableId);
-            // if stat is null from the zookeeper.exists(path, Watcher) call, then we just
-            // created a Watcher on a node that does not exist. Delete the watcher we just created.
-            getContext().getZooReaderWriter().getZooKeeper().removeWatches(tablePath,
-                tableNodeWatcher, WatcherType.Any, true);
-            continue;
-          }
-
           compactionThread.start(); // start the compactionThread
           started.await(); // wait until the compactor is started
           final long inputEntries = totalInputEntries.sum();
@@ -740,12 +741,6 @@ public class Compactor extends AbstractServer
             LOG.error("Error cancelling compaction.", e2);
           }
         } finally {
-          try {
-            getContext().getZooReaderWriter().getZooKeeper().removeWatches(tablePath,
-                tableNodeWatcher, WatcherType.Any, true);
-          } catch (KeeperException e) {
-            LOG.error("Error removing watch from {}.", tablePath, e);
-          }
           currentCompactionId.set(null);
         }
 

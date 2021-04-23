@@ -152,10 +152,12 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
 
     if (extJob.getJob().getPriority() >= priority) {
       if (extJob.status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
+        queuedTask.remove(extJob);
         var ecj = extJob.compactable.reserveExternalCompaction(extJob.csid, extJob.getJob(),
             compactorId, externalCompactionId);
+        if (ecj == null)
+          return null;
         extJob.ecid = ecj.getExternalCompactionId();
-        queuedTask.remove(extJob);
         return ecj;
       } else {
         // TODO could this cause a stack overflow?

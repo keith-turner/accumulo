@@ -81,6 +81,7 @@ import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataTime;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.protobuf.ProtobufUtil;
 import org.apache.accumulo.core.replication.ReplicationConfigurationUtil;
 import org.apache.accumulo.core.security.Authorizations;
@@ -1352,19 +1353,35 @@ public class Tablet {
     }
 
     try {
-      Pair<List<LogEntry>,SortedMap<StoredTabletFile,DataFileValue>> fileLog =
-          MetadataTableUtil.getFileAndLogEntries(context, extent);
+      var tabletMeta = context.getAmple().readTablet(extent, ColumnType.FILES, ColumnType.LOGS,
+          ColumnType.ECOMP, ColumnType.PREV_ROW);
 
-      if (!fileLog.getFirst().isEmpty()) {
-        String msg = "Closed tablet " + extent + " has walog entries in " + MetadataTable.NAME + " "
-            + fileLog.getFirst();
+      if (!tabletMeta.getExtent().equals(extent)) {
+        String msg = "Closed tablet " + extent + " does not match extent in metadata table "
+            + tabletMeta.getExtent();
         log.error(msg);
         throw new RuntimeException(msg);
       }
 
-      if (!fileLog.getSecond().equals(getDatafileManager().getDatafileSizes())) {
+      HashSet<ExternalCompactionId> ecids = new HashSet<>();
+      compactable.getExternalCompactionIds(ecids::add);
+      if (!tabletMeta.getExternalCompactions().keySet().equals(ecids)) {
+        String msg = "Closed tablet " + extent + " external compaction ids differ " + ecids + " != "
+            + tabletMeta.getExternalCompactions().keySet();
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
+      if (!tabletMeta.getLogs().isEmpty()) {
+        String msg = "Closed tablet " + extent + " has walog entries in " + MetadataTable.NAME + " "
+            + tabletMeta.getLogs();
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
+      if (!tabletMeta.getFilesMap().equals(getDatafileManager().getDatafileSizes())) {
         String msg = "Data files in differ from in memory data " + extent + "  "
-            + fileLog.getSecond() + "  " + getDatafileManager().getDatafileSizes();
+            + tabletMeta.getFilesMap() + "  " + getDatafileManager().getDatafileSizes();
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -1705,8 +1722,11 @@ public class Tablet {
 
       MetadataTime time = tabletTime.getMetadataTime();
 
+      HashSet<ExternalCompactionId> ecids = new HashSet<>();
+      compactable.getExternalCompactionIds(ecids::add);
+
       MetadataTableUtil.splitTablet(high, extent.prevEndRow(), splitRatio,
-          getTabletServer().getContext(), getTabletServer().getLock());
+          getTabletServer().getContext(), getTabletServer().getLock(), ecids);
       ManagerMetadataUtil.addNewTablet(getTabletServer().getContext(), low, lowDirectoryName,
           getTabletServer().getTabletSession(), lowDatafileSizes, bulkImported, time, lastFlushID,
           lastCompactID, getTabletServer().getLock());

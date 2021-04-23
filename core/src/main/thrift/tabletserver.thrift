@@ -180,6 +180,7 @@ struct TExternalCompactionJob {
   10:string outputFile
   11:bool propagateDeletes
   12:TCompactionKind kind
+  13:i64 userCompactionId
 }
 
 enum TCompactionKind {
@@ -558,7 +559,6 @@ service TabletClientService extends client.ClientService {
     3:string externalCompactionId
     4:data.TKeyExtent extent
   )
-  
 }
 
 typedef i32 TabletID

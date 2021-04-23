@@ -959,7 +959,8 @@ public class CompactableImpl implements Compactable {
       externalCompactions.put(externalCompactionId, ecInfo);
 
       return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, compactTmpName,
-          getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters);
+          getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters,
+          cInfo.checkCompactionId);
 
     } catch (Exception e) {
       // CBUG unreserve files for compaction!

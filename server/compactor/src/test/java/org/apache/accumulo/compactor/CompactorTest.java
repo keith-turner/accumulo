@@ -27,6 +27,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
@@ -191,7 +192,7 @@ public class CompactorTest {
     protected void setupSecurity() {}
 
     @Override
-    protected void startGCLogger() {}
+    protected void startGCLogger(ScheduledThreadPoolExecutor schedExecutor) {}
 
     @Override
     protected void printStartupMsg() {}

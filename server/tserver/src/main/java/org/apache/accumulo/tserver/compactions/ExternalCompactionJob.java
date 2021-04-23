@@ -36,6 +36,8 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionType;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 
+import com.google.common.base.Preconditions;
+
 public class ExternalCompactionJob {
 
   private Set<StoredTabletFile> jobFiles;
@@ -46,12 +48,13 @@ public class ExternalCompactionJob {
   private long priority;
   private CompactionKind kind;
   private List<IteratorSetting> iters;
+  private long userCompactionId;
 
   public ExternalCompactionJob() {}
 
   public ExternalCompactionJob(Set<StoredTabletFile> jobFiles, boolean propogateDeletes,
       TabletFile compactTmpName, KeyExtent extent, ExternalCompactionId externalCompactionId,
-      long priority, CompactionKind kind, List<IteratorSetting> iters) {
+      long priority, CompactionKind kind, List<IteratorSetting> iters, Long userCompactionId) {
     this.jobFiles = Objects.requireNonNull(jobFiles);
     this.propogateDeletes = propogateDeletes;
     this.compactTmpName = Objects.requireNonNull(compactTmpName);
@@ -60,6 +63,13 @@ public class ExternalCompactionJob {
     this.priority = priority;
     this.kind = Objects.requireNonNull(kind);
     this.iters = Objects.requireNonNull(iters);
+    if (kind == CompactionKind.USER) {
+      Preconditions.checkArgument(userCompactionId != null && userCompactionId > 0);
+      this.userCompactionId = userCompactionId;
+    } else {
+      this.userCompactionId = 0;
+    }
+
   }
 
   public TExternalCompactionJob toThrift() {
@@ -85,20 +95,18 @@ public class ExternalCompactionJob {
       default:
         throw new IllegalStateException();
     }
-
     IteratorConfig iteratorSettings = SystemIteratorUtil.toIteratorConfig(iters);
 
     // TODO what are things that are zeros below needed for
     List<InputFile> files = jobFiles.stream().map(stf -> new InputFile(stf.getPathStr(), 0, 0, 0))
         .collect(Collectors.toList());
 
-    // CBUG there seem to be two CompactionKind thrift types
-    // CBUG rename CompactionKind thrift type to TCompactionKind
     // TODO priority cast and compactionId cast... compactionId could be null I think
     return new TExternalCompactionJob(externalCompactionId.toString(), extent.toThrift(), files,
         (int) priority, readRate, writeRate, iteratorSettings, type, reason,
         compactTmpName.getPathStr(), propogateDeletes,
-        org.apache.accumulo.core.tabletserver.thrift.TCompactionKind.valueOf(kind.name()));
+        org.apache.accumulo.core.tabletserver.thrift.TCompactionKind.valueOf(kind.name()),
+        userCompactionId);
   }
 
   public ExternalCompactionId getExternalCompactionId() {

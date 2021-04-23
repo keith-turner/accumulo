@@ -27,24 +27,20 @@ public class CompactionJobHolder {
 
   private TExternalCompactionJob job;
   private Thread compactionThread;
-  private volatile Boolean cancelled = Boolean.FALSE;
-  private TCompactionStats stats = null;
+  private volatile boolean cancelled = false;
+  private volatile TCompactionStats stats = null;
 
   CompactionJobHolder() {}
 
-  public void reset() {
+  public synchronized void reset() {
     job = null;
     compactionThread = null;
-    cancelled = Boolean.FALSE;
+    cancelled = false;
     stats = null;
   }
 
-  public TExternalCompactionJob getJob() {
+  public synchronized TExternalCompactionJob getJob() {
     return job;
-  }
-
-  public Thread getThread() {
-    return compactionThread;
   }
 
   public TCompactionStats getStats() {
@@ -55,19 +51,24 @@ public class CompactionJobHolder {
     this.stats = stats;
   }
 
-  public void cancel() {
-    cancelled = Boolean.TRUE;
+  public synchronized boolean cancel(String extCompId) {
+    if (isSet() && getJob().getExternalCompactionId().equals(extCompId)) {
+      cancelled = true;
+      compactionThread.interrupt();
+      return true;
+    }
+    return false;
   }
 
   public boolean isCancelled() {
     return cancelled;
   }
 
-  public boolean isSet() {
+  public synchronized boolean isSet() {
     return (null != this.job);
   }
 
-  public void set(TExternalCompactionJob job, Thread compactionThread) {
+  public synchronized void set(TExternalCompactionJob job, Thread compactionThread) {
     Objects.requireNonNull(job, "CompactionJob is null");
     Objects.requireNonNull(compactionThread, "Compaction thread is null");
     this.job = job;

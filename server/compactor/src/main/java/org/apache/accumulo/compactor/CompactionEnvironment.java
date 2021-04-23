@@ -29,6 +29,7 @@ import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
+import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.core.util.ratelimit.SharedRateLimiterFactory;
 import org.apache.accumulo.server.ServerContext;
@@ -43,6 +44,7 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
   private final ServerContext context;
   private final CompactionJobHolder jobHolder;
   private final SharedRateLimiterFactory limiter;
+  private TExternalCompactionJob job;
   private String queueName;
 
   public static class CompactorIterEnv extends TabletIteratorEnvironment {
@@ -64,6 +66,7 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
   CompactionEnvironment(ServerContext context, CompactionJobHolder jobHolder, String queueName) {
     this.context = context;
     this.jobHolder = jobHolder;
+    this.job = jobHolder.getJob();
     this.limiter = SharedRateLimiterFactory.getInstance(this.context.getConfiguration());
     this.queueName = queueName;
   }
@@ -86,12 +89,12 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
 
   @Override
   public RateLimiter getReadLimiter() {
-    return limiter.create("read_rate_limiter", () -> jobHolder.getJob().getReadRate());
+    return limiter.create("read_rate_limiter", () -> job.getReadRate());
   }
 
   @Override
   public RateLimiter getWriteLimiter() {
-    return limiter.create("write_rate_limiter", () -> jobHolder.getJob().getWriteRate());
+    return limiter.create("write_rate_limiter", () -> job.getWriteRate());
   }
 
   @Override
@@ -99,7 +102,7 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
       AccumuloConfiguration acuTableConf, TableId tableId) {
     return new CompactorIterEnv(context, IteratorScope.majc,
         !jobHolder.getJob().isPropagateDeletes(), acuTableConf, tableId,
-        CompactionKind.valueOf(jobHolder.getJob().getKind().name()), queueName);
+        CompactionKind.valueOf(job.getKind().name()), queueName);
   }
 
   @Override
@@ -109,7 +112,7 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
 
   @Override
   public TCompactionReason getReason() {
-    switch (jobHolder.getJob().getKind()) {
+    switch (job.getKind()) {
       case USER:
         return TCompactionReason.USER;
       case CHOP:
