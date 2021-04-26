@@ -47,10 +47,6 @@ public class ExternalCompactionMetrics {
     this.running = running;
   }
 
-  public void incrementRunning() {
-    this.running++;
-  }
-
   public long getCompleted() {
     return completed;
   }

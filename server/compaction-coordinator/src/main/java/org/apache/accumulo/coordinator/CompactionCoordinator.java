@@ -30,6 +30,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.apache.accumulo.coordinator.QueueSummaries.PrioTserver;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
@@ -90,10 +94,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
-
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
 public class CompactionCoordinator extends AbstractServer
     implements org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Iface,
@@ -257,6 +257,7 @@ public class CompactionCoordinator extends AbstractServer
         baseRequest.setHandled(true);
         response.setStatus(200);
         response.setContentType("application/json");
+        metrics.setRunning(RUNNING.size());
         response.getWriter().print(metrics.toJson(GSON));
       }
     });
