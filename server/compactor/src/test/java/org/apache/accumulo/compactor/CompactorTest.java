@@ -50,9 +50,7 @@ import org.apache.accumulo.server.fs.VolumeManagerImpl;
 import org.apache.accumulo.server.rpc.ServerAddress;
 import org.apache.accumulo.server.rpc.TServerUtils;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
-import org.apache.zookeeper.data.Stat;
 import org.easymock.EasyMock;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -340,11 +338,8 @@ public class CompactorTest {
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
     ZooReaderWriter zrw = PowerMock.createNiceMock(ZooReaderWriter.class);
     ZooKeeper zk = PowerMock.createNiceMock(ZooKeeper.class);
-    Stat stat = PowerMock.createNiceMock(Stat.class);
     EasyMock.expect(ctx.getZooReaderWriter()).andReturn(zrw).anyTimes();
     EasyMock.expect(zrw.getZooKeeper()).andReturn(zk).anyTimes();
-    EasyMock.expect(zk.exists(EasyMock.isA(String.class), EasyMock.isA(Watcher.class)))
-        .andReturn(stat);
     VolumeManagerImpl vm = PowerMock.createNiceMock(VolumeManagerImpl.class);
     EasyMock.expect(ctx.getVolumeManager()).andReturn(vm);
     vm.close();
@@ -384,12 +379,11 @@ public class CompactorTest {
 
     TExternalCompactionJob job = PowerMock.createNiceMock(TExternalCompactionJob.class);
     TKeyExtent extent = PowerMock.createNiceMock(TKeyExtent.class);
-    EasyMock.expect(extent.getTable()).andReturn("testTable".getBytes());
+    EasyMock.expect(extent.getTable()).andReturn("testTable".getBytes()).anyTimes();
 
     EasyMock.expect(job.isSetExternalCompactionId()).andReturn(true).anyTimes();
     EasyMock.expect(job.getExternalCompactionId()).andReturn(eci.toString()).anyTimes();
     EasyMock.expect(job.getExtent()).andReturn(extent).anyTimes();
-    EasyMock.expect(extent.getTable()).andReturn("testTable".getBytes()).anyTimes();
 
     AccumuloConfiguration conf = PowerMock.createNiceMock(AccumuloConfiguration.class);
     EasyMock.expect(conf.getTimeInMillis(Property.INSTANCE_ZK_TIMEOUT)).andReturn(86400000L);
@@ -397,11 +391,8 @@ public class CompactorTest {
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
     ZooReaderWriter zrw = PowerMock.createNiceMock(ZooReaderWriter.class);
     ZooKeeper zk = PowerMock.createNiceMock(ZooKeeper.class);
-    Stat stat = PowerMock.createNiceMock(Stat.class);
     EasyMock.expect(ctx.getZooReaderWriter()).andReturn(zrw).anyTimes();
     EasyMock.expect(zrw.getZooKeeper()).andReturn(zk).anyTimes();
-    EasyMock.expect(zk.exists(EasyMock.isA(String.class), EasyMock.isA(Watcher.class)))
-        .andReturn(stat);
     VolumeManagerImpl vm = PowerMock.createNiceMock(VolumeManagerImpl.class);
     EasyMock.expect(ctx.getVolumeManager()).andReturn(vm);
     vm.close();
@@ -453,11 +444,8 @@ public class CompactorTest {
     ServerContext ctx = PowerMock.createNiceMock(ServerContext.class);
     ZooReaderWriter zrw = PowerMock.createNiceMock(ZooReaderWriter.class);
     ZooKeeper zk = PowerMock.createNiceMock(ZooKeeper.class);
-    Stat stat = PowerMock.createNiceMock(Stat.class);
     EasyMock.expect(ctx.getZooReaderWriter()).andReturn(zrw).anyTimes();
     EasyMock.expect(zrw.getZooKeeper()).andReturn(zk).anyTimes();
-    EasyMock.expect(zk.exists(EasyMock.isA(String.class), EasyMock.isA(Watcher.class)))
-        .andReturn(stat);
     VolumeManagerImpl vm = PowerMock.createNiceMock(VolumeManagerImpl.class);
     EasyMock.expect(ctx.getVolumeManager()).andReturn(vm);
     vm.close();
