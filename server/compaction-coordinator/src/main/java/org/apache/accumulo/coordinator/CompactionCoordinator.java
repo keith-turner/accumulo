@@ -30,10 +30,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-
 import org.apache.accumulo.coordinator.QueueSummaries.PrioTserver;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
@@ -79,7 +75,6 @@ import org.apache.accumulo.server.rpc.TServerUtils;
 import org.apache.accumulo.server.rpc.ThriftServerType;
 import org.apache.accumulo.server.security.AuditedSecurityOperation;
 import org.apache.accumulo.server.security.SecurityOperation;
-import org.apache.http.entity.ContentType;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
@@ -95,6 +90,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 public class CompactionCoordinator extends AbstractServer
     implements org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Iface,
@@ -257,7 +256,7 @@ public class CompactionCoordinator extends AbstractServer
           HttpServletResponse response) throws IOException, ServletException {
         baseRequest.setHandled(true);
         response.setStatus(200);
-        response.setContentType(ContentType.APPLICATION_JSON.toString());
+        response.setContentType("application/json");
         response.getWriter().print(metrics.toJson(GSON));
       }
     });
@@ -270,7 +269,7 @@ public class CompactionCoordinator extends AbstractServer
           HttpServletResponse response) throws IOException, ServletException {
         baseRequest.setHandled(true);
         response.setStatus(200);
-        response.setContentType(ContentType.APPLICATION_JSON.toString());
+        response.setContentType("application/json");
         response.getWriter().print(GSON.toJson(RUNNING));
       }
     });
