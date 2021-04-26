@@ -21,6 +21,11 @@ package org.apache.accumulo.test;
 import static org.apache.accumulo.minicluster.ServerType.TABLET_SERVER;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +38,7 @@ import java.util.stream.Stream;
 import org.apache.accumulo.compactor.CompactionEnvironment.CompactorIterEnv;
 import org.apache.accumulo.compactor.Compactor;
 import org.apache.accumulo.coordinator.CompactionCoordinator;
+import org.apache.accumulo.coordinator.ExternalCompactionMetrics;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -75,6 +81,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.gson.Gson;
 
 public class ExternalCompactionIT extends ConfigurableMacBase {
 
@@ -194,6 +201,56 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
   }
 
   @Test
+  public void testUserCompactionCancellation() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+
+      String table1 = "ectt6";
+      createTable(client, table1, "cs1");
+      writeData(client, table1);
+
+      // The ExternalDoNothingCompactor creates a compaction thread that
+      // sleeps for 5 minutes.
+      // Wait for the coordinator to insert the running compaction metadata
+      // entry into the metadata table, then cancel the compaction
+      cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+
+      compact(client, table1, 2, "DCQ1", false);
+
+      List<TabletMetadata> md = new ArrayList<>();
+      TabletsMetadata tm = getCluster().getServerContext().getAmple().readTablets()
+          .forLevel(DataLevel.USER).fetch(ColumnType.ECOMP).build();
+      tm.forEach(t -> md.add(t));
+
+      while (md.size() == 0) {
+        tm.close();
+        tm = getCluster().getServerContext().getAmple().readTablets().forLevel(DataLevel.USER)
+            .fetch(ColumnType.ECOMP).build();
+        tm.forEach(t -> md.add(t));
+      }
+      client.tableOperations().cancelCompaction(table1);
+
+      // ExternalDoNothingCompactor runs the cancel checker every 5s and the compaction thread
+      // sleeps for 1s between checks to see if it's canceled or not.
+      UtilWaitThread.sleep(8000);
+
+      // The metadata tablets will be deleted from the metadata table because we have deleted the
+      // table
+      // Verify that the compaction failed by looking at the metrics in the Coordinator.
+      HttpRequest req =
+          HttpRequest.newBuilder().GET().uri(new URI("http://localhost:9099/metrics")).build();
+      HttpClient hc = HttpClient.newHttpClient();
+      HttpResponse<String> res = hc.send(req, BodyHandlers.ofString());
+      ExternalCompactionMetrics metrics =
+          new Gson().fromJson(res.body(), ExternalCompactionMetrics.class);
+      Assert.assertEquals(1, metrics.getStarted());
+      Assert.assertEquals(0, metrics.getRunning());
+      Assert.assertEquals(0, metrics.getCompleted());
+      Assert.assertEquals(1, metrics.getFailed());
+    }
+  }
+
+  @Test
   public void testDeleteTableDuringExternalCompaction() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
 
@@ -221,14 +278,29 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
       while (md.size() == 0) {
         tm.close();
-        md.clear();
         tm = getCluster().getServerContext().getAmple().readTablets().forLevel(DataLevel.USER)
             .fetch(ColumnType.ECOMP).build();
         tm.forEach(t -> md.add(t));
       }
       client.tableOperations().delete(table1);
-      // CBUG: How to verify? Metadata tablets are gone...
-      UtilWaitThread.sleep(1000); // to see the logs
+
+      // ExternalDoNothingCompactor runs the cancel checker every 5s and the compaction thread
+      // sleeps for 1s between checks to see if it's canceled or not.
+      UtilWaitThread.sleep(8000);
+
+      // The metadata tablets will be deleted from the metadata table because we have deleted the
+      // table
+      // Verify that the compaction failed by looking at the metrics in the Coordinator.
+      HttpRequest req =
+          HttpRequest.newBuilder().GET().uri(new URI("http://localhost:9099/metrics")).build();
+      HttpClient hc = HttpClient.newHttpClient();
+      HttpResponse<String> res = hc.send(req, BodyHandlers.ofString());
+      ExternalCompactionMetrics metrics =
+          new Gson().fromJson(res.body(), ExternalCompactionMetrics.class);
+      Assert.assertEquals(1, metrics.getStarted());
+      Assert.assertEquals(0, metrics.getRunning());
+      Assert.assertEquals(0, metrics.getCompleted());
+      Assert.assertEquals(1, metrics.getFailed());
     }
   }
 

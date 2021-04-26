@@ -68,6 +68,7 @@ import org.apache.accumulo.core.util.ServerServices;
 import org.apache.accumulo.core.util.ServerServices.Service;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.util.threads.Threads;
+import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockLossReason;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockWatcher;
@@ -174,7 +175,7 @@ public class Compactor extends AbstractServer
         TimeUnit.MILLISECONDS);
   }
 
-  private void checkIfCanceled() {
+  protected void checkIfCanceled() {
     TExternalCompactionJob job = JOB_HOLDER.getJob();
     if (job != null) {
       try {
@@ -600,6 +601,10 @@ public class Compactor extends AbstractServer
     return supplier;
   }
 
+  protected long getWaitTimeBetweenCompactionChecks() {
+    return 3000;
+  }
+
   @Override
   public void run() {
 
@@ -631,6 +636,7 @@ public class Compactor extends AbstractServer
           job = getNextJob(getNextId());
           if (!job.isSetExternalCompactionId()) {
             LOG.info("No external compactions in queue {}", this.queueName);
+            UtilWaitThread.sleep(getWaitTimeBetweenCompactionChecks());
             continue;
           }
           if (!job.getExternalCompactionId().equals(currentCompactionId.get().toString())) {

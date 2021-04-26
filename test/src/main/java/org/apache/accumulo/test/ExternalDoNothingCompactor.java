@@ -19,6 +19,8 @@
 package org.apache.accumulo.test;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -37,6 +39,12 @@ public class ExternalDoNothingCompactor extends Compactor implements Iface {
 
   ExternalDoNothingCompactor(CompactorServerOpts opts, String[] args) {
     super(opts, args);
+  }
+
+  @Override
+  protected void startCancelChecker(ScheduledThreadPoolExecutor schedExecutor,
+      long timeBetweenChecks) {
+    schedExecutor.scheduleWithFixedDelay(() -> checkIfCanceled(), 0, 5000, TimeUnit.MILLISECONDS);
   }
 
   @Override

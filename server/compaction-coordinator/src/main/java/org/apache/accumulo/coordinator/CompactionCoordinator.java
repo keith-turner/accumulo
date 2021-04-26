@@ -20,6 +20,7 @@ package org.apache.accumulo.coordinator;
 
 import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
+import java.io.IOException;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.List;
@@ -28,6 +29,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.accumulo.coordinator.QueueSummaries.PrioTserver;
 import org.apache.accumulo.core.Constants;
@@ -74,12 +79,22 @@ import org.apache.accumulo.server.rpc.TServerUtils;
 import org.apache.accumulo.server.rpc.ThriftServerType;
 import org.apache.accumulo.server.security.AuditedSecurityOperation;
 import org.apache.accumulo.server.security.SecurityOperation;
+import org.apache.http.entity.ContentType;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.handler.AbstractHandler;
+import org.eclipse.jetty.server.handler.ContextHandler;
+import org.eclipse.jetty.server.handler.ContextHandlerCollection;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.gson.Gson;
 
 public class CompactionCoordinator extends AbstractServer
     implements org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Iface,
@@ -93,6 +108,8 @@ public class CompactionCoordinator extends AbstractServer
 
   protected static final QueueSummaries QUEUE_SUMMARIES = new QueueSummaries();
 
+  private static final Gson GSON = new Gson();
+
   /* Map of compactionId to RunningCompactions */
   protected static final Map<ExternalCompactionId,RunningCompaction> RUNNING =
       new ConcurrentHashMap<>();
@@ -100,6 +117,7 @@ public class CompactionCoordinator extends AbstractServer
   /* Map of queue name to last time compactor called to get a compaction job */
   private static final Map<String,Long> TIME_COMPACTOR_LAST_CHECKED = new ConcurrentHashMap<>();
 
+  private final ExternalCompactionMetrics metrics = new ExternalCompactionMetrics();
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
   protected SecurityOperation security;
   protected final AccumuloConfiguration aconf;
@@ -221,6 +239,48 @@ public class CompactionCoordinator extends AbstractServer
     return sp;
   }
 
+  protected Server startHttpMetricServer() throws Exception {
+    int port = getContext().getConfiguration().getPortStream(Property.COORDINATOR_METRICPORT)
+        .iterator().next();
+    String hostname = getHostname();
+    Server metricServer = new Server(new QueuedThreadPool(4, 1));
+    ServerConnector c = new ServerConnector(metricServer);
+    c.setHost(hostname);
+    c.setPort(port);
+    metricServer.addConnector(c);
+    ContextHandlerCollection handlers = new ContextHandlerCollection();
+    metricServer.setHandler(handlers);
+    ContextHandler metricContext = new ContextHandler("/metrics");
+    metricContext.setHandler(new AbstractHandler() {
+      @Override
+      public void handle(String target, Request baseRequest, HttpServletRequest request,
+          HttpServletResponse response) throws IOException, ServletException {
+        baseRequest.setHandled(true);
+        response.setStatus(200);
+        response.setContentType(ContentType.APPLICATION_JSON.toString());
+        response.getWriter().print(metrics.toJson(GSON));
+      }
+    });
+    handlers.addHandler(metricContext);
+
+    ContextHandler detailsContext = new ContextHandler("/details");
+    detailsContext.setHandler(new AbstractHandler() {
+      @Override
+      public void handle(String target, Request baseRequest, HttpServletRequest request,
+          HttpServletResponse response) throws IOException, ServletException {
+        baseRequest.setHandled(true);
+        response.setStatus(200);
+        response.setContentType(ContentType.APPLICATION_JSON.toString());
+        response.getWriter().print(GSON.toJson(RUNNING));
+      }
+    });
+    handlers.addHandler(detailsContext);
+
+    metricServer.start();
+    LOG.info("Metrics HTTP server listening on {}:{}", hostname, port);
+    return metricServer;
+  }
+
   @Override
   public void run() {
 
@@ -231,6 +291,13 @@ public class CompactionCoordinator extends AbstractServer
       throw new RuntimeException("Failed to start the coordinator service", e1);
     }
     final HostAndPort clientAddress = coordinatorAddress.address;
+
+    Server metricServer = null;
+    try {
+      metricServer = startHttpMetricServer();
+    } catch (Exception e1) {
+      throw new RuntimeException("Failed to start metric http server", e1);
+    }
 
     try {
       getCoordinatorLock(clientAddress);
@@ -400,7 +467,15 @@ public class CompactionCoordinator extends AbstractServer
         UtilWaitThread.sleep(checkInterval - duration);
       }
     }
+
     LOG.info("Shutting down");
+    if (null != metricServer) {
+      try {
+        metricServer.stop();
+      } catch (Exception e) {
+        LOG.error("Error stopping metric server", e);
+      }
+    }
   }
 
   protected long getMissingCompactorWarningTime() {
@@ -484,6 +559,7 @@ public class CompactionCoordinator extends AbstractServer
         }
         RUNNING.put(ExternalCompactionId.of(job.getExternalCompactionId()),
             new RunningCompaction(job, compactorAddress, tserver));
+        metrics.incrementStarted();
         LOG.debug("Returning external job {} to {}", job.externalCompactionId, compactorAddress);
         result = job;
         break;
@@ -632,6 +708,7 @@ public class CompactionCoordinator extends AbstractServer
       rc.setCompleted();
       compactionFinalizer.commitCompaction(ecid, KeyExtent.fromThrift(textent), stats.fileSize,
           stats.entriesWritten);
+      metrics.incrementCompleted();
     } else {
       LOG.error(
           "Compaction completed called by Compactor for {}, but no running compaction for that id.",
@@ -655,6 +732,7 @@ public class CompactionCoordinator extends AbstractServer
       // CBUG: Should we remove rc from RUNNING here and remove the isCompactionCompleted method?
       rc.setCompleted();
       compactionFinalizer.failCompactions(Map.of(ecid, KeyExtent.fromThrift(extent)));
+      metrics.incrementFailed();
     } else {
       LOG.error(
           "Compaction failed called by Compactor for {}, but no running compaction for that id.",

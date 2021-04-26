@@ -61,6 +61,7 @@ import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
 import org.easymock.EasyMock;
+import org.eclipse.jetty.server.Server;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -182,6 +183,11 @@ public class CompactionCoordinatorTest {
           return extent;
         }
       };
+    }
+
+    @Override
+    protected Server startHttpMetricServer() throws Exception {
+      return null;
     }
 
   }
