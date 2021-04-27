@@ -56,7 +56,6 @@ import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.rpc.ServerAddress;
 import org.apache.accumulo.server.security.AuditedSecurityOperation;
-import org.apache.hadoop.shaded.org.apache.commons.compress.utils.Sets;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
@@ -70,6 +69,8 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.core.classloader.annotations.SuppressStaticInitializationFor;
 import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.reflect.Whitebox;
+
+import com.google.common.collect.Sets;
 
 @RunWith(PowerMockRunner.class)
 @PrepareForTest({CompactionCoordinator.class, DeadCompactionDetector.class, ThriftUtil.class,
