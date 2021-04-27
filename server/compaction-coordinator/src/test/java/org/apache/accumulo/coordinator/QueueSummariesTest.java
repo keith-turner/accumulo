@@ -18,6 +18,9 @@
  */
 package org.apache.accumulo.coordinator;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -25,7 +28,6 @@ import java.util.Set;
 import org.apache.accumulo.coordinator.QueueSummaries.PrioTserver;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
-import org.junit.Assert;
 import org.junit.Test;
 
 public class QueueSummariesTest {
@@ -60,33 +62,33 @@ public class QueueSummariesTest {
     update(queueSum, "ts3", "q1", "5", "q2", "5");
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts3", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts3", 5), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts3", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts3", 5), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
     }
 
     queueSum.removeSummary(ntsi("ts2"), "q1", 5);
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts3", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts3", 5), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts3", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts3", 5), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
     }
 
     queueSum.removeSummary(ntsi("ts3"), "q2", 5);
     queueSum.removeSummary(ntsi("ts2"), "q3", 5);
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts3", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts1", 4), queueSum.getNextTserver("q3"));
-      Assert.assertEquals(npt("ts2", 4), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts3", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts1", 4), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts2", 4), queueSum.getNextTserver("q3"));
     }
 
   }
@@ -99,10 +101,10 @@ public class QueueSummariesTest {
     update(queueSum, "ts2", "q1", "5", "q2", "4", "q3", "5");
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
     }
 
     // an update from the tserver should remove some existing entries
@@ -110,20 +112,20 @@ public class QueueSummariesTest {
     update(queueSum, "ts2", "q1", "7", "q3", "3", "q4", "5");
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts2", 7), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts1", 6), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 3), queueSum.getNextTserver("q3"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q4"));
+      assertEquals(npt("ts2", 7), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts1", 6), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 3), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q4"));
     }
 
     queueSum.removeSummary(ntsi("ts2"), "q1", 7);
     queueSum.removeSummary(ntsi("ts1"), "q2", 6);
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 4), queueSum.getNextTserver("q1"));
-      Assert.assertNull(queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 3), queueSum.getNextTserver("q3"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q4"));
+      assertEquals(npt("ts1", 4), queueSum.getNextTserver("q1"));
+      assertNull(queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 3), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q4"));
     }
   }
 
@@ -135,58 +137,58 @@ public class QueueSummariesTest {
     update(queueSum, "ts2", "q1", "5", "q2", "4", "q3", "5");
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts1", 5), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
     }
 
     queueSum.remove(Set.of(ntsi("ts1")));
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts2", 4), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts2", 4), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q3"));
     }
 
     queueSum.removeSummary(ntsi("ts2"), "q3", 5);
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts2", 4), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
-      Assert.assertNull(queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts2", 4), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
+      assertNull(queueSum.getNextTserver("q3"));
     }
 
     update(queueSum, "ts1", "q2", "6", "q1", "3");
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 6), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
-      Assert.assertNull(queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 6), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts2", 5), queueSum.getNextTserver("q1"));
+      assertNull(queueSum.getNextTserver("q3"));
     }
 
     queueSum.remove(Set.of(ntsi("ts2")));
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 6), queueSum.getNextTserver("q2"));
-      Assert.assertEquals(npt("ts1", 3), queueSum.getNextTserver("q1"));
-      Assert.assertNull(queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 6), queueSum.getNextTserver("q2"));
+      assertEquals(npt("ts1", 3), queueSum.getNextTserver("q1"));
+      assertNull(queueSum.getNextTserver("q3"));
     }
 
     queueSum.removeSummary(ntsi("ts1"), "q2", 6);
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertEquals(npt("ts1", 3), queueSum.getNextTserver("q1"));
-      Assert.assertNull(queueSum.getNextTserver("q2"));
-      Assert.assertNull(queueSum.getNextTserver("q3"));
+      assertEquals(npt("ts1", 3), queueSum.getNextTserver("q1"));
+      assertNull(queueSum.getNextTserver("q2"));
+      assertNull(queueSum.getNextTserver("q3"));
     }
 
     queueSum.remove(Set.of(ntsi("ts1")));
 
     for (int i = 0; i < 3; i++) {
-      Assert.assertNull(queueSum.getNextTserver("q1"));
-      Assert.assertNull(queueSum.getNextTserver("q2"));
-      Assert.assertNull(queueSum.getNextTserver("q3"));
+      assertNull(queueSum.getNextTserver("q1"));
+      assertNull(queueSum.getNextTserver("q2"));
+      assertNull(queueSum.getNextTserver("q3"));
     }
   }
 }

@@ -19,6 +19,9 @@
 package org.apache.accumulo.test;
 
 import static org.apache.accumulo.minicluster.ServerType.TABLET_SERVER;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.net.URI;
@@ -79,7 +82,6 @@ import org.apache.accumulo.test.functional.ConfigurableMacBase;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.apache.hadoop.io.Text;
-import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -226,10 +228,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
       // Check that there is one failed compaction in the coordinator metrics
       ExternalCompactionMetrics metrics = getCoordinatorMetrics();
-      Assert.assertEquals(1, metrics.getStarted());
-      Assert.assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
-      Assert.assertEquals(0, metrics.getCompleted());
-      Assert.assertEquals(1, metrics.getFailed());
+      assertEquals(1, metrics.getStarted());
+      assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
+      assertEquals(0, metrics.getCompleted());
+      assertEquals(1, metrics.getFailed());
 
     }
 
@@ -276,7 +278,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
           .fetch(ColumnType.PREV_ROW).build();
       tm.forEach(t -> md.add(t));
-      Assert.assertEquals(2, md.size());
+      assertEquals(2, md.size());
       Text start = md.get(0).getPrevEndRow();
       Text end = md.get(1).getEndRow();
 
@@ -288,8 +290,8 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
           .fetch(ColumnType.ECOMP).build();
       tm.forEach(t -> md.add(t));
-      Assert.assertEquals(0, md.size());
-      Assert.assertEquals(0,
+      assertEquals(0, md.size());
+      assertEquals(0,
           getCluster().getServerContext().getAmple().getExternalCompactionFinalStates().count());
 
       // Wait for the table to merge by waiting for only 1 tablet to show up in the metadata table
@@ -300,10 +302,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
       // Check that there is one failed compaction in the coordinator metrics
       ExternalCompactionMetrics metrics = getCoordinatorMetrics();
-      Assert.assertTrue(metrics.getStarted() > 0);
-      Assert.assertTrue(metrics.getRunning() > 0); // CBUG: Should be zero when #2032 is resolved
-      Assert.assertEquals(0, metrics.getCompleted());
-      Assert.assertTrue(metrics.getFailed() > 0);
+      assertTrue(metrics.getStarted() > 0);
+      assertTrue(metrics.getRunning() > 0); // CBUG: Should be zero when #2032 is resolved
+      assertEquals(0, metrics.getCompleted());
+      assertTrue(metrics.getFailed() > 0);
 
     }
 
@@ -374,10 +376,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       // The metadata tablets will be deleted from the metadata table because we have deleted the
       // table. Verify that the compaction failed by looking at the metrics in the Coordinator.
       ExternalCompactionMetrics metrics = getCoordinatorMetrics();
-      Assert.assertEquals(1, metrics.getStarted());
-      Assert.assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
-      Assert.assertEquals(0, metrics.getCompleted());
-      Assert.assertEquals(1, metrics.getFailed());
+      assertEquals(1, metrics.getStarted());
+      assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
+      assertEquals(0, metrics.getCompleted());
+      assertEquals(1, metrics.getFailed());
     }
   }
 
@@ -423,10 +425,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       // The metadata tablets will be deleted from the metadata table because we have deleted the
       // table. Verify that the compaction failed by looking at the metrics in the Coordinator.
       ExternalCompactionMetrics metrics = getCoordinatorMetrics();
-      Assert.assertEquals(1, metrics.getStarted());
-      Assert.assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
-      Assert.assertEquals(0, metrics.getCompleted());
-      Assert.assertEquals(1, metrics.getFailed());
+      assertEquals(1, metrics.getStarted());
+      assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
+      assertEquals(0, metrics.getCompleted());
+      assertEquals(1, metrics.getFailed());
     }
   }
 
@@ -442,7 +444,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       try {
         getCluster().killProcess(TABLET_SERVER, p);
       } catch (Exception e) {
-        Assert.fail("Failed to shutdown tablet server");
+        fail("Failed to shutdown tablet server");
       }
     });
     // Start our TServer that will not commit the compaction
@@ -472,15 +474,15 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
           .forLevel(DataLevel.USER).fetch(ColumnType.ECOMP).build();
       List<TabletMetadata> md = new ArrayList<>();
       tm.forEach(t -> md.add(t));
-      Assert.assertEquals(1, md.size());
+      assertEquals(1, md.size());
       TabletMetadata m = md.get(0);
       Map<ExternalCompactionId,ExternalCompactionMetadata> em = m.getExternalCompactions();
-      Assert.assertEquals(1, em.size());
+      assertEquals(1, em.size());
       List<ExternalCompactionFinalState> finished = new ArrayList<>();
       getCluster().getServerContext().getAmple().getExternalCompactionFinalStates()
           .forEach(f -> finished.add(f));
-      Assert.assertEquals(1, finished.size());
-      Assert.assertEquals(em.entrySet().iterator().next().getKey(),
+      assertEquals(1, finished.size());
+      assertEquals(em.entrySet().iterator().next().getKey(),
           finished.get(0).getExternalCompactionId());
       tm.close();
 
@@ -523,9 +525,9 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     HttpClient hc =
         HttpClient.newBuilder().version(Version.HTTP_1_1).followRedirects(Redirect.NORMAL).build();
     HttpResponse<String> res = hc.send(req, BodyHandlers.ofString());
-    Assert.assertEquals(200, res.statusCode());
+    assertEquals(200, res.statusCode());
     String metrics = res.body();
-    Assert.assertNotNull(metrics);
+    assertNotNull(metrics);
     System.out.println("Metrics response: " + metrics);
     return new Gson().fromJson(metrics, ExternalCompactionMetrics.class);
   }
@@ -535,7 +537,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     try (Scanner scanner = client.createScanner(table1)) {
       int count = 0;
       for (Entry<Key,Value> entry : scanner) {
-        Assert.assertTrue(Integer.parseInt(entry.getValue().toString()) % modulus == 0);
+        assertTrue(Integer.parseInt(entry.getValue().toString()) % modulus == 0);
         count++;
       }
 
@@ -545,7 +547,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
           expectedCount++;
       }
 
-      Assert.assertEquals(expectedCount, count);
+      assertEquals(expectedCount, count);
     }
   }
 
