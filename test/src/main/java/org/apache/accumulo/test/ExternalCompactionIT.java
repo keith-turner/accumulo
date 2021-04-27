@@ -188,7 +188,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       writeData(client, table1);
 
       cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
-      cluster.exec(CompactionCoordinator.class);
+      cluster.exec(TestCompactionCoordinator.class);
       compact(client, table1, 2, "DCQ1", false);
 
       // Wait for the compaction to start by waiting for 1 external compaction column
@@ -260,7 +260,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       TableId tid = Tables.getTableId(getCluster().getServerContext(), table1);
 
       cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
-      cluster.exec(CompactionCoordinator.class);
+      cluster.exec(TestCompactionCoordinator.class);
 
       // Wait for the compaction to start by waiting for 1 external compaction column
       List<TabletMetadata> md = new ArrayList<>();
@@ -353,7 +353,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       // Wait for the coordinator to insert the running compaction metadata
       // entry into the metadata table, then cancel the compaction
       cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
-      cluster.exec(CompactionCoordinator.class);
+      cluster.exec(TestCompactionCoordinator.class);
 
       compact(client, table1, 2, "DCQ1", false);
 
@@ -404,7 +404,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       // Wait for the coordinator to insert the running compaction metadata
       // entry into the metadata table, then delete the table.
       cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
-      cluster.exec(CompactionCoordinator.class);
+      cluster.exec(TestCompactionCoordinator.class);
 
       List<TabletMetadata> md = new ArrayList<>();
       TabletsMetadata tm = getCluster().getServerContext().getAmple().readTablets()
