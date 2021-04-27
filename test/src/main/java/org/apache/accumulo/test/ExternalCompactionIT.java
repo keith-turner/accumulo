@@ -211,24 +211,19 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       for (int r = jump; r < MAX_DATA; r += jump) {
         splits.add(new Text(row(r)));
       }
+
+      assertEquals(0, getCoordinatorMetrics().getFailed());
+
       client.tableOperations().addSplits(table1, splits);
 
-      // Wait for the compaction to get cancelled
-      UtilWaitThread.sleep(5000);
-
-      // Wait for the table to split by waiting for 5 tablets to show up in the metadata table
-      do {
-        if (null != tm) {
-          tm.close();
-        }
-        tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
-            .fetch(ColumnType.PREV_ROW).build();
-        tm.forEach(t -> md.add(t));
-      } while (md.size() < 5);
-      tm.close();
+      // wait for failure or test timeout
+      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
+      while (metrics.getFailed() == 0) {
+        UtilWaitThread.sleep(250);
+        metrics = getCoordinatorMetrics();
+      }
 
       // Check that there is one failed compaction in the coordinator metrics
-      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
       assertEquals(1, metrics.getStarted());
       assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
       assertEquals(0, metrics.getCompleted());
@@ -269,6 +264,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         if (null != tm) {
           tm.close();
         }
+        UtilWaitThread.sleep(50);
         tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
             .fetch(ColumnType.ECOMP).build();
         tm.forEach(t -> md.add(t));
@@ -282,6 +278,8 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       assertEquals(2, md.size());
       Text start = md.get(0).getPrevEndRow();
       Text end = md.get(1).getEndRow();
+
+      assertEquals(0, getCoordinatorMetrics().getFailed());
 
       // Merge - blocking operation
       client.tableOperations().merge(table1, start, end);
@@ -298,11 +296,14 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       // Wait for the table to merge by waiting for only 1 tablet to show up in the metadata table
       tm.close();
 
-      // Wait for the ExternalDoNothingCompactor to time out
-      UtilWaitThread.sleep(8000);
+      // wait for failure or test timeout
+      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
+      while (metrics.getFailed() == 0) {
+        UtilWaitThread.sleep(250);
+        metrics = getCoordinatorMetrics();
+      }
 
       // Check that there is one failed compaction in the coordinator metrics
-      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
       assertTrue(metrics.getStarted() > 0);
       assertTrue(metrics.getRunning() > 0); // CBUG: Should be zero when #2032 is resolved
       assertEquals(0, metrics.getCompleted());
@@ -368,15 +369,18 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
             .fetch(ColumnType.ECOMP).build();
         tm.forEach(t -> md.add(t));
       }
+
+      assertEquals(0, getCoordinatorMetrics().getFailed());
+
       client.tableOperations().cancelCompaction(table1);
 
-      // ExternalDoNothingCompactor runs the cancel checker every 5s and the compaction thread
-      // sleeps for 1s between checks to see if it's canceled or not.
-      UtilWaitThread.sleep(8000);
-
-      // The metadata tablets will be deleted from the metadata table because we have deleted the
-      // table. Verify that the compaction failed by looking at the metrics in the Coordinator.
+      // wait for failure or test timeout
       ExternalCompactionMetrics metrics = getCoordinatorMetrics();
+      while (metrics.getFailed() == 0) {
+        UtilWaitThread.sleep(250);
+        metrics = getCoordinatorMetrics();
+      }
+
       assertEquals(1, metrics.getStarted());
       assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
       assertEquals(0, metrics.getCompleted());
@@ -417,15 +421,25 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
             .fetch(ColumnType.ECOMP).build();
         tm.forEach(t -> md.add(t));
       }
+
+      assertEquals(0, getCoordinatorMetrics().getFailed());
+
       client.tableOperations().delete(table1);
 
-      // ExternalDoNothingCompactor runs the cancel checker every 5s and the compaction thread
-      // sleeps for 1s between checks to see if it's canceled or not.
-      UtilWaitThread.sleep(8000);
+      // wait for failure or test timeout
+      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
+      while (metrics.getFailed() == 0) {
+        UtilWaitThread.sleep(250);
+        metrics = getCoordinatorMetrics();
+      }
+
+      tm = getCluster().getServerContext().getAmple().readTablets().forLevel(DataLevel.USER)
+          .fetch(ColumnType.ECOMP).build();
+      assertEquals(0, tm.stream().count());
+      tm.close();
 
       // The metadata tablets will be deleted from the metadata table because we have deleted the
       // table. Verify that the compaction failed by looking at the metrics in the Coordinator.
-      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
       assertEquals(1, metrics.getStarted());
       assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
       assertEquals(0, metrics.getCompleted());
@@ -512,7 +526,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
     while (fs.count() != 0) {
       LOG.info("Waiting for compaction completed marker to disappear");
-      UtilWaitThread.sleep(1000);
+      UtilWaitThread.sleep(100);
       fs = getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
     }
     try (final AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
