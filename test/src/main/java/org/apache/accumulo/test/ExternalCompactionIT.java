@@ -23,6 +23,8 @@ import static org.apache.accumulo.minicluster.ServerType.TABLET_SERVER;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpClient.Redirect;
+import java.net.http.HttpClient.Version;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
@@ -50,9 +52,11 @@ import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
+import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.Filter;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
@@ -173,6 +177,139 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
   }
 
   @Test
+  public void testSplitDuringExternalCompaction() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      String table1 = "ectt6";
+      createTable(client, table1, "cs1");
+      TableId tid = Tables.getTableId(getCluster().getServerContext(), table1);
+      writeData(client, table1);
+
+      cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+      compact(client, table1, 2, "DCQ1", false);
+
+      // Wait for the compaction to start by waiting for 1 external compaction column
+      List<TabletMetadata> md = new ArrayList<>();
+      TabletsMetadata tm = null;
+      do {
+        if (null != tm) {
+          tm.close();
+        }
+        tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
+            .fetch(ColumnType.ECOMP).build();
+        tm.forEach(t -> md.add(t));
+      } while (md.size() == 0);
+      tm.close();
+      md.clear();
+
+      // ExternalDoNothingCompactor will not compact, it will wait, split the table.
+      SortedSet<Text> splits = new TreeSet<>();
+      int jump = MAX_DATA / 5;
+      for (int r = jump; r < MAX_DATA; r += jump) {
+        splits.add(new Text(row(r)));
+      }
+      client.tableOperations().addSplits(table1, splits);
+
+      // Wait for the compaction to get cancelled
+      UtilWaitThread.sleep(5000);
+
+      // Wait for the table to split by waiting for 5 tablets to show up in the metadata table
+      do {
+        if (null != tm) {
+          tm.close();
+        }
+        tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
+            .fetch(ColumnType.PREV_ROW).build();
+        tm.forEach(t -> md.add(t));
+      } while (md.size() < 5);
+      tm.close();
+
+      // Check that there is one failed compaction in the coordinator metrics
+      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
+      Assert.assertEquals(1, metrics.getStarted());
+      Assert.assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
+      Assert.assertEquals(0, metrics.getCompleted());
+      Assert.assertEquals(1, metrics.getFailed());
+
+    }
+
+  }
+
+  @Test
+  public void testMergeDuringExternalCompaction() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      String table1 = "ectt7";
+      SortedSet<Text> splits = new TreeSet<>();
+      int jump = MAX_DATA / 2;
+      for (int r = jump; r < MAX_DATA; r += jump) {
+        splits.add(new Text(row(r)));
+      }
+      createTable(client, table1, "cs1", splits);
+      // set compaction ratio to 1 so that majc occurs naturally, not user compaction
+      // user compaction blocks merge
+      client.tableOperations().setProperty(table1, Property.TABLE_MAJC_RATIO.toString(), "1.0");
+      // cause multiple rfiles to be created
+      writeData(client, table1);
+      writeData(client, table1);
+      writeData(client, table1);
+      writeData(client, table1);
+
+      TableId tid = Tables.getTableId(getCluster().getServerContext(), table1);
+
+      cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+
+      // Wait for the compaction to start by waiting for 1 external compaction column
+      List<TabletMetadata> md = new ArrayList<>();
+      TabletsMetadata tm = null;
+      do {
+        if (null != tm) {
+          tm.close();
+        }
+        tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
+            .fetch(ColumnType.ECOMP).build();
+        tm.forEach(t -> md.add(t));
+      } while (md.size() == 0);
+      tm.close();
+
+      md.clear();
+      tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
+          .fetch(ColumnType.PREV_ROW).build();
+      tm.forEach(t -> md.add(t));
+      Assert.assertEquals(2, md.size());
+      Text start = md.get(0).getPrevEndRow();
+      Text end = md.get(1).getEndRow();
+
+      // Merge - blocking operation
+      client.tableOperations().merge(table1, start, end);
+
+      // Confirm that there are no external compaction markers or final states in the metadata table
+      md.clear();
+      tm = getCluster().getServerContext().getAmple().readTablets().forTable(tid)
+          .fetch(ColumnType.ECOMP).build();
+      tm.forEach(t -> md.add(t));
+      Assert.assertEquals(0, md.size());
+      Assert.assertEquals(0,
+          getCluster().getServerContext().getAmple().getExternalCompactionFinalStates().count());
+
+      // Wait for the table to merge by waiting for only 1 tablet to show up in the metadata table
+      tm.close();
+
+      // Wait for the ExternalDoNothingCompactor to time out
+      UtilWaitThread.sleep(8000);
+
+      // Check that there is one failed compaction in the coordinator metrics
+      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
+      Assert.assertTrue(metrics.getStarted() > 0);
+      Assert.assertTrue(metrics.getRunning() > 0); // CBUG: Should be zero when #2032 is resolved
+      Assert.assertEquals(0, metrics.getCompleted());
+      Assert.assertTrue(metrics.getFailed() > 0);
+
+    }
+
+  }
+
+  @Test
   public void testManytablets() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
       String table1 = "ectt4";
@@ -235,16 +372,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       UtilWaitThread.sleep(8000);
 
       // The metadata tablets will be deleted from the metadata table because we have deleted the
-      // table
-      // Verify that the compaction failed by looking at the metrics in the Coordinator.
-      HttpRequest req =
-          HttpRequest.newBuilder().GET().uri(new URI("http://localhost:9099/metrics")).build();
-      HttpClient hc = HttpClient.newHttpClient();
-      HttpResponse<String> res = hc.send(req, BodyHandlers.ofString());
-      ExternalCompactionMetrics metrics =
-          new Gson().fromJson(res.body(), ExternalCompactionMetrics.class);
+      // table. Verify that the compaction failed by looking at the metrics in the Coordinator.
+      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
       Assert.assertEquals(1, metrics.getStarted());
-      Assert.assertEquals(0, metrics.getRunning());
+      Assert.assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
       Assert.assertEquals(0, metrics.getCompleted());
       Assert.assertEquals(1, metrics.getFailed());
     }
@@ -257,6 +388,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       String table1 = "ectt5";
       createTable(client, table1, "cs1");
       // set compaction ratio to 1 so that majc occurs naturally, not user compaction
+      // user compaction blocks delete
       client.tableOperations().setProperty(table1, Property.TABLE_MAJC_RATIO.toString(), "1.0");
       // cause multiple rfiles to be created
       writeData(client, table1);
@@ -289,16 +421,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       UtilWaitThread.sleep(8000);
 
       // The metadata tablets will be deleted from the metadata table because we have deleted the
-      // table
-      // Verify that the compaction failed by looking at the metrics in the Coordinator.
-      HttpRequest req =
-          HttpRequest.newBuilder().GET().uri(new URI("http://localhost:9099/metrics")).build();
-      HttpClient hc = HttpClient.newHttpClient();
-      HttpResponse<String> res = hc.send(req, BodyHandlers.ofString());
-      ExternalCompactionMetrics metrics =
-          new Gson().fromJson(res.body(), ExternalCompactionMetrics.class);
+      // table. Verify that the compaction failed by looking at the metrics in the Coordinator.
+      ExternalCompactionMetrics metrics = getCoordinatorMetrics();
       Assert.assertEquals(1, metrics.getStarted());
-      Assert.assertEquals(0, metrics.getRunning());
+      Assert.assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
       Assert.assertEquals(0, metrics.getCompleted());
       Assert.assertEquals(1, metrics.getFailed());
     }
@@ -389,6 +515,19 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     try (final AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
       verify(client, table3, 2);
     }
+  }
+
+  private ExternalCompactionMetrics getCoordinatorMetrics() throws Exception {
+    HttpRequest req =
+        HttpRequest.newBuilder().GET().uri(new URI("http://localhost:9099/metrics")).build();
+    HttpClient hc =
+        HttpClient.newBuilder().version(Version.HTTP_1_1).followRedirects(Redirect.NORMAL).build();
+    HttpResponse<String> res = hc.send(req, BodyHandlers.ofString());
+    Assert.assertEquals(200, res.statusCode());
+    String metrics = res.body();
+    Assert.assertNotNull(metrics);
+    System.out.println("Metrics response: " + metrics);
+    return new Gson().fromJson(metrics, ExternalCompactionMetrics.class);
   }
 
   private void verify(AccumuloClient client, String table1, int modulus)

@@ -37,7 +37,7 @@ import com.google.common.collect.Sets;
 
 public class QueueSummaries {
 
-  // keep track of the last tserver retunred for qeueue
+  // keep track of the last tserver returned for queue
   final Map<String,PrioTserver> LAST = new HashMap<>();
 
   /* Map of external queue name -> priority -> tservers */

@@ -258,7 +258,8 @@ public class CompactionCoordinator extends AbstractServer
         response.setStatus(200);
         response.setContentType("application/json");
         metrics.setRunning(RUNNING.size());
-        response.getWriter().print(metrics.toJson(GSON));
+        LOG.debug("Returning metrics: {}", metrics);
+        response.getWriter().print(GSON.toJson(metrics));
       }
     });
     handlers.addHandler(metricContext);
@@ -700,6 +701,7 @@ public class CompactionCoordinator extends AbstractServer
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
     LOG.info("Compaction completed, id: {}, stats: {}", externalCompactionId, stats);
+    metrics.incrementCompleted();
     final var ecid = ExternalCompactionId.of(externalCompactionId);
     final RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc) {
@@ -708,7 +710,6 @@ public class CompactionCoordinator extends AbstractServer
       rc.setCompleted();
       compactionFinalizer.commitCompaction(ecid, KeyExtent.fromThrift(textent), stats.fileSize,
           stats.entriesWritten);
-      metrics.incrementCompleted();
     } else {
       LOG.error(
           "Compaction completed called by Compactor for {}, but no running compaction for that id.",
@@ -726,13 +727,13 @@ public class CompactionCoordinator extends AbstractServer
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
     LOG.info("Compaction failed, id: {}", externalCompactionId);
+    metrics.incrementFailed();
     final var ecid = ExternalCompactionId.of(externalCompactionId);
     final RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc) {
       // CBUG: Should we remove rc from RUNNING here and remove the isCompactionCompleted method?
       rc.setCompleted();
       compactionFinalizer.failCompactions(Map.of(ecid, KeyExtent.fromThrift(extent)));
-      metrics.incrementFailed();
     } else {
       LOG.error(
           "Compaction failed called by Compactor for {}, but no running compaction for that id.",

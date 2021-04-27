@@ -18,8 +18,6 @@
  */
 package org.apache.accumulo.coordinator;
 
-import com.google.gson.Gson;
-
 public class ExternalCompactionMetrics {
 
   private long started = 0;
@@ -71,17 +69,13 @@ public class ExternalCompactionMetrics {
     this.failed++;
   }
 
-  public String toJson(Gson gson) {
-    return gson.toJson(this);
-  }
-
   @Override
   public String toString() {
     StringBuilder buf = new StringBuilder();
     buf.append("started: ").append(started);
-    buf.append("running: ").append(running);
-    buf.append("completed: ").append(completed);
-    buf.append("failed: ").append(failed);
+    buf.append(", running: ").append(running);
+    buf.append(", completed: ").append(completed);
+    buf.append(", failed: ").append(failed);
     return buf.toString();
   }
 
