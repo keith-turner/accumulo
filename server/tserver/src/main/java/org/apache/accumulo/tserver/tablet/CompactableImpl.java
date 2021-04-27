@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -108,6 +109,8 @@ public class CompactableImpl implements Compactable {
   private SpecialStatus chopStatus = SpecialStatus.NOT_ACTIVE;
 
   private Supplier<Set<CompactionServiceId>> servicesInUse;
+
+  private Set<CompactionServiceId> servicesUsed = new ConcurrentSkipListSet<>();
 
   // status of special compactions
   private enum SpecialStatus {
@@ -191,7 +194,7 @@ public class CompactableImpl implements Compactable {
 
         log.debug("Loaded tablet {} has existing external compaction {} {}", getExtent(), ecid,
             ecMeta);
-        manager.registerExternalCompaction(ecid, getExtent());
+        manager.registerExternalCompaction(ecid, getExtent(), ecMeta.getCompactionExecutorId());
       }
     });
 
@@ -630,6 +633,8 @@ public class CompactableImpl implements Compactable {
 
     if (!service.equals(getConfiguredService(kind)))
       return Optional.empty();
+
+    servicesUsed.add(service);
 
     var files = tablet.getDatafiles();
 
@@ -1140,21 +1145,26 @@ public class CompactableImpl implements Compactable {
    * should be running and none should be able to start.
    */
   public synchronized void close() {
-    if (closed)
-      return;
+    synchronized (this) {
+      if (closed)
+        return;
 
-    closed = true;
+      closed = true;
 
-    // wait while internal jobs are running or external compactions are committing, but do not wait
-    // on external compactions that are running
-    while (runnningJobs.stream().anyMatch(job -> !job.getExecutor().isExernalId())
-        || !externalCompactionsCommitting.isEmpty()) {
-      try {
-        wait(50);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new RuntimeException(e);
+      // wait while internal jobs are running or external compactions are committing, but do not
+      // wait
+      // on external compactions that are running
+      while (runnningJobs.stream().anyMatch(job -> !job.getExecutor().isExernalId())
+          || !externalCompactionsCommitting.isEmpty()) {
+        try {
+          wait(50);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException(e);
+        }
       }
     }
+
+    manager.compactableClosed(getExtent(), servicesUsed, externalCompactions.keySet());
   }
 }

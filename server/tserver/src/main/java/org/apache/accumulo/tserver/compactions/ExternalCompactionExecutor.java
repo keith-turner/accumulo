@@ -19,12 +19,17 @@
 package org.apache.accumulo.tserver.compactions;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
@@ -34,13 +39,18 @@ import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 
 public class ExternalCompactionExecutor implements CompactionExecutor {
 
+  // This exist to provide an accurate count of queued compactions for metrics. The PriorityQueue is
+  // not used because its size may be off due to it containing cancelled compactions. The collection
+  // below should not contain cancelled compactions. A concurrent set was not used because those do
+  // not have constant time size operations.
   private Set<ExternalJob> queuedTask = Collections.synchronizedSet(new HashSet<>());
 
-  private class ExternalJob extends SubmittedJob implements Comparable<ExternalJob> {
+  private class ExternalJob extends SubmittedJob {
     private AtomicReference<Status> status = new AtomicReference<>(Status.QUEUED);
     private Compactable compactable;
     private CompactionServiceId csid;
     private volatile ExternalCompactionId ecid;
+    private AtomicLong cancelCount = new AtomicLong();
 
     public ExternalJob(CompactionJob job, Compactable compactable, CompactionServiceId csid) {
       super(job);
@@ -69,48 +79,32 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
         if (canceled) {
           queuedTask.remove(this);
         }
+
+        if (canceled && cancelCount.incrementAndGet() % 1024 == 0) {
+          // Occasionally clean the queue of canceled tasks that have hung around because of their
+          // low priority. This runs periodically, instead of every time something is canceled, to
+          // avoid hurting performance.
+          queue.removeIf(ej -> ej.getStatus() == Status.CANCELED);
+        }
       }
 
       return canceled;
     }
 
-    @Override
-    public int compareTo(ExternalJob o) {
-      return Long.compare(o.getJob().getPriority(), getJob().getPriority());
+    public KeyExtent getExtent() {
+      return compactable.getExtent();
     }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (null == obj) {
-        return false;
-      }
-      if (obj == this) {
-        return true;
-      }
-      if (obj instanceof ExternalJob) {
-        ExternalJob other = (ExternalJob) obj;
-        return (this.compareTo(other) == 0);
-      }
-      return false;
-    }
-
-    @Override
-    public int hashCode() {
-      return Long.hashCode(this.getJob().getPriority());
-    }
-
   }
 
   private PriorityBlockingQueue<ExternalJob> queue;
   private CompactionExecutorId ceid;
 
-  ExternalCompactionExecutor() {
-    queue = new PriorityBlockingQueue<ExternalJob>();
-  }
-
   public ExternalCompactionExecutor(CompactionExecutorId ceid) {
     this.ceid = ceid;
-    this.queue = new PriorityBlockingQueue<ExternalJob>();
+    Comparator<ExternalJob> comparator = Comparator.comparingLong(ej -> ej.getJob().getPriority());
+    comparator = comparator.reversed();
+
+    this.queue = new PriorityBlockingQueue<ExternalJob>(100, comparator);
   }
 
   @Override
@@ -185,6 +179,21 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
     }
 
     return new TCompactionQueueSummary(ceid.getExernalName(), priority);
+  }
+
+  public CompactionExecutorId getId() {
+    return ceid;
+  }
+
+  @Override
+  public void compactableClosed(KeyExtent extent) {
+    List<ExternalJob> taskToCancel;
+    synchronized (queuedTask) {
+      taskToCancel = queuedTask.stream().filter(ejob -> ejob.getExtent().equals(extent))
+          .collect(Collectors.toList());
+    }
+
+    taskToCancel.forEach(task -> task.cancel(Status.QUEUED));
   }
 
 }

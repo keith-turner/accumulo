@@ -21,6 +21,7 @@ package org.apache.accumulo.tserver.compactions;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -29,13 +30,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.util.compaction.CompactionJobPrioritizer;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.core.util.threads.ThreadPools;
+import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.apache.htrace.wrappers.TraceRunnable;
 import org.slf4j.Logger;
@@ -136,6 +140,10 @@ public class InternalCompactionExecutor implements CompactionExecutor {
 
       return canceled;
     }
+
+    public KeyExtent getExtent() {
+      return compactable.getExtent();
+    }
   }
 
   private static CompactionJob getJob(Runnable r) {
@@ -220,5 +228,16 @@ public class InternalCompactionExecutor implements CompactionExecutor {
     } catch (Exception e) {
       log.warn("Failed to close metrics {}", ceid, e);
     }
+  }
+
+  @Override
+  public void compactableClosed(KeyExtent extent) {
+    List<CompactionTask> taskToCancel;
+    synchronized (queuedTask) {
+      taskToCancel = queuedTask.stream().filter(ejob -> ejob.getExtent().equals(extent))
+          .collect(Collectors.toList());
+    }
+
+    taskToCancel.forEach(task -> task.cancel(Status.QUEUED));
   }
 }

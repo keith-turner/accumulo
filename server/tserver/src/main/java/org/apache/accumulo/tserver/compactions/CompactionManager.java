@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -77,7 +78,17 @@ public class CompactionManager {
 
   private Map<CompactionExecutorId,ExternalCompactionExecutor> externalExecutors;
 
-  private Map<ExternalCompactionId,KeyExtent> runningExternalCompactions;
+  private Map<ExternalCompactionId,ExtCompInfo> runningExternalCompactions;
+
+  static class ExtCompInfo {
+    final KeyExtent extent;
+    final CompactionExecutorId executor;
+
+    public ExtCompInfo(KeyExtent extent, CompactionExecutorId executor) {
+      this.extent = extent;
+      this.executor = executor;
+    }
+  }
 
   private class Config {
     Map<String,String> planners = new HashMap<>();
@@ -326,6 +337,8 @@ public class CompactionManager {
     this.services = Map.copyOf(tmpServices);
 
     this.maxTimeBetweenChecks = ctx.getConfiguration().getTimeInMillis(Property.TSERV_MAJC_DELAY);
+
+    ceMetrics.setExternalMetricsSupplier(this::getExternalMetrics);
   }
 
   public void compactableChanged(Compactable compactable) {
@@ -428,7 +441,8 @@ public class CompactionManager {
     ExternalCompactionExecutor extCE = getExternalExecutor(queueName);
     var ecJob = extCE.reserveExternalCompaction(priority, compactorId, externalCompactionId);
     if (ecJob != null) {
-      runningExternalCompactions.put(ecJob.getExternalCompactionId(), ecJob.getExtent());
+      runningExternalCompactions.put(ecJob.getExternalCompactionId(),
+          new ExtCompInfo(ecJob.getExtent(), extCE.getId()));
       log.debug("Reserved external compaction {}", ecJob.getExternalCompactionId());
     }
     return ecJob;
@@ -442,18 +456,19 @@ public class CompactionManager {
     return getExternalExecutor(CompactionExecutorId.externalId(queueName));
   }
 
-  public void registerExternalCompaction(ExternalCompactionId ecid, KeyExtent externt) {
-    runningExternalCompactions.put(ecid, externt);
+  public void registerExternalCompaction(ExternalCompactionId ecid, KeyExtent extent,
+      CompactionExecutorId ceid) {
+    runningExternalCompactions.put(ecid, new ExtCompInfo(extent, ceid));
   }
 
   public void commitExternalCompaction(ExternalCompactionId extCompactionId,
       KeyExtent extentCompacted, Map<KeyExtent,Tablet> currentTablets, long fileSize,
       long entries) {
-    KeyExtent extent = runningExternalCompactions.get(extCompactionId);
-    if (extent != null) {
-      Preconditions.checkState(extent.equals(extentCompacted),
-          "Unexpected extent seen on compaction commit %s %s", extent, extentCompacted);
-      Tablet tablet = currentTablets.get(extent);
+    var ecInfo = runningExternalCompactions.get(extCompactionId);
+    if (ecInfo != null) {
+      Preconditions.checkState(ecInfo.extent.equals(extentCompacted),
+          "Unexpected extent seen on compaction commit %s %s", ecInfo.extent, extentCompacted);
+      Tablet tablet = currentTablets.get(ecInfo.extent);
       if (tablet != null) {
         tablet.asCompactable().commitExternalCompaction(extCompactionId, fileSize, entries);
         compactablesToCheck.add(tablet.asCompactable());
@@ -463,17 +478,17 @@ public class CompactionManager {
   }
 
   public boolean isRunningExternalCompaction(ExternalCompactionId eci, KeyExtent ke) {
-    KeyExtent extent = runningExternalCompactions.get(eci);
-    return (null != extent && extent.compareTo(ke) == 0);
+    var ecInfo = runningExternalCompactions.get(eci);
+    return (null != ecInfo && ecInfo.extent.compareTo(ke) == 0);
   }
 
   public void externalCompactionFailed(ExternalCompactionId ecid, KeyExtent extentCompacted,
       Map<KeyExtent,Tablet> currentTablets) {
-    KeyExtent extent = runningExternalCompactions.get(ecid);
-    if (extent != null) {
-      Preconditions.checkState(extent.equals(extentCompacted),
-          "Unexpected extent seen on compaction commit %s %s", extent, extentCompacted);
-      Tablet tablet = currentTablets.get(extent);
+    var ecInfo = runningExternalCompactions.get(ecid);
+    if (ecInfo != null) {
+      Preconditions.checkState(ecInfo.extent.equals(extentCompacted),
+          "Unexpected extent seen on compaction commit %s %s", ecInfo.extent, extentCompacted);
+      Tablet tablet = currentTablets.get(ecInfo.extent);
       if (tablet != null) {
         tablet.asCompactable().externalCompactionFailed(ecid);
         compactablesToCheck.add(tablet.asCompactable());
@@ -487,4 +502,39 @@ public class CompactionManager {
         .collect(Collectors.toList());
   }
 
+  public static class ExtCompMetric {
+    public CompactionExecutorId ceid;
+    public int running;
+    public int queued;
+  }
+
+  public Collection<ExtCompMetric> getExternalMetrics() {
+    Map<CompactionExecutorId,ExtCompMetric> metrics = new HashMap<>();
+
+    externalExecutors.forEach((eeid, ece) -> {
+      ExtCompMetric ecm = new ExtCompMetric();
+      ecm.ceid = eeid;
+      ecm.queued = ece.getCompactionsQueued(CType.EXTERNAL);
+      metrics.put(eeid, ecm);
+    });
+
+    runningExternalCompactions.values().forEach(eci -> {
+      var ecm = metrics.computeIfAbsent(eci.executor, id -> {
+        var newEcm = new ExtCompMetric();
+        newEcm.ceid = id;
+        return newEcm;
+      });
+
+      ecm.running++;
+    });
+
+    return metrics.values();
+  }
+
+  public void compactableClosed(KeyExtent extent, Set<CompactionServiceId> servicesUsed,
+      Set<ExternalCompactionId> ecids) {
+    runningExternalCompactions.keySet().removeAll(ecids);
+    servicesUsed.stream().map(services::get).filter(Objects::nonNull)
+        .forEach(compService -> compService.compactableClosed(extent));
+  }
 }

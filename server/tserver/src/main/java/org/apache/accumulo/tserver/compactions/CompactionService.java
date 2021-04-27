@@ -441,4 +441,8 @@ public class CompactionService {
       }
     });
   }
+
+  public void compactableClosed(KeyExtent extent) {
+    executors.values().forEach(compExecutor -> compExecutor.compactableClosed(extent));
+  }
 }

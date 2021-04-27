@@ -20,6 +20,7 @@ package org.apache.accumulo.tserver.compactions;
 
 import java.util.function.Consumer;
 
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 
@@ -38,4 +39,5 @@ public interface CompactionExecutor {
 
   void stop();
 
+  void compactableClosed(KeyExtent extent);
 }
