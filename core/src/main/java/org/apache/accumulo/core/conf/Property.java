@@ -1044,8 +1044,6 @@ public enum Property {
       "if the ports above are in use, search higher ports until one is available"),
   COORDINATOR_CLIENTPORT("coordinator.port.client", "9100", PropertyType.PORT,
       "The port used for handling Thrift client connections on the compaction coordinator server"),
-  COORDINATOR_METRICPORT("coordinator.port.metrics", "9099", PropertyType.PORT,
-      "The port used for the metric http server on the compaction coordinator server"),
   COORDINATOR_MINTHREADS("coordinator.server.threads.minimum", "1", PropertyType.COUNT,
       "The minimum number of threads to use to handle incoming requests."),
   COORDINATOR_MINTHREADS_TIMEOUT("coordinator.server.threads.timeout", "0s",

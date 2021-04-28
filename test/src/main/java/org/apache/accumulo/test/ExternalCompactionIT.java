@@ -225,8 +225,8 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       }
 
       // Check that there is one failed compaction in the coordinator metrics
-      assertEquals(1, metrics.getStarted());
-      assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
+      assertTrue(metrics.getStarted() > 0);
+      assertTrue(metrics.getRunning() > 0); // CBUG: Should be zero when #2032 is resolved
       assertEquals(0, metrics.getCompleted());
       assertEquals(1, metrics.getFailed());
 

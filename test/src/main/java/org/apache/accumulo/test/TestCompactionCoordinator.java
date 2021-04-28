@@ -27,7 +27,6 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.accumulo.coordinator.CompactionCoordinator;
 import org.apache.accumulo.coordinator.ExternalCompactionMetrics;
-import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
@@ -62,8 +61,7 @@ public class TestCompactionCoordinator extends CompactionCoordinator
   }
 
   private Server startHttpMetricServer() throws Exception {
-    int port = getContext().getConfiguration().getPortStream(Property.COORDINATOR_METRICPORT)
-        .iterator().next();
+    int port = 9099;
     String hostname = getHostname();
     Server metricServer = new Server(new QueuedThreadPool(4, 1));
     ServerConnector c = new ServerConnector(metricServer);
