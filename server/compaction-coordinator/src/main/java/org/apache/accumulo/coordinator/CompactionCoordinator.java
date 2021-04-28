@@ -570,31 +570,29 @@ public class CompactionCoordinator extends AbstractServer
     if (null == rc) {
       return;
     }
-    if (!rc.isCompleted()) {
-      final HostAndPort compactor = HostAndPort.fromString(rc.getCompactorAddress());
-      RetryableThriftCall<String> cancelThriftCall = new RetryableThriftCall<>(1000,
-          RetryableThriftCall.MAX_WAIT_TIME, 0, new RetryableThriftFunction<String>() {
-            @Override
-            public String execute() throws TException {
-              Compactor.Client compactorConnection = null;
-              try {
-                compactorConnection = getCompactorConnection(compactor);
-                compactorConnection.cancel(TraceUtil.traceInfo(), getContext().rpcCreds(),
-                    rc.getJob().getExternalCompactionId());
-                return "";
-              } catch (TException e) {
-                throw e;
-              } finally {
-                ThriftUtil.returnClient(compactorConnection);
-              }
+    final HostAndPort compactor = HostAndPort.fromString(rc.getCompactorAddress());
+    RetryableThriftCall<String> cancelThriftCall = new RetryableThriftCall<>(1000,
+        RetryableThriftCall.MAX_WAIT_TIME, 0, new RetryableThriftFunction<String>() {
+          @Override
+          public String execute() throws TException {
+            Compactor.Client compactorConnection = null;
+            try {
+              compactorConnection = getCompactorConnection(compactor);
+              compactorConnection.cancel(TraceUtil.traceInfo(), getContext().rpcCreds(),
+                  rc.getJob().getExternalCompactionId());
+              return "";
+            } catch (TException e) {
+              throw e;
+            } finally {
+              ThriftUtil.returnClient(compactorConnection);
             }
-          });
-      try {
-        cancelThriftCall.run();
-      } catch (RetriesExceededException e) {
-        LOG.error("Unable to contact Compactor {} to cancel running compaction {}",
-            rc.getCompactorAddress(), rc.getJob(), e);
-      }
+          }
+        });
+    try {
+      cancelThriftCall.run();
+    } catch (RetriesExceededException e) {
+      LOG.error("Unable to contact Compactor {} to cancel running compaction {}",
+          rc.getCompactorAddress(), rc.getJob(), e);
     }
   }
 
@@ -628,9 +626,7 @@ public class CompactionCoordinator extends AbstractServer
     final var ecid = ExternalCompactionId.of(externalCompactionId);
     final RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc) {
-      // CBUG: Should we remove rc from RUNNING here and remove the isCompactionCompleted method?
-      rc.setStats(stats);
-      rc.setCompleted();
+      RUNNING.remove(ecid, rc);
       compactionFinalizer.commitCompaction(ecid, KeyExtent.fromThrift(textent), stats.fileSize,
           stats.entriesWritten);
     } else {
@@ -653,47 +649,13 @@ public class CompactionCoordinator extends AbstractServer
     final var ecid = ExternalCompactionId.of(externalCompactionId);
     final RunningCompaction rc = RUNNING.get(ecid);
     if (null != rc) {
-      // CBUG: Should we remove rc from RUNNING here and remove the isCompactionCompleted method?
-      rc.setCompleted();
+      RUNNING.remove(ecid, rc);
       compactionFinalizer.failCompactions(Map.of(ecid, KeyExtent.fromThrift(extent)));
     } else {
       LOG.error(
           "Compaction failed called by Compactor for {}, but no running compaction for that id.",
           externalCompactionId);
       throw new UnknownCompactionIdException();
-    }
-  }
-
-  /**
-   * Called by TabletServer to check if an external compaction has been completed.
-   *
-   *
-   * @param externalCompactionId
-   *          compaction id
-   * @return CompactionStats
-   * @throws UnknownCompactionIdException
-   *           if compaction is not running
-   * @throws TException
-   *           thrift error
-   */
-  public TCompactionStats isCompactionCompleted(String externalCompactionId) throws TException {
-    final var ecid = ExternalCompactionId.of(externalCompactionId);
-    final RunningCompaction rc = RUNNING.get(ecid);
-    if (null != rc && rc.isCompleted()) {
-      // CBUG: I don't think this method is ever called, so
-      // the running compaction is not removed from RUNNING
-      RUNNING.remove(ecid, rc);
-      return rc.getStats();
-    } else if (rc == null) {
-      LOG.error(
-          "isCompactionCompleted called by TServer for {}, but no running compaction for that id.",
-          externalCompactionId);
-      throw new UnknownCompactionIdException();
-    } else {
-      LOG.debug("isCompactionCompleted called by TServer for {}, but compaction is not complete.",
-          externalCompactionId);
-      // Return empty stats as a marker that it's not done.
-      return new TCompactionStats();
     }
   }
 

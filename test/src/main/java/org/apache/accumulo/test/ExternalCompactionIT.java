@@ -238,7 +238,6 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
       // Check that there is one failed compaction in the coordinator metrics
       assertTrue(metrics.getStarted() > 0);
-      assertTrue(metrics.getRunning() > 0); // CBUG: Should be zero when #2032 is resolved
       assertEquals(0, metrics.getCompleted());
       assertEquals(1, metrics.getFailed());
 
@@ -315,7 +314,6 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
       // Check that there is one failed compaction in the coordinator metrics
       assertTrue(metrics.getStarted() > 0);
-      assertTrue(metrics.getRunning() > 0); // CBUG: Should be zero when #2032 is resolved
       assertEquals(0, metrics.getCompleted());
       assertTrue(metrics.getFailed() > 0);
 
@@ -475,7 +473,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       }
 
       assertEquals(1, metrics.getStarted());
-      assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
+      assertEquals(0, metrics.getRunning());
       assertEquals(0, metrics.getCompleted());
       assertEquals(1, metrics.getFailed());
     }
@@ -534,7 +532,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       // The metadata tablets will be deleted from the metadata table because we have deleted the
       // table. Verify that the compaction failed by looking at the metrics in the Coordinator.
       assertEquals(1, metrics.getStarted());
-      assertEquals(1, metrics.getRunning()); // CBUG: Should be zero when #2032 is resolved
+      assertEquals(0, metrics.getRunning());
       assertEquals(0, metrics.getCompleted());
       assertEquals(1, metrics.getFailed());
     }

@@ -20,11 +20,9 @@ package org.apache.accumulo.coordinator;
 
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.metadata.TServerInstance;
-import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 
 public class RunningCompaction {
@@ -33,8 +31,6 @@ public class RunningCompaction {
   private final String compactorAddress;
   private final TServerInstance tserver;
   private final Map<Long,CompactionUpdate> updates = new TreeMap<>();
-  private final AtomicBoolean completed = new AtomicBoolean(Boolean.FALSE);
-  private TCompactionStats stats = null;
 
   RunningCompaction(TExternalCompactionJob job, String compactorAddress, TServerInstance tserver) {
     super();
@@ -51,14 +47,6 @@ public class RunningCompaction {
     this.updates.put(timestamp, new CompactionUpdate(timestamp, message, state));
   }
 
-  public TCompactionStats getStats() {
-    return stats;
-  }
-
-  public void setStats(TCompactionStats stats) {
-    this.stats = stats;
-  }
-
   public TExternalCompactionJob getJob() {
     return job;
   }
@@ -69,14 +57,6 @@ public class RunningCompaction {
 
   public TServerInstance getTserver() {
     return tserver;
-  }
-
-  public boolean isCompleted() {
-    return completed.get();
-  }
-
-  public void setCompleted() {
-    completed.compareAndSet(false, true);
   }
 
 }
