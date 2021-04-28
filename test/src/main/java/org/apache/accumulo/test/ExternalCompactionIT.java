@@ -26,6 +26,7 @@ import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpClient.Redirect;
 import java.net.http.HttpClient.Version;
@@ -99,6 +100,17 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
   private static final Logger LOG = LoggerFactory.getLogger(ExternalCompactionIT.class);
 
   private static final int MAX_DATA = 1000;
+
+  private HttpRequest req = null;
+  {
+    try {
+      req = HttpRequest.newBuilder().GET().uri(new URI("http://localhost:9099/metrics")).build();
+    } catch (URISyntaxException e) {
+      throw new RuntimeException(e);
+    }
+  }
+  private final HttpClient hc =
+      HttpClient.newBuilder().version(Version.HTTP_1_1).followRedirects(Redirect.NORMAL).build();
 
   private static String row(int r) {
     return String.format("r:%04d", r);
@@ -348,6 +360,81 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
   }
 
   @Test
+  public void testExternalCompactionsRunWithTableOffline() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      String table1 = "ectt7";
+      createTable(client, table1, "cs1");
+      // set compaction ratio to 1 so that majc occurs naturally, not user compaction
+      // user compaction blocks merge
+      client.tableOperations().setProperty(table1, Property.TABLE_MAJC_RATIO.toString(), "1.0");
+      // cause multiple rfiles to be created
+      writeData(client, table1);
+      writeData(client, table1);
+      writeData(client, table1);
+      writeData(client, table1);
+
+      cluster.exec(TestCompactionCoordinator.class);
+
+      // Wait for coordinator to start
+      ExternalCompactionMetrics metrics = null;
+      while (null == metrics) {
+        try {
+          metrics = getCoordinatorMetrics();
+        } catch (Exception e) {
+          UtilWaitThread.sleep(250);
+        }
+      }
+
+      // Offline the table when the compaction starts
+      Thread t = new Thread(() -> {
+        try {
+          ExternalCompactionMetrics metrics2 = getCoordinatorMetrics();
+          while (metrics2.getStarted() == 0) {
+            metrics2 = getCoordinatorMetrics();
+          }
+          client.tableOperations().offline(table1, false);
+        } catch (Exception e) {
+          LOG.error("Error: ", e);
+          fail("Failed to offline table");
+        }
+      });
+      t.start();
+
+      // Confirm that no final state is in the metadata table
+      assertEquals(0,
+          getCluster().getServerContext().getAmple().getExternalCompactionFinalStates().count());
+
+      // Start the compactor
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+
+      t.join();
+
+      // wait for completed or test timeout
+      metrics = getCoordinatorMetrics();
+      while (metrics.getCompleted() == 0) {
+        UtilWaitThread.sleep(250);
+        metrics = getCoordinatorMetrics();
+      }
+
+      // Confirm that final state is in the metadata table
+      assertEquals(1,
+          getCluster().getServerContext().getAmple().getExternalCompactionFinalStates().count());
+
+      // Online the table
+      client.tableOperations().online(table1);
+
+      // wait for compaction to be committed by tserver or test timeout
+      long finalStateCount =
+          getCluster().getServerContext().getAmple().getExternalCompactionFinalStates().count();
+      while (finalStateCount > 0) {
+        UtilWaitThread.sleep(250);
+        finalStateCount =
+            getCluster().getServerContext().getAmple().getExternalCompactionFinalStates().count();
+      }
+    }
+  }
+
+  @Test
   public void testUserCompactionCancellation() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
 
@@ -541,15 +628,10 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
   }
 
   private ExternalCompactionMetrics getCoordinatorMetrics() throws Exception {
-    HttpRequest req =
-        HttpRequest.newBuilder().GET().uri(new URI("http://localhost:9099/metrics")).build();
-    HttpClient hc =
-        HttpClient.newBuilder().version(Version.HTTP_1_1).followRedirects(Redirect.NORMAL).build();
     HttpResponse<String> res = hc.send(req, BodyHandlers.ofString());
     assertEquals(200, res.statusCode());
     String metrics = res.body();
     assertNotNull(metrics);
-    System.out.println("Metrics response: " + metrics);
     return new Gson().fromJson(metrics, ExternalCompactionMetrics.class);
   }
 

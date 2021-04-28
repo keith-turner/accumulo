@@ -79,7 +79,6 @@ public class TestCompactionCoordinator extends CompactionCoordinator
         response.setStatus(200);
         response.setContentType("application/json");
         metrics.setRunning(RUNNING.size());
-        LOG.debug("Returning metrics: {}", metrics);
         response.getWriter().print(GSON.toJson(metrics));
       }
     });
