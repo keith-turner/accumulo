@@ -51,12 +51,12 @@ public class CompactionFinalizer {
 
   private static final Logger LOG = LoggerFactory.getLogger(CompactionFinalizer.class);
 
-  private final ServerContext context;
+  protected final ServerContext context;
   private final ExecutorService ntfyExecutor;
   private final ExecutorService backgroundExecutor;
   private final BlockingQueue<ExternalCompactionFinalState> pendingNotifications;
 
-  CompactionFinalizer(ServerContext context) {
+  protected CompactionFinalizer(ServerContext context) {
     this.context = context;
     this.pendingNotifications = new ArrayBlockingQueue<>(1000);
     // CBUG configure thread factory

@@ -373,7 +373,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       writeData(client, table1);
       writeData(client, table1);
 
-      cluster.exec(TestCompactionCoordinator.class);
+      cluster.exec(TestCompactionCoordinatorForOfflineTable.class);
 
       // Wait for coordinator to start
       ExternalCompactionMetrics metrics = null;

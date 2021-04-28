@@ -159,9 +159,9 @@ public class TestCompactionCoordinator extends CompactionCoordinator
   }
 
   public static void main(String[] args) throws Exception {
-    try (TestCompactionCoordinator compactor =
+    try (TestCompactionCoordinator coordinator =
         new TestCompactionCoordinator(new ServerOpts(), args)) {
-      compactor.runServer();
+      coordinator.runServer();
     }
   }
 
