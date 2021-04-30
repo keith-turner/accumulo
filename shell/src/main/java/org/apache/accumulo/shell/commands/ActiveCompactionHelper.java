@@ -71,20 +71,20 @@ class ActiveCompactionHelper {
       iterOpts.put(is.getName(), is.getOptions());
     }
 
-    String hostType;
+    String hostSuffix;
     switch (ac.getHost().getType()) {
       case TSERVER:
-        hostType = "T";
+        hostSuffix = "";
         break;
       case COMPACTOR:
-        hostType = "C";
+        hostSuffix = " (ext)";
         break;
       default:
-        hostType = ac.getHost().getType().name();
+        hostSuffix = ac.getHost().getType().name();
         break;
     }
 
-    String host = hostType + " " + ac.getHost().getAddress() + ":" + ac.getHost().getPort();
+    String host = ac.getHost().getAddress() + ":" + ac.getHost().getPort() + hostSuffix;
 
     try {
       return String.format(
