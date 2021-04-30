@@ -142,4 +142,10 @@ service Compactor {
     1:client.ThriftSecurityException sec
   )
 
+  list<tabletserver.ActiveCompaction> getActiveCompactions(
+    2:trace.TInfo tinfo
+    1:security.TCredentials credentials
+  ) throws (
+    1:client.ThriftSecurityException sec
+  )
 }

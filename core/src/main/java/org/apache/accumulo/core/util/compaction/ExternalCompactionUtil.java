@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.server.compaction;
+package org.apache.accumulo.core.util.compaction;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,16 +29,19 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 import org.apache.accumulo.core.Constants;
+import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.compaction.thrift.Compactor;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.rpc.ThriftUtil;
+import org.apache.accumulo.core.tabletserver.thrift.ActiveCompaction;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.zookeeper.ServiceLock;
-import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.fate.zookeeper.ZooReader;
+import org.apache.accumulo.fate.zookeeper.ZooSession;
 import org.apache.thrift.TException;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NoNodeException;
@@ -67,11 +70,12 @@ public class ExternalCompactionUtil {
    *
    * @return null if Coordinator node not found, else HostAndPort
    */
-  public static HostAndPort findCompactionCoordinator(ServerContext context) {
+  public static HostAndPort findCompactionCoordinator(ClientContext context) {
     final String lockPath = context.getZooKeeperRoot() + Constants.ZCOORDINATOR_LOCK;
     try {
-      byte[] address = ServiceLock.getLockData(context.getZooReaderWriter().getZooKeeper(),
-          ServiceLock.path(lockPath));
+      var zk = ZooSession.getAnonymousSession(context.getZooKeepers(),
+          context.getZooKeepersSessionTimeOut());
+      byte[] address = ServiceLock.getLockData(zk, ServiceLock.path(lockPath));
       if (null == address) {
         return null;
       }
@@ -85,20 +89,21 @@ public class ExternalCompactionUtil {
   /**
    * @return list of Compactors
    */
-  public static List<HostAndPort> getCompactorAddrs(ServerContext context) {
+  public static List<HostAndPort> getCompactorAddrs(ClientContext context) {
     try {
       final List<HostAndPort> compactAddrs = new ArrayList<>();
       final String compactorQueuesPath = context.getZooKeeperRoot() + Constants.ZCOMPACTORS;
-      List<String> queues = context.getZooReaderWriter().getChildren(compactorQueuesPath);
+      ZooReader zooReader =
+          new ZooReader(context.getZooKeepers(), context.getZooKeepersSessionTimeOut());
+      List<String> queues = zooReader.getChildren(compactorQueuesPath);
       for (String queue : queues) {
         try {
-          List<String> compactors =
-              context.getZooReaderWriter().getChildren(compactorQueuesPath + "/" + queue);
+          List<String> compactors = zooReader.getChildren(compactorQueuesPath + "/" + queue);
           for (String compactor : compactors) {
             // compactor is the address, we are checking to see if there is a child node which
             // represents the compactor's lock as a check that it's alive.
-            List<String> children = context.getZooReaderWriter()
-                .getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
+            List<String> children =
+                zooReader.getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
             if (!children.isEmpty()) {
               LOG.debug("Found live compactor {} ", compactor);
               compactAddrs.add(HostAndPort.fromString(compactor));
@@ -119,6 +124,22 @@ public class ExternalCompactionUtil {
     }
   }
 
+  public static List<ActiveCompaction> getActiveCompaction(HostAndPort compactor,
+      ClientContext context) {
+    Compactor.Client client = null;
+    try {
+      // CBUG should this retry?
+      client = ThriftUtil.getClient(new Compactor.Client.Factory(), compactor, context);
+      return client.getActiveCompactions(TraceUtil.traceInfo(), context.rpcCreds());
+    } catch (TException e) {
+      // CBUG maybe pass up security exception
+      LOG.debug("Failed to contact compactor {}", compactor, e);
+    } finally {
+      ThriftUtil.returnClient(client);
+    }
+    return List.of();
+  }
+
   /**
    * Get the compaction currently running on the Compactor
    *
@@ -129,7 +150,7 @@ public class ExternalCompactionUtil {
    * @return external compaction job or null if none running
    */
   public static TExternalCompactionJob getRunningCompaction(HostAndPort compactorAddr,
-      ServerContext context) {
+      ClientContext context) {
 
     Compactor.Client client = null;
     try {
@@ -150,7 +171,7 @@ public class ExternalCompactionUtil {
   }
 
   private static ExternalCompactionId getRunningCompactionId(HostAndPort compactorAddr,
-      ServerContext context) {
+      ClientContext context) {
     Compactor.Client client = null;
     try {
       // CBUG should this retry?
@@ -173,7 +194,7 @@ public class ExternalCompactionUtil {
    * @return map of compactor and external compaction jobs
    */
   public static Map<HostAndPort,TExternalCompactionJob>
-      getCompactionsRunningOnCompactors(ServerContext context) {
+      getCompactionsRunningOnCompactors(ClientContext context) {
 
     final List<Pair<HostAndPort,Future<TExternalCompactionJob>>> running = new ArrayList<>();
     final ExecutorService executor =
@@ -202,7 +223,7 @@ public class ExternalCompactionUtil {
   }
 
   public static Collection<ExternalCompactionId>
-      getCompactionIdsRunningOnCompactors(ServerContext context) {
+      getCompactionIdsRunningOnCompactors(ClientContext context) {
     final ExecutorService executor =
         ThreadPools.createFixedThreadPool(16, "CompactorRunningCompactions", false);
 

@@ -57,6 +57,7 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
+import org.apache.accumulo.core.tabletserver.thrift.ActiveCompaction;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
@@ -66,6 +67,7 @@ import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.ServerServices;
 import org.apache.accumulo.core.util.ServerServices.Service;
+import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.UtilWaitThread;
@@ -78,7 +80,6 @@ import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.compaction.CompactionInfo;
-import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.server.compaction.RetryableThriftCall;
 import org.apache.accumulo.server.compaction.RetryableThriftCall.RetriesExceededException;
 import org.apache.accumulo.server.compaction.RetryableThriftFunction;
@@ -791,6 +792,25 @@ public class Compactor extends AbstractServer
     try (Compactor compactor = new Compactor(new CompactorServerOpts(), args)) {
       compactor.runServer();
     }
+  }
+
+  @Override
+  public List<ActiveCompaction> getActiveCompactions(TInfo tinfo, TCredentials credentials)
+      throws ThriftSecurityException, TException {
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
+
+    List<CompactionInfo> compactions =
+        org.apache.accumulo.server.compaction.Compactor.getRunningCompactions();
+    List<ActiveCompaction> ret = new ArrayList<>(compactions.size());
+
+    for (CompactionInfo compactionInfo : compactions) {
+      ret.add(compactionInfo.toThrift());
+    }
+
+    return ret;
   }
 
   /**

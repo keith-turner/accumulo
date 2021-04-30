@@ -29,10 +29,10 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
+import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.ServerContext;
-import org.apache.accumulo.server.compaction.ExternalCompactionUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
