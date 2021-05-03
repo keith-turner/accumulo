@@ -776,7 +776,7 @@ public class CompactableImpl implements Compactable {
     CompactionInfo cInfo = new CompactionInfo();
 
     cInfo.jobFiles = job.getFiles().stream()
-        .map(cf -> ((CompactableFileImpl) cf).getStortedTabletFile()).collect(Collectors.toSet());
+        .map(cf -> ((CompactableFileImpl) cf).getStoredTabletFile()).collect(Collectors.toSet());
 
     if (job.getKind() == CompactionKind.USER)
       checkIfUserCompactionCanceled();
