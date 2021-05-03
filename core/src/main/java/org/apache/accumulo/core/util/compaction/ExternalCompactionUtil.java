@@ -250,4 +250,22 @@ public class ExternalCompactionUtil {
 
     return runningIds;
   }
+
+  public static int countCompactors(String queueName, ClientContext context) {
+    String queueRoot = context.getZooKeeperRoot() + Constants.ZCOMPACTORS + "/" + queueName;
+    List<String> children = context.getZooCache().getChildren(queueRoot);
+    if (children == null)
+      return 0;
+
+    int count = 0;
+
+    for (String child : children) {
+      List<String> children2 = context.getZooCache().getChildren(queueRoot + "/" + child);
+      if (children2 != null && !children2.isEmpty()) {
+        count++;
+      }
+    }
+
+    return count;
+  }
 }

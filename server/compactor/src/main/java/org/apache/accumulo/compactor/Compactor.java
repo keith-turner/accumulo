@@ -479,7 +479,7 @@ public class Compactor extends AbstractServer
                       getContext().rpcCreds(), queueName,
                       ExternalCompactionUtil.getHostPortString(compactorAddress.getAddress()),
                       eci.toString());
-                } catch (TException e) {
+                } catch (Exception e) {
                   currentCompactionId.set(null);
                   throw e;
                 } finally {
@@ -603,7 +603,19 @@ public class Compactor extends AbstractServer
   }
 
   protected long getWaitTimeBetweenCompactionChecks() {
-    return 3000;
+    // get the total number of compactors assigned to this queue
+    int numCompactors = ExternalCompactionUtil.countCompactors(queueName, getContext());
+    // Aim for around 3 compactors checking in every second
+    long sleepTime = numCompactors * 1000 / 3;
+    // Ensure a compactor sleeps at least around a second
+    sleepTime = Math.max(1000, sleepTime);
+    // Ensure a compactor sleep not too much more than 5 mins
+    sleepTime = Math.min(300_000L, sleepTime);
+    // Add some random jitter to the sleep time, that averages out to sleep time. This will spread
+    // compactors out evenly over time.
+    sleepTime = (long) (.9 * sleepTime + sleepTime * .2 * Math.random());
+    LOG.trace("Sleeping {}ms based on {} compactors", sleepTime, numCompactors);
+    return sleepTime;
   }
 
   @Override
