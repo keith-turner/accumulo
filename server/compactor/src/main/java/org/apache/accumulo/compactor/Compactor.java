@@ -378,9 +378,6 @@ public class Compactor extends AbstractServer
    */
   protected void updateCompactionState(TExternalCompactionJob job, TCompactionState state,
       String message) throws RetriesExceededException {
-    // CBUG the return type was changed from Void to String just to make this work. When type was
-    // Void and returned null, it would retry forever. Could specialize RetryableThriftCall for case
-    // w/ no return type.
     RetryableThriftCall<String> thriftCall = new RetryableThriftCall<>(1000,
         RetryableThriftCall.MAX_WAIT_TIME, 25, new RetryableThriftFunction<String>() {
           @Override
@@ -390,6 +387,9 @@ public class Compactor extends AbstractServer
               coordinatorClient.get().updateCompactionStatus(TraceUtil.traceInfo(),
                   getContext().rpcCreds(), job.getExternalCompactionId(), state, message,
                   System.currentTimeMillis());
+              // Note: the return type was changed from Void to String just to make this work. When
+              // type was
+              // Void and returned null, it would retry forever.
               return "";
             } finally {
               ThriftUtil.returnClient(coordinatorClient.getAndSet(null));

@@ -110,8 +110,7 @@ public class ExternalCompactionUtil {
             }
           }
         } catch (NoNodeException e) {
-          // CBUG change to trace
-          LOG.debug("Ignoring node that went missing", e);
+          LOG.trace("Ignoring node that went missing", e);
         }
       }
 

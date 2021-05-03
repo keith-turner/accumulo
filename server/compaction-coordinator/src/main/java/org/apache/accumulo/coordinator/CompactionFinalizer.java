@@ -150,7 +150,7 @@ public class CompactionFinalizer {
         List<ExternalCompactionId> statusesToDelete = new ArrayList<>();
 
         for (ExternalCompactionFinalState ecfs : batch) {
-          // CBUG use #1974 for more efficient metadata reads
+          // TODO: use #1974 for more efficient metadata reads
           TabletMetadata tabletMetadata = context.getAmple().readTablets()
               .forTablet(ecfs.getExtent()).fetch(ColumnType.LOCATION, ColumnType.PREV_ROW).build()
               .stream().findFirst().orElse(null);
