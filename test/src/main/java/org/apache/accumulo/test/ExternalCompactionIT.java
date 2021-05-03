@@ -79,6 +79,7 @@ import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState.FinalState;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
@@ -262,6 +263,59 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
   }
 
   @Test
+  public void testCompactionAndCompactorDies() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      // Stop the TabletServer so that it does not commit the compaction and remove
+      // the final state from the metadata table.
+      getCluster().getProcesses().get(TABLET_SERVER).forEach(p -> {
+        try {
+          getCluster().killProcess(TABLET_SERVER, p);
+        } catch (Exception e) {
+          fail("Failed to shutdown tablet server");
+        }
+      });
+      // Start our TServer that will not commit the compaction
+      cluster.exec(ExternalCompactionTServer.class);
+
+      String table1 = "ectt8";
+      createTable(client, table1, "cs1", 2);
+      writeData(client, table1);
+      ProcessInfo process = cluster.exec(ExternalDoNothingCompactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+      compact(client, table1, 2, "DCQ1", false);
+      TableId tid = Tables.getTableId(getCluster().getServerContext(), table1);
+      // Wait for the compaction to start by waiting for 1 external compaction column
+      Set<ExternalCompactionId> ecids = new HashSet<>();
+      do {
+        UtilWaitThread.sleep(50);
+        try (TabletsMetadata tm = getCluster().getServerContext().getAmple().readTablets()
+            .forTable(tid).fetch(ColumnType.ECOMP).build()) {
+          tm.stream().flatMap(t -> t.getExternalCompactions().keySet().stream())
+              .forEach(ecids::add);
+        }
+      } while (ecids.isEmpty());
+
+      // Stop the Compactor
+      Process comp = process.getProcess();
+      if (comp.supportsNormalTermination()) {
+        cluster.stopProcessWithTimeout(comp, 60, TimeUnit.SECONDS);
+      } else {
+        LOG.info("Stopping tserver manually");
+        new ProcessBuilder("kill", Long.toString(comp.pid())).start();
+        comp.waitFor();
+      }
+    }
+
+    // DeadCompactionDetector in the CompactionCoordinator should fail the compaction.
+    long count = 0;
+    while (count == 0) {
+      count = getCluster().getServerContext().getAmple().getExternalCompactionFinalStates()
+          .filter(state -> state.getFinalState().equals(FinalState.FAILED)).count();
+      UtilWaitThread.sleep(250);
+    }
+  }
+
+  @Test
   public void testMergeDuringExternalCompaction() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
       String table1 = "ectt7";
@@ -291,7 +345,6 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
               .forEach(ecids::add);
         }
       } while (ecids.isEmpty());
-      ;
 
       var md = new ArrayList<TabletMetadata>();
       try (TabletsMetadata tm = getCluster().getServerContext().getAmple().readTablets()
