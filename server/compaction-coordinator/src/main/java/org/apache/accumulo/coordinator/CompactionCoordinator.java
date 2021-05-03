@@ -210,13 +210,16 @@ public class CompactionCoordinator extends AbstractServer
         Iface> processor =
             new org.apache.accumulo.core.compaction.thrift.CompactionCoordinator.Processor<>(
                 rpcProxy);
-    Property maxMessageSizeProperty = (aconf.get(Property.COORDINATOR_MAX_MESSAGE_SIZE) != null
-        ? Property.COORDINATOR_MAX_MESSAGE_SIZE : Property.GENERAL_MAX_MESSAGE_SIZE);
+    Property maxMessageSizeProperty =
+        (aconf.get(Property.COORDINATOR_THRIFTCLIENT_MAX_MESSAGE_SIZE) != null
+            ? Property.COORDINATOR_THRIFTCLIENT_MAX_MESSAGE_SIZE
+            : Property.GENERAL_MAX_MESSAGE_SIZE);
     ServerAddress sp = TServerUtils.startServer(getMetricsSystem(), getContext(), getHostname(),
-        Property.COORDINATOR_CLIENTPORT, processor, this.getClass().getSimpleName(),
-        "Thrift Client Server", Property.COORDINATOR_PORTSEARCH, Property.COORDINATOR_MINTHREADS,
-        Property.COORDINATOR_MINTHREADS_TIMEOUT, Property.COORDINATOR_THREADCHECK,
-        maxMessageSizeProperty);
+        Property.COORDINATOR_THRIFTCLIENT_CLIENTPORT, processor, this.getClass().getSimpleName(),
+        "Thrift Client Server", Property.COORDINATOR_THRIFTCLIENT_PORTSEARCH,
+        Property.COORDINATOR_THRIFTCLIENT_MINTHREADS,
+        Property.COORDINATOR_THRIFTCLIENT_MINTHREADS_TIMEOUT,
+        Property.COORDINATOR_THRIFTCLIENT_THREADCHECK, maxMessageSizeProperty);
     LOG.info("address = {}", sp.address);
     return sp;
   }
@@ -257,7 +260,7 @@ public class CompactionCoordinator extends AbstractServer
           boolean matchFound = false;
 
           // Attempt to find the TServer hosting the tablet based on the metadata table
-          // CBUG use #1974 for more efficient metadata reads
+          // TODO use #1974 for more efficient metadata reads
           KeyExtent extent = KeyExtent.fromThrift(job.getExtent());
           LOG.debug("Getting tablet metadata for extent: {}", extent);
           TabletMetadata tabletMetadata = getMetadataEntryForExtent(extent);
@@ -341,9 +344,6 @@ public class CompactionCoordinator extends AbstractServer
             LOG.warn(
                 "There is an external compaction running on a compactor, but could not find corresponding tablet server. Extent: {}, Compactor: {}, Compaction: {}",
                 extent, hp, job);
-            // There is an external compaction running on a Compactor, but we can't resolve it to a
-            // TServer?
-            // CBUG: Cancel the compaction?
           }
         });
       }

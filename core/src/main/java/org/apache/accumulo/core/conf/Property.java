@@ -1040,23 +1040,28 @@ public enum Property {
   // CompactionCoordinator properties
   COORDINATOR_PREFIX("coordinator.", null, PropertyType.PREFIX,
       "Properties in this category affect the behavior of the accumulo compaction coordinator server."),
-  COORDINATOR_PORTSEARCH("coordinator.port.search", "false", PropertyType.BOOLEAN,
+  COORDINATOR_THRIFTCLIENT_PORTSEARCH("coordinator.thrift.port.search", "false",
+      PropertyType.BOOLEAN,
       "if the ports above are in use, search higher ports until one is available"),
-  COORDINATOR_CLIENTPORT("coordinator.port.client", "9100", PropertyType.PORT,
+  COORDINATOR_THRIFTCLIENT_CLIENTPORT("coordinator.thrift.port.client", "9100", PropertyType.PORT,
       "The port used for handling Thrift client connections on the compaction coordinator server"),
-  COORDINATOR_MINTHREADS("coordinator.server.threads.minimum", "1", PropertyType.COUNT,
-      "The minimum number of threads to use to handle incoming requests."),
-  COORDINATOR_MINTHREADS_TIMEOUT("coordinator.server.threads.timeout", "0s",
+  COORDINATOR_THRIFTCLIENT_MINTHREADS("coordinator.server.thrift.threads.minimum", "1",
+      PropertyType.COUNT, "The minimum number of threads to use to handle incoming requests."),
+  COORDINATOR_THRIFTCLIENT_MINTHREADS_TIMEOUT("coordinator.server.thrift.threads.timeout", "0s",
       PropertyType.TIMEDURATION,
       "The time after which incoming request threads terminate with no work available.  Zero (0) will keep the threads alive indefinitely."),
-  COORDINATOR_THREADCHECK("coordinator.server.threadcheck.time", "1s", PropertyType.TIMEDURATION,
-      "The time between adjustments of the server thread pool."),
-  COORDINATOR_MAX_MESSAGE_SIZE("coordinator.server.message.size.max", "10M", PropertyType.BYTES,
-      "The maximum size of a message that can be sent to a tablet server."), // deprecated
-                                                                             // properties grouped
-                                                                             // at the end to
-                                                                             // reference property
-                                                                             // that replaces them
+  COORDINATOR_THRIFTCLIENT_THREADCHECK("coordinator.server.thrift.threadcheck.time", "1s",
+      PropertyType.TIMEDURATION, "The time between adjustments of the server thread pool."),
+  COORDINATOR_THRIFTCLIENT_MAX_MESSAGE_SIZE("coordinator.server.thrift.message.size.max", "10M",
+      PropertyType.BYTES, "The maximum size of a message that can be sent to a tablet server."),
+  COORDINATOR_DEAD_COMPACTOR_CHECK_INTERVAL("coordinator.server.compactor.dead.check.interval",
+      "5m", PropertyType.TIMEDURATION, "The interval at which to check for dead compactors."),
+  COORDINATOR_FINALIZER_TSERVER_NOTIFIER_MAXTHREADS("coordinator.server.finalizer.threads.maximum",
+      "5", PropertyType.COUNT,
+      "The maximum number of threads to use for notifying tablet servers that an external compaction has completed."),
+  COORDINATOR_FINALIZER_COMPLETION_CHECK_INTERVAL("coordinator.server.finalizer.check.interval",
+      "60s", PropertyType.TIMEDURATION,
+      "The interval at which to check for external compaction final state markers in the metadata table."),
   // deprecated properties grouped at the end to reference property that replaces them
   @Deprecated(since = "1.6.0")
   @ReplacedBy(property = INSTANCE_VOLUMES)

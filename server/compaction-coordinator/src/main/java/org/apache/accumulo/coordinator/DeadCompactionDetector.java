@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
@@ -125,14 +126,14 @@ public class DeadCompactionDetector {
     danglingEcids.forEach(
         ecid -> log.debug("Detected dangling external compaction final state marker {}", ecid));
 
-    // todo add logging in impl
     context.getAmple().deleteExternalCompactionFinalStates(danglingEcids);
   }
 
   public void start() {
     Threads.createThread("DeadCompactionDetector", () -> {
       while (!Thread.currentThread().isInterrupted()) {
-
+        long interval = this.context.getConfiguration()
+            .getTimeInMillis(Property.COORDINATOR_DEAD_COMPACTOR_CHECK_INTERVAL);
         try {
           detectDeadCompactions();
         } catch (RuntimeException e) {
@@ -145,8 +146,7 @@ public class DeadCompactionDetector {
           log.warn("Failed to look for dangling compaction final state markers", e);
         }
 
-        // TODO make bigger
-        UtilWaitThread.sleep(30_000);
+        UtilWaitThread.sleep(interval);
       }
     }).start();
   }

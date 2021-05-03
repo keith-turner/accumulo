@@ -27,8 +27,10 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState.FinalState;
@@ -55,15 +57,20 @@ public class CompactionFinalizer {
   private final ExecutorService ntfyExecutor;
   private final ExecutorService backgroundExecutor;
   private final BlockingQueue<ExternalCompactionFinalState> pendingNotifications;
+  private final long tserverCheckInterval;
 
   protected CompactionFinalizer(ServerContext context) {
     this.context = context;
     this.pendingNotifications = new ArrayBlockingQueue<>(1000);
-    // CBUG configure thread factory
-    // CBUG make pool size configurable?
 
-    this.ntfyExecutor =
-        ThreadPools.createFixedThreadPool(3, "Compaction Finalizer Notifyer", false);
+    tserverCheckInterval = this.context.getConfiguration()
+        .getTimeInMillis(Property.COORDINATOR_FINALIZER_COMPLETION_CHECK_INTERVAL);
+    int max = this.context.getConfiguration()
+        .getCount(Property.COORDINATOR_FINALIZER_TSERVER_NOTIFIER_MAXTHREADS);
+
+    this.ntfyExecutor = ThreadPools.createThreadPool(3, max, 1, TimeUnit.MINUTES,
+        "Compaction Finalizer Notifier", false);
+    ThreadPools.createFixedThreadPool(3, "Compaction Finalizer Notifier", false);
 
     this.backgroundExecutor =
         ThreadPools.createFixedThreadPool(2, "Compaction Finalizer Background Task", false);
@@ -209,8 +216,7 @@ public class CompactionFinalizer {
         LOG.warn("Failed to notify tservers", e);
       }
 
-      // CBUG make configurable?
-      UtilWaitThread.sleep(CompactionCoordinator.TSERVER_CHECK_INTERVAL);
+      UtilWaitThread.sleep(tserverCheckInterval);
     }
   }
 }

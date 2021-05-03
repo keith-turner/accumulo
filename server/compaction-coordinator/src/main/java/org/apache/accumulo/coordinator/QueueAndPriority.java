@@ -79,7 +79,7 @@ public class QueueAndPriority implements Comparable<QueueAndPriority> {
   public int compareTo(QueueAndPriority other) {
     int result = this.queue.compareTo(other.queue);
     if (result == 0) {
-      // reversing order such that if other priority is lower, then this has a higher priority
+      // reversing order such that if other priority is lower, then this has a higher return value
       return Long.compare(other.priority, this.priority);
     } else {
       return result;

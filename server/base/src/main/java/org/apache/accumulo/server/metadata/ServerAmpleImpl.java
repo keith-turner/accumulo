@@ -277,6 +277,8 @@ public class ServerAmpleImpl extends AmpleImpl implements Ample {
         m.putDelete(EMPTY_TEXT, EMPTY_TEXT);
         writer.addMutation(m);
       }
+      log.debug("Deleted external compaction final state entries for external compactions: {}",
+          statusesToDelete);
     } catch (MutationsRejectedException | TableNotFoundException e) {
       throw new RuntimeException(e);
     }

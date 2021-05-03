@@ -136,6 +136,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         DefaultCompactionPlanner.class.getName());
     cfg.setProperty("tserver.compaction.major.service.cs2.planner.opts.executors",
         "[{'name':'all','externalQueue':'DCQ2'}]");
+    cfg.setProperty(Property.COORDINATOR_DEAD_COMPACTOR_CHECK_INTERVAL.getKey(), "30s");
     // use raw local file system so walogs sync and flush will work
     hadoopCoreSite.set("fs.file.impl", RawLocalFileSystem.class.getName());
   }
