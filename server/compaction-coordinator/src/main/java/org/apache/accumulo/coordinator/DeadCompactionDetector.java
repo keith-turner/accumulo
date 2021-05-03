@@ -123,10 +123,11 @@ public class DeadCompactionDetector {
         .stream().flatMap(tm -> tm.getExternalCompactions().keySet().stream())
         .forEach(danglingEcids::remove);
 
-    danglingEcids.forEach(
-        ecid -> log.debug("Detected dangling external compaction final state marker {}", ecid));
-
-    context.getAmple().deleteExternalCompactionFinalStates(danglingEcids);
+    if (!danglingEcids.isEmpty()) {
+      danglingEcids.forEach(
+          ecid -> log.debug("Detected dangling external compaction final state marker {}", ecid));
+      context.getAmple().deleteExternalCompactionFinalStates(danglingEcids);
+    }
   }
 
   public void start() {
