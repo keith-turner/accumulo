@@ -46,6 +46,7 @@ import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -947,9 +948,17 @@ public class CompactableImpl implements Compactable {
     AccumuloConfiguration compactionConfig = CompactableUtils.getCompactionConfig(job.getKind(),
         tablet, cInfo.localHelper, job.getFiles());
     Map<String,String> tableCompactionProperties = new HashMap<>();
+    Map<String,String> defaultsProps = new HashMap<>();
+    DefaultConfiguration.getInstance().forEach(e -> defaultsProps.put(e.getKey(), e.getValue()));
     compactionConfig.forEach(entry -> {
-      tableCompactionProperties.put(entry.getKey(), entry.getValue());
+      var k = entry.getKey();
+      var v = entry.getValue();
+      if (k.startsWith(Property.TABLE_PREFIX.getKey())
+          && !defaultsProps.getOrDefault(k, "").equals(v)) {
+        tableCompactionProperties.put(k, v);
+      }
     });
+
     // CBUG add external compaction info to metadata table
     try {
       // CBUG share code w/ CompactableUtil and/or move there
@@ -961,7 +970,7 @@ public class CompactableImpl implements Compactable {
       ecInfo.meta = new ExternalCompactionMetadata(cInfo.jobFiles,
           Sets.difference(cInfo.selectedFiles, cInfo.jobFiles), compactTmpName, newFile,
           compactorId, job.getKind(), job.getPriority(), job.getExecutor(), cInfo.propogateDeletes,
-          cInfo.selectedAll, cInfo.checkCompactionId, tableCompactionProperties);
+          cInfo.selectedAll, cInfo.checkCompactionId);
 
       tablet.getContext().getAmple().mutateTablet(getExtent())
           .putExternalCompaction(externalCompactionId, ecInfo.meta).mutate();

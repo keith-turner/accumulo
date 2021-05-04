@@ -26,7 +26,6 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -47,6 +46,7 @@ import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.iteratorsImpl.system.SystemIteratorUtil;
@@ -535,8 +535,17 @@ public class Compactor extends AbstractServer
           LOG.info("Starting up compaction runnable for job: {}", job);
           updateCompactionState(job, TCompactionState.STARTED, "Compaction started");
 
-          final AccumuloConfiguration tConfig =
-              new ConfigurationCopy(job.getTableCompactionProperties());
+          final AccumuloConfiguration tConfig;
+
+          if (!job.getTableCompactionProperties().isEmpty()) {
+            tConfig = new ConfigurationCopy(DefaultConfiguration.getInstance());
+            job.getTableCompactionProperties()
+                .forEach((k, v) -> ((ConfigurationCopy) tConfig).set(k, v));
+            LOG.debug("Overriding default properties with {}", job.getTableCompactionProperties());
+          } else {
+            tConfig = DefaultConfiguration.getInstance();
+          }
+
           final TabletFile outputFile = new TabletFile(new Path(job.getOutputFile()));
 
           final Map<StoredTabletFile,DataFileValue> files = new TreeMap<>();

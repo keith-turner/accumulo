@@ -70,6 +70,8 @@ import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.PluginConfig;
+import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
+import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.client.admin.compaction.CompressionConfigurer;
 import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.conf.Property;
@@ -162,8 +164,6 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       Preconditions.checkArgument(!cienv.getQueueName().isEmpty());
       Preconditions
           .checkArgument(options.getOrDefault("expectedQ", "").equals(cienv.getQueueName()));
-
-      Preconditions.checkArgument(cienv.isFullMajorCompaction());
       Preconditions.checkArgument(cienv.isUserCompaction());
       Preconditions.checkArgument(cienv.getIteratorScope() == IteratorScope.majc);
       Preconditions.checkArgument(!cienv.isSamplingEnabled());
@@ -171,7 +171,16 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       // if the init function is never called at all, then not setting the modulus option should
       // cause the test to fail
       if (options.containsKey("modulus")) {
+        Preconditions.checkArgument(!options.containsKey("pmodulus"));
+        Preconditions.checkArgument(cienv.isFullMajorCompaction());
         modulus = Integer.parseInt(options.get("modulus"));
+      }
+
+      // use when partial compaction is expected
+      if (options.containsKey("pmodulus")) {
+        Preconditions.checkArgument(!options.containsKey("modulus"));
+        Preconditions.checkArgument(!cienv.isFullMajorCompaction());
+        modulus = Integer.parseInt(options.get("pmodulus"));
       }
     }
 
@@ -703,8 +712,24 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     }
   }
 
+  public static class ExtDevNull extends DevNull {
+    @Override
+    public void init(SortedKeyValueIterator<Key,Value> source, Map<String,String> options,
+        IteratorEnvironment env) throws IOException {
+      super.init(source, options, env);
+
+      // this cast should fail if the compaction is running in the tserver
+      CompactorIterEnv cienv = (CompactorIterEnv) env;
+
+      Preconditions.checkArgument(!cienv.getQueueName().isEmpty());
+    }
+  }
+
   @Test
   public void testExternalCompactionWithTableIterator() throws Exception {
+    // in addition to testing table configured iters w/ external compaction, this also tests an
+    // external compaction that deletes everything
+
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
       String table1 = "ectt9";
       createTable(client, table1, "cs1");
@@ -714,7 +739,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
       compact(client, table1, 2, "DCQ1", true);
       verify(client, table1, 2);
 
-      IteratorSetting setting = new IteratorSetting(50, "delete", DevNull.class);
+      IteratorSetting setting = new IteratorSetting(50, "delete", ExtDevNull.class);
       client.tableOperations().attachIterator(table1, setting, EnumSet.of(IteratorScope.majc));
       client.tableOperations().compact(table1, new CompactionConfig().setWait(true));
 
@@ -803,6 +828,82 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     }
     try (final AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
       verify(client, table3, 2);
+    }
+  }
+
+  public static class FSelector implements CompactionSelector {
+
+    @Override
+    public void init(InitParamaters iparams) {}
+
+    @Override
+    public Selection select(SelectionParameters sparams) {
+      List<CompactableFile> toCompact = sparams.getAvailableFiles().stream()
+          .filter(cf -> cf.getFileName().startsWith("F")).collect(Collectors.toList());
+      return new Selection(toCompact);
+    }
+
+  }
+
+  @Test
+  public void testPartialCompaction() throws Exception {
+    try (final AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      String tableName = getUniqueNames(1)[0];
+
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+
+      createTable(client, tableName, "cs1");
+
+      writeData(client, tableName);
+      // This should create an A file
+      compact(client, tableName, 17, "DCQ1", true);
+      verify(client, tableName, 17);
+
+      try (BatchWriter bw = client.createBatchWriter(tableName)) {
+        for (int i = MAX_DATA; i < MAX_DATA * 2; i++) {
+          Mutation m = new Mutation(row(i));
+          m.put("", "", "" + i);
+          bw.addMutation(m);
+        }
+      }
+
+      // this should create an F file
+      client.tableOperations().flush(tableName);
+
+      // run a compaction that only compacts F files
+      IteratorSetting iterSetting = new IteratorSetting(100, TestFilter.class);
+      // make sure iterator options make it to compactor process
+      iterSetting.addOption("expectedQ", "DCQ1");
+      // compact F file w/ different modulus and user pmodulus option for partial compaction
+      iterSetting.addOption("pmodulus", 19 + "");
+      CompactionConfig config = new CompactionConfig().setIterators(List.of(iterSetting))
+          .setWait(true).setSelector(new PluginConfig(FSelector.class.getName()));
+      client.tableOperations().compact(tableName, config);
+
+      try (Scanner scanner = client.createScanner(tableName)) {
+        int count = 0;
+        for (Entry<Key,Value> entry : scanner) {
+
+          int v = Integer.parseInt(entry.getValue().toString());
+          int modulus = v < MAX_DATA ? 17 : 19;
+
+          assertTrue(String.format("%s %s %d != 0", entry.getValue(), "%", modulus),
+              Integer.parseInt(entry.getValue().toString()) % modulus == 0);
+          count++;
+        }
+
+        int expectedCount = 0;
+        for (int i = 0; i < MAX_DATA * 2; i++) {
+          int modulus = i < MAX_DATA ? 17 : 19;
+          if (i % modulus == 0) {
+            expectedCount++;
+          }
+        }
+
+        assertEquals(expectedCount, count);
+      }
+
     }
   }
 
