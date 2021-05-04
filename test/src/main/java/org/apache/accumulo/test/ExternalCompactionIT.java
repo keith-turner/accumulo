@@ -20,6 +20,7 @@ package org.apache.accumulo.test;
 
 import static org.apache.accumulo.minicluster.ServerType.TABLET_SERVER;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -37,6 +38,7 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,7 @@ import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.iterators.DevNull;
 import org.apache.accumulo.core.iterators.Filter;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
@@ -647,8 +650,26 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
 
   // CBUG add test that configures output file for external compaction
 
-  // CBUG add test that verifies iterators configured on table (not on user compaction) are used in
-  // external compaction
+  @Test
+  public void testExternalCompactionWithTableIterator() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      String table1 = "ectt9";
+      createTable(client, table1, "cs1");
+      writeData(client, table1);
+      cluster.exec(Compactor.class, "-q", "DCQ1");
+      cluster.exec(CompactionCoordinator.class);
+      compact(client, table1, 2, "DCQ1", true);
+      verify(client, table1, 2);
+
+      IteratorSetting setting = new IteratorSetting(50, "delete", DevNull.class);
+      client.tableOperations().attachIterator(table1, setting, EnumSet.of(IteratorScope.majc));
+      client.tableOperations().compact(table1, new CompactionConfig().setWait(true));
+
+      try (Scanner s = client.createScanner(table1)) {
+        assertFalse(s.iterator().hasNext());
+      }
+    }
+  }
 
   @Test
   public void testExternalCompactionDeadTServer() throws Exception {
