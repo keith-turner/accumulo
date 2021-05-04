@@ -944,6 +944,12 @@ public class CompactableImpl implements Compactable {
     if (cInfo == null)
       return null;
 
+    AccumuloConfiguration compactionConfig = CompactableUtils.getCompactionConfig(job.getKind(),
+        tablet, cInfo.localHelper, job.getFiles());
+    Map<String,String> tableCompactionProperties = new HashMap<>();
+    compactionConfig.forEach(entry -> {
+      tableCompactionProperties.put(entry.getKey(), entry.getValue());
+    });
     // CBUG add external compaction info to metadata table
     try {
       // CBUG share code w/ CompactableUtil and/or move there
@@ -955,7 +961,8 @@ public class CompactableImpl implements Compactable {
       ecInfo.meta = new ExternalCompactionMetadata(cInfo.jobFiles,
           Sets.difference(cInfo.selectedFiles, cInfo.jobFiles), compactTmpName, newFile,
           compactorId, job.getKind(), job.getPriority(), job.getExecutor(), cInfo.propogateDeletes,
-          cInfo.selectedAll, cInfo.checkCompactionId);
+          cInfo.selectedAll, cInfo.checkCompactionId, tableCompactionProperties);
+
       tablet.getContext().getAmple().mutateTablet(getExtent())
           .putExternalCompaction(externalCompactionId, ecInfo.meta).mutate();
 
@@ -965,7 +972,7 @@ public class CompactableImpl implements Compactable {
 
       return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, compactTmpName,
           getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters,
-          cInfo.checkCompactionId);
+          cInfo.checkCompactionId, tableCompactionProperties);
 
     } catch (Exception e) {
       // CBUG unreserve files for compaction!

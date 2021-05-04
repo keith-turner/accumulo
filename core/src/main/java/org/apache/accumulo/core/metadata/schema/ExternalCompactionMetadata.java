@@ -21,7 +21,9 @@ package org.apache.accumulo.core.metadata.schema;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -49,11 +51,12 @@ public class ExternalCompactionMetadata {
   private final boolean propogateDeletes;
   private final boolean selectedAll;
   private final Long compactionId;
+  private final Map<String,String> tableProperties;
 
   public ExternalCompactionMetadata(Set<StoredTabletFile> jobFiles, Set<StoredTabletFile> nextFiles,
       TabletFile compactTmpName, TabletFile newFile, String compactorId, CompactionKind kind,
       long priority, CompactionExecutorId ceid, boolean propogateDeletes, boolean selectedAll,
-      Long compactionId) {
+      Long compactionId, Map<String,String> tableProperties) {
     this.jobFiles = Objects.requireNonNull(jobFiles);
     this.nextFiles = Objects.requireNonNull(nextFiles);
     this.compactTmpName = Objects.requireNonNull(compactTmpName);
@@ -65,6 +68,7 @@ public class ExternalCompactionMetadata {
     this.propogateDeletes = propogateDeletes;
     this.selectedAll = selectedAll;
     this.compactionId = compactionId;
+    this.tableProperties = tableProperties;
   }
 
   public Set<StoredTabletFile> getJobFiles() {
@@ -111,6 +115,10 @@ public class ExternalCompactionMetadata {
     return compactionId;
   }
 
+  public Map<String,String> getTableProperties() {
+    return tableProperties;
+  }
+
   // This class is used to serialize and deserialize this class using GSon. Any changes to this
   // class must consider persisted data.
   private static class GSonData {
@@ -125,6 +133,7 @@ public class ExternalCompactionMetadata {
     boolean propDels;
     boolean selectedAll;
     Long compactionId;
+    Map<String,String> tableProperties;
   }
 
   public String toJson() {
@@ -142,6 +151,7 @@ public class ExternalCompactionMetadata {
     jData.propDels = propogateDeletes;
     jData.selectedAll = selectedAll;
     jData.compactionId = compactionId;
+    jData.tableProperties = new HashMap<>(tableProperties);
     return GSON.toJson(jData);
   }
 
@@ -154,7 +164,7 @@ public class ExternalCompactionMetadata {
         new TabletFile(new Path(jData.tmp)), new TabletFile(new Path(jData.dest)), jData.compactor,
         CompactionKind.valueOf(jData.kind), jData.priority,
         CompactionExecutorId.externalId(jData.executorId), jData.propDels, jData.selectedAll,
-        jData.compactionId);
+        jData.compactionId, jData.tableProperties);
   }
 
   @Override

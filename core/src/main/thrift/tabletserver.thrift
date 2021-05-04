@@ -175,12 +175,13 @@ struct TExternalCompactionJob {
   6:i32 writeRate
   7:IteratorConfig iteratorSettings
   8:TCompactionType type
-  # Need to add SELECTOR To TCompactionReason, delete TCompactionKind?
+  # CBUG Need to add SELECTOR To TCompactionReason, delete TCompactionKind?
   9:TCompactionReason reason
   10:string outputFile
   11:bool propagateDeletes
   12:TCompactionKind kind
   13:i64 userCompactionId
+  14:map<string, string> tableCompactionProperties
 }
 
 enum TCompactionKind {

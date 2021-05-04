@@ -26,6 +26,7 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -45,8 +46,8 @@ import org.apache.accumulo.core.compaction.thrift.Compactor.Iface;
 import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.compaction.thrift.UnknownCompactionIdException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.iteratorsImpl.system.SystemIteratorUtil;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
@@ -83,7 +84,6 @@ import org.apache.accumulo.server.compaction.CompactionInfo;
 import org.apache.accumulo.server.compaction.RetryableThriftCall;
 import org.apache.accumulo.server.compaction.RetryableThriftCall.RetriesExceededException;
 import org.apache.accumulo.server.compaction.RetryableThriftFunction;
-import org.apache.accumulo.server.conf.TableConfiguration;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.rpc.ServerAddress;
 import org.apache.accumulo.server.rpc.TCredentialsUpdatingWrapper;
@@ -535,8 +535,8 @@ public class Compactor extends AbstractServer
           LOG.info("Starting up compaction runnable for job: {}", job);
           updateCompactionState(job, TCompactionState.STARTED, "Compaction started");
 
-          final TableId tableId = TableId.of(new String(job.getExtent().getTable(), UTF_8));
-          final TableConfiguration tConfig = getContext().getTableConfiguration(tableId);
+          final AccumuloConfiguration tConfig =
+              new ConfigurationCopy(job.getTableCompactionProperties());
           final TabletFile outputFile = new TabletFile(new Path(job.getOutputFile()));
 
           final Map<StoredTabletFile,DataFileValue> files = new TreeMap<>();

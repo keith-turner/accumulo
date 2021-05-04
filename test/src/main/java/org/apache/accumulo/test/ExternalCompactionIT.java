@@ -69,6 +69,8 @@ import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
+import org.apache.accumulo.core.client.admin.PluginConfig;
+import org.apache.accumulo.core.client.admin.compaction.CompressionConfigurer;
 import org.apache.accumulo.core.clientImpl.Tables;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
@@ -101,6 +103,7 @@ import org.apache.commons.io.input.TailerListenerAdapter;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.apache.hadoop.io.Text;
+import org.bouncycastle.util.Arrays;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -648,7 +651,57 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
     }
   }
 
-  // CBUG add test that configures output file for external compaction
+  @Test
+  public void testConfigurer() throws Exception {
+    String tableName = "tcc";
+
+    cluster.exec(Compactor.class, "-q", "DCQ1");
+    cluster.exec(CompactionCoordinator.class);
+
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+
+      Map<String,String> props = Map.of("table.compaction.dispatcher",
+          SimpleCompactionDispatcher.class.getName(), "table.compaction.dispatcher.opts.service",
+          "cs1", Property.TABLE_FILE_COMPRESSION_TYPE.getKey(), "none");
+      NewTableConfiguration ntc = new NewTableConfiguration().setProperties(props);
+      client.tableOperations().create(tableName, ntc);
+
+      byte[] data = new byte[100000];
+      Arrays.fill(data, (byte) 65);
+      try (var writer = client.createBatchWriter(tableName)) {
+        for (int row = 0; row < 10; row++) {
+          Mutation m = new Mutation(row + "");
+          m.at().family("big").qualifier("stuff").put(data);
+          writer.addMutation(m);
+        }
+      }
+      client.tableOperations().flush(tableName, null, null, true);
+
+      // without compression, expect file to be large
+      long sizes = CompactionExecutorIT.getFileSizes(client, tableName);
+      assertTrue("Unexpected files sizes : " + sizes,
+          sizes > data.length * 10 && sizes < data.length * 11);
+
+      client.tableOperations().compact(tableName,
+          new CompactionConfig().setWait(true)
+              .setConfigurer(new PluginConfig(CompressionConfigurer.class.getName(),
+                  Map.of(CompressionConfigurer.LARGE_FILE_COMPRESSION_TYPE, "gz",
+                      CompressionConfigurer.LARGE_FILE_COMPRESSION_THRESHOLD, data.length + ""))));
+
+      // after compacting with compression, expect small file
+      sizes = CompactionExecutorIT.getFileSizes(client, tableName);
+      assertTrue("Unexpected files sizes: data: " + data.length + ", file:" + sizes,
+          sizes < data.length);
+
+      client.tableOperations().compact(tableName, new CompactionConfig().setWait(true));
+
+      // after compacting without compression, expect big files again
+      sizes = CompactionExecutorIT.getFileSizes(client, tableName);
+      assertTrue("Unexpected files sizes : " + sizes,
+          sizes > data.length * 10 && sizes < data.length * 11);
+
+    }
+  }
 
   @Test
   public void testExternalCompactionWithTableIterator() throws Exception {

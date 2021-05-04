@@ -41,6 +41,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   private static final org.apache.thrift.protocol.TField PROPAGATE_DELETES_FIELD_DESC = new org.apache.thrift.protocol.TField("propagateDeletes", org.apache.thrift.protocol.TType.BOOL, (short)11);
   private static final org.apache.thrift.protocol.TField KIND_FIELD_DESC = new org.apache.thrift.protocol.TField("kind", org.apache.thrift.protocol.TType.I32, (short)12);
   private static final org.apache.thrift.protocol.TField USER_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("userCompactionId", org.apache.thrift.protocol.TType.I64, (short)13);
+  private static final org.apache.thrift.protocol.TField TABLE_COMPACTION_PROPERTIES_FIELD_DESC = new org.apache.thrift.protocol.TField("tableCompactionProperties", org.apache.thrift.protocol.TType.MAP, (short)14);
 
   private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new TExternalCompactionJobStandardSchemeFactory();
   private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new TExternalCompactionJobTupleSchemeFactory();
@@ -66,6 +67,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   public boolean propagateDeletes; // required
   public @org.apache.thrift.annotation.Nullable TCompactionKind kind; // required
   public long userCompactionId; // required
+  public @org.apache.thrift.annotation.Nullable java.util.Map<java.lang.String,java.lang.String> tableCompactionProperties; // required
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -89,7 +91,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     OUTPUT_FILE((short)10, "outputFile"),
     PROPAGATE_DELETES((short)11, "propagateDeletes"),
     KIND((short)12, "kind"),
-    USER_COMPACTION_ID((short)13, "userCompactionId");
+    USER_COMPACTION_ID((short)13, "userCompactionId"),
+    TABLE_COMPACTION_PROPERTIES((short)14, "tableCompactionProperties");
 
     private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -131,6 +134,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
           return KIND;
         case 13: // USER_COMPACTION_ID
           return USER_COMPACTION_ID;
+        case 14: // TABLE_COMPACTION_PROPERTIES
+          return TABLE_COMPACTION_PROPERTIES;
         default:
           return null;
       }
@@ -208,6 +213,10 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.ENUM        , "TCompactionKind")));
     tmpMap.put(_Fields.USER_COMPACTION_ID, new org.apache.thrift.meta_data.FieldMetaData("userCompactionId", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64)));
+    tmpMap.put(_Fields.TABLE_COMPACTION_PROPERTIES, new org.apache.thrift.meta_data.FieldMetaData("tableCompactionProperties", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+        new org.apache.thrift.meta_data.MapMetaData(org.apache.thrift.protocol.TType.MAP, 
+            new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING), 
+            new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING))));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
     org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(TExternalCompactionJob.class, metaDataMap);
   }
@@ -228,7 +237,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     java.lang.String outputFile,
     boolean propagateDeletes,
     TCompactionKind kind,
-    long userCompactionId)
+    long userCompactionId,
+    java.util.Map<java.lang.String,java.lang.String> tableCompactionProperties)
   {
     this();
     this.externalCompactionId = externalCompactionId;
@@ -249,6 +259,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     this.kind = kind;
     this.userCompactionId = userCompactionId;
     setUserCompactionIdIsSet(true);
+    this.tableCompactionProperties = tableCompactionProperties;
   }
 
   /**
@@ -289,6 +300,10 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       this.kind = other.kind;
     }
     this.userCompactionId = other.userCompactionId;
+    if (other.isSetTableCompactionProperties()) {
+      java.util.Map<java.lang.String,java.lang.String> __this__tableCompactionProperties = new java.util.HashMap<java.lang.String,java.lang.String>(other.tableCompactionProperties);
+      this.tableCompactionProperties = __this__tableCompactionProperties;
+    }
   }
 
   public TExternalCompactionJob deepCopy() {
@@ -315,6 +330,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     this.kind = null;
     setUserCompactionIdIsSet(false);
     this.userCompactionId = 0;
+    this.tableCompactionProperties = null;
   }
 
   @org.apache.thrift.annotation.Nullable
@@ -664,6 +680,42 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __USERCOMPACTIONID_ISSET_ID, value);
   }
 
+  public int getTableCompactionPropertiesSize() {
+    return (this.tableCompactionProperties == null) ? 0 : this.tableCompactionProperties.size();
+  }
+
+  public void putToTableCompactionProperties(java.lang.String key, java.lang.String val) {
+    if (this.tableCompactionProperties == null) {
+      this.tableCompactionProperties = new java.util.HashMap<java.lang.String,java.lang.String>();
+    }
+    this.tableCompactionProperties.put(key, val);
+  }
+
+  @org.apache.thrift.annotation.Nullable
+  public java.util.Map<java.lang.String,java.lang.String> getTableCompactionProperties() {
+    return this.tableCompactionProperties;
+  }
+
+  public TExternalCompactionJob setTableCompactionProperties(@org.apache.thrift.annotation.Nullable java.util.Map<java.lang.String,java.lang.String> tableCompactionProperties) {
+    this.tableCompactionProperties = tableCompactionProperties;
+    return this;
+  }
+
+  public void unsetTableCompactionProperties() {
+    this.tableCompactionProperties = null;
+  }
+
+  /** Returns true if field tableCompactionProperties is set (has been assigned a value) and false otherwise */
+  public boolean isSetTableCompactionProperties() {
+    return this.tableCompactionProperties != null;
+  }
+
+  public void setTableCompactionPropertiesIsSet(boolean value) {
+    if (!value) {
+      this.tableCompactionProperties = null;
+    }
+  }
+
   public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
     switch (field) {
     case EXTERNAL_COMPACTION_ID:
@@ -770,6 +822,14 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       }
       break;
 
+    case TABLE_COMPACTION_PROPERTIES:
+      if (value == null) {
+        unsetTableCompactionProperties();
+      } else {
+        setTableCompactionProperties((java.util.Map<java.lang.String,java.lang.String>)value);
+      }
+      break;
+
     }
   }
 
@@ -815,6 +875,9 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     case USER_COMPACTION_ID:
       return getUserCompactionId();
 
+    case TABLE_COMPACTION_PROPERTIES:
+      return getTableCompactionProperties();
+
     }
     throw new java.lang.IllegalStateException();
   }
@@ -852,6 +915,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       return isSetKind();
     case USER_COMPACTION_ID:
       return isSetUserCompactionId();
+    case TABLE_COMPACTION_PROPERTIES:
+      return isSetTableCompactionProperties();
     }
     throw new java.lang.IllegalStateException();
   }
@@ -988,6 +1053,15 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         return false;
     }
 
+    boolean this_present_tableCompactionProperties = true && this.isSetTableCompactionProperties();
+    boolean that_present_tableCompactionProperties = true && that.isSetTableCompactionProperties();
+    if (this_present_tableCompactionProperties || that_present_tableCompactionProperties) {
+      if (!(this_present_tableCompactionProperties && that_present_tableCompactionProperties))
+        return false;
+      if (!this.tableCompactionProperties.equals(that.tableCompactionProperties))
+        return false;
+    }
+
     return true;
   }
 
@@ -1036,6 +1110,10 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       hashCode = hashCode * 8191 + kind.getValue();
 
     hashCode = hashCode * 8191 + org.apache.thrift.TBaseHelper.hashCode(userCompactionId);
+
+    hashCode = hashCode * 8191 + ((isSetTableCompactionProperties()) ? 131071 : 524287);
+    if (isSetTableCompactionProperties())
+      hashCode = hashCode * 8191 + tableCompactionProperties.hashCode();
 
     return hashCode;
   }
@@ -1178,6 +1256,16 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         return lastComparison;
       }
     }
+    lastComparison = java.lang.Boolean.valueOf(isSetTableCompactionProperties()).compareTo(other.isSetTableCompactionProperties());
+    if (lastComparison != 0) {
+      return lastComparison;
+    }
+    if (isSetTableCompactionProperties()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.tableCompactionProperties, other.tableCompactionProperties);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
     return 0;
   }
 
@@ -1281,6 +1369,14 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     if (!first) sb.append(", ");
     sb.append("userCompactionId:");
     sb.append(this.userCompactionId);
+    first = false;
+    if (!first) sb.append(", ");
+    sb.append("tableCompactionProperties:");
+    if (this.tableCompactionProperties == null) {
+      sb.append("null");
+    } else {
+      sb.append(this.tableCompactionProperties);
+    }
     first = false;
     sb.append(")");
     return sb.toString();
@@ -1450,6 +1546,26 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
+          case 14: // TABLE_COMPACTION_PROPERTIES
+            if (schemeField.type == org.apache.thrift.protocol.TType.MAP) {
+              {
+                org.apache.thrift.protocol.TMap _map119 = iprot.readMapBegin();
+                struct.tableCompactionProperties = new java.util.HashMap<java.lang.String,java.lang.String>(2*_map119.size);
+                @org.apache.thrift.annotation.Nullable java.lang.String _key120;
+                @org.apache.thrift.annotation.Nullable java.lang.String _val121;
+                for (int _i122 = 0; _i122 < _map119.size; ++_i122)
+                {
+                  _key120 = iprot.readString();
+                  _val121 = iprot.readString();
+                  struct.tableCompactionProperties.put(_key120, _val121);
+                }
+                iprot.readMapEnd();
+              }
+              struct.setTableCompactionPropertiesIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+            }
+            break;
           default:
             org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
         }
@@ -1479,9 +1595,9 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         oprot.writeFieldBegin(FILES_FIELD_DESC);
         {
           oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, struct.files.size()));
-          for (InputFile _iter119 : struct.files)
+          for (InputFile _iter123 : struct.files)
           {
-            _iter119.write(oprot);
+            _iter123.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -1527,6 +1643,19 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       oprot.writeFieldBegin(USER_COMPACTION_ID_FIELD_DESC);
       oprot.writeI64(struct.userCompactionId);
       oprot.writeFieldEnd();
+      if (struct.tableCompactionProperties != null) {
+        oprot.writeFieldBegin(TABLE_COMPACTION_PROPERTIES_FIELD_DESC);
+        {
+          oprot.writeMapBegin(new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRING, org.apache.thrift.protocol.TType.STRING, struct.tableCompactionProperties.size()));
+          for (java.util.Map.Entry<java.lang.String, java.lang.String> _iter124 : struct.tableCompactionProperties.entrySet())
+          {
+            oprot.writeString(_iter124.getKey());
+            oprot.writeString(_iter124.getValue());
+          }
+          oprot.writeMapEnd();
+        }
+        oprot.writeFieldEnd();
+      }
       oprot.writeFieldStop();
       oprot.writeStructEnd();
     }
@@ -1584,7 +1713,10 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (struct.isSetUserCompactionId()) {
         optionals.set(12);
       }
-      oprot.writeBitSet(optionals, 13);
+      if (struct.isSetTableCompactionProperties()) {
+        optionals.set(13);
+      }
+      oprot.writeBitSet(optionals, 14);
       if (struct.isSetExternalCompactionId()) {
         oprot.writeString(struct.externalCompactionId);
       }
@@ -1594,9 +1726,9 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (struct.isSetFiles()) {
         {
           oprot.writeI32(struct.files.size());
-          for (InputFile _iter120 : struct.files)
+          for (InputFile _iter125 : struct.files)
           {
-            _iter120.write(oprot);
+            _iter125.write(oprot);
           }
         }
       }
@@ -1630,12 +1762,22 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (struct.isSetUserCompactionId()) {
         oprot.writeI64(struct.userCompactionId);
       }
+      if (struct.isSetTableCompactionProperties()) {
+        {
+          oprot.writeI32(struct.tableCompactionProperties.size());
+          for (java.util.Map.Entry<java.lang.String, java.lang.String> _iter126 : struct.tableCompactionProperties.entrySet())
+          {
+            oprot.writeString(_iter126.getKey());
+            oprot.writeString(_iter126.getValue());
+          }
+        }
+      }
     }
 
     @Override
     public void read(org.apache.thrift.protocol.TProtocol prot, TExternalCompactionJob struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-      java.util.BitSet incoming = iprot.readBitSet(13);
+      java.util.BitSet incoming = iprot.readBitSet(14);
       if (incoming.get(0)) {
         struct.externalCompactionId = iprot.readString();
         struct.setExternalCompactionIdIsSet(true);
@@ -1647,14 +1789,14 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       }
       if (incoming.get(2)) {
         {
-          org.apache.thrift.protocol.TList _list121 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, iprot.readI32());
-          struct.files = new java.util.ArrayList<InputFile>(_list121.size);
-          @org.apache.thrift.annotation.Nullable InputFile _elem122;
-          for (int _i123 = 0; _i123 < _list121.size; ++_i123)
+          org.apache.thrift.protocol.TList _list127 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, iprot.readI32());
+          struct.files = new java.util.ArrayList<InputFile>(_list127.size);
+          @org.apache.thrift.annotation.Nullable InputFile _elem128;
+          for (int _i129 = 0; _i129 < _list127.size; ++_i129)
           {
-            _elem122 = new InputFile();
-            _elem122.read(iprot);
-            struct.files.add(_elem122);
+            _elem128 = new InputFile();
+            _elem128.read(iprot);
+            struct.files.add(_elem128);
           }
         }
         struct.setFilesIsSet(true);
@@ -1699,6 +1841,21 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (incoming.get(12)) {
         struct.userCompactionId = iprot.readI64();
         struct.setUserCompactionIdIsSet(true);
+      }
+      if (incoming.get(13)) {
+        {
+          org.apache.thrift.protocol.TMap _map130 = new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRING, org.apache.thrift.protocol.TType.STRING, iprot.readI32());
+          struct.tableCompactionProperties = new java.util.HashMap<java.lang.String,java.lang.String>(2*_map130.size);
+          @org.apache.thrift.annotation.Nullable java.lang.String _key131;
+          @org.apache.thrift.annotation.Nullable java.lang.String _val132;
+          for (int _i133 = 0; _i133 < _map130.size; ++_i133)
+          {
+            _key131 = iprot.readString();
+            _val132 = iprot.readString();
+            struct.tableCompactionProperties.put(_key131, _val132);
+          }
+        }
+        struct.setTableCompactionPropertiesIsSet(true);
       }
     }
   }
