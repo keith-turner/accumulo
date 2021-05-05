@@ -92,6 +92,8 @@ import org.slf4j.LoggerFactory;
 
 import com.beust.jcommander.Parameter;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 public class Compactor extends AbstractServer
     implements org.apache.accumulo.core.compaction.thrift.Compactor.Iface {
 
@@ -559,6 +561,8 @@ public class Compactor extends AbstractServer
     return supplier;
   }
 
+  @SuppressFBWarnings(value = "PREDICTABLE_RANDOM",
+      justification = "random used for jitter, not security functions")
   protected long getWaitTimeBetweenCompactionChecks() {
     // get the total number of compactors assigned to this queue
     int numCompactors = ExternalCompactionUtil.countCompactors(queueName, getContext());

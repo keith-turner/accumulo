@@ -119,8 +119,6 @@ public interface InstanceOperations {
    * List all compactions running in Accumulo
    *
    * @return the list of active compactions
-   * @throws AccumuloSecurityException
-   * @throws AccumuloException
    * @since 2.1.0
    */
   List<ActiveCompaction> getActiveCompactions() throws AccumuloException, AccumuloSecurityException;
