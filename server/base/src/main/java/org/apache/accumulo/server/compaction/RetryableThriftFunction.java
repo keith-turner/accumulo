@@ -22,5 +22,8 @@ import org.apache.thrift.TException;
 
 @FunctionalInterface
 public interface RetryableThriftFunction<T> {
+  // Note: Do not use the return type Void and return null from the function,
+  // it will retry forever. If your function does not need to return anything,
+  // just use String as the return type and return "".
   T execute() throws TException;
 }
