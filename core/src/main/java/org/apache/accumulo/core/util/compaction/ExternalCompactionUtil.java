@@ -100,8 +100,14 @@ public class ExternalCompactionUtil {
         try {
           List<String> compactors = zooReader.getChildren(compactorQueuesPath + "/" + queue);
           for (String compactor : compactors) {
-            LOG.debug("Found live compactor: {}", compactor);
-            compactAddrs.add(HostAndPort.fromString(compactor));
+            // compactor is the address, we are checking to see if there is a child node which
+            // represents the compactor's lock as a check that it's alive.
+            List<String> children =
+                zooReader.getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
+            if (!children.isEmpty()) {
+              LOG.debug("Found live compactor {} ", compactor);
+              compactAddrs.add(HostAndPort.fromString(compactor));
+            }
           }
         } catch (NoNodeException e) {
           LOG.trace("Ignoring node that went missing", e);

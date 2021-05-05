@@ -19,6 +19,7 @@
 package org.apache.accumulo.compactor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.accumulo.fate.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
@@ -63,12 +64,19 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
+import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.accumulo.core.util.ServerServices;
+import org.apache.accumulo.core.util.ServerServices.Service;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.UtilWaitThread;
+import org.apache.accumulo.fate.zookeeper.ServiceLock;
+import org.apache.accumulo.fate.zookeeper.ServiceLock.LockLossReason;
+import org.apache.accumulo.fate.zookeeper.ServiceLock.LockWatcher;
 import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
+import org.apache.accumulo.fate.zookeeper.ZooUtil.NodeExistsPolicy;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerOpts;
@@ -117,6 +125,7 @@ public class Compactor extends AbstractServer
   protected static final CompactionJobHolder JOB_HOLDER = new CompactionJobHolder();
 
   private final GarbageCollectionLogger gcLogger = new GarbageCollectionLogger();
+  private final UUID compactorId = UUID.randomUUID();
   private final AccumuloConfiguration aconf;
   private final String queueName;
   private final AtomicReference<CompactionCoordinator.Client> coordinatorClient =
@@ -125,6 +134,7 @@ public class Compactor extends AbstractServer
       new AtomicReference<>();
 
   private SecurityOperation security;
+  private ServiceLock compactorLock;
   private ServerAddress compactorAddress = null;
 
   // Exposed for tests
@@ -241,13 +251,51 @@ public class Compactor extends AbstractServer
 
     try {
       zoo.mkdirs(compactorQueuePath);
-      zoo.putEphemeralData(zPath, new byte[] {});
+      zoo.putPersistentData(zPath, new byte[] {}, NodeExistsPolicy.SKIP);
     } catch (KeeperException e) {
       if (e.code() == KeeperException.Code.NOAUTH) {
         LOG.error("Failed to write to ZooKeeper. Ensure that"
             + " accumulo.properties, specifically instance.secret, is consistent.");
       }
       throw e;
+    }
+
+    compactorLock = new ServiceLock(getContext().getZooReaderWriter().getZooKeeper(),
+        ServiceLock.path(zPath), compactorId);
+    LockWatcher lw = new LockWatcher() {
+      @Override
+      public void lostLock(final LockLossReason reason) {
+        Halt.halt(1, () -> {
+          LOG.error("Compactor lost lock (reason = {}), exiting.", reason);
+          gcLogger.logGCInfo(getConfiguration());
+        });
+      }
+
+      @Override
+      public void unableToMonitorLockNode(final Exception e) {
+        Halt.halt(1, () -> LOG.error("Lost ability to monitor Compactor lock, exiting.", e));
+      }
+    };
+
+    try {
+      byte[] lockContent =
+          new ServerServices(hostPort, Service.COMPACTOR_CLIENT).toString().getBytes(UTF_8);
+      for (int i = 0; i < 25; i++) {
+        zoo.putPersistentData(zPath, new byte[0], NodeExistsPolicy.SKIP);
+
+        if (compactorLock.tryLock(lw, lockContent)) {
+          LOG.debug("Obtained Compactor lock {}", compactorLock.getLockPath());
+          return;
+        }
+        LOG.info("Waiting for Compactor lock");
+        sleepUninterruptibly(5, TimeUnit.SECONDS);
+      }
+      String msg = "Too many retries, exiting.";
+      LOG.info(msg);
+      throw new RuntimeException(msg);
+    } catch (Exception e) {
+      LOG.info("Could not obtain tablet server lock, exiting.", e);
+      throw new RuntimeException(e);
     }
   }
 
@@ -750,6 +798,13 @@ public class Compactor extends AbstractServer
 
       gcLogger.logGCInfo(getConfiguration());
       LOG.info("stop requested. exiting ... ");
+      try {
+        if (null != compactorLock) {
+          compactorLock.unlock();
+        }
+      } catch (Exception e) {
+        LOG.warn("Failed to release compactor lock", e);
+      }
     }
 
   }

@@ -823,7 +823,7 @@ public class ExternalCompactionIT extends ConfigurableMacBase {
         getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
     while (fs.count() != 0) {
       LOG.info("Waiting for compaction completed marker to disappear");
-      UtilWaitThread.sleep(1000);
+      UtilWaitThread.sleep(500);
       fs = getCluster().getServerContext().getAmple().getExternalCompactionFinalStates();
     }
     try (final AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
