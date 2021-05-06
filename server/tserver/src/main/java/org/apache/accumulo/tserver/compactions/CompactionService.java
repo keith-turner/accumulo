@@ -52,6 +52,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionPlanner;
 import org.apache.accumulo.core.spi.compaction.CompactionPlanner.PlanningParameters;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.ExecutorManager;
+import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.compaction.CompactionPlanImpl;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.core.util.ratelimit.SharedRateLimiterFactory;
@@ -120,7 +121,7 @@ public class CompactionService {
         public CompactionExecutorId createExecutor(String executorName, int threads) {
           Preconditions.checkArgument(threads > 0, "Positive number of threads required : %s",
               threads);
-          var ceid = CompactionExecutorId.internalId(myId, executorName);
+          var ceid = CompactionExecutorIdImpl.internalId(myId, executorName);
           Preconditions.checkState(!requestedExecutors.containsKey(ceid));
           requestedExecutors.put(ceid, threads);
           return ceid;
@@ -128,14 +129,13 @@ public class CompactionService {
 
         @Override
         public CompactionExecutorId getExternalExecutor(String name) {
-          var ceid = CompactionExecutorId.externalId(name);
+          var ceid = CompactionExecutorIdImpl.externalId(name);
           Preconditions.checkArgument(!requestedExternalExecutors.contains(ceid));
           requestedExternalExecutors.add(ceid);
           return ceid;
         }
       };
     }
-
   }
 
   public CompactionService(String serviceName, String plannerClass, Long maxRate,
@@ -318,6 +318,16 @@ public class CompactionService {
     }
 
     plan = convertPlan(plan, kind, files.get().allFiles, files.get().candidates);
+
+    if (compactable.getExtent().isMeta() && plan.getJobs().stream().map(cj -> cj.getExecutor())
+        .anyMatch(ceid -> ((CompactionExecutorIdImpl) ceid).isExernalId())) {
+      log.error(
+          "Compacting metadata tablets on external compactors is not supported, please change "
+              + "config for compaction service ({}) and/or table ASAP.  {} is not compacting, "
+              + "ignoring plan {}",
+          myId, compactable.getExtent(), plan);
+      return;
+    }
 
     Set<CompactionJob> jobs = new HashSet<>(plan.getJobs());
 

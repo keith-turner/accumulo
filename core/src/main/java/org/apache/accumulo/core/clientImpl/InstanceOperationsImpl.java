@@ -243,7 +243,10 @@ public class InstanceOperationsImpl implements InstanceOperations {
         try {
           ret.addAll(future.get());
         } catch (InterruptedException | ExecutionException e) {
-          // CBUG attempt to detect securit exception and throw AccumuloSecurityException
+          if (e.getCause() instanceof ThriftSecurityException) {
+            ThriftSecurityException tse = (ThriftSecurityException) e.getCause();
+            throw new AccumuloSecurityException(tse.user, tse.code, e);
+          }
           throw new AccumuloException(e);
         }
       }

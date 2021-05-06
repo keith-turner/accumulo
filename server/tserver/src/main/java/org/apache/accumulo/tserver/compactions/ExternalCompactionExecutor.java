@@ -35,7 +35,10 @@ import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
+import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.tserver.compactions.SubmittedJob.Status;
+
+import com.google.common.base.Preconditions;
 
 public class ExternalCompactionExecutor implements CompactionExecutor {
 
@@ -110,6 +113,7 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
   @Override
   public SubmittedJob submit(CompactionServiceId csid, CompactionJob job, Compactable compactable,
       Consumer<Compactable> completionCallback) {
+    Preconditions.checkArgument(!compactable.getExtent().isMeta());
     ExternalJob extJob = new ExternalJob(job, compactable, csid);
     queue.add(extJob);
     return extJob;
@@ -178,7 +182,8 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
       priority = topJob.getJob().getPriority();
     }
 
-    return new TCompactionQueueSummary(ceid.getExernalName(), priority);
+    return new TCompactionQueueSummary(((CompactionExecutorIdImpl) ceid).getExernalName(),
+        priority);
   }
 
   public CompactionExecutorId getId() {

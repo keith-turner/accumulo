@@ -41,6 +41,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
 import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlanner;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
+import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.fate.util.Retry;
 import org.apache.accumulo.server.ServerContext;
@@ -453,7 +454,7 @@ public class CompactionManager {
   }
 
   ExternalCompactionExecutor getExternalExecutor(String queueName) {
-    return getExternalExecutor(CompactionExecutorId.externalId(queueName));
+    return getExternalExecutor(CompactionExecutorIdImpl.externalId(queueName));
   }
 
   public void registerExternalCompaction(ExternalCompactionId ecid, KeyExtent extent,

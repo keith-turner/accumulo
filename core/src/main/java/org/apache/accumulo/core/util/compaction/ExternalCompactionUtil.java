@@ -30,6 +30,7 @@ import java.util.concurrent.Future;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.compaction.thrift.Compactor;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.rpc.ThriftUtil;
@@ -105,7 +106,7 @@ public class ExternalCompactionUtil {
             List<String> children =
                 zooReader.getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
             if (!children.isEmpty()) {
-              LOG.debug("Found live compactor {} ", compactor);
+              LOG.trace("Found live compactor {} ", compactor);
               compactAddrs.add(HostAndPort.fromString(compactor));
             }
           }
@@ -124,14 +125,14 @@ public class ExternalCompactionUtil {
   }
 
   public static List<ActiveCompaction> getActiveCompaction(HostAndPort compactor,
-      ClientContext context) {
+      ClientContext context) throws ThriftSecurityException {
     Compactor.Client client = null;
     try {
-      // CBUG should this retry?
       client = ThriftUtil.getClient(new Compactor.Client.Factory(), compactor, context);
       return client.getActiveCompactions(TraceUtil.traceInfo(), context.rpcCreds());
+    } catch (ThriftSecurityException e) {
+      throw e;
     } catch (TException e) {
-      // CBUG maybe pass up security exception
       LOG.debug("Failed to contact compactor {}", compactor, e);
     } finally {
       ThriftUtil.returnClient(client);
@@ -153,7 +154,6 @@ public class ExternalCompactionUtil {
 
     Compactor.Client client = null;
     try {
-      // CBUG should this retry?
       client = ThriftUtil.getClient(new Compactor.Client.Factory(), compactorAddr, context);
       TExternalCompactionJob job =
           client.getRunningCompaction(TraceUtil.traceInfo(), context.rpcCreds());
@@ -173,7 +173,6 @@ public class ExternalCompactionUtil {
       ClientContext context) {
     Compactor.Client client = null;
     try {
-      // CBUG should this retry?
       client = ThriftUtil.getClient(new Compactor.Client.Factory(), compactorAddr, context);
       String secid = client.getRunningCompactionId(TraceUtil.traceInfo(), context.rpcCreds());
       if (!secid.isEmpty()) {

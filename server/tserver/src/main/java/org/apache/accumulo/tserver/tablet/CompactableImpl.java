@@ -65,6 +65,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
 import org.apache.accumulo.core.util.Pair;
+import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.compaction.CompactionJobImpl;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
@@ -200,6 +201,11 @@ public class CompactableImpl implements Compactable {
     });
 
     compactionRunning = !allCompactingFiles.isEmpty();
+
+    if (extCompactions.values().stream().map(ecMeta -> ecMeta.getKind())
+        .anyMatch(kind -> kind == CompactionKind.CHOP)) {
+      initiateChop();
+    }
 
     this.servicesInUse = Suppliers.memoizeWithExpiration(() -> {
       HashSet<CompactionServiceId> servicesIds = new HashSet<>();
@@ -389,7 +395,6 @@ public class CompactableImpl implements Compactable {
     for (Entry<ExternalCompactionId,ExternalCompactionMetadata> entry : extCompactions.entrySet()) {
       var ecMeta = entry.getValue();
 
-      // CBUG what about chop?
       if (ecMeta.getKind() != CompactionKind.USER && ecMeta.getKind() != CompactionKind.SELECTOR) {
         continue;
       }
@@ -859,7 +864,6 @@ public class CompactableImpl implements Compactable {
             cInfo.propogateDeletes = false;
           }
 
-          // CBUG what about chop?
           cInfo.selectedFiles = Set.of();
       }
 
@@ -941,27 +945,26 @@ public class CompactableImpl implements Compactable {
   public ExternalCompactionJob reserveExternalCompaction(CompactionServiceId service,
       CompactionJob job, String compactorId, ExternalCompactionId externalCompactionId) {
 
+    Preconditions.checkState(!tablet.getExtent().isMeta());
+
     CompactionInfo cInfo = reserveFilesForCompaction(service, job);
     if (cInfo == null)
       return null;
-
-    AccumuloConfiguration compactionConfig = CompactableUtils.getCompactionConfig(job.getKind(),
-        tablet, cInfo.localHelper, job.getFiles());
-    Map<String,String> tableCompactionProperties = new HashMap<>();
-    Map<String,String> defaultsProps = new HashMap<>();
-    DefaultConfiguration.getInstance().forEach(e -> defaultsProps.put(e.getKey(), e.getValue()));
-    compactionConfig.forEach(entry -> {
-      var k = entry.getKey();
-      var v = entry.getValue();
-      if (k.startsWith(Property.TABLE_PREFIX.getKey())
-          && !defaultsProps.getOrDefault(k, "").equals(v)) {
-        tableCompactionProperties.put(k, v);
-      }
-    });
-
-    // CBUG add external compaction info to metadata table
     try {
-      // CBUG share code w/ CompactableUtil and/or move there
+      AccumuloConfiguration compactionConfig = CompactableUtils.getCompactionConfig(job.getKind(),
+          tablet, cInfo.localHelper, job.getFiles());
+      Map<String,String> tableCompactionProperties = new HashMap<>();
+      Map<String,String> defaultsProps = new HashMap<>();
+      DefaultConfiguration.getInstance().forEach(e -> defaultsProps.put(e.getKey(), e.getValue()));
+      compactionConfig.forEach(entry -> {
+        var k = entry.getKey();
+        var v = entry.getValue();
+        if (k.startsWith(Property.TABLE_PREFIX.getKey())
+            && !defaultsProps.getOrDefault(k, "").equals(v)) {
+          tableCompactionProperties.put(k, v);
+        }
+      });
+
       var newFile = tablet.getNextMapFilename(!cInfo.propogateDeletes ? "A" : "C");
       var compactTmpName = new TabletFile(new Path(newFile.getMetaInsert() + "_tmp"));
 
@@ -984,7 +987,8 @@ public class CompactableImpl implements Compactable {
           cInfo.checkCompactionId, tableCompactionProperties);
 
     } catch (Exception e) {
-      // CBUG unreserve files for compaction!
+      externalCompactions.remove(externalCompactionId);
+      completeCompaction(job, cInfo.jobFiles, null);
       throw new RuntimeException(e);
     }
   }
@@ -1059,7 +1063,6 @@ public class CompactableImpl implements Compactable {
       ExternalCompactionInfo ecInfo = externalCompactions.get(ecid);
 
       if (ecInfo != null) {
-        // CBUG review following code to ensure its idempotent
         tablet.getContext().getAmple().mutateTablet(getExtent()).deleteExternalCompaction(ecid)
             .mutate();
         completeCompaction(ecInfo.job, ecInfo.meta.getJobFiles(), null);
@@ -1168,9 +1171,9 @@ public class CompactableImpl implements Compactable {
       closed = true;
 
       // wait while internal jobs are running or external compactions are committing, but do not
-      // wait
-      // on external compactions that are running
-      while (runnningJobs.stream().anyMatch(job -> !job.getExecutor().isExernalId())
+      // wait on external compactions that are running
+      while (runnningJobs.stream()
+          .anyMatch(job -> !((CompactionExecutorIdImpl) job.getExecutor()).isExernalId())
           || !externalCompactionsCommitting.isEmpty()) {
         try {
           wait(50);

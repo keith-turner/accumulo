@@ -252,8 +252,6 @@ public class ServerAmpleImpl extends AmpleImpl implements Ample {
   public Stream<ExternalCompactionFinalState> getExternalCompactionFinalStates() {
     Scanner scanner;
     try {
-      // CBUG need to change this to allow external compactions for metadata table... or change
-      // other code to disallow external compactions of metadata table
       scanner = context.createScanner(DataLevel.USER.metaTable(), Authorizations.EMPTY);
     } catch (TableNotFoundException e) {
       throw new RuntimeException(e);
