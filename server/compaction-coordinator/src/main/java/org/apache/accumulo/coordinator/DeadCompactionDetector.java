@@ -24,6 +24,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -31,8 +33,6 @@ import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
-import org.apache.accumulo.core.util.threads.Threads;
-import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.ServerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,10 +43,13 @@ public class DeadCompactionDetector {
 
   private final ServerContext context;
   private final CompactionFinalizer finalizer;
+  private ScheduledThreadPoolExecutor schedExecutor;
 
-  public DeadCompactionDetector(ServerContext context, CompactionFinalizer finalizer) {
+  public DeadCompactionDetector(ServerContext context, CompactionFinalizer finalizer,
+      ScheduledThreadPoolExecutor stpe) {
     this.context = context;
     this.finalizer = finalizer;
+    this.schedExecutor = stpe;
   }
 
   private void detectDeadCompactions() {
@@ -131,24 +134,21 @@ public class DeadCompactionDetector {
   }
 
   public void start() {
-    Threads.createThread("DeadCompactionDetector", () -> {
-      while (!Thread.currentThread().isInterrupted()) {
-        long interval = this.context.getConfiguration()
-            .getTimeInMillis(Property.COORDINATOR_DEAD_COMPACTOR_CHECK_INTERVAL);
-        try {
-          detectDeadCompactions();
-        } catch (RuntimeException e) {
-          log.warn("Failed to look for dead compactions", e);
-        }
+    long interval = this.context.getConfiguration()
+        .getTimeInMillis(Property.COORDINATOR_DEAD_COMPACTOR_CHECK_INTERVAL);
 
-        try {
-          detectDanglingFinalStateMarkers();
-        } catch (RuntimeException e) {
-          log.warn("Failed to look for dangling compaction final state markers", e);
-        }
-
-        UtilWaitThread.sleep(interval);
+    schedExecutor.scheduleWithFixedDelay(() -> {
+      try {
+        detectDeadCompactions();
+      } catch (RuntimeException e) {
+        log.warn("Failed to look for dead compactions", e);
       }
-    }).start();
+
+      try {
+        detectDanglingFinalStateMarkers();
+      } catch (RuntimeException e) {
+        log.warn("Failed to look for dangling compaction final state markers", e);
+      }
+    }, 0, interval, TimeUnit.MILLISECONDS);
   }
 }

@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.coordinator.QueueSummaries.PrioTserver;
@@ -60,6 +61,7 @@ import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ServiceLock;
+import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerOpts;
@@ -111,28 +113,35 @@ public class CompactionCoordinator extends AbstractServer
   // Exposed for tests
   protected volatile Boolean shutdown = false;
 
+  private ScheduledThreadPoolExecutor schedExecutor;
+
   protected CompactionCoordinator(ServerOpts opts, String[] args) {
     super("compaction-coordinator", opts, args);
     aconf = getConfiguration();
-    compactionFinalizer = createCompactionFinalizer();
+    schedExecutor = ThreadPools.createGeneralScheduledExecutorService(aconf);
+    compactionFinalizer = createCompactionFinalizer(schedExecutor);
     tserverSet = createLiveTServerSet();
     setupSecurity();
-    startGCLogger();
+    startGCLogger(schedExecutor);
     printStartupMsg();
+    startCompactionCleaner(schedExecutor);
   }
 
   protected CompactionCoordinator(ServerOpts opts, String[] args, AccumuloConfiguration conf) {
     super("compaction-coordinator", opts, args);
     aconf = conf;
-    compactionFinalizer = createCompactionFinalizer();
+    schedExecutor = ThreadPools.createGeneralScheduledExecutorService(aconf);
+    compactionFinalizer = createCompactionFinalizer(schedExecutor);
     tserverSet = createLiveTServerSet();
     setupSecurity();
-    startGCLogger();
+    startGCLogger(schedExecutor);
     printStartupMsg();
+    startCompactionCleaner(schedExecutor);
   }
 
-  protected CompactionFinalizer createCompactionFinalizer() {
-    return new CompactionFinalizer(getContext());
+  protected CompactionFinalizer
+      createCompactionFinalizer(ScheduledThreadPoolExecutor schedExecutor) {
+    return new CompactionFinalizer(getContext(), schedExecutor);
   }
 
   protected LiveTServerSet createLiveTServerSet() {
@@ -144,10 +153,13 @@ public class CompactionCoordinator extends AbstractServer
     security = AuditedSecurityOperation.getInstance(getContext());
   }
 
-  protected void startGCLogger() {
-    ThreadPools.createGeneralScheduledExecutorService(aconf).scheduleWithFixedDelay(
-        () -> gcLogger.logGCInfo(getConfiguration()), 0, TIME_BETWEEN_CHECKS,
-        TimeUnit.MILLISECONDS);
+  protected void startGCLogger(ScheduledThreadPoolExecutor schedExecutor) {
+    schedExecutor.scheduleWithFixedDelay(() -> gcLogger.logGCInfo(getConfiguration()), 0,
+        TIME_BETWEEN_CHECKS, TimeUnit.MILLISECONDS);
+  }
+
+  private void startCompactionCleaner(ScheduledThreadPoolExecutor schedExecutor) {
+    schedExecutor.scheduleWithFixedDelay(() -> cleanUpCompactors(), 0, 5, TimeUnit.MINUTES);
   }
 
   protected void printStartupMsg() {
@@ -353,7 +365,7 @@ public class CompactionCoordinator extends AbstractServer
     }
 
     tserverSet.startListeningForTabletServerChanges();
-    new DeadCompactionDetector(getContext(), compactionFinalizer).start();
+    new DeadCompactionDetector(getContext(), compactionFinalizer, schedExecutor).start();
 
     LOG.info("Starting loop to check tservers for compaction summaries");
     while (!shutdown) {
@@ -695,6 +707,50 @@ public class CompactionCoordinator extends AbstractServer
       rc.addUpdate(timestamp, message, state);
     } else {
       throw new UnknownCompactionIdException();
+    }
+  }
+
+  private void deleteEmpty(ZooReaderWriter zoorw, String path)
+      throws KeeperException, InterruptedException {
+    try {
+      LOG.debug("Deleting empty ZK node {}", path);
+      zoorw.delete(path);
+    } catch (KeeperException.NotEmptyException e) {
+      LOG.debug("Failed to delete {} its not empty, likely an expected race condition.", path);
+    }
+  }
+
+  private void cleanUpCompactors() {
+    final String compactorQueuesPath = getContext().getZooKeeperRoot() + Constants.ZCOMPACTORS;
+
+    var zoorw = getContext().getZooReaderWriter();
+
+    try {
+      var queues = zoorw.getChildren(compactorQueuesPath);
+
+      for (String queue : queues) {
+        String qpath = compactorQueuesPath + "/" + queue;
+
+        var compactors = zoorw.getChildren(qpath);
+
+        if (compactors.isEmpty()) {
+          deleteEmpty(zoorw, qpath);
+        }
+
+        for (String compactor : compactors) {
+          String cpath = compactorQueuesPath + "/" + queue + "/" + compactor;
+          var lockNodes = zoorw.getChildren(compactorQueuesPath + "/" + queue + "/" + compactor);
+          if (lockNodes.isEmpty()) {
+            deleteEmpty(zoorw, cpath);
+          }
+        }
+      }
+
+    } catch (KeeperException | RuntimeException e) {
+      LOG.warn("Failed to clean up compactors", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException(e);
     }
   }
 

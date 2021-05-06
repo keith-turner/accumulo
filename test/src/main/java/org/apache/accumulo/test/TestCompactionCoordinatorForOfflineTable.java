@@ -19,6 +19,7 @@
 package org.apache.accumulo.test;
 
 import java.util.List;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import org.apache.accumulo.coordinator.CompactionFinalizer;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -38,10 +39,11 @@ public class TestCompactionCoordinatorForOfflineTable extends TestCompactionCoor
     private static final Logger LOG =
         LoggerFactory.getLogger(NonNotifyingCompactionFinalizer.class);
 
-    NonNotifyingCompactionFinalizer(ServerContext context) {
-      super(context);
+    NonNotifyingCompactionFinalizer(ServerContext context, ScheduledThreadPoolExecutor stpe) {
+      super(context, stpe);
     }
 
+    @Override
     public void commitCompaction(ExternalCompactionId ecid, KeyExtent extent, long fileSize,
         long fileEntries) {
 
@@ -63,8 +65,8 @@ public class TestCompactionCoordinatorForOfflineTable extends TestCompactionCoor
   }
 
   @Override
-  protected CompactionFinalizer createCompactionFinalizer() {
-    return new NonNotifyingCompactionFinalizer(getContext());
+  protected CompactionFinalizer createCompactionFinalizer(ScheduledThreadPoolExecutor stpe) {
+    return new NonNotifyingCompactionFinalizer(getContext(), stpe);
   }
 
   public static void main(String[] args) throws Exception {

@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -106,7 +107,7 @@ public class CompactionCoordinatorTest {
     }
 
     @Override
-    protected CompactionFinalizer createCompactionFinalizer() {
+    protected CompactionFinalizer createCompactionFinalizer(ScheduledThreadPoolExecutor stpe) {
       return null;
     }
 
@@ -119,7 +120,7 @@ public class CompactionCoordinatorTest {
     protected void setupSecurity() {}
 
     @Override
-    protected void startGCLogger() {}
+    protected void startGCLogger(ScheduledThreadPoolExecutor stpe) {}
 
     @Override
     protected void printStartupMsg() {}

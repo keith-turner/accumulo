@@ -27,6 +27,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -43,7 +44,6 @@ import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.threads.ThreadPools;
-import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
@@ -59,7 +59,7 @@ public class CompactionFinalizer {
   private final BlockingQueue<ExternalCompactionFinalState> pendingNotifications;
   private final long tserverCheckInterval;
 
-  protected CompactionFinalizer(ServerContext context) {
+  protected CompactionFinalizer(ServerContext context, ScheduledThreadPoolExecutor schedExecutor) {
     this.context = context;
     this.pendingNotifications = new ArrayBlockingQueue<>(1000);
 
@@ -70,18 +70,16 @@ public class CompactionFinalizer {
 
     this.ntfyExecutor = ThreadPools.createThreadPool(3, max, 1, TimeUnit.MINUTES,
         "Compaction Finalizer Notifier", false);
-    ThreadPools.createFixedThreadPool(3, "Compaction Finalizer Notifier", false);
 
     this.backgroundExecutor =
-        ThreadPools.createFixedThreadPool(2, "Compaction Finalizer Background Task", false);
+        ThreadPools.createFixedThreadPool(1, "Compaction Finalizer Background Task", false);
 
     backgroundExecutor.execute(() -> {
       processPending();
     });
 
-    backgroundExecutor.execute(() -> {
-      notifyTservers();
-    });
+    schedExecutor.scheduleWithFixedDelay(() -> notifyTservers(), 0, tserverCheckInterval,
+        TimeUnit.MILLISECONDS);
   }
 
   public void commitCompaction(ExternalCompactionId ecid, KeyExtent extent, long fileSize,
@@ -198,25 +196,20 @@ public class CompactionFinalizer {
   }
 
   private void notifyTservers() {
-    while (!Thread.interrupted()) {
-      try {
-        Iterator<ExternalCompactionFinalState> finalStates =
-            context.getAmple().getExternalCompactionFinalStates().iterator();
-        while (finalStates.hasNext()) {
-          ExternalCompactionFinalState state = finalStates.next();
-          LOG.info(
-              "Found external compaction in final state: {}, queueing for tserver notification",
-              state);
-          pendingNotifications.put(state);
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new RuntimeException(e);
-      } catch (RuntimeException e) {
-        LOG.warn("Failed to notify tservers", e);
+    try {
+      Iterator<ExternalCompactionFinalState> finalStates =
+          context.getAmple().getExternalCompactionFinalStates().iterator();
+      while (finalStates.hasNext()) {
+        ExternalCompactionFinalState state = finalStates.next();
+        LOG.info("Found external compaction in final state: {}, queueing for tserver notification",
+            state);
+        pendingNotifications.put(state);
       }
-
-      UtilWaitThread.sleep(tserverCheckInterval);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException(e);
+    } catch (RuntimeException e) {
+      LOG.warn("Failed to notify tservers", e);
     }
   }
 }
