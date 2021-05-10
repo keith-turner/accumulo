@@ -199,7 +199,7 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
       priority = topJob.getJob().getPriority();
     }
 
-    return new TCompactionQueueSummary(((CompactionExecutorIdImpl) ceid).getExernalName(),
+    return new TCompactionQueueSummary(((CompactionExecutorIdImpl) ceid).getExternalName(),
         priority);
   }
 

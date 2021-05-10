@@ -31,12 +31,12 @@ public class CompactionExecutorIdImpl extends CompactionExecutorId {
 
   private static final long serialVersionUID = 1L;
 
-  public boolean isExernalId() {
+  public boolean isExternalId() {
     return canonical().startsWith("e.");
   }
 
-  public String getExernalName() {
-    Preconditions.checkState(isExernalId());
+  public String getExternalName() {
+    Preconditions.checkState(isExternalId());
     return canonical().substring("e.".length());
   }
 

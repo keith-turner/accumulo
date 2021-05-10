@@ -320,7 +320,7 @@ public class CompactionService {
     plan = convertPlan(plan, kind, files.get().allFiles, files.get().candidates);
 
     if (compactable.getExtent().isMeta() && plan.getJobs().stream().map(cj -> cj.getExecutor())
-        .anyMatch(ceid -> ((CompactionExecutorIdImpl) ceid).isExernalId())) {
+        .anyMatch(ceid -> ((CompactionExecutorIdImpl) ceid).isExternalId())) {
       log.error(
           "Compacting metadata tablets on external compactors is not supported, please change "
               + "config for compaction service ({}) and/or table ASAP.  {} is not compacting, "

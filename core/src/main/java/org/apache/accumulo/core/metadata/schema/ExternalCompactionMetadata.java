@@ -138,7 +138,7 @@ public class ExternalCompactionMetadata {
     jData.dest = newFile.getMetaInsert();
     jData.compactor = compactorId;
     jData.kind = kind.name();
-    jData.executorId = ((CompactionExecutorIdImpl) ceid).getExernalName();
+    jData.executorId = ((CompactionExecutorIdImpl) ceid).getExternalName();
     jData.priority = priority;
     jData.propDels = propogateDeletes;
     jData.selectedAll = selectedAll;

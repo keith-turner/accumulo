@@ -1172,7 +1172,7 @@ public class CompactableImpl implements Compactable {
       // wait while internal jobs are running or external compactions are committing, but do not
       // wait on external compactions that are running
       while (runnningJobs.stream()
-          .anyMatch(job -> !((CompactionExecutorIdImpl) job.getExecutor()).isExernalId())
+          .anyMatch(job -> !((CompactionExecutorIdImpl) job.getExecutor()).isExternalId())
           || !externalCompactionsCommitting.isEmpty()) {
         try {
           wait(50);
