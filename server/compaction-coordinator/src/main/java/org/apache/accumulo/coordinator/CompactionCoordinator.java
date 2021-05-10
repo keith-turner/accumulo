@@ -88,8 +88,7 @@ public class CompactionCoordinator extends AbstractServer
     LiveTServerSet.Listener {
 
   private static final Logger LOG = LoggerFactory.getLogger(CompactionCoordinator.class);
-  private static final long TIME_BETWEEN_CHECKS = 5000;
-  public static final long TSERVER_CHECK_INTERVAL = 60000;
+  private static final long TIME_BETWEEN_GC_CHECKS = 5000;
   private static final long FIFTEEN_MINUTES =
       TimeUnit.MILLISECONDS.convert(Duration.of(15, TimeUnit.MINUTES.toChronoUnit()));
 
@@ -155,7 +154,7 @@ public class CompactionCoordinator extends AbstractServer
 
   protected void startGCLogger(ScheduledThreadPoolExecutor schedExecutor) {
     schedExecutor.scheduleWithFixedDelay(() -> gcLogger.logGCInfo(getConfiguration()), 0,
-        TIME_BETWEEN_CHECKS, TimeUnit.MILLISECONDS);
+        TIME_BETWEEN_GC_CHECKS, TimeUnit.MILLISECONDS);
   }
 
   private void startCompactionCleaner(ScheduledThreadPoolExecutor schedExecutor) {
@@ -365,7 +364,7 @@ public class CompactionCoordinator extends AbstractServer
     }
 
     tserverSet.startListeningForTabletServerChanges();
-    new DeadCompactionDetector(getContext(), compactionFinalizer, schedExecutor).start();
+    startDeadCompactionDetector();
 
     LOG.info("Starting loop to check tservers for compaction summaries");
     while (!shutdown) {
@@ -416,12 +415,16 @@ public class CompactionCoordinator extends AbstractServer
     LOG.info("Shutting down");
   }
 
+  protected void startDeadCompactionDetector() {
+    new DeadCompactionDetector(getContext(), compactionFinalizer, schedExecutor).start();
+  }
+
   protected long getMissingCompactorWarningTime() {
     return FIFTEEN_MINUTES;
   }
 
   protected long getTServerCheckInterval() {
-    return TSERVER_CHECK_INTERVAL;
+    return this.aconf.getTimeInMillis(Property.COORDINATOR_TSERVER_COMPACTION_CHECK_INTERVAL);
   }
 
   protected TabletMetadata getMetadataEntryForExtent(KeyExtent extent) {

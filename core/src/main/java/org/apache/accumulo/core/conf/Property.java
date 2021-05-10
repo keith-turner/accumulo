@@ -1062,6 +1062,9 @@ public enum Property {
   COORDINATOR_FINALIZER_COMPLETION_CHECK_INTERVAL("coordinator.server.finalizer.check.interval",
       "60s", PropertyType.TIMEDURATION,
       "The interval at which to check for external compaction final state markers in the metadata table."),
+  COORDINATOR_TSERVER_COMPACTION_CHECK_INTERVAL(
+      "coordinator.server.tserver.compaction.check.interval", "1m", PropertyType.TIMEDURATION,
+      "The interval at which to check the tservers for external compactions."),
   // deprecated properties grouped at the end to reference property that replaces them
   @Deprecated(since = "1.6.0")
   @ReplacedBy(property = INSTANCE_VOLUMES)

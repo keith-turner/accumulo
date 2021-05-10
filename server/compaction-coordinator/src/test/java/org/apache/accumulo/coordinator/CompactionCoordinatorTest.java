@@ -101,6 +101,9 @@ public class CompactionCoordinatorTest {
     }
 
     @Override
+    protected void startDeadCompactionDetector() {}
+
+    @Override
     protected long getTServerCheckInterval() {
       this.shutdown = true;
       return 0L;
