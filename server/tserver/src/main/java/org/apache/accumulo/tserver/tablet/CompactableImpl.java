@@ -94,6 +94,11 @@ import com.google.common.collect.Sets;
  */
 public class CompactableImpl implements Compactable {
 
+  private static class ExternalCompactionInfo {
+    ExternalCompactionMetadata meta;
+    CompactionJob job;
+  }
+
   private static final Logger log = LoggerFactory.getLogger(CompactableImpl.class);
 
   private final Tablet tablet;
@@ -131,12 +136,6 @@ public class CompactableImpl implements Compactable {
   AtomicLong lastSeenCompactionCancelId = new AtomicLong(Long.MIN_VALUE);
 
   private volatile boolean closed = false;
-
-  // TODO move to top of class
-  private static class ExternalCompactionInfo {
-    ExternalCompactionMetadata meta;
-    CompactionJob job;
-  }
 
   private Map<ExternalCompactionId,ExternalCompactionInfo> externalCompactions =
       new ConcurrentHashMap<>();
