@@ -170,18 +170,12 @@ struct TExternalCompactionJob {
   1:string externalCompactionId
   2:data.TKeyExtent extent
   3:list<InputFile> files
-  4:i32 priority
-  5:i32 readRate
-  6:i32 writeRate
-  7:IteratorConfig iteratorSettings
-  8:TCompactionType type
-  # CBUG Need to add SELECTOR To TCompactionReason, delete TCompactionKind?
-  9:TCompactionReason reason
-  10:string outputFile
-  11:bool propagateDeletes
-  12:TCompactionKind kind
-  13:i64 userCompactionId
-  14:map<string, string> tableCompactionProperties
+  4:IteratorConfig iteratorSettings
+  5:string outputFile
+  6:bool propagateDeletes
+  7:TCompactionKind kind
+  8:i64 userCompactionId
+  9:map<string, string> tableCompactionProperties
 }
 
 enum TCompactionKind {

@@ -558,23 +558,22 @@ public class Compactor extends AbstractServer
           job.getIteratorSettings().getIterators()
               .forEach(tis -> iters.add(SystemIteratorUtil.toIteratorSetting(tis)));
 
-          try (CompactionEnvironment cenv =
-              new CompactionEnvironment(getContext(), JOB_HOLDER, queueName)) {
-            org.apache.accumulo.server.compaction.Compactor compactor =
-                new org.apache.accumulo.server.compaction.Compactor(getContext(),
-                    KeyExtent.fromThrift(job.getExtent()), files, outputFile,
-                    job.isPropagateDeletes(), cenv, iters, tConfig);
+          CompactionEnvironment cenv = new CompactionEnvironment(JOB_HOLDER, queueName);
+          org.apache.accumulo.server.compaction.Compactor compactor =
+              new org.apache.accumulo.server.compaction.Compactor(getContext(),
+                  KeyExtent.fromThrift(job.getExtent()), files, outputFile,
+                  job.isPropagateDeletes(), cenv, iters, tConfig);
 
-            LOG.info("Starting compactor");
-            started.countDown();
+          LOG.info("Starting compactor");
+          started.countDown();
 
-            org.apache.accumulo.server.compaction.CompactionStats stat = compactor.call();
-            TCompactionStats cs = new TCompactionStats();
-            cs.setEntriesRead(stat.getEntriesRead());
-            cs.setEntriesWritten(stat.getEntriesWritten());
-            cs.setFileSize(stat.getFileSize());
-            JOB_HOLDER.setStats(cs);
-          }
+          org.apache.accumulo.server.compaction.CompactionStats stat = compactor.call();
+          TCompactionStats cs = new TCompactionStats();
+          cs.setEntriesRead(stat.getEntriesRead());
+          cs.setEntriesWritten(stat.getEntriesWritten());
+          cs.setFileSize(stat.getFileSize());
+          JOB_HOLDER.setStats(cs);
+
           LOG.info("Compaction completed successfully {} ", job.getExternalCompactionId());
           // Update state when completed
           updateCompactionState(job, TCompactionState.SUCCEEDED,

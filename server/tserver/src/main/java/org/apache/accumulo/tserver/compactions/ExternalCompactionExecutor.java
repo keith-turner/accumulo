@@ -112,11 +112,11 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
     this.ceid = ceid;
     Comparator<ExternalJob> priorityComparator =
         Comparator.comparingLong(ej -> ej.getJob().getPriority());
-    priorityComparator = priorityComparator.reversed();
-    Comparator<ExternalJob> timeComparator = Comparator.comparingLong(ExternalJob::getTimeCreated);
+    priorityComparator =
+        priorityComparator.reversed().thenComparingLong(ExternalJob::getTimeCreated);
 
     this.queue = new PriorityBlockingQueue<ExternalJob>(100,
-        priorityComparator.thenComparing(timeComparator));
+        priorityComparator.thenComparing(priorityComparator));
   }
 
   @Override
@@ -181,12 +181,13 @@ public class ExternalCompactionExecutor implements CompactionExecutor {
         }
       } else {
         queue.add(extJob);
+        found = null;
+        break;
       }
     }
     return found;
   }
 
-  // TODO maybe create non-thrift type to avoid thrift types all over the code
   public TCompactionQueueSummary summarize() {
     long priority = 0;
     ExternalJob topJob = queue.peek();

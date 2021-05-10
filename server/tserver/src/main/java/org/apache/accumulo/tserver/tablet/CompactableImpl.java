@@ -935,7 +935,6 @@ public class CompactableImpl implements Compactable {
       throw new RuntimeException(e);
     } finally {
       completeCompaction(job, cInfo.jobFiles, metaFile);
-      // TODO should this be in completeCompaction
       tablet.updateTimer(MAJOR, queuedTime, startTime, stats.getEntriesRead(), metaFile == null);
     }
   }
@@ -981,9 +980,13 @@ public class CompactableImpl implements Compactable {
 
       externalCompactions.put(externalCompactionId, ecInfo);
 
-      return new ExternalCompactionJob(cInfo.jobFiles, cInfo.propogateDeletes, compactTmpName,
-          getExtent(), externalCompactionId, job.getPriority(), job.getKind(), cInfo.iters,
-          cInfo.checkCompactionId, tableCompactionProperties);
+      SortedMap<StoredTabletFile,DataFileValue> allFiles = tablet.getDatafiles();
+      HashMap<StoredTabletFile,DataFileValue> compactFiles = new HashMap<>();
+      cInfo.jobFiles.forEach(file -> compactFiles.put(file, allFiles.get(file)));
+
+      return new ExternalCompactionJob(compactFiles, cInfo.propogateDeletes, compactTmpName,
+          getExtent(), externalCompactionId, job.getKind(), cInfo.iters, cInfo.checkCompactionId,
+          tableCompactionProperties);
 
     } catch (Exception e) {
       externalCompactions.remove(externalCompactionId);
@@ -1012,7 +1015,6 @@ public class CompactableImpl implements Compactable {
 
       if (ecInfo != null) {
         log.debug("Attempting to commit external compaction {}", extCompactionId);
-        // TODO do a sanity check that files exists in dfs?
         StoredTabletFile metaFile = null;
         try {
           // possibly do some sanity checks here

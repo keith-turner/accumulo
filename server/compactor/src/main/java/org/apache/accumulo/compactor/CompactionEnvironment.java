@@ -18,9 +18,6 @@
  */
 package org.apache.accumulo.compactor;
 
-import java.io.Closeable;
-import java.io.IOException;
-
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
@@ -30,8 +27,8 @@ import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionReason;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
+import org.apache.accumulo.core.util.ratelimit.NullRateLimiter;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
-import org.apache.accumulo.core.util.ratelimit.SharedRateLimiterFactory;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.compaction.Compactor.CompactionEnv;
 import org.apache.accumulo.server.iterators.SystemIteratorEnvironment;
@@ -39,11 +36,9 @@ import org.apache.accumulo.server.iterators.TabletIteratorEnvironment;
 
 import com.google.common.annotations.VisibleForTesting;
 
-public class CompactionEnvironment implements Closeable, CompactionEnv {
+public class CompactionEnvironment implements CompactionEnv {
 
-  private final ServerContext context;
   private final CompactionJobHolder jobHolder;
-  private final SharedRateLimiterFactory limiter;
   private TExternalCompactionJob job;
   private String queueName;
 
@@ -63,18 +58,10 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
     }
   }
 
-  CompactionEnvironment(ServerContext context, CompactionJobHolder jobHolder, String queueName) {
-    this.context = context;
+  CompactionEnvironment(CompactionJobHolder jobHolder, String queueName) {
     this.jobHolder = jobHolder;
     this.job = jobHolder.getJob();
-    this.limiter = SharedRateLimiterFactory.getInstance(this.context.getConfiguration());
     this.queueName = queueName;
-  }
-
-  @Override
-  public void close() throws IOException {
-    limiter.remove("read_rate_limiter");
-    limiter.remove("write_rate_limiter");
   }
 
   @Override
@@ -89,12 +76,12 @@ public class CompactionEnvironment implements Closeable, CompactionEnv {
 
   @Override
   public RateLimiter getReadLimiter() {
-    return limiter.create("read_rate_limiter", () -> job.getReadRate());
+    return NullRateLimiter.INSTANCE;
   }
 
   @Override
   public RateLimiter getWriteLimiter() {
-    return limiter.create("write_rate_limiter", () -> job.getWriteRate());
+    return NullRateLimiter.INSTANCE;
   }
 
   @Override

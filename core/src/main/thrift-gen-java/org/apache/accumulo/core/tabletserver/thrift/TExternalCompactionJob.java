@@ -31,17 +31,12 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   private static final org.apache.thrift.protocol.TField EXTERNAL_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("externalCompactionId", org.apache.thrift.protocol.TType.STRING, (short)1);
   private static final org.apache.thrift.protocol.TField EXTENT_FIELD_DESC = new org.apache.thrift.protocol.TField("extent", org.apache.thrift.protocol.TType.STRUCT, (short)2);
   private static final org.apache.thrift.protocol.TField FILES_FIELD_DESC = new org.apache.thrift.protocol.TField("files", org.apache.thrift.protocol.TType.LIST, (short)3);
-  private static final org.apache.thrift.protocol.TField PRIORITY_FIELD_DESC = new org.apache.thrift.protocol.TField("priority", org.apache.thrift.protocol.TType.I32, (short)4);
-  private static final org.apache.thrift.protocol.TField READ_RATE_FIELD_DESC = new org.apache.thrift.protocol.TField("readRate", org.apache.thrift.protocol.TType.I32, (short)5);
-  private static final org.apache.thrift.protocol.TField WRITE_RATE_FIELD_DESC = new org.apache.thrift.protocol.TField("writeRate", org.apache.thrift.protocol.TType.I32, (short)6);
-  private static final org.apache.thrift.protocol.TField ITERATOR_SETTINGS_FIELD_DESC = new org.apache.thrift.protocol.TField("iteratorSettings", org.apache.thrift.protocol.TType.STRUCT, (short)7);
-  private static final org.apache.thrift.protocol.TField TYPE_FIELD_DESC = new org.apache.thrift.protocol.TField("type", org.apache.thrift.protocol.TType.I32, (short)8);
-  private static final org.apache.thrift.protocol.TField REASON_FIELD_DESC = new org.apache.thrift.protocol.TField("reason", org.apache.thrift.protocol.TType.I32, (short)9);
-  private static final org.apache.thrift.protocol.TField OUTPUT_FILE_FIELD_DESC = new org.apache.thrift.protocol.TField("outputFile", org.apache.thrift.protocol.TType.STRING, (short)10);
-  private static final org.apache.thrift.protocol.TField PROPAGATE_DELETES_FIELD_DESC = new org.apache.thrift.protocol.TField("propagateDeletes", org.apache.thrift.protocol.TType.BOOL, (short)11);
-  private static final org.apache.thrift.protocol.TField KIND_FIELD_DESC = new org.apache.thrift.protocol.TField("kind", org.apache.thrift.protocol.TType.I32, (short)12);
-  private static final org.apache.thrift.protocol.TField USER_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("userCompactionId", org.apache.thrift.protocol.TType.I64, (short)13);
-  private static final org.apache.thrift.protocol.TField TABLE_COMPACTION_PROPERTIES_FIELD_DESC = new org.apache.thrift.protocol.TField("tableCompactionProperties", org.apache.thrift.protocol.TType.MAP, (short)14);
+  private static final org.apache.thrift.protocol.TField ITERATOR_SETTINGS_FIELD_DESC = new org.apache.thrift.protocol.TField("iteratorSettings", org.apache.thrift.protocol.TType.STRUCT, (short)4);
+  private static final org.apache.thrift.protocol.TField OUTPUT_FILE_FIELD_DESC = new org.apache.thrift.protocol.TField("outputFile", org.apache.thrift.protocol.TType.STRING, (short)5);
+  private static final org.apache.thrift.protocol.TField PROPAGATE_DELETES_FIELD_DESC = new org.apache.thrift.protocol.TField("propagateDeletes", org.apache.thrift.protocol.TType.BOOL, (short)6);
+  private static final org.apache.thrift.protocol.TField KIND_FIELD_DESC = new org.apache.thrift.protocol.TField("kind", org.apache.thrift.protocol.TType.I32, (short)7);
+  private static final org.apache.thrift.protocol.TField USER_COMPACTION_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("userCompactionId", org.apache.thrift.protocol.TType.I64, (short)8);
+  private static final org.apache.thrift.protocol.TField TABLE_COMPACTION_PROPERTIES_FIELD_DESC = new org.apache.thrift.protocol.TField("tableCompactionProperties", org.apache.thrift.protocol.TType.MAP, (short)9);
 
   private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new TExternalCompactionJobStandardSchemeFactory();
   private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new TExternalCompactionJobTupleSchemeFactory();
@@ -49,20 +44,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   public @org.apache.thrift.annotation.Nullable java.lang.String externalCompactionId; // required
   public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent; // required
   public @org.apache.thrift.annotation.Nullable java.util.List<InputFile> files; // required
-  public int priority; // required
-  public int readRate; // required
-  public int writeRate; // required
   public @org.apache.thrift.annotation.Nullable IteratorConfig iteratorSettings; // required
-  /**
-   * 
-   * @see TCompactionType
-   */
-  public @org.apache.thrift.annotation.Nullable TCompactionType type; // required
-  /**
-   * 
-   * @see TCompactionReason
-   */
-  public @org.apache.thrift.annotation.Nullable TCompactionReason reason; // required
   public @org.apache.thrift.annotation.Nullable java.lang.String outputFile; // required
   public boolean propagateDeletes; // required
   public @org.apache.thrift.annotation.Nullable TCompactionKind kind; // required
@@ -74,25 +56,12 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     EXTERNAL_COMPACTION_ID((short)1, "externalCompactionId"),
     EXTENT((short)2, "extent"),
     FILES((short)3, "files"),
-    PRIORITY((short)4, "priority"),
-    READ_RATE((short)5, "readRate"),
-    WRITE_RATE((short)6, "writeRate"),
-    ITERATOR_SETTINGS((short)7, "iteratorSettings"),
-    /**
-     * 
-     * @see TCompactionType
-     */
-    TYPE((short)8, "type"),
-    /**
-     * 
-     * @see TCompactionReason
-     */
-    REASON((short)9, "reason"),
-    OUTPUT_FILE((short)10, "outputFile"),
-    PROPAGATE_DELETES((short)11, "propagateDeletes"),
-    KIND((short)12, "kind"),
-    USER_COMPACTION_ID((short)13, "userCompactionId"),
-    TABLE_COMPACTION_PROPERTIES((short)14, "tableCompactionProperties");
+    ITERATOR_SETTINGS((short)4, "iteratorSettings"),
+    OUTPUT_FILE((short)5, "outputFile"),
+    PROPAGATE_DELETES((short)6, "propagateDeletes"),
+    KIND((short)7, "kind"),
+    USER_COMPACTION_ID((short)8, "userCompactionId"),
+    TABLE_COMPACTION_PROPERTIES((short)9, "tableCompactionProperties");
 
     private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -114,27 +83,17 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
           return EXTENT;
         case 3: // FILES
           return FILES;
-        case 4: // PRIORITY
-          return PRIORITY;
-        case 5: // READ_RATE
-          return READ_RATE;
-        case 6: // WRITE_RATE
-          return WRITE_RATE;
-        case 7: // ITERATOR_SETTINGS
+        case 4: // ITERATOR_SETTINGS
           return ITERATOR_SETTINGS;
-        case 8: // TYPE
-          return TYPE;
-        case 9: // REASON
-          return REASON;
-        case 10: // OUTPUT_FILE
+        case 5: // OUTPUT_FILE
           return OUTPUT_FILE;
-        case 11: // PROPAGATE_DELETES
+        case 6: // PROPAGATE_DELETES
           return PROPAGATE_DELETES;
-        case 12: // KIND
+        case 7: // KIND
           return KIND;
-        case 13: // USER_COMPACTION_ID
+        case 8: // USER_COMPACTION_ID
           return USER_COMPACTION_ID;
-        case 14: // TABLE_COMPACTION_PROPERTIES
+        case 9: // TABLE_COMPACTION_PROPERTIES
           return TABLE_COMPACTION_PROPERTIES;
         default:
           return null;
@@ -177,11 +136,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   }
 
   // isset id assignments
-  private static final int __PRIORITY_ISSET_ID = 0;
-  private static final int __READRATE_ISSET_ID = 1;
-  private static final int __WRITERATE_ISSET_ID = 2;
-  private static final int __PROPAGATEDELETES_ISSET_ID = 3;
-  private static final int __USERCOMPACTIONID_ISSET_ID = 4;
+  private static final int __PROPAGATEDELETES_ISSET_ID = 0;
+  private static final int __USERCOMPACTIONID_ISSET_ID = 1;
   private byte __isset_bitfield = 0;
   public static final java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
@@ -193,18 +149,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     tmpMap.put(_Fields.FILES, new org.apache.thrift.meta_data.FieldMetaData("files", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.ListMetaData(org.apache.thrift.protocol.TType.LIST, 
             new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, InputFile.class))));
-    tmpMap.put(_Fields.PRIORITY, new org.apache.thrift.meta_data.FieldMetaData("priority", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32)));
-    tmpMap.put(_Fields.READ_RATE, new org.apache.thrift.meta_data.FieldMetaData("readRate", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32)));
-    tmpMap.put(_Fields.WRITE_RATE, new org.apache.thrift.meta_data.FieldMetaData("writeRate", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32)));
     tmpMap.put(_Fields.ITERATOR_SETTINGS, new org.apache.thrift.meta_data.FieldMetaData("iteratorSettings", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, IteratorConfig.class)));
-    tmpMap.put(_Fields.TYPE, new org.apache.thrift.meta_data.FieldMetaData("type", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, TCompactionType.class)));
-    tmpMap.put(_Fields.REASON, new org.apache.thrift.meta_data.FieldMetaData("reason", org.apache.thrift.TFieldRequirementType.DEFAULT, 
-        new org.apache.thrift.meta_data.EnumMetaData(org.apache.thrift.protocol.TType.ENUM, TCompactionReason.class)));
     tmpMap.put(_Fields.OUTPUT_FILE, new org.apache.thrift.meta_data.FieldMetaData("outputFile", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
     tmpMap.put(_Fields.PROPAGATE_DELETES, new org.apache.thrift.meta_data.FieldMetaData("propagateDeletes", org.apache.thrift.TFieldRequirementType.DEFAULT, 
@@ -228,12 +174,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     java.lang.String externalCompactionId,
     org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent,
     java.util.List<InputFile> files,
-    int priority,
-    int readRate,
-    int writeRate,
     IteratorConfig iteratorSettings,
-    TCompactionType type,
-    TCompactionReason reason,
     java.lang.String outputFile,
     boolean propagateDeletes,
     TCompactionKind kind,
@@ -244,15 +185,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     this.externalCompactionId = externalCompactionId;
     this.extent = extent;
     this.files = files;
-    this.priority = priority;
-    setPriorityIsSet(true);
-    this.readRate = readRate;
-    setReadRateIsSet(true);
-    this.writeRate = writeRate;
-    setWriteRateIsSet(true);
     this.iteratorSettings = iteratorSettings;
-    this.type = type;
-    this.reason = reason;
     this.outputFile = outputFile;
     this.propagateDeletes = propagateDeletes;
     setPropagateDeletesIsSet(true);
@@ -280,17 +213,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       }
       this.files = __this__files;
     }
-    this.priority = other.priority;
-    this.readRate = other.readRate;
-    this.writeRate = other.writeRate;
     if (other.isSetIteratorSettings()) {
       this.iteratorSettings = new IteratorConfig(other.iteratorSettings);
-    }
-    if (other.isSetType()) {
-      this.type = other.type;
-    }
-    if (other.isSetReason()) {
-      this.reason = other.reason;
     }
     if (other.isSetOutputFile()) {
       this.outputFile = other.outputFile;
@@ -315,15 +239,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     this.externalCompactionId = null;
     this.extent = null;
     this.files = null;
-    setPriorityIsSet(false);
-    this.priority = 0;
-    setReadRateIsSet(false);
-    this.readRate = 0;
-    setWriteRateIsSet(false);
-    this.writeRate = 0;
     this.iteratorSettings = null;
-    this.type = null;
-    this.reason = null;
     this.outputFile = null;
     setPropagateDeletesIsSet(false);
     this.propagateDeletes = false;
@@ -424,75 +340,6 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     }
   }
 
-  public int getPriority() {
-    return this.priority;
-  }
-
-  public TExternalCompactionJob setPriority(int priority) {
-    this.priority = priority;
-    setPriorityIsSet(true);
-    return this;
-  }
-
-  public void unsetPriority() {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __PRIORITY_ISSET_ID);
-  }
-
-  /** Returns true if field priority is set (has been assigned a value) and false otherwise */
-  public boolean isSetPriority() {
-    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __PRIORITY_ISSET_ID);
-  }
-
-  public void setPriorityIsSet(boolean value) {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __PRIORITY_ISSET_ID, value);
-  }
-
-  public int getReadRate() {
-    return this.readRate;
-  }
-
-  public TExternalCompactionJob setReadRate(int readRate) {
-    this.readRate = readRate;
-    setReadRateIsSet(true);
-    return this;
-  }
-
-  public void unsetReadRate() {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __READRATE_ISSET_ID);
-  }
-
-  /** Returns true if field readRate is set (has been assigned a value) and false otherwise */
-  public boolean isSetReadRate() {
-    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __READRATE_ISSET_ID);
-  }
-
-  public void setReadRateIsSet(boolean value) {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __READRATE_ISSET_ID, value);
-  }
-
-  public int getWriteRate() {
-    return this.writeRate;
-  }
-
-  public TExternalCompactionJob setWriteRate(int writeRate) {
-    this.writeRate = writeRate;
-    setWriteRateIsSet(true);
-    return this;
-  }
-
-  public void unsetWriteRate() {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __WRITERATE_ISSET_ID);
-  }
-
-  /** Returns true if field writeRate is set (has been assigned a value) and false otherwise */
-  public boolean isSetWriteRate() {
-    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __WRITERATE_ISSET_ID);
-  }
-
-  public void setWriteRateIsSet(boolean value) {
-    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __WRITERATE_ISSET_ID, value);
-  }
-
   @org.apache.thrift.annotation.Nullable
   public IteratorConfig getIteratorSettings() {
     return this.iteratorSettings;
@@ -515,72 +362,6 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
   public void setIteratorSettingsIsSet(boolean value) {
     if (!value) {
       this.iteratorSettings = null;
-    }
-  }
-
-  /**
-   * 
-   * @see TCompactionType
-   */
-  @org.apache.thrift.annotation.Nullable
-  public TCompactionType getType() {
-    return this.type;
-  }
-
-  /**
-   * 
-   * @see TCompactionType
-   */
-  public TExternalCompactionJob setType(@org.apache.thrift.annotation.Nullable TCompactionType type) {
-    this.type = type;
-    return this;
-  }
-
-  public void unsetType() {
-    this.type = null;
-  }
-
-  /** Returns true if field type is set (has been assigned a value) and false otherwise */
-  public boolean isSetType() {
-    return this.type != null;
-  }
-
-  public void setTypeIsSet(boolean value) {
-    if (!value) {
-      this.type = null;
-    }
-  }
-
-  /**
-   * 
-   * @see TCompactionReason
-   */
-  @org.apache.thrift.annotation.Nullable
-  public TCompactionReason getReason() {
-    return this.reason;
-  }
-
-  /**
-   * 
-   * @see TCompactionReason
-   */
-  public TExternalCompactionJob setReason(@org.apache.thrift.annotation.Nullable TCompactionReason reason) {
-    this.reason = reason;
-    return this;
-  }
-
-  public void unsetReason() {
-    this.reason = null;
-  }
-
-  /** Returns true if field reason is set (has been assigned a value) and false otherwise */
-  public boolean isSetReason() {
-    return this.reason != null;
-  }
-
-  public void setReasonIsSet(boolean value) {
-    if (!value) {
-      this.reason = null;
     }
   }
 
@@ -742,51 +523,11 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       }
       break;
 
-    case PRIORITY:
-      if (value == null) {
-        unsetPriority();
-      } else {
-        setPriority((java.lang.Integer)value);
-      }
-      break;
-
-    case READ_RATE:
-      if (value == null) {
-        unsetReadRate();
-      } else {
-        setReadRate((java.lang.Integer)value);
-      }
-      break;
-
-    case WRITE_RATE:
-      if (value == null) {
-        unsetWriteRate();
-      } else {
-        setWriteRate((java.lang.Integer)value);
-      }
-      break;
-
     case ITERATOR_SETTINGS:
       if (value == null) {
         unsetIteratorSettings();
       } else {
         setIteratorSettings((IteratorConfig)value);
-      }
-      break;
-
-    case TYPE:
-      if (value == null) {
-        unsetType();
-      } else {
-        setType((TCompactionType)value);
-      }
-      break;
-
-    case REASON:
-      if (value == null) {
-        unsetReason();
-      } else {
-        setReason((TCompactionReason)value);
       }
       break;
 
@@ -845,23 +586,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     case FILES:
       return getFiles();
 
-    case PRIORITY:
-      return getPriority();
-
-    case READ_RATE:
-      return getReadRate();
-
-    case WRITE_RATE:
-      return getWriteRate();
-
     case ITERATOR_SETTINGS:
       return getIteratorSettings();
-
-    case TYPE:
-      return getType();
-
-    case REASON:
-      return getReason();
 
     case OUTPUT_FILE:
       return getOutputFile();
@@ -895,18 +621,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       return isSetExtent();
     case FILES:
       return isSetFiles();
-    case PRIORITY:
-      return isSetPriority();
-    case READ_RATE:
-      return isSetReadRate();
-    case WRITE_RATE:
-      return isSetWriteRate();
     case ITERATOR_SETTINGS:
       return isSetIteratorSettings();
-    case TYPE:
-      return isSetType();
-    case REASON:
-      return isSetReason();
     case OUTPUT_FILE:
       return isSetOutputFile();
     case PROPAGATE_DELETES:
@@ -963,57 +679,12 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         return false;
     }
 
-    boolean this_present_priority = true;
-    boolean that_present_priority = true;
-    if (this_present_priority || that_present_priority) {
-      if (!(this_present_priority && that_present_priority))
-        return false;
-      if (this.priority != that.priority)
-        return false;
-    }
-
-    boolean this_present_readRate = true;
-    boolean that_present_readRate = true;
-    if (this_present_readRate || that_present_readRate) {
-      if (!(this_present_readRate && that_present_readRate))
-        return false;
-      if (this.readRate != that.readRate)
-        return false;
-    }
-
-    boolean this_present_writeRate = true;
-    boolean that_present_writeRate = true;
-    if (this_present_writeRate || that_present_writeRate) {
-      if (!(this_present_writeRate && that_present_writeRate))
-        return false;
-      if (this.writeRate != that.writeRate)
-        return false;
-    }
-
     boolean this_present_iteratorSettings = true && this.isSetIteratorSettings();
     boolean that_present_iteratorSettings = true && that.isSetIteratorSettings();
     if (this_present_iteratorSettings || that_present_iteratorSettings) {
       if (!(this_present_iteratorSettings && that_present_iteratorSettings))
         return false;
       if (!this.iteratorSettings.equals(that.iteratorSettings))
-        return false;
-    }
-
-    boolean this_present_type = true && this.isSetType();
-    boolean that_present_type = true && that.isSetType();
-    if (this_present_type || that_present_type) {
-      if (!(this_present_type && that_present_type))
-        return false;
-      if (!this.type.equals(that.type))
-        return false;
-    }
-
-    boolean this_present_reason = true && this.isSetReason();
-    boolean that_present_reason = true && that.isSetReason();
-    if (this_present_reason || that_present_reason) {
-      if (!(this_present_reason && that_present_reason))
-        return false;
-      if (!this.reason.equals(that.reason))
         return false;
     }
 
@@ -1081,23 +752,9 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     if (isSetFiles())
       hashCode = hashCode * 8191 + files.hashCode();
 
-    hashCode = hashCode * 8191 + priority;
-
-    hashCode = hashCode * 8191 + readRate;
-
-    hashCode = hashCode * 8191 + writeRate;
-
     hashCode = hashCode * 8191 + ((isSetIteratorSettings()) ? 131071 : 524287);
     if (isSetIteratorSettings())
       hashCode = hashCode * 8191 + iteratorSettings.hashCode();
-
-    hashCode = hashCode * 8191 + ((isSetType()) ? 131071 : 524287);
-    if (isSetType())
-      hashCode = hashCode * 8191 + type.getValue();
-
-    hashCode = hashCode * 8191 + ((isSetReason()) ? 131071 : 524287);
-    if (isSetReason())
-      hashCode = hashCode * 8191 + reason.getValue();
 
     hashCode = hashCode * 8191 + ((isSetOutputFile()) ? 131071 : 524287);
     if (isSetOutputFile())
@@ -1156,62 +813,12 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         return lastComparison;
       }
     }
-    lastComparison = java.lang.Boolean.valueOf(isSetPriority()).compareTo(other.isSetPriority());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    if (isSetPriority()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.priority, other.priority);
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-    }
-    lastComparison = java.lang.Boolean.valueOf(isSetReadRate()).compareTo(other.isSetReadRate());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    if (isSetReadRate()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.readRate, other.readRate);
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-    }
-    lastComparison = java.lang.Boolean.valueOf(isSetWriteRate()).compareTo(other.isSetWriteRate());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    if (isSetWriteRate()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.writeRate, other.writeRate);
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-    }
     lastComparison = java.lang.Boolean.valueOf(isSetIteratorSettings()).compareTo(other.isSetIteratorSettings());
     if (lastComparison != 0) {
       return lastComparison;
     }
     if (isSetIteratorSettings()) {
       lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.iteratorSettings, other.iteratorSettings);
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-    }
-    lastComparison = java.lang.Boolean.valueOf(isSetType()).compareTo(other.isSetType());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    if (isSetType()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.type, other.type);
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-    }
-    lastComparison = java.lang.Boolean.valueOf(isSetReason()).compareTo(other.isSetReason());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    if (isSetReason()) {
-      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.reason, other.reason);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -1311,39 +918,11 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     }
     first = false;
     if (!first) sb.append(", ");
-    sb.append("priority:");
-    sb.append(this.priority);
-    first = false;
-    if (!first) sb.append(", ");
-    sb.append("readRate:");
-    sb.append(this.readRate);
-    first = false;
-    if (!first) sb.append(", ");
-    sb.append("writeRate:");
-    sb.append(this.writeRate);
-    first = false;
-    if (!first) sb.append(", ");
     sb.append("iteratorSettings:");
     if (this.iteratorSettings == null) {
       sb.append("null");
     } else {
       sb.append(this.iteratorSettings);
-    }
-    first = false;
-    if (!first) sb.append(", ");
-    sb.append("type:");
-    if (this.type == null) {
-      sb.append("null");
-    } else {
-      sb.append(this.type);
-    }
-    first = false;
-    if (!first) sb.append(", ");
-    sb.append("reason:");
-    if (this.reason == null) {
-      sb.append("null");
-    } else {
-      sb.append(this.reason);
     }
     first = false;
     if (!first) sb.append(", ");
@@ -1465,31 +1044,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 4: // PRIORITY
-            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.priority = iprot.readI32();
-              struct.setPriorityIsSet(true);
-            } else { 
-              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
-            }
-            break;
-          case 5: // READ_RATE
-            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.readRate = iprot.readI32();
-              struct.setReadRateIsSet(true);
-            } else { 
-              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
-            }
-            break;
-          case 6: // WRITE_RATE
-            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.writeRate = iprot.readI32();
-              struct.setWriteRateIsSet(true);
-            } else { 
-              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
-            }
-            break;
-          case 7: // ITERATOR_SETTINGS
+          case 4: // ITERATOR_SETTINGS
             if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
               struct.iteratorSettings = new IteratorConfig();
               struct.iteratorSettings.read(iprot);
@@ -1498,23 +1053,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 8: // TYPE
-            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.type = org.apache.accumulo.core.tabletserver.thrift.TCompactionType.findByValue(iprot.readI32());
-              struct.setTypeIsSet(true);
-            } else { 
-              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
-            }
-            break;
-          case 9: // REASON
-            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
-              struct.reason = org.apache.accumulo.core.tabletserver.thrift.TCompactionReason.findByValue(iprot.readI32());
-              struct.setReasonIsSet(true);
-            } else { 
-              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
-            }
-            break;
-          case 10: // OUTPUT_FILE
+          case 5: // OUTPUT_FILE
             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
               struct.outputFile = iprot.readString();
               struct.setOutputFileIsSet(true);
@@ -1522,7 +1061,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 11: // PROPAGATE_DELETES
+          case 6: // PROPAGATE_DELETES
             if (schemeField.type == org.apache.thrift.protocol.TType.BOOL) {
               struct.propagateDeletes = iprot.readBool();
               struct.setPropagateDeletesIsSet(true);
@@ -1530,7 +1069,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 12: // KIND
+          case 7: // KIND
             if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
               struct.kind = org.apache.accumulo.core.tabletserver.thrift.TCompactionKind.findByValue(iprot.readI32());
               struct.setKindIsSet(true);
@@ -1538,7 +1077,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 13: // USER_COMPACTION_ID
+          case 8: // USER_COMPACTION_ID
             if (schemeField.type == org.apache.thrift.protocol.TType.I64) {
               struct.userCompactionId = iprot.readI64();
               struct.setUserCompactionIdIsSet(true);
@@ -1546,7 +1085,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
-          case 14: // TABLE_COMPACTION_PROPERTIES
+          case 9: // TABLE_COMPACTION_PROPERTIES
             if (schemeField.type == org.apache.thrift.protocol.TType.MAP) {
               {
                 org.apache.thrift.protocol.TMap _map119 = iprot.readMapBegin();
@@ -1603,28 +1142,9 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         }
         oprot.writeFieldEnd();
       }
-      oprot.writeFieldBegin(PRIORITY_FIELD_DESC);
-      oprot.writeI32(struct.priority);
-      oprot.writeFieldEnd();
-      oprot.writeFieldBegin(READ_RATE_FIELD_DESC);
-      oprot.writeI32(struct.readRate);
-      oprot.writeFieldEnd();
-      oprot.writeFieldBegin(WRITE_RATE_FIELD_DESC);
-      oprot.writeI32(struct.writeRate);
-      oprot.writeFieldEnd();
       if (struct.iteratorSettings != null) {
         oprot.writeFieldBegin(ITERATOR_SETTINGS_FIELD_DESC);
         struct.iteratorSettings.write(oprot);
-        oprot.writeFieldEnd();
-      }
-      if (struct.type != null) {
-        oprot.writeFieldBegin(TYPE_FIELD_DESC);
-        oprot.writeI32(struct.type.getValue());
-        oprot.writeFieldEnd();
-      }
-      if (struct.reason != null) {
-        oprot.writeFieldBegin(REASON_FIELD_DESC);
-        oprot.writeI32(struct.reason.getValue());
         oprot.writeFieldEnd();
       }
       if (struct.outputFile != null) {
@@ -1683,40 +1203,25 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
       if (struct.isSetFiles()) {
         optionals.set(2);
       }
-      if (struct.isSetPriority()) {
+      if (struct.isSetIteratorSettings()) {
         optionals.set(3);
       }
-      if (struct.isSetReadRate()) {
+      if (struct.isSetOutputFile()) {
         optionals.set(4);
       }
-      if (struct.isSetWriteRate()) {
+      if (struct.isSetPropagateDeletes()) {
         optionals.set(5);
       }
-      if (struct.isSetIteratorSettings()) {
+      if (struct.isSetKind()) {
         optionals.set(6);
       }
-      if (struct.isSetType()) {
+      if (struct.isSetUserCompactionId()) {
         optionals.set(7);
       }
-      if (struct.isSetReason()) {
+      if (struct.isSetTableCompactionProperties()) {
         optionals.set(8);
       }
-      if (struct.isSetOutputFile()) {
-        optionals.set(9);
-      }
-      if (struct.isSetPropagateDeletes()) {
-        optionals.set(10);
-      }
-      if (struct.isSetKind()) {
-        optionals.set(11);
-      }
-      if (struct.isSetUserCompactionId()) {
-        optionals.set(12);
-      }
-      if (struct.isSetTableCompactionProperties()) {
-        optionals.set(13);
-      }
-      oprot.writeBitSet(optionals, 14);
+      oprot.writeBitSet(optionals, 9);
       if (struct.isSetExternalCompactionId()) {
         oprot.writeString(struct.externalCompactionId);
       }
@@ -1732,23 +1237,8 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
           }
         }
       }
-      if (struct.isSetPriority()) {
-        oprot.writeI32(struct.priority);
-      }
-      if (struct.isSetReadRate()) {
-        oprot.writeI32(struct.readRate);
-      }
-      if (struct.isSetWriteRate()) {
-        oprot.writeI32(struct.writeRate);
-      }
       if (struct.isSetIteratorSettings()) {
         struct.iteratorSettings.write(oprot);
-      }
-      if (struct.isSetType()) {
-        oprot.writeI32(struct.type.getValue());
-      }
-      if (struct.isSetReason()) {
-        oprot.writeI32(struct.reason.getValue());
       }
       if (struct.isSetOutputFile()) {
         oprot.writeString(struct.outputFile);
@@ -1777,7 +1267,7 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
     @Override
     public void read(org.apache.thrift.protocol.TProtocol prot, TExternalCompactionJob struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-      java.util.BitSet incoming = iprot.readBitSet(14);
+      java.util.BitSet incoming = iprot.readBitSet(9);
       if (incoming.get(0)) {
         struct.externalCompactionId = iprot.readString();
         struct.setExternalCompactionIdIsSet(true);
@@ -1802,47 +1292,27 @@ public class TExternalCompactionJob implements org.apache.thrift.TBase<TExternal
         struct.setFilesIsSet(true);
       }
       if (incoming.get(3)) {
-        struct.priority = iprot.readI32();
-        struct.setPriorityIsSet(true);
-      }
-      if (incoming.get(4)) {
-        struct.readRate = iprot.readI32();
-        struct.setReadRateIsSet(true);
-      }
-      if (incoming.get(5)) {
-        struct.writeRate = iprot.readI32();
-        struct.setWriteRateIsSet(true);
-      }
-      if (incoming.get(6)) {
         struct.iteratorSettings = new IteratorConfig();
         struct.iteratorSettings.read(iprot);
         struct.setIteratorSettingsIsSet(true);
       }
-      if (incoming.get(7)) {
-        struct.type = org.apache.accumulo.core.tabletserver.thrift.TCompactionType.findByValue(iprot.readI32());
-        struct.setTypeIsSet(true);
-      }
-      if (incoming.get(8)) {
-        struct.reason = org.apache.accumulo.core.tabletserver.thrift.TCompactionReason.findByValue(iprot.readI32());
-        struct.setReasonIsSet(true);
-      }
-      if (incoming.get(9)) {
+      if (incoming.get(4)) {
         struct.outputFile = iprot.readString();
         struct.setOutputFileIsSet(true);
       }
-      if (incoming.get(10)) {
+      if (incoming.get(5)) {
         struct.propagateDeletes = iprot.readBool();
         struct.setPropagateDeletesIsSet(true);
       }
-      if (incoming.get(11)) {
+      if (incoming.get(6)) {
         struct.kind = org.apache.accumulo.core.tabletserver.thrift.TCompactionKind.findByValue(iprot.readI32());
         struct.setKindIsSet(true);
       }
-      if (incoming.get(12)) {
+      if (incoming.get(7)) {
         struct.userCompactionId = iprot.readI64();
         struct.setUserCompactionIdIsSet(true);
       }
-      if (incoming.get(13)) {
+      if (incoming.get(8)) {
         {
           org.apache.thrift.protocol.TMap _map130 = new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRING, org.apache.thrift.protocol.TType.STRING, iprot.readI32());
           struct.tableCompactionProperties = new java.util.HashMap<java.lang.String,java.lang.String>(2*_map130.size);
