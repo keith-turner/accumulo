@@ -584,7 +584,6 @@ public class Compactor extends AbstractServer
           throw new RuntimeException("Compaction failed", e);
         } finally {
           stopped.countDown();
-          // CBUG Any cleanup
         }
       }
     };

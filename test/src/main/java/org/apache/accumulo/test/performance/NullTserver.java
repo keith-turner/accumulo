@@ -284,7 +284,6 @@ public class NullTserver {
     @Override
     public List<TCompactionQueueSummary> getCompactionQueueInfo(TInfo tinfo,
         TCredentials credentials) throws ThriftSecurityException, TException {
-      // TODO Auto-generated method stub
       return null;
     }
 
@@ -292,29 +291,21 @@ public class NullTserver {
     public TExternalCompactionJob reserveCompactionJob(TInfo tinfo, TCredentials credentials,
         String queueName, long priority, String compactor, String externalCompactionId)
         throws ThriftSecurityException, TException {
-      // TODO Auto-generated method stub
       return null;
     }
 
     @Override
     public void compactionJobFinished(TInfo tinfo, TCredentials credentials,
         String externalCompactionId, TKeyExtent extent, long fileSize, long entries)
-        throws ThriftSecurityException, TException {
-      // TODO Auto-generated method stub
-
-    }
+        throws ThriftSecurityException, TException {}
 
     @Override
     public void compactionJobFailed(TInfo tinfo, TCredentials credentials,
-        String externalCompactionId, TKeyExtent extent) throws TException {
-      // TODO Auto-generated method stub
-
-    }
+        String externalCompactionId, TKeyExtent extent) throws TException {}
 
     @Override
     public boolean isRunningExternalCompaction(TInfo tinfo, TCredentials credentials,
         String externalCompactionId, TKeyExtent extent) throws TException {
-      // TODO Auto-generated method stub
       return false;
     }
   }
