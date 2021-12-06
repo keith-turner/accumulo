@@ -113,7 +113,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 public class DefaultCompactionPlanner implements CompactionPlanner {
 
-  private static Logger log = LoggerFactory.getLogger(DefaultCompactionPlanner.class);
+  private static final Logger log = LoggerFactory.getLogger(DefaultCompactionPlanner.class);
 
   public static class ExecutorConfig {
     String type;
@@ -150,6 +150,11 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
       justification = "Field is written by Gson")
   @Override
   public void init(InitParameters params) {
+    parseExecutors(params);
+    determineMaxFilesToCompact(params);
+  }
+
+  public void parseExecutors(InitParameters params) {
     ExecutorConfig[] execConfigs =
         new Gson().fromJson(params.getOptions().get("executors"), ExecutorConfig[].class);
 
@@ -170,10 +175,9 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
         case "internal":
           Preconditions.checkArgument(null == executorConfig.queue,
               "'queue' should not be specified for internal compactions");
-          Objects.requireNonNull(executorConfig.numThreads,
+          int numThreads = Objects.requireNonNull(executorConfig.numThreads,
               "'numThreads' must be specified for internal type");
-          ceid = params.getExecutorManager().createExecutor(executorConfig.name,
-              executorConfig.numThreads);
+          ceid = params.getExecutorManager().createExecutor(executorConfig.name, numThreads);
           break;
         case "external":
           Preconditions.checkArgument(null == executorConfig.numThreads,
@@ -206,8 +210,6 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
             "Duplicate maxSize set in executors. " + params.getOptions().get("executors"));
       }
     });
-
-    determineMaxFilesToCompact(params);
   }
 
   @SuppressWarnings("removal")
