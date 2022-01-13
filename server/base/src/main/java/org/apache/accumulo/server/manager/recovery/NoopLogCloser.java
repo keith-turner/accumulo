@@ -18,17 +18,18 @@
  */
 package org.apache.accumulo.server.manager.recovery;
 
+import java.io.IOException;
+
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
-import java.io.IOException;
-
 public class NoopLogCloser implements LogCloser {
 
-    @Override
-    public long close(AccumuloConfiguration conf, Configuration hadoopConf, VolumeManager fs, Path path) throws IOException {
-        return 0;
-    }
+  @Override
+  public long close(AccumuloConfiguration conf, Configuration hadoopConf, VolumeManager fs,
+      Path path) throws IOException {
+    return 0;
+  }
 }

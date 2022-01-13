@@ -18,10 +18,11 @@
  */
 package org.apache.accumulo.server.manager.recovery;
 
+import java.io.IOException;
+
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.server.fs.VolumeManager;
-import org.apache.accumulo.server.manager.recovery.LogCloser;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -29,8 +30,6 @@ import org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem;
 import org.apache.hadoop.fs.viewfs.ViewFileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
 
 public class AzureLogCloser implements LogCloser {
   private static final Logger log = LoggerFactory.getLogger(AzureLogCloser.class);
@@ -65,9 +64,9 @@ public class AzureLogCloser implements LogCloser {
         }
       }
     } else {
-      throw new IllegalStateException(AzureLogCloser.class.getName() + " has been configured for " +
-          Property.MANAGER_WALOG_CLOSER_IMPLEMETATION + " but walog FS for " + source + " is " +
-          ns.getClass().getName());
+      throw new IllegalStateException(AzureLogCloser.class.getName() + " has been configured for "
+          + Property.MANAGER_WAL_CLOSER_IMPLEMENTATION + " but walog FS for " + source + " is "
+          + ns.getClass().getName());
     }
     return 0;
   }
