@@ -18,25 +18,25 @@
  */
 package org.apache.accumulo.tserver.log;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Random;
+
 import org.apache.hadoop.fs.Syncable;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.Arrays;
-import java.util.Random;
-
 public class BufferedWalOutputStreamTest {
   private static class TestOS extends ByteArrayOutputStream implements Syncable {
 
-    @Override public void hflush() throws IOException {
+    @Override
+    public void hflush() throws IOException {
       flush();
     }
 
-    @Override public void hsync() throws IOException {
+    @Override
+    public void hsync() throws IOException {
       flush();
     }
   }
@@ -47,7 +47,7 @@ public class BufferedWalOutputStreamTest {
 
     byte[] data = new byte[10000000];
 
-    for(int i = 0; i<100;i++) {
+    for (int i = 0; i < 100; i++) {
       int position = 0;
 
       rand.nextBytes(data);
@@ -67,10 +67,10 @@ public class BufferedWalOutputStreamTest {
 
         if (rand.nextInt(10) == 0) {
           bwos.hflush();
-          //System.out.println("hflushed");
+          // System.out.println("hflushed");
         }
 
-        //System.out.println("Wrote "+position+" of "+data.length);
+        // System.out.println("Wrote "+position+" of "+data.length);
 
       }
 
@@ -88,27 +88,27 @@ public class BufferedWalOutputStreamTest {
 
     byte[] data = new byte[10000000];
 
-      int position = 0;
+    int position = 0;
 
-      rand.nextBytes(data);
+    rand.nextBytes(data);
 
-      TestOS out1 = new TestOS();
+    TestOS out1 = new TestOS();
 
-      BufferedWalOutputStream bwos = new BufferedWalOutputStream(out1);
+    BufferedWalOutputStream bwos = new BufferedWalOutputStream(out1);
 
-      while (position < data.length) {
-        bwos.write(data[position++]);
-        if (rand.nextInt(100) == 0) {
-          bwos.hflush();
-          //System.out.println("hflushed");
-        }
-        //System.out.println("Wrote "+position+" of "+data.length);
+    while (position < data.length) {
+      bwos.write(data[position++]);
+      if (rand.nextInt(100) == 0) {
+        bwos.hflush();
+        // System.out.println("hflushed");
       }
+      // System.out.println("Wrote "+position+" of "+data.length);
+    }
 
-      bwos.close();
+    bwos.close();
 
-      byte[] wrote = out1.toByteArray();
+    byte[] wrote = out1.toByteArray();
 
-      Assert.assertEquals(0, Arrays.compare(data, wrote));
+    Assert.assertEquals(0, Arrays.compare(data, wrote));
   }
 }

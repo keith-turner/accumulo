@@ -18,9 +18,6 @@
  */
 package org.apache.accumulo.tserver.log;
 
-import com.google.common.base.Preconditions;
-import org.apache.hadoop.fs.Syncable;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -30,6 +27,10 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import org.apache.hadoop.fs.Syncable;
+
+import com.google.common.base.Preconditions;
 
 public class BufferedWalOutputStream extends OutputStream implements Syncable {
 
@@ -42,9 +43,9 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
       this.position = 0;
     }
 
-    int write(int b){
-      if(position < data.length) {
-        data[position++]=(byte)b;
+    int write(int b) {
+      if (position < data.length) {
+        data[position++] = (byte) b;
         return 1;
       } else {
         return 0;
@@ -54,8 +55,8 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
     int write(byte b[], int off, int len) {
       int left = data.length - position;
       int lenToWrite = Math.min(left, len);
-      System.arraycopy(b, off, data, position,lenToWrite);
-      position+=lenToWrite;
+      System.arraycopy(b, off, data, position, lenToWrite);
+      position += lenToWrite;
       return lenToWrite;
     }
 
@@ -63,12 +64,12 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
       wrapped.write(data, 0, position);
     }
 
-    public boolean isEmpty(){
+    public boolean isEmpty() {
       return position == 0;
     }
   }
 
-  private static final int BUFFER_SIZE = 10*1024*1024;
+  private static final int BUFFER_SIZE = 10 * 1024 * 1024;
 
   private OutputStream wrapped;
   private BlockingQueue<Buffer> bufferQueue = new ArrayBlockingQueue<>(11);
@@ -84,7 +85,7 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
 
   private void writeBuffers() throws IOException {
     writeLock.lock();
-    try{
+    try {
       List<Buffer> buffers = new ArrayList<>();
       bufferQueue.drainTo(buffers);
 
@@ -92,24 +93,25 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
         buffer.writeTo(wrapped);
       }
 
-    }finally {
+    } finally {
       writeLock.unlock();
     }
   }
 
-  private void newBuffer(){
+  private void newBuffer() {
     bufferLock.lock();
-    try{
-      if(!currentBuffer.isEmpty()) {
+    try {
+      if (!currentBuffer.isEmpty()) {
         bufferQueue.add(currentBuffer);
         currentBuffer = new Buffer(BUFFER_SIZE);
       }
-    }finally {
+    } finally {
       bufferLock.unlock();
     }
   }
 
-  @Override public void write(int b) throws IOException {
+  @Override
+  public void write(int b) throws IOException {
     boolean createdNewBuffer = false;
 
     bufferLock.lock();
@@ -142,52 +144,53 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
     boolean createdNewBuffer = false;
 
     bufferLock.lock();
-    try{
+    try {
       Preconditions.checkState(!closed);
       int written = currentBuffer.write(b, off, len);
-      while(written < len) {
+      while (written < len) {
         newBuffer();
-        off+=written;
-        len-=written;
+        off += written;
+        len -= written;
         written = currentBuffer.write(b, off, len);
         createdNewBuffer = true;
       }
-    }finally {
+    } finally {
       bufferLock.unlock();
     }
 
-    if(createdNewBuffer) {
-      if(bufferQueue.size() > 10){
+    if (createdNewBuffer) {
+      if (bufferQueue.size() > 10) {
         writeBuffers();
       }
     }
 
   }
 
-  @Override public void hflush() throws IOException {
+  @Override
+  public void hflush() throws IOException {
     newBuffer();
     writeLock.lock();
     try {
       Preconditions.checkState(!closed);
       writeBuffers();
-      ((Syncable)wrapped).hflush();
-    }finally {
+      ((Syncable) wrapped).hflush();
+    } finally {
       writeLock.unlock();
     }
   }
 
-  @Override public void hsync() throws IOException {
+  @Override
+  public void hsync() throws IOException {
     newBuffer();
     writeLock.lock();
     try {
       Preconditions.checkState(!closed);
       writeBuffers();
-      ((Syncable)wrapped).hsync();
-    }finally {
+      ((Syncable) wrapped).hsync();
+    } finally {
       writeLock.unlock();
     }
   }
-
 
   public void flush() throws IOException {
     // intentional noop
@@ -195,19 +198,19 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
 
   public void close() throws IOException {
     bufferLock.lock();
-    try{
+    try {
       writeLock.lock();
-      try{
-          if(closed)
-            return;
-          newBuffer();
-          writeBuffers();
-          wrapped.close();
-          closed = true;
-      }finally {
+      try {
+        if (closed)
+          return;
+        newBuffer();
+        writeBuffers();
+        wrapped.close();
+        closed = true;
+      } finally {
         writeLock.unlock();
       }
-    }finally {
+    } finally {
       bufferLock.unlock();
     }
   }

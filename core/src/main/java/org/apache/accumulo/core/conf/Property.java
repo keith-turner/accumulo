@@ -712,7 +712,8 @@ public enum Property {
       "Use the SYNC_BLOCK create flag to sync WAL writes to disk. Prevents"
           + " problems recovering from sudden system resets.",
       "1.5.0"),
-  TSERV_WAL_BUFFER("tserver.wal.buffer","false", PropertyType.BOOLEAN, "add buffer layer that has better concurrent support", "2.1.0"),
+  TSERV_WAL_BUFFER("tserver.wal.buffer", "false", PropertyType.BOOLEAN,
+      "add buffer layer that has better concurrent support", "2.1.0"),
   TSERV_ASSIGNMENT_DURATION_WARNING("tserver.assignment.duration.warning", "10m",
       PropertyType.TIMEDURATION,
       "The amount of time an assignment can run before the server will print a"
