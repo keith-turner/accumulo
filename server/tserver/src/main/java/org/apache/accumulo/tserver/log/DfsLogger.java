@@ -71,6 +71,7 @@ import org.apache.accumulo.tserver.tablet.CommitSession;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.Syncable;
 import org.apache.hadoop.hdfs.DFSOutputStream;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.slf4j.Logger;
@@ -421,6 +422,11 @@ public class DfsLogger implements Comparable<DfsLogger> {
         logFile = fs.createSyncable(logfilePath, 0, replication, blockSize);
       else
         logFile = fs.create(logfilePath, true, 0, replication, blockSize);
+
+      if(conf.getConfiguration().getBoolean(Property.TSERV_WAL_BUFFER)) {
+        log.info("Wrapped logger for {} using BufferedWalOutputStream", logfilePath);
+        logFile = new FSDataOutputStream( new BufferedWalOutputStream(logFile.getWrappedStream()), null);
+      }
 
       // check again that logfile can be sync'd
       if (!fs.canSyncAndFlush(logfilePath)) {
