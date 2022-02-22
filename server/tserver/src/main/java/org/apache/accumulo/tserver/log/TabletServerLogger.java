@@ -275,7 +275,7 @@ public class TabletServerLogger {
           try {
             alog = new DfsLogger(tserver.getContext(), conf, syncCounter, flushCounter);
             alog.open(tserver.getClientAddressString());
-          } catch (Exception t) {
+          } catch (Throwable t) {
             log.error("Failed to open WAL", t);
             // the log is not advertised in ZK yet, so we can just delete it if it exists
             if (alog != null) {
