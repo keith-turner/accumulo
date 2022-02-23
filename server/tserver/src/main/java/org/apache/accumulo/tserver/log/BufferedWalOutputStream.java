@@ -30,8 +30,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.hadoop.fs.Syncable;
 
-import com.google.common.base.Preconditions;
-
 public class BufferedWalOutputStream extends OutputStream implements Syncable {
 
   private static class Buffer {
@@ -116,7 +114,9 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
 
     bufferLock.lock();
     try {
-      Preconditions.checkState(!closed);
+      if(closed){
+        throw new IOException("stream closed");
+      }
       int written = currentBuffer.write(b);
       while (written < 1) {
         newBuffer();
@@ -145,7 +145,9 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
 
     bufferLock.lock();
     try {
-      Preconditions.checkState(!closed);
+      if(closed){
+        throw new IOException("stream closed");
+      }
       int written = currentBuffer.write(b, off, len);
       while (written < len) {
         newBuffer();
@@ -171,7 +173,9 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
     newBuffer();
     writeLock.lock();
     try {
-      Preconditions.checkState(!closed);
+      if(closed){
+        throw new IOException("stream closed");
+      }
       writeBuffers();
       ((Syncable) wrapped).hflush();
     } finally {
@@ -184,7 +188,9 @@ public class BufferedWalOutputStream extends OutputStream implements Syncable {
     newBuffer();
     writeLock.lock();
     try {
-      Preconditions.checkState(!closed);
+      if(closed){
+        throw new IOException("stream closed");
+      }
       writeBuffers();
       ((Syncable) wrapped).hsync();
     } finally {
