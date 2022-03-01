@@ -80,6 +80,21 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     throw new UnsupportedOperationException();
   }
 
+  /**
+   * If this task does not start running within the given time then attempt to cancel it.  If the task is already running, complete, or canceled then nothing is done.
+   *
+   * @return true if the task is canceled before it starts running by this call, false otherwise
+   * @throws InterruptedException
+   */
+  public boolean cancelIfNotStarting(long timeout, TimeUnit unit)  throws InterruptedException {
+    if(state.get() == INITIAL) {
+      Thread.sleep(unit.toMillis(timeout));
+      return state.compareAndSet(INITIAL, CANCELED);
+    }
+
+    return false;
+  }
+
   @Override
   public T get(long timeout, TimeUnit unit)
       throws InterruptedException, ExecutionException, TimeoutException {

@@ -382,7 +382,7 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
     }
   }
 
-  protected ScanResult continueScan(TInfo tinfo, long scanID, SingleScanSession scanSession)
+  protected ScanResult continueScan(TInfo tinfo, long scanID, SingleScanSession scanSession, long busyTimeout)
       throws NoSuchScanIDException, NotServingTabletException,
       org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException,
       TSampleNotPresentException {
@@ -395,8 +395,17 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
 
     ScanBatch bresult;
     try {
-      bresult = scanSession.nextBatchTask.get(MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS,
-          TimeUnit.MILLISECONDS);
+      if(busyTimeout > 0 && scanSession.nextBatchTask.cancelIfNotStarting(50, TimeUnit.MILLISECONDS)){
+        scanSession.nextBatchTask = null;
+        throw new ScanServerBusyException();
+      }
+
+      long waitTime = MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS;
+      if(busyTimeout > 0){
+        waitTime = Math.max(0, waitTime - busyTimeout);
+      }
+
+      bresult = scanSession.nextBatchTask.get(waitTime, TimeUnit.MILLISECONDS);
       scanSession.nextBatchTask = null;
     } catch (ExecutionException e) {
       server.sessionManager.removeSession(scanID);
