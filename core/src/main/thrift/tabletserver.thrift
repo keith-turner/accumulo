@@ -40,6 +40,8 @@ exception TSampleNotPresentException {
 
 exception NoSuchScanIDException {}
 
+exception ScanServerBusyException {}
+
 exception ConstraintViolationException {
   1:list<data.TConstraintViolationSummary> violationSummaries
 }
@@ -222,6 +224,7 @@ service TabletClientService extends client.ClientService {
     2:NotServingTabletException nste
     3:TooManyFilesException tmfe
     4:TSampleNotPresentException tsnpe
+    5:ScanServerBusyException ssbe
   )
 
   data.ScanResult continueScan(
@@ -232,6 +235,7 @@ service TabletClientService extends client.ClientService {
     2:NotServingTabletException nste
     3:TooManyFilesException tmfe
     4:TSampleNotPresentException tsnpe
+    5:ScanServerBusyException ssbe
   )
 
   oneway void closeScan(
@@ -257,6 +261,7 @@ service TabletClientService extends client.ClientService {
   ) throws (
     1:client.ThriftSecurityException sec
     2:TSampleNotPresentException tsnpe
+    3:ScanServerBusyException ssbe
   )
 
   data.MultiScanResult continueMultiScan(
@@ -265,6 +270,7 @@ service TabletClientService extends client.ClientService {
   ) throws (
     1:NoSuchScanIDException nssi
     2:TSampleNotPresentException tsnpe
+    3:ScanServerBusyException ssbe
   )
 
   void closeMultiScan(

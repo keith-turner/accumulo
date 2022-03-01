@@ -29,15 +29,15 @@ public class TabletClientService {
 
   public interface Iface extends org.apache.accumulo.core.clientImpl.thrift.ClientService.Iface {
 
-    public org.apache.accumulo.core.dataImpl.thrift.InitialScan startScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.accumulo.core.dataImpl.thrift.TRange range, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, int batchSize, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, boolean isolated, long readaheadThreshold, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException;
+    public org.apache.accumulo.core.dataImpl.thrift.InitialScan startScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.accumulo.core.dataImpl.thrift.TRange range, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, int batchSize, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, boolean isolated, long readaheadThreshold, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException;
 
-    public org.apache.accumulo.core.dataImpl.thrift.ScanResult continueScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException;
+    public org.apache.accumulo.core.dataImpl.thrift.ScanResult continueScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException;
 
     public void closeScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws org.apache.thrift.TException;
 
-    public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan startMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.util.Map<org.apache.accumulo.core.dataImpl.thrift.TKeyExtent,java.util.List<org.apache.accumulo.core.dataImpl.thrift.TRange>> batch, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, org.apache.thrift.TException;
+    public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan startMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.util.Map<org.apache.accumulo.core.dataImpl.thrift.TKeyExtent,java.util.List<org.apache.accumulo.core.dataImpl.thrift.TRange>> batch, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException;
 
-    public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult continueMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, TSampleNotPresentException, org.apache.thrift.TException;
+    public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult continueMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException;
 
     public void closeMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, org.apache.thrift.TException;
 
@@ -215,7 +215,7 @@ public class TabletClientService {
       super(iprot, oprot);
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.InitialScan startScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.accumulo.core.dataImpl.thrift.TRange range, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, int batchSize, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, boolean isolated, long readaheadThreshold, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.InitialScan startScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, org.apache.accumulo.core.dataImpl.thrift.TKeyExtent extent, org.apache.accumulo.core.dataImpl.thrift.TRange range, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, int batchSize, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, boolean isolated, long readaheadThreshold, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       send_startScan(tinfo, credentials, extent, range, columns, batchSize, ssiList, ssio, authorizations, waitForWrites, isolated, readaheadThreshold, samplerConfig, batchTimeOut, classLoaderContext, executionHints);
       return recv_startScan();
@@ -243,7 +243,7 @@ public class TabletClientService {
       sendBase("startScan", args);
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.InitialScan recv_startScan() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.InitialScan recv_startScan() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       startScan_result result = new startScan_result();
       receiveBase(result, "startScan");
@@ -262,10 +262,13 @@ public class TabletClientService {
       if (result.tsnpe != null) {
         throw result.tsnpe;
       }
+      if (result.ssbe != null) {
+        throw result.ssbe;
+      }
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "startScan failed: unknown result");
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.ScanResult continueScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.ScanResult continueScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       send_continueScan(tinfo, scanID);
       return recv_continueScan();
@@ -279,7 +282,7 @@ public class TabletClientService {
       sendBase("continueScan", args);
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.ScanResult recv_continueScan() throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.ScanResult recv_continueScan() throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       continueScan_result result = new continueScan_result();
       receiveBase(result, "continueScan");
@@ -298,6 +301,9 @@ public class TabletClientService {
       if (result.tsnpe != null) {
         throw result.tsnpe;
       }
+      if (result.ssbe != null) {
+        throw result.ssbe;
+      }
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "continueScan failed: unknown result");
     }
 
@@ -314,7 +320,7 @@ public class TabletClientService {
       sendBaseOneway("closeScan", args);
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan startMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.util.Map<org.apache.accumulo.core.dataImpl.thrift.TKeyExtent,java.util.List<org.apache.accumulo.core.dataImpl.thrift.TRange>> batch, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan startMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, org.apache.accumulo.core.securityImpl.thrift.TCredentials credentials, java.util.Map<org.apache.accumulo.core.dataImpl.thrift.TKeyExtent,java.util.List<org.apache.accumulo.core.dataImpl.thrift.TRange>> batch, java.util.List<org.apache.accumulo.core.dataImpl.thrift.TColumn> columns, java.util.List<org.apache.accumulo.core.dataImpl.thrift.IterInfo> ssiList, java.util.Map<java.lang.String,java.util.Map<java.lang.String,java.lang.String>> ssio, java.util.List<java.nio.ByteBuffer> authorizations, boolean waitForWrites, TSamplerConfiguration samplerConfig, long batchTimeOut, java.lang.String classLoaderContext, java.util.Map<java.lang.String,java.lang.String> executionHints) throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       send_startMultiScan(tinfo, credentials, batch, columns, ssiList, ssio, authorizations, waitForWrites, samplerConfig, batchTimeOut, classLoaderContext, executionHints);
       return recv_startMultiScan();
@@ -338,7 +344,7 @@ public class TabletClientService {
       sendBase("startMultiScan", args);
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan recv_startMultiScan() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan recv_startMultiScan() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       startMultiScan_result result = new startMultiScan_result();
       receiveBase(result, "startMultiScan");
@@ -351,10 +357,13 @@ public class TabletClientService {
       if (result.tsnpe != null) {
         throw result.tsnpe;
       }
+      if (result.ssbe != null) {
+        throw result.ssbe;
+      }
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "startMultiScan failed: unknown result");
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult continueMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult continueMultiScan(org.apache.accumulo.core.trace.thrift.TInfo tinfo, long scanID) throws NoSuchScanIDException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       send_continueMultiScan(tinfo, scanID);
       return recv_continueMultiScan();
@@ -368,7 +377,7 @@ public class TabletClientService {
       sendBase("continueMultiScan", args);
     }
 
-    public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult recv_continueMultiScan() throws NoSuchScanIDException, TSampleNotPresentException, org.apache.thrift.TException
+    public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult recv_continueMultiScan() throws NoSuchScanIDException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException
     {
       continueMultiScan_result result = new continueMultiScan_result();
       receiveBase(result, "continueMultiScan");
@@ -380,6 +389,9 @@ public class TabletClientService {
       }
       if (result.tsnpe != null) {
         throw result.tsnpe;
+      }
+      if (result.ssbe != null) {
+        throw result.ssbe;
       }
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "continueMultiScan failed: unknown result");
     }
@@ -1282,7 +1294,7 @@ public class TabletClientService {
         prot.writeMessageEnd();
       }
 
-      public org.apache.accumulo.core.dataImpl.thrift.InitialScan getResult() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException {
+      public org.apache.accumulo.core.dataImpl.thrift.InitialScan getResult() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException {
         if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
           throw new java.lang.IllegalStateException("Method call not finished!");
         }
@@ -1317,7 +1329,7 @@ public class TabletClientService {
         prot.writeMessageEnd();
       }
 
-      public org.apache.accumulo.core.dataImpl.thrift.ScanResult getResult() throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, org.apache.thrift.TException {
+      public org.apache.accumulo.core.dataImpl.thrift.ScanResult getResult() throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException {
         if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
           throw new java.lang.IllegalStateException("Method call not finished!");
         }
@@ -1417,7 +1429,7 @@ public class TabletClientService {
         prot.writeMessageEnd();
       }
 
-      public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan getResult() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, org.apache.thrift.TException {
+      public org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan getResult() throws org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException {
         if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
           throw new java.lang.IllegalStateException("Method call not finished!");
         }
@@ -1452,7 +1464,7 @@ public class TabletClientService {
         prot.writeMessageEnd();
       }
 
-      public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult getResult() throws NoSuchScanIDException, TSampleNotPresentException, org.apache.thrift.TException {
+      public org.apache.accumulo.core.dataImpl.thrift.MultiScanResult getResult() throws NoSuchScanIDException, TSampleNotPresentException, ScanServerBusyException, org.apache.thrift.TException {
         if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
           throw new java.lang.IllegalStateException("Method call not finished!");
         }
@@ -2950,6 +2962,8 @@ public class TabletClientService {
           result.tmfe = tmfe;
         } catch (TSampleNotPresentException tsnpe) {
           result.tsnpe = tsnpe;
+        } catch (ScanServerBusyException ssbe) {
+          result.ssbe = ssbe;
         }
         return result;
       }
@@ -2985,6 +2999,8 @@ public class TabletClientService {
           result.tmfe = tmfe;
         } catch (TSampleNotPresentException tsnpe) {
           result.tsnpe = tsnpe;
+        } catch (ScanServerBusyException ssbe) {
+          result.ssbe = ssbe;
         }
         return result;
       }
@@ -3040,6 +3056,8 @@ public class TabletClientService {
           result.sec = sec;
         } catch (TSampleNotPresentException tsnpe) {
           result.tsnpe = tsnpe;
+        } catch (ScanServerBusyException ssbe) {
+          result.ssbe = ssbe;
         }
         return result;
       }
@@ -3071,6 +3089,8 @@ public class TabletClientService {
           result.nssi = nssi;
         } catch (TSampleNotPresentException tsnpe) {
           result.tsnpe = tsnpe;
+        } catch (ScanServerBusyException ssbe) {
+          result.ssbe = ssbe;
         }
         return result;
       }
@@ -4128,6 +4148,10 @@ public class TabletClientService {
               result.tsnpe = (TSampleNotPresentException) e;
               result.setTsnpeIsSet(true);
               msg = result;
+            } else if (e instanceof ScanServerBusyException) {
+              result.ssbe = (ScanServerBusyException) e;
+              result.setSsbeIsSet(true);
+              msg = result;
             } else if (e instanceof org.apache.thrift.transport.TTransportException) {
               _LOGGER.error("TTransportException inside handler", e);
               fb.close();
@@ -4204,6 +4228,10 @@ public class TabletClientService {
             } else if (e instanceof TSampleNotPresentException) {
               result.tsnpe = (TSampleNotPresentException) e;
               result.setTsnpeIsSet(true);
+              msg = result;
+            } else if (e instanceof ScanServerBusyException) {
+              result.ssbe = (ScanServerBusyException) e;
+              result.setSsbeIsSet(true);
               msg = result;
             } else if (e instanceof org.apache.thrift.transport.TTransportException) {
               _LOGGER.error("TTransportException inside handler", e);
@@ -4308,6 +4336,10 @@ public class TabletClientService {
               result.tsnpe = (TSampleNotPresentException) e;
               result.setTsnpeIsSet(true);
               msg = result;
+            } else if (e instanceof ScanServerBusyException) {
+              result.ssbe = (ScanServerBusyException) e;
+              result.setSsbeIsSet(true);
+              msg = result;
             } else if (e instanceof org.apache.thrift.transport.TTransportException) {
               _LOGGER.error("TTransportException inside handler", e);
               fb.close();
@@ -4376,6 +4408,10 @@ public class TabletClientService {
             } else if (e instanceof TSampleNotPresentException) {
               result.tsnpe = (TSampleNotPresentException) e;
               result.setTsnpeIsSet(true);
+              msg = result;
+            } else if (e instanceof ScanServerBusyException) {
+              result.ssbe = (ScanServerBusyException) e;
+              result.setSsbeIsSet(true);
               msg = result;
             } else if (e instanceof org.apache.thrift.transport.TTransportException) {
               _LOGGER.error("TTransportException inside handler", e);
@@ -8534,6 +8570,7 @@ public class TabletClientService {
     private static final org.apache.thrift.protocol.TField NSTE_FIELD_DESC = new org.apache.thrift.protocol.TField("nste", org.apache.thrift.protocol.TType.STRUCT, (short)2);
     private static final org.apache.thrift.protocol.TField TMFE_FIELD_DESC = new org.apache.thrift.protocol.TField("tmfe", org.apache.thrift.protocol.TType.STRUCT, (short)3);
     private static final org.apache.thrift.protocol.TField TSNPE_FIELD_DESC = new org.apache.thrift.protocol.TField("tsnpe", org.apache.thrift.protocol.TType.STRUCT, (short)4);
+    private static final org.apache.thrift.protocol.TField SSBE_FIELD_DESC = new org.apache.thrift.protocol.TField("ssbe", org.apache.thrift.protocol.TType.STRUCT, (short)5);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new startScan_resultStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new startScan_resultTupleSchemeFactory();
@@ -8543,6 +8580,7 @@ public class TabletClientService {
     public @org.apache.thrift.annotation.Nullable NotServingTabletException nste; // required
     public @org.apache.thrift.annotation.Nullable TooManyFilesException tmfe; // required
     public @org.apache.thrift.annotation.Nullable TSampleNotPresentException tsnpe; // required
+    public @org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -8550,7 +8588,8 @@ public class TabletClientService {
       SEC((short)1, "sec"),
       NSTE((short)2, "nste"),
       TMFE((short)3, "tmfe"),
-      TSNPE((short)4, "tsnpe");
+      TSNPE((short)4, "tsnpe"),
+      SSBE((short)5, "ssbe");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -8576,6 +8615,8 @@ public class TabletClientService {
             return TMFE;
           case 4: // TSNPE
             return TSNPE;
+          case 5: // SSBE
+            return SSBE;
           default:
             return null;
         }
@@ -8630,6 +8671,8 @@ public class TabletClientService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, TooManyFilesException.class)));
       tmpMap.put(_Fields.TSNPE, new org.apache.thrift.meta_data.FieldMetaData("tsnpe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, TSampleNotPresentException.class)));
+      tmpMap.put(_Fields.SSBE, new org.apache.thrift.meta_data.FieldMetaData("ssbe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ScanServerBusyException.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(startScan_result.class, metaDataMap);
     }
@@ -8642,7 +8685,8 @@ public class TabletClientService {
       org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException sec,
       NotServingTabletException nste,
       TooManyFilesException tmfe,
-      TSampleNotPresentException tsnpe)
+      TSampleNotPresentException tsnpe,
+      ScanServerBusyException ssbe)
     {
       this();
       this.success = success;
@@ -8650,6 +8694,7 @@ public class TabletClientService {
       this.nste = nste;
       this.tmfe = tmfe;
       this.tsnpe = tsnpe;
+      this.ssbe = ssbe;
     }
 
     /**
@@ -8671,6 +8716,9 @@ public class TabletClientService {
       if (other.isSetTsnpe()) {
         this.tsnpe = new TSampleNotPresentException(other.tsnpe);
       }
+      if (other.isSetSsbe()) {
+        this.ssbe = new ScanServerBusyException(other.ssbe);
+      }
     }
 
     public startScan_result deepCopy() {
@@ -8684,6 +8732,7 @@ public class TabletClientService {
       this.nste = null;
       this.tmfe = null;
       this.tsnpe = null;
+      this.ssbe = null;
     }
 
     @org.apache.thrift.annotation.Nullable
@@ -8811,6 +8860,31 @@ public class TabletClientService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public ScanServerBusyException getSsbe() {
+      return this.ssbe;
+    }
+
+    public startScan_result setSsbe(@org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe) {
+      this.ssbe = ssbe;
+      return this;
+    }
+
+    public void unsetSsbe() {
+      this.ssbe = null;
+    }
+
+    /** Returns true if field ssbe is set (has been assigned a value) and false otherwise */
+    public boolean isSetSsbe() {
+      return this.ssbe != null;
+    }
+
+    public void setSsbeIsSet(boolean value) {
+      if (!value) {
+        this.ssbe = null;
+      }
+    }
+
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
       case SUCCESS:
@@ -8853,6 +8927,14 @@ public class TabletClientService {
         }
         break;
 
+      case SSBE:
+        if (value == null) {
+          unsetSsbe();
+        } else {
+          setSsbe((ScanServerBusyException)value);
+        }
+        break;
+
       }
     }
 
@@ -8873,6 +8955,9 @@ public class TabletClientService {
 
       case TSNPE:
         return getTsnpe();
+
+      case SSBE:
+        return getSsbe();
 
       }
       throw new java.lang.IllegalStateException();
@@ -8895,6 +8980,8 @@ public class TabletClientService {
         return isSetTmfe();
       case TSNPE:
         return isSetTsnpe();
+      case SSBE:
+        return isSetSsbe();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -8957,6 +9044,15 @@ public class TabletClientService {
           return false;
       }
 
+      boolean this_present_ssbe = true && this.isSetSsbe();
+      boolean that_present_ssbe = true && that.isSetSsbe();
+      if (this_present_ssbe || that_present_ssbe) {
+        if (!(this_present_ssbe && that_present_ssbe))
+          return false;
+        if (!this.ssbe.equals(that.ssbe))
+          return false;
+      }
+
       return true;
     }
 
@@ -8983,6 +9079,10 @@ public class TabletClientService {
       hashCode = hashCode * 8191 + ((isSetTsnpe()) ? 131071 : 524287);
       if (isSetTsnpe())
         hashCode = hashCode * 8191 + tsnpe.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetSsbe()) ? 131071 : 524287);
+      if (isSetSsbe())
+        hashCode = hashCode * 8191 + ssbe.hashCode();
 
       return hashCode;
     }
@@ -9045,6 +9145,16 @@ public class TabletClientService {
           return lastComparison;
         }
       }
+      lastComparison = java.lang.Boolean.compare(isSetSsbe(), other.isSetSsbe());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSsbe()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.ssbe, other.ssbe);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
       return 0;
     }
 
@@ -9103,6 +9213,14 @@ public class TabletClientService {
         sb.append("null");
       } else {
         sb.append(this.tsnpe);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("ssbe:");
+      if (this.ssbe == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.ssbe);
       }
       first = false;
       sb.append(")");
@@ -9196,6 +9314,15 @@ public class TabletClientService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
+            case 5: // SSBE
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                struct.ssbe = new ScanServerBusyException();
+                struct.ssbe.read(iprot);
+                struct.setSsbeIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
             default:
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
           }
@@ -9236,6 +9363,11 @@ public class TabletClientService {
           struct.tsnpe.write(oprot);
           oprot.writeFieldEnd();
         }
+        if (struct.ssbe != null) {
+          oprot.writeFieldBegin(SSBE_FIELD_DESC);
+          struct.ssbe.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldStop();
         oprot.writeStructEnd();
       }
@@ -9269,7 +9401,10 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           optionals.set(4);
         }
-        oprot.writeBitSet(optionals, 5);
+        if (struct.isSetSsbe()) {
+          optionals.set(5);
+        }
+        oprot.writeBitSet(optionals, 6);
         if (struct.isSetSuccess()) {
           struct.success.write(oprot);
         }
@@ -9285,12 +9420,15 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           struct.tsnpe.write(oprot);
         }
+        if (struct.isSetSsbe()) {
+          struct.ssbe.write(oprot);
+        }
       }
 
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, startScan_result struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(5);
+        java.util.BitSet incoming = iprot.readBitSet(6);
         if (incoming.get(0)) {
           struct.success = new org.apache.accumulo.core.dataImpl.thrift.InitialScan();
           struct.success.read(iprot);
@@ -9315,6 +9453,11 @@ public class TabletClientService {
           struct.tsnpe = new TSampleNotPresentException();
           struct.tsnpe.read(iprot);
           struct.setTsnpeIsSet(true);
+        }
+        if (incoming.get(5)) {
+          struct.ssbe = new ScanServerBusyException();
+          struct.ssbe.read(iprot);
+          struct.setSsbeIsSet(true);
         }
       }
     }
@@ -9802,6 +9945,7 @@ public class TabletClientService {
     private static final org.apache.thrift.protocol.TField NSTE_FIELD_DESC = new org.apache.thrift.protocol.TField("nste", org.apache.thrift.protocol.TType.STRUCT, (short)2);
     private static final org.apache.thrift.protocol.TField TMFE_FIELD_DESC = new org.apache.thrift.protocol.TField("tmfe", org.apache.thrift.protocol.TType.STRUCT, (short)3);
     private static final org.apache.thrift.protocol.TField TSNPE_FIELD_DESC = new org.apache.thrift.protocol.TField("tsnpe", org.apache.thrift.protocol.TType.STRUCT, (short)4);
+    private static final org.apache.thrift.protocol.TField SSBE_FIELD_DESC = new org.apache.thrift.protocol.TField("ssbe", org.apache.thrift.protocol.TType.STRUCT, (short)5);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new continueScan_resultStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new continueScan_resultTupleSchemeFactory();
@@ -9811,6 +9955,7 @@ public class TabletClientService {
     public @org.apache.thrift.annotation.Nullable NotServingTabletException nste; // required
     public @org.apache.thrift.annotation.Nullable TooManyFilesException tmfe; // required
     public @org.apache.thrift.annotation.Nullable TSampleNotPresentException tsnpe; // required
+    public @org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -9818,7 +9963,8 @@ public class TabletClientService {
       NSSI((short)1, "nssi"),
       NSTE((short)2, "nste"),
       TMFE((short)3, "tmfe"),
-      TSNPE((short)4, "tsnpe");
+      TSNPE((short)4, "tsnpe"),
+      SSBE((short)5, "ssbe");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -9844,6 +9990,8 @@ public class TabletClientService {
             return TMFE;
           case 4: // TSNPE
             return TSNPE;
+          case 5: // SSBE
+            return SSBE;
           default:
             return null;
         }
@@ -9898,6 +10046,8 @@ public class TabletClientService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, TooManyFilesException.class)));
       tmpMap.put(_Fields.TSNPE, new org.apache.thrift.meta_data.FieldMetaData("tsnpe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, TSampleNotPresentException.class)));
+      tmpMap.put(_Fields.SSBE, new org.apache.thrift.meta_data.FieldMetaData("ssbe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ScanServerBusyException.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(continueScan_result.class, metaDataMap);
     }
@@ -9910,7 +10060,8 @@ public class TabletClientService {
       NoSuchScanIDException nssi,
       NotServingTabletException nste,
       TooManyFilesException tmfe,
-      TSampleNotPresentException tsnpe)
+      TSampleNotPresentException tsnpe,
+      ScanServerBusyException ssbe)
     {
       this();
       this.success = success;
@@ -9918,6 +10069,7 @@ public class TabletClientService {
       this.nste = nste;
       this.tmfe = tmfe;
       this.tsnpe = tsnpe;
+      this.ssbe = ssbe;
     }
 
     /**
@@ -9939,6 +10091,9 @@ public class TabletClientService {
       if (other.isSetTsnpe()) {
         this.tsnpe = new TSampleNotPresentException(other.tsnpe);
       }
+      if (other.isSetSsbe()) {
+        this.ssbe = new ScanServerBusyException(other.ssbe);
+      }
     }
 
     public continueScan_result deepCopy() {
@@ -9952,6 +10107,7 @@ public class TabletClientService {
       this.nste = null;
       this.tmfe = null;
       this.tsnpe = null;
+      this.ssbe = null;
     }
 
     @org.apache.thrift.annotation.Nullable
@@ -10079,6 +10235,31 @@ public class TabletClientService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public ScanServerBusyException getSsbe() {
+      return this.ssbe;
+    }
+
+    public continueScan_result setSsbe(@org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe) {
+      this.ssbe = ssbe;
+      return this;
+    }
+
+    public void unsetSsbe() {
+      this.ssbe = null;
+    }
+
+    /** Returns true if field ssbe is set (has been assigned a value) and false otherwise */
+    public boolean isSetSsbe() {
+      return this.ssbe != null;
+    }
+
+    public void setSsbeIsSet(boolean value) {
+      if (!value) {
+        this.ssbe = null;
+      }
+    }
+
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
       case SUCCESS:
@@ -10121,6 +10302,14 @@ public class TabletClientService {
         }
         break;
 
+      case SSBE:
+        if (value == null) {
+          unsetSsbe();
+        } else {
+          setSsbe((ScanServerBusyException)value);
+        }
+        break;
+
       }
     }
 
@@ -10141,6 +10330,9 @@ public class TabletClientService {
 
       case TSNPE:
         return getTsnpe();
+
+      case SSBE:
+        return getSsbe();
 
       }
       throw new java.lang.IllegalStateException();
@@ -10163,6 +10355,8 @@ public class TabletClientService {
         return isSetTmfe();
       case TSNPE:
         return isSetTsnpe();
+      case SSBE:
+        return isSetSsbe();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -10225,6 +10419,15 @@ public class TabletClientService {
           return false;
       }
 
+      boolean this_present_ssbe = true && this.isSetSsbe();
+      boolean that_present_ssbe = true && that.isSetSsbe();
+      if (this_present_ssbe || that_present_ssbe) {
+        if (!(this_present_ssbe && that_present_ssbe))
+          return false;
+        if (!this.ssbe.equals(that.ssbe))
+          return false;
+      }
+
       return true;
     }
 
@@ -10251,6 +10454,10 @@ public class TabletClientService {
       hashCode = hashCode * 8191 + ((isSetTsnpe()) ? 131071 : 524287);
       if (isSetTsnpe())
         hashCode = hashCode * 8191 + tsnpe.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetSsbe()) ? 131071 : 524287);
+      if (isSetSsbe())
+        hashCode = hashCode * 8191 + ssbe.hashCode();
 
       return hashCode;
     }
@@ -10313,6 +10520,16 @@ public class TabletClientService {
           return lastComparison;
         }
       }
+      lastComparison = java.lang.Boolean.compare(isSetSsbe(), other.isSetSsbe());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSsbe()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.ssbe, other.ssbe);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
       return 0;
     }
 
@@ -10371,6 +10588,14 @@ public class TabletClientService {
         sb.append("null");
       } else {
         sb.append(this.tsnpe);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("ssbe:");
+      if (this.ssbe == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.ssbe);
       }
       first = false;
       sb.append(")");
@@ -10464,6 +10689,15 @@ public class TabletClientService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
+            case 5: // SSBE
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                struct.ssbe = new ScanServerBusyException();
+                struct.ssbe.read(iprot);
+                struct.setSsbeIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
             default:
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
           }
@@ -10504,6 +10738,11 @@ public class TabletClientService {
           struct.tsnpe.write(oprot);
           oprot.writeFieldEnd();
         }
+        if (struct.ssbe != null) {
+          oprot.writeFieldBegin(SSBE_FIELD_DESC);
+          struct.ssbe.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldStop();
         oprot.writeStructEnd();
       }
@@ -10537,7 +10776,10 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           optionals.set(4);
         }
-        oprot.writeBitSet(optionals, 5);
+        if (struct.isSetSsbe()) {
+          optionals.set(5);
+        }
+        oprot.writeBitSet(optionals, 6);
         if (struct.isSetSuccess()) {
           struct.success.write(oprot);
         }
@@ -10553,12 +10795,15 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           struct.tsnpe.write(oprot);
         }
+        if (struct.isSetSsbe()) {
+          struct.ssbe.write(oprot);
+        }
       }
 
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, continueScan_result struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(5);
+        java.util.BitSet incoming = iprot.readBitSet(6);
         if (incoming.get(0)) {
           struct.success = new org.apache.accumulo.core.dataImpl.thrift.ScanResult();
           struct.success.read(iprot);
@@ -10583,6 +10828,11 @@ public class TabletClientService {
           struct.tsnpe = new TSampleNotPresentException();
           struct.tsnpe.read(iprot);
           struct.setTsnpeIsSet(true);
+        }
+        if (incoming.get(5)) {
+          struct.ssbe = new ScanServerBusyException();
+          struct.ssbe.read(iprot);
+          struct.setSsbeIsSet(true);
         }
       }
     }
@@ -13004,6 +13254,7 @@ public class TabletClientService {
     private static final org.apache.thrift.protocol.TField SUCCESS_FIELD_DESC = new org.apache.thrift.protocol.TField("success", org.apache.thrift.protocol.TType.STRUCT, (short)0);
     private static final org.apache.thrift.protocol.TField SEC_FIELD_DESC = new org.apache.thrift.protocol.TField("sec", org.apache.thrift.protocol.TType.STRUCT, (short)1);
     private static final org.apache.thrift.protocol.TField TSNPE_FIELD_DESC = new org.apache.thrift.protocol.TField("tsnpe", org.apache.thrift.protocol.TType.STRUCT, (short)2);
+    private static final org.apache.thrift.protocol.TField SSBE_FIELD_DESC = new org.apache.thrift.protocol.TField("ssbe", org.apache.thrift.protocol.TType.STRUCT, (short)3);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new startMultiScan_resultStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new startMultiScan_resultTupleSchemeFactory();
@@ -13011,12 +13262,14 @@ public class TabletClientService {
     public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan success; // required
     public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException sec; // required
     public @org.apache.thrift.annotation.Nullable TSampleNotPresentException tsnpe; // required
+    public @org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
       SUCCESS((short)0, "success"),
       SEC((short)1, "sec"),
-      TSNPE((short)2, "tsnpe");
+      TSNPE((short)2, "tsnpe"),
+      SSBE((short)3, "ssbe");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -13038,6 +13291,8 @@ public class TabletClientService {
             return SEC;
           case 2: // TSNPE
             return TSNPE;
+          case 3: // SSBE
+            return SSBE;
           default:
             return null;
         }
@@ -13088,6 +13343,8 @@ public class TabletClientService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException.class)));
       tmpMap.put(_Fields.TSNPE, new org.apache.thrift.meta_data.FieldMetaData("tsnpe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, TSampleNotPresentException.class)));
+      tmpMap.put(_Fields.SSBE, new org.apache.thrift.meta_data.FieldMetaData("ssbe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ScanServerBusyException.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(startMultiScan_result.class, metaDataMap);
     }
@@ -13098,12 +13355,14 @@ public class TabletClientService {
     public startMultiScan_result(
       org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan success,
       org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException sec,
-      TSampleNotPresentException tsnpe)
+      TSampleNotPresentException tsnpe,
+      ScanServerBusyException ssbe)
     {
       this();
       this.success = success;
       this.sec = sec;
       this.tsnpe = tsnpe;
+      this.ssbe = ssbe;
     }
 
     /**
@@ -13119,6 +13378,9 @@ public class TabletClientService {
       if (other.isSetTsnpe()) {
         this.tsnpe = new TSampleNotPresentException(other.tsnpe);
       }
+      if (other.isSetSsbe()) {
+        this.ssbe = new ScanServerBusyException(other.ssbe);
+      }
     }
 
     public startMultiScan_result deepCopy() {
@@ -13130,6 +13392,7 @@ public class TabletClientService {
       this.success = null;
       this.sec = null;
       this.tsnpe = null;
+      this.ssbe = null;
     }
 
     @org.apache.thrift.annotation.Nullable
@@ -13207,6 +13470,31 @@ public class TabletClientService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public ScanServerBusyException getSsbe() {
+      return this.ssbe;
+    }
+
+    public startMultiScan_result setSsbe(@org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe) {
+      this.ssbe = ssbe;
+      return this;
+    }
+
+    public void unsetSsbe() {
+      this.ssbe = null;
+    }
+
+    /** Returns true if field ssbe is set (has been assigned a value) and false otherwise */
+    public boolean isSetSsbe() {
+      return this.ssbe != null;
+    }
+
+    public void setSsbeIsSet(boolean value) {
+      if (!value) {
+        this.ssbe = null;
+      }
+    }
+
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
       case SUCCESS:
@@ -13233,6 +13521,14 @@ public class TabletClientService {
         }
         break;
 
+      case SSBE:
+        if (value == null) {
+          unsetSsbe();
+        } else {
+          setSsbe((ScanServerBusyException)value);
+        }
+        break;
+
       }
     }
 
@@ -13247,6 +13543,9 @@ public class TabletClientService {
 
       case TSNPE:
         return getTsnpe();
+
+      case SSBE:
+        return getSsbe();
 
       }
       throw new java.lang.IllegalStateException();
@@ -13265,6 +13564,8 @@ public class TabletClientService {
         return isSetSec();
       case TSNPE:
         return isSetTsnpe();
+      case SSBE:
+        return isSetSsbe();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -13309,6 +13610,15 @@ public class TabletClientService {
           return false;
       }
 
+      boolean this_present_ssbe = true && this.isSetSsbe();
+      boolean that_present_ssbe = true && that.isSetSsbe();
+      if (this_present_ssbe || that_present_ssbe) {
+        if (!(this_present_ssbe && that_present_ssbe))
+          return false;
+        if (!this.ssbe.equals(that.ssbe))
+          return false;
+      }
+
       return true;
     }
 
@@ -13327,6 +13637,10 @@ public class TabletClientService {
       hashCode = hashCode * 8191 + ((isSetTsnpe()) ? 131071 : 524287);
       if (isSetTsnpe())
         hashCode = hashCode * 8191 + tsnpe.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetSsbe()) ? 131071 : 524287);
+      if (isSetSsbe())
+        hashCode = hashCode * 8191 + ssbe.hashCode();
 
       return hashCode;
     }
@@ -13365,6 +13679,16 @@ public class TabletClientService {
       }
       if (isSetTsnpe()) {
         lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.tsnpe, other.tsnpe);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = java.lang.Boolean.compare(isSetSsbe(), other.isSetSsbe());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSsbe()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.ssbe, other.ssbe);
         if (lastComparison != 0) {
           return lastComparison;
         }
@@ -13411,6 +13735,14 @@ public class TabletClientService {
         sb.append("null");
       } else {
         sb.append(this.tsnpe);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("ssbe:");
+      if (this.ssbe == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.ssbe);
       }
       first = false;
       sb.append(")");
@@ -13486,6 +13818,15 @@ public class TabletClientService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
+            case 3: // SSBE
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                struct.ssbe = new ScanServerBusyException();
+                struct.ssbe.read(iprot);
+                struct.setSsbeIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
             default:
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
           }
@@ -13516,6 +13857,11 @@ public class TabletClientService {
           struct.tsnpe.write(oprot);
           oprot.writeFieldEnd();
         }
+        if (struct.ssbe != null) {
+          oprot.writeFieldBegin(SSBE_FIELD_DESC);
+          struct.ssbe.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldStop();
         oprot.writeStructEnd();
       }
@@ -13543,7 +13889,10 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           optionals.set(2);
         }
-        oprot.writeBitSet(optionals, 3);
+        if (struct.isSetSsbe()) {
+          optionals.set(3);
+        }
+        oprot.writeBitSet(optionals, 4);
         if (struct.isSetSuccess()) {
           struct.success.write(oprot);
         }
@@ -13553,12 +13902,15 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           struct.tsnpe.write(oprot);
         }
+        if (struct.isSetSsbe()) {
+          struct.ssbe.write(oprot);
+        }
       }
 
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, startMultiScan_result struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(3);
+        java.util.BitSet incoming = iprot.readBitSet(4);
         if (incoming.get(0)) {
           struct.success = new org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan();
           struct.success.read(iprot);
@@ -13573,6 +13925,11 @@ public class TabletClientService {
           struct.tsnpe = new TSampleNotPresentException();
           struct.tsnpe.read(iprot);
           struct.setTsnpeIsSet(true);
+        }
+        if (incoming.get(3)) {
+          struct.ssbe = new ScanServerBusyException();
+          struct.ssbe.read(iprot);
+          struct.setSsbeIsSet(true);
         }
       }
     }
@@ -14058,6 +14415,7 @@ public class TabletClientService {
     private static final org.apache.thrift.protocol.TField SUCCESS_FIELD_DESC = new org.apache.thrift.protocol.TField("success", org.apache.thrift.protocol.TType.STRUCT, (short)0);
     private static final org.apache.thrift.protocol.TField NSSI_FIELD_DESC = new org.apache.thrift.protocol.TField("nssi", org.apache.thrift.protocol.TType.STRUCT, (short)1);
     private static final org.apache.thrift.protocol.TField TSNPE_FIELD_DESC = new org.apache.thrift.protocol.TField("tsnpe", org.apache.thrift.protocol.TType.STRUCT, (short)2);
+    private static final org.apache.thrift.protocol.TField SSBE_FIELD_DESC = new org.apache.thrift.protocol.TField("ssbe", org.apache.thrift.protocol.TType.STRUCT, (short)3);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new continueMultiScan_resultStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new continueMultiScan_resultTupleSchemeFactory();
@@ -14065,12 +14423,14 @@ public class TabletClientService {
     public @org.apache.thrift.annotation.Nullable org.apache.accumulo.core.dataImpl.thrift.MultiScanResult success; // required
     public @org.apache.thrift.annotation.Nullable NoSuchScanIDException nssi; // required
     public @org.apache.thrift.annotation.Nullable TSampleNotPresentException tsnpe; // required
+    public @org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
       SUCCESS((short)0, "success"),
       NSSI((short)1, "nssi"),
-      TSNPE((short)2, "tsnpe");
+      TSNPE((short)2, "tsnpe"),
+      SSBE((short)3, "ssbe");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -14092,6 +14452,8 @@ public class TabletClientService {
             return NSSI;
           case 2: // TSNPE
             return TSNPE;
+          case 3: // SSBE
+            return SSBE;
           default:
             return null;
         }
@@ -14142,6 +14504,8 @@ public class TabletClientService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, NoSuchScanIDException.class)));
       tmpMap.put(_Fields.TSNPE, new org.apache.thrift.meta_data.FieldMetaData("tsnpe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, TSampleNotPresentException.class)));
+      tmpMap.put(_Fields.SSBE, new org.apache.thrift.meta_data.FieldMetaData("ssbe", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ScanServerBusyException.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(continueMultiScan_result.class, metaDataMap);
     }
@@ -14152,12 +14516,14 @@ public class TabletClientService {
     public continueMultiScan_result(
       org.apache.accumulo.core.dataImpl.thrift.MultiScanResult success,
       NoSuchScanIDException nssi,
-      TSampleNotPresentException tsnpe)
+      TSampleNotPresentException tsnpe,
+      ScanServerBusyException ssbe)
     {
       this();
       this.success = success;
       this.nssi = nssi;
       this.tsnpe = tsnpe;
+      this.ssbe = ssbe;
     }
 
     /**
@@ -14173,6 +14539,9 @@ public class TabletClientService {
       if (other.isSetTsnpe()) {
         this.tsnpe = new TSampleNotPresentException(other.tsnpe);
       }
+      if (other.isSetSsbe()) {
+        this.ssbe = new ScanServerBusyException(other.ssbe);
+      }
     }
 
     public continueMultiScan_result deepCopy() {
@@ -14184,6 +14553,7 @@ public class TabletClientService {
       this.success = null;
       this.nssi = null;
       this.tsnpe = null;
+      this.ssbe = null;
     }
 
     @org.apache.thrift.annotation.Nullable
@@ -14261,6 +14631,31 @@ public class TabletClientService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public ScanServerBusyException getSsbe() {
+      return this.ssbe;
+    }
+
+    public continueMultiScan_result setSsbe(@org.apache.thrift.annotation.Nullable ScanServerBusyException ssbe) {
+      this.ssbe = ssbe;
+      return this;
+    }
+
+    public void unsetSsbe() {
+      this.ssbe = null;
+    }
+
+    /** Returns true if field ssbe is set (has been assigned a value) and false otherwise */
+    public boolean isSetSsbe() {
+      return this.ssbe != null;
+    }
+
+    public void setSsbeIsSet(boolean value) {
+      if (!value) {
+        this.ssbe = null;
+      }
+    }
+
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
       case SUCCESS:
@@ -14287,6 +14682,14 @@ public class TabletClientService {
         }
         break;
 
+      case SSBE:
+        if (value == null) {
+          unsetSsbe();
+        } else {
+          setSsbe((ScanServerBusyException)value);
+        }
+        break;
+
       }
     }
 
@@ -14301,6 +14704,9 @@ public class TabletClientService {
 
       case TSNPE:
         return getTsnpe();
+
+      case SSBE:
+        return getSsbe();
 
       }
       throw new java.lang.IllegalStateException();
@@ -14319,6 +14725,8 @@ public class TabletClientService {
         return isSetNssi();
       case TSNPE:
         return isSetTsnpe();
+      case SSBE:
+        return isSetSsbe();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -14363,6 +14771,15 @@ public class TabletClientService {
           return false;
       }
 
+      boolean this_present_ssbe = true && this.isSetSsbe();
+      boolean that_present_ssbe = true && that.isSetSsbe();
+      if (this_present_ssbe || that_present_ssbe) {
+        if (!(this_present_ssbe && that_present_ssbe))
+          return false;
+        if (!this.ssbe.equals(that.ssbe))
+          return false;
+      }
+
       return true;
     }
 
@@ -14381,6 +14798,10 @@ public class TabletClientService {
       hashCode = hashCode * 8191 + ((isSetTsnpe()) ? 131071 : 524287);
       if (isSetTsnpe())
         hashCode = hashCode * 8191 + tsnpe.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetSsbe()) ? 131071 : 524287);
+      if (isSetSsbe())
+        hashCode = hashCode * 8191 + ssbe.hashCode();
 
       return hashCode;
     }
@@ -14419,6 +14840,16 @@ public class TabletClientService {
       }
       if (isSetTsnpe()) {
         lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.tsnpe, other.tsnpe);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = java.lang.Boolean.compare(isSetSsbe(), other.isSetSsbe());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSsbe()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.ssbe, other.ssbe);
         if (lastComparison != 0) {
           return lastComparison;
         }
@@ -14465,6 +14896,14 @@ public class TabletClientService {
         sb.append("null");
       } else {
         sb.append(this.tsnpe);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("ssbe:");
+      if (this.ssbe == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.ssbe);
       }
       first = false;
       sb.append(")");
@@ -14540,6 +14979,15 @@ public class TabletClientService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
+            case 3: // SSBE
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                struct.ssbe = new ScanServerBusyException();
+                struct.ssbe.read(iprot);
+                struct.setSsbeIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
             default:
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
           }
@@ -14570,6 +15018,11 @@ public class TabletClientService {
           struct.tsnpe.write(oprot);
           oprot.writeFieldEnd();
         }
+        if (struct.ssbe != null) {
+          oprot.writeFieldBegin(SSBE_FIELD_DESC);
+          struct.ssbe.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldStop();
         oprot.writeStructEnd();
       }
@@ -14597,7 +15050,10 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           optionals.set(2);
         }
-        oprot.writeBitSet(optionals, 3);
+        if (struct.isSetSsbe()) {
+          optionals.set(3);
+        }
+        oprot.writeBitSet(optionals, 4);
         if (struct.isSetSuccess()) {
           struct.success.write(oprot);
         }
@@ -14607,12 +15063,15 @@ public class TabletClientService {
         if (struct.isSetTsnpe()) {
           struct.tsnpe.write(oprot);
         }
+        if (struct.isSetSsbe()) {
+          struct.ssbe.write(oprot);
+        }
       }
 
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, continueMultiScan_result struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(3);
+        java.util.BitSet incoming = iprot.readBitSet(4);
         if (incoming.get(0)) {
           struct.success = new org.apache.accumulo.core.dataImpl.thrift.MultiScanResult();
           struct.success.read(iprot);
@@ -14627,6 +15086,11 @@ public class TabletClientService {
           struct.tsnpe = new TSampleNotPresentException();
           struct.tsnpe.read(iprot);
           struct.setTsnpeIsSet(true);
+        }
+        if (incoming.get(3)) {
+          struct.ssbe = new ScanServerBusyException();
+          struct.ssbe.read(iprot);
+          struct.setSsbeIsSet(true);
         }
       }
     }
