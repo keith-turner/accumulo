@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.Constants;
@@ -546,7 +545,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       } catch (Exception ex) {
         LOG.error("Error loading tablet for extent: " + extent, ex);
         if (!(ex instanceof NotServingTabletException)) {
-          //TODO maybe throw error that indicates server side exception
+          // TODO maybe throw error that indicates server side exception
           throw new NotServingTabletException(entry.getKey());
         } else {
           throw (NotServingTabletException) ex;

@@ -540,7 +540,8 @@ public class ThriftScanner {
 
   private static List<KeyValue> scanRpc(TabletLocation loc, ScanState scanState,
       ClientContext context) throws AccumuloSecurityException, NotServingTabletException,
-      TException, NoSuchScanIDException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException {
+      TException, NoSuchScanIDException, TooManyFilesException, TSampleNotPresentException,
+      ScanServerBusyException {
 
     OpTimer timer = null;
 
