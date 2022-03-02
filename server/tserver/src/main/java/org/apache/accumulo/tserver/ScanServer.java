@@ -556,9 +556,12 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     try {
       ScanSession.TabletResolver tabletResolver = getBatchScanTabletResolver(tablets);
 
+      // TODO get from config and/or pass from the thrift client
+      long busyTimeout = 50;
+
       InitialMultiScan ims = handler.startMultiScan(tinfo, credentials, tcolumns, ssiList, batch,
           ssio, authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg,
-          executionHints, tabletResolver);
+          executionHints, tabletResolver, 50);
       si.setScanId(ims.getScanID());
       LOG.debug("started scan: {}", si.getScanId());
       return ims;
@@ -571,7 +574,11 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   public MultiScanResult continueMultiScan(TInfo tinfo, long scanID)
       throws NoSuchScanIDException, TSampleNotPresentException, TException {
     LOG.debug("continue multi scan: {}", scanID);
-    return handler.continueMultiScan(tinfo, scanID);
+
+    // TODO get from config and/or pass from the thrift client
+    long busyTimeout = 50;
+
+    return handler.continueMultiScan(tinfo, scanID, busyTimeout);
   }
 
   @Override

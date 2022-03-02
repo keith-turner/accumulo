@@ -50,6 +50,10 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     resultQueue = new ArrayBlockingQueue<>(1);
   }
 
+  protected boolean transitionToRunning(){
+    return runState.compareAndSet(ScanRunState.QUEUED, ScanRunState.RUNNING);
+  }
+
   protected void addResult(Object o) {
     if (state.compareAndSet(INITIAL, ADDED))
       resultQueue.add(o);
@@ -80,26 +84,8 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     throw new UnsupportedOperationException();
   }
 
-  /**
-   * If this task does not start running within the given time then attempt to cancel it. If the
-   * task is already running, complete, or canceled then nothing is done.
-   *
-   * @return true if the task is canceled before it starts running by this call, false otherwise
-   * @throws InterruptedException
-   */
-  public boolean cancelIfNotStarting(long timeout, TimeUnit unit) throws InterruptedException {
-    if (state.get() == INITIAL) {
-      Thread.sleep(unit.toMillis(timeout));
-      return state.compareAndSet(INITIAL, CANCELED);
-    }
-
-    return false;
-  }
-
-  @Override
-  public T get(long timeout, TimeUnit unit)
+  public T get(long busyTimeout, long timeout, TimeUnit unit)
       throws InterruptedException, ExecutionException, TimeoutException {
-
     ArrayBlockingQueue<Object> localRQ = resultQueue;
 
     if (isCancelled())
@@ -126,7 +112,26 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
           "Tried to get result twice [state=" + stateStr + "(" + st + ")]");
     }
 
-    Object r = localRQ.poll(timeout, unit);
+    Object r;
+    if(busyTimeout > 0) {
+      r = localRQ.poll(busyTimeout, unit);
+      if(r == null) {
+        // we did not get anything during the busy timeout, if the task has not started lets try to keep it from ever starting
+        if (runState.compareAndSet(ScanRunState.QUEUED, ScanRunState.FINISHED)) {
+          // the task was queued and we prevented it from running so lets mark it canceled
+          state.compareAndSet(INITIAL, CANCELED);
+          if(state.get() != CANCELED) {
+            throw new IllegalStateException("Scan task is in unexpected state "+state.get());
+          }
+        } else {
+          // the task is either running or finished so lets try to get the result
+          long waitTime = Math.max(0, timeout - busyTimeout);
+          r = localRQ.poll(waitTime, unit);
+        }
+      }
+    } else {
+      r = localRQ.poll(timeout, unit);
+    }
 
     // could have been canceled while waiting
     if (isCancelled()) {
@@ -143,6 +148,7 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     // returned
     resultQueue = null;
 
+    // TODO by not wrapping the error stack information that could be important for debugging is lost, the error is from a background thread but the stack trace from this foreground thread is lost.
     if (r instanceof Error)
       throw (Error) r; // don't wrap an Error
 
@@ -152,6 +158,13 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     @SuppressWarnings("unchecked")
     T rAsT = (T) r;
     return rAsT;
+  }
+
+    @Override
+  public T get(long timeout, TimeUnit unit)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    //TODO probably no longer makes sense to extend future
+      throw new UnsupportedOperationException();
   }
 
   @Override
