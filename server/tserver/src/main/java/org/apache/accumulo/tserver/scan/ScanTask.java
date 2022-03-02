@@ -126,7 +126,8 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
           // the task was queued and we prevented it from running so lets mark it canceled
           state.compareAndSet(INITIAL, CANCELED);
           if (state.get() != CANCELED) {
-            throw new IllegalStateException("Scan task is in unexpected state " + stateString(state.get()));
+            throw new IllegalStateException(
+                "Scan task is in unexpected state " + stateString(state.get()));
           }
         } else {
           // the task is either running or finished so lets try to get the result
