@@ -68,7 +68,7 @@ public class LookupTask extends ScanTask<MultiScanResult> {
       if (isCancelled() || session == null)
         return;
 
-      if(!transitionToRunning())
+      if (!transitionToRunning())
         return;
 
       TableConfiguration acuTableConf = server.getTableConfiguration(session.threadPoolExtent);

@@ -391,7 +391,8 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
 
     ScanBatch bresult;
     try {
-      bresult = scanSession.nextBatchTask.get(busyTimeout, MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS, TimeUnit.MILLISECONDS);
+      bresult = scanSession.nextBatchTask.get(busyTimeout, MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS,
+          TimeUnit.MILLISECONDS);
       scanSession.nextBatchTask = null;
     } catch (ExecutionException e) {
       server.sessionManager.removeSession(scanID);
@@ -413,7 +414,7 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
     } catch (CancellationException ce) {
       server.sessionManager.removeSession(scanID);
       Tablet tablet = server.getOnlineTablet(scanSession.extent);
-      if(busyTimeout > 0)
+      if (busyTimeout > 0)
         throw new ScanServerBusyException();
       else if (tablet == null || tablet.isClosed()) {
         throw new NotServingTabletException(scanSession.extent.toThrift());
@@ -490,7 +491,8 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
       List<TColumn> tcolumns, List<IterInfo> ssiList, Map<KeyExtent,List<TRange>> tbatch,
       Map<String,Map<String,String>> ssio, List<ByteBuffer> authorizations, boolean waitForWrites,
       TSamplerConfiguration tSamplerConfig, long batchTimeOut, String contextArg,
-      Map<String,String> executionHints, ScanSession.TabletResolver tabletResolver, long busyTimeout)
+      Map<String,String> executionHints, ScanSession.TabletResolver tabletResolver,
+      long busyTimeout)
       throws ThriftSecurityException, TSampleNotPresentException, ScanServerBusyException {
 
     // find all of the tables that need to be scanned
@@ -596,8 +598,8 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
 
     try {
 
-      MultiScanResult scanResult =
-          session.lookupTask.get(busyTimeout, MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS, TimeUnit.MILLISECONDS);
+      MultiScanResult scanResult = session.lookupTask.get(busyTimeout,
+          MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS, TimeUnit.MILLISECONDS);
       session.lookupTask = null;
       return scanResult;
     } catch (ExecutionException e) {
@@ -608,10 +610,10 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
         log.warn("Failed to get multiscan result", e);
         throw new RuntimeException(e);
       }
-    } catch(CancellationException ce) {
+    } catch (CancellationException ce) {
       server.sessionManager.removeSession(scanID);
-      if(busyTimeout >0){
-        throw  new ScanServerBusyException();
+      if (busyTimeout > 0) {
+        throw new ScanServerBusyException();
       } else {
         log.warn("Failed to get multiscan result", ce);
         throw new RuntimeException(ce);

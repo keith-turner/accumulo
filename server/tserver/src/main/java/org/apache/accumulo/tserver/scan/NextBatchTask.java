@@ -57,7 +57,7 @@ public class NextBatchTask extends ScanTask<ScanBatch> {
       if (isCancelled() || scanSession == null)
         return;
 
-      if(!transitionToRunning())
+      if (!transitionToRunning())
         return;
 
       Thread.currentThread()
