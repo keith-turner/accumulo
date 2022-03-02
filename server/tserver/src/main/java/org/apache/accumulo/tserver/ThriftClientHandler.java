@@ -100,19 +100,7 @@ import org.apache.accumulo.core.spi.scan.ScanDispatcher;
 import org.apache.accumulo.core.summary.Gatherer;
 import org.apache.accumulo.core.summary.Gatherer.FileSystemResolver;
 import org.apache.accumulo.core.summary.SummaryCollection;
-import org.apache.accumulo.core.tabletserver.thrift.ActiveCompaction;
-import org.apache.accumulo.core.tabletserver.thrift.ActiveScan;
-import org.apache.accumulo.core.tabletserver.thrift.ConstraintViolationException;
-import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
-import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
-import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
-import org.apache.accumulo.core.tabletserver.thrift.TDurability;
-import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
-import org.apache.accumulo.core.tabletserver.thrift.TSampleNotPresentException;
-import org.apache.accumulo.core.tabletserver.thrift.TSamplerConfiguration;
-import org.apache.accumulo.core.tabletserver.thrift.TUnloadTabletGoal;
-import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
-import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
+import org.apache.accumulo.core.tabletserver.thrift.*;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.ByteBufferUtil;
@@ -283,11 +271,11 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
       long batchTimeOut, String contextArg, Map<String,String> executionHints)
       throws NotServingTabletException, ThriftSecurityException,
       org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException,
-      TSampleNotPresentException {
+      TSampleNotPresentException, ScanServerBusyException {
     final KeyExtent extent = KeyExtent.fromThrift(textent);
     return this.startScan(tinfo, credentials, extent, range, columns, batchSize, ssiList, ssio,
         authorizations, waitForWrites, isolated, readaheadThreshold, tSamplerConfig, batchTimeOut,
-        contextArg, executionHints, ke -> server.getOnlineTablet(ke));
+        contextArg, executionHints, ke -> server.getOnlineTablet(ke), -1);
   }
 
   public InitialScan startScan(TInfo tinfo, TCredentials credentials, KeyExtent extent,
@@ -295,9 +283,9 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
       Map<String,Map<String,String>> ssio, List<ByteBuffer> authorizations, boolean waitForWrites,
       boolean isolated, long readaheadThreshold, TSamplerConfiguration tSamplerConfig,
       long batchTimeOut, String contextArg, Map<String,String> executionHints,
-      ScanSession.TabletResolver tabletResolver) throws NotServingTabletException,
+      ScanSession.TabletResolver tabletResolver, long busyTimeout) throws NotServingTabletException,
       ThriftSecurityException, org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException,
-      TSampleNotPresentException {
+      TSampleNotPresentException, ScanServerBusyException {
 
     TableId tableId = extent.tableId();
     NamespaceId namespaceId;
@@ -354,7 +342,7 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
 
     ScanResult scanResult;
     try {
-      scanResult = continueScan(tinfo, sid, scanSession);
+      scanResult = continueScan(tinfo, sid, scanSession, busyTimeout);
     } catch (NoSuchScanIDException e) {
       log.error("The impossible happened", e);
       throw new RuntimeException();
@@ -368,7 +356,13 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
   @Override
   public ScanResult continueScan(TInfo tinfo, long scanID) throws NoSuchScanIDException,
       NotServingTabletException, org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException,
-      TSampleNotPresentException {
+      TSampleNotPresentException, ScanServerBusyException {
+    return continueScan(tinfo, scanID, -1);
+  }
+
+  public ScanResult continueScan(TInfo tinfo, long scanID, long busyTimeout) throws NoSuchScanIDException,
+      NotServingTabletException, org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException,
+      TSampleNotPresentException, ScanServerBusyException {
     SingleScanSession scanSession =
         (SingleScanSession) server.sessionManager.reserveSession(scanID);
     if (scanSession == null) {
@@ -376,7 +370,7 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
     }
 
     try {
-      return continueScan(tinfo, scanID, scanSession);
+      return continueScan(tinfo, scanID, scanSession, busyTimeout);
     } finally {
       server.sessionManager.unreserveSession(scanSession);
     }
@@ -385,9 +379,10 @@ public class ThriftClientHandler extends ClientServiceHandler implements TabletC
   protected ScanResult continueScan(TInfo tinfo, long scanID, SingleScanSession scanSession, long busyTimeout)
       throws NoSuchScanIDException, NotServingTabletException,
       org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException,
-      TSampleNotPresentException {
+      TSampleNotPresentException, ScanServerBusyException {
 
     if (scanSession.nextBatchTask == null) {
+      // TODO look into prioritizing continue scan task in thread pool queue
       scanSession.nextBatchTask = new NextBatchTask(server, scanID, scanSession.interruptFlag);
       server.resourceManager.executeReadAhead(scanSession.extent,
           getScanDispatcher(scanSession.extent), scanSession, scanSession.nextBatchTask);

@@ -61,11 +61,7 @@ import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.spi.scan.ScanServerDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanServerDispatcher.ScanServerDispatcherResults;
-import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
-import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
-import org.apache.accumulo.core.tabletserver.thrift.TSampleNotPresentException;
-import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
-import org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException;
+import org.apache.accumulo.core.tabletserver.thrift.*;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.HostAndPort;
@@ -370,6 +366,21 @@ public class ThriftScanner {
 
           TraceUtil.setException(child2, e, false);
           sleepMillis = pause(sleepMillis, maxSleepTime);
+        } catch (ScanServerBusyException e) {
+          error = "Scan failed, scan server was busy " + loc;
+          if (!error.equals(lastError))
+            log.debug("{}", error);
+          else if (log.isTraceEnabled())
+            log.trace("{}", error);
+          lastError = error;
+
+          if (scanState.isolated) {
+            TraceUtil.setException(child2, e, true);
+            throw new IsolationException();
+          }
+
+          TraceUtil.setException(child2, e, false);
+          scanState.scanID = null;
         } catch (NoSuchScanIDException e) {
           error = "Scan failed, no such scan id " + scanState.scanID + " " + loc;
           if (!error.equals(lastError))
@@ -513,8 +524,11 @@ public class ThriftScanner {
         scanState.scanAttempts.add(action, actions.getScanServer(tabletId),
             System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.SUCCESS, tabletId);
         return ret;
-      } catch (AccumuloSecurityException | TException e) {
-        // TODO need to handle busy case
+      } catch (ScanServerBusyException ssbe) {
+        scanState.scanAttempts.add(action, actions.getScanServer(tabletId),
+            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.BUSY, tabletId);
+        throw ssbe;
+      } catch (Exception e) {
         scanState.scanAttempts.add(action, actions.getScanServer(tabletId),
             System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.ERROR, tabletId);
         throw e;
@@ -526,7 +540,7 @@ public class ThriftScanner {
 
   private static List<KeyValue> scanRpc(TabletLocation loc, ScanState scanState,
       ClientContext context) throws AccumuloSecurityException, NotServingTabletException,
-      TException, NoSuchScanIDException, TooManyFilesException, TSampleNotPresentException {
+      TException, NoSuchScanIDException, TooManyFilesException, TSampleNotPresentException, ScanServerBusyException {
 
     OpTimer timer = null;
 
