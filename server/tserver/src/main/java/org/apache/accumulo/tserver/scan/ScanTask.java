@@ -84,6 +84,25 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     throw new UnsupportedOperationException();
   }
 
+  private String stateString(int state) {
+    String stateStr;
+    switch (state) {
+      case ADDED:
+        stateStr = "ADDED";
+        break;
+      case CANCELED:
+        stateStr = "CANCELED";
+        break;
+      case INITIAL:
+        stateStr = "INITIAL";
+        break;
+      default:
+        stateStr = "UNKNOWN";
+        break;
+    }
+    return stateStr;
+  }
+
   public T get(long busyTimeout, long timeout, TimeUnit unit)
       throws InterruptedException, ExecutionException, TimeoutException {
     ArrayBlockingQueue<Object> localRQ = resultQueue;
@@ -93,23 +112,8 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
 
     if (localRQ == null) {
       int st = state.get();
-      String stateStr;
-      switch (st) {
-        case ADDED:
-          stateStr = "ADDED";
-          break;
-        case CANCELED:
-          stateStr = "CANCELED";
-          break;
-        case INITIAL:
-          stateStr = "INITIAL";
-          break;
-        default:
-          stateStr = "UNKNOWN";
-          break;
-      }
       throw new IllegalStateException(
-          "Tried to get result twice [state=" + stateStr + "(" + st + ")]");
+          "Tried to get result twice [state=" + stateString(st) + "(" + st + ")]");
     }
 
     Object r;
@@ -122,7 +126,7 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
           // the task was queued and we prevented it from running so lets mark it canceled
           state.compareAndSet(INITIAL, CANCELED);
           if (state.get() != CANCELED) {
-            throw new IllegalStateException("Scan task is in unexpected state " + state.get());
+            throw new IllegalStateException("Scan task is in unexpected state " + stateString(state.get()));
           }
         } else {
           // the task is either running or finished so lets try to get the result
