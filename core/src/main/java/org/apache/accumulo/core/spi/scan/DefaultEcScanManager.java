@@ -23,10 +23,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.SortedSet;
+import java.util.*;
 
+import com.google.common.base.Preconditions;
 import org.apache.accumulo.core.data.TabletId;
 
 import com.google.common.hash.Hashing;
@@ -58,10 +57,18 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
   private final int INITIAL_SERVERS = 3;
   private final int MAX_DEPTH = 3;
 
+  private List<String> orderedScanServers;
+
+  @Override
+  public void init(InitParameters params) {
+   orderedScanServers = new ArrayList<>(params.getScanServers());
+   Collections.sort(orderedScanServers);
+  }
+
   @Override
   public ScanServerDispatcherResults determineActions(DispatcherParameters params) {
 
-    if (params.getScanServers().isEmpty()) {
+    if (orderedScanServers.isEmpty()) {
       return NO_SCAN_SERVER_RESULT;
     }
 
@@ -76,7 +83,7 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
       String serverToUse;
 
       if (!attempts.isEmpty() && attempts.last().getResult() == ScanAttempt.Result.SUCCESS
-          && params.getScanServers().contains(attempts.last().getServer())) {
+          && orderedScanServers.contains(attempts.last().getServer())) {
         // Stick with what was chosen last time
         serverToUse = attempts.last().getServer();
       } else {
@@ -90,15 +97,15 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
 
         if (busyAttempts < MAX_DEPTH) {
           numServers = (int) Math.round(INITIAL_SERVERS
-              * Math.pow(params.getOrderedScanServers().size() / (double) INITIAL_SERVERS,
+              * Math.pow(orderedScanServers.size() / (double) INITIAL_SERVERS,
                   busyAttempts / (double) MAX_DEPTH));
         } else {
-          numServers = params.getOrderedScanServers().size();
+          numServers = orderedScanServers.size();
         }
 
         int serverIndex =
-            (hashCode + RANDOM.nextInt(numServers)) % params.getOrderedScanServers().size();
-        serverToUse = params.getOrderedScanServers().get(serverIndex);
+            (hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
+        serverToUse = orderedScanServers.get(serverIndex);
 
         if (busyAttempts > MAX_DEPTH) {
           sleepTime = (long) (INITIAL_SLEEP_TIME * Math.pow(2, busyAttempts - (MAX_DEPTH + 1)));

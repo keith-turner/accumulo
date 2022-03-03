@@ -103,6 +103,9 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     return stateStr;
   }
 
+  /**
+   * @param busyTimeout when this less than 0 it has no impact.  When its greater than 0 and the task is queued, then get() will sleep for the specified busyTimeout and if after sleeping its still queued it will cancel the task.  This behavior allows a scan to queue a scan task and give it a short period to either start running or be canceled.
+   */
   public T get(long busyTimeout, long timeout, TimeUnit unit)
       throws InterruptedException, ExecutionException, TimeoutException {
     ArrayBlockingQueue<Object> localRQ = resultQueue;
@@ -117,7 +120,7 @@ public abstract class ScanTask<T> implements RunnableFuture<T> {
     }
 
     Object r;
-    if (busyTimeout > 0) {
+    if (busyTimeout > 0 && runState.get() == ScanRunState.QUEUED) {
       r = localRQ.poll(busyTimeout, unit);
       if (r == null) {
         // we did not get anything during the busy timeout, if the task has not started lets try to

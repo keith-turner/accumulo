@@ -27,11 +27,7 @@ import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType
 
 import java.net.URL;
 import java.nio.file.Path;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Properties;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -76,6 +72,7 @@ import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.singletons.SingletonManager;
 import org.apache.accumulo.core.singletons.SingletonReservation;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.scan.ScanServerDispatcher;
 import org.apache.accumulo.core.util.OpTimer;
 import org.apache.accumulo.core.util.tables.TableZooHelper;
@@ -347,11 +344,27 @@ public class ClientContext implements AccumuloClient {
         Class<? extends ScanServerDispatcher> impl =
             Class.forName(clazz).asSubclass(ScanServerDispatcher.class);
         scanServerDispatcher = impl.getDeclaredConstructor().newInstance();
-        // TODO initialize
+        scanServerDispatcher.init(new ScanServerDispatcher.InitParameters() {
+          @Override public Map<String,String> getOptions() {
+            // TODO parse options from config
+            return Map.of();
+          }
+
+          @Override public ServiceEnvironment getServiceEnv() {
+            // TODO
+            return null;
+          }
+
+          @Override public Set<String> getScanServers() {
+            return new HashSet<>(ClientContext.this.getScanServers());
+          }
+        });
       } catch (Exception e) {
         throw new RuntimeException("Error creating ScanServerDispatcher implemenation: " + clazz,
             e);
       }
+    } else {
+      //TODO need to recreate and reinit when the set of scan servers changes.
     }
     return scanServerDispatcher;
   }

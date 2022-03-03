@@ -544,8 +544,6 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
       rebinToScanServers(Map<String,Map<KeyExtent,List<Range>>> binnedRanges) {
     ScanServerDispatcher ecsm = context.getScanServerDispatcher();
 
-    var scanServers = context.getScanServers();
-
     List<TabletIdImpl> tabletIds =
         binnedRanges.values().stream().flatMap(extentMap -> extentMap.keySet().stream())
             .map(TabletIdImpl::new).collect(Collectors.toList());
@@ -555,18 +553,6 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
           @Override
           public Collection<TabletId> getTablets() {
             return Collections.unmodifiableCollection(tabletIds);
-          }
-
-          @Override
-          public Set<String> getScanServers() {
-            // TODO can copy be avoided?
-            return new HashSet<>(scanServers);
-          }
-
-          @Override
-          public List<String> getOrderedScanServers() {
-            // TODO sort
-            return scanServers;
           }
 
           @Override

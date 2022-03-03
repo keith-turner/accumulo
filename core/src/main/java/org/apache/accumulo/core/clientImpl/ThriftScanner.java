@@ -471,9 +471,6 @@ public class ThriftScanner {
       return null;
 
     if (scanState.runOnScanServer) {
-
-      var scanServers = context.getScanServers();
-
       var tabletId = new TabletIdImpl(loc.tablet_extent);
 
       var params = new ScanServerDispatcher.DispatcherParameters() {
@@ -484,18 +481,6 @@ public class ThriftScanner {
         @Override
         public List<TabletId> getTablets() {
           return List.of(tabletId);
-        }
-
-        @Override
-        public Set<String> getScanServers() {
-          // TODO can this copy and set creation be avoided?
-          return new HashSet<>(scanServers);
-        }
-
-        @Override
-        public List<String> getOrderedScanServers() {
-          // TODO sort
-          return scanServers;
         }
 
         @Override

@@ -42,6 +42,11 @@ public interface ScanServerDispatcher {
     Map<String,String> getOptions();
 
     ServiceEnvironment getServiceEnv();
+
+    /**
+     * @return the set of live ScanServers.  Whenever the set changes a new ScanServerDispatcher object will be created an initialized.
+     */
+    Set<String> getScanServers();
   }
 
   /**
@@ -85,16 +90,6 @@ public interface ScanServerDispatcher {
      * @return the set of tablets to be scanned
      */
     Collection<TabletId> getTablets();
-
-    /**
-     * @return the set of live ScanServers
-     */
-    Set<String> getScanServers();
-
-    /**
-     * @return a list of ScanServers in order (TODO: what type of order?)
-     */
-    List<String> getOrderedScanServers();
 
     /**
      * @return scan attempt information (TODO: how is this used?)
