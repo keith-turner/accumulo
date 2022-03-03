@@ -345,17 +345,20 @@ public class ClientContext implements AccumuloClient {
             Class.forName(clazz).asSubclass(ScanServerDispatcher.class);
         scanServerDispatcher = impl.getDeclaredConstructor().newInstance();
         scanServerDispatcher.init(new ScanServerDispatcher.InitParameters() {
-          @Override public Map<String,String> getOptions() {
+          @Override
+          public Map<String,String> getOptions() {
             // TODO parse options from config
             return Map.of();
           }
 
-          @Override public ServiceEnvironment getServiceEnv() {
+          @Override
+          public ServiceEnvironment getServiceEnv() {
             // TODO
             return null;
           }
 
-          @Override public Set<String> getScanServers() {
+          @Override
+          public Set<String> getScanServers() {
             return new HashSet<>(ClientContext.this.getScanServers());
           }
         });
@@ -364,7 +367,7 @@ public class ClientContext implements AccumuloClient {
             e);
       }
     } else {
-      //TODO need to recreate and reinit when the set of scan servers changes.
+      // TODO need to recreate and reinit when the set of scan servers changes.
     }
     return scanServerDispatcher;
   }

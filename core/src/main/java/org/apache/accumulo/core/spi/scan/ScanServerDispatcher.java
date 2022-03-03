@@ -20,7 +20,6 @@ package org.apache.accumulo.core.spi.scan;
 
 import java.time.Duration;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
@@ -44,7 +43,8 @@ public interface ScanServerDispatcher {
     ServiceEnvironment getServiceEnv();
 
     /**
-     * @return the set of live ScanServers.  Whenever the set changes a new ScanServerDispatcher object will be created an initialized.
+     * @return the set of live ScanServers. Whenever the set changes a new ScanServerDispatcher
+     *         object will be created an initialized.
      */
     Set<String> getScanServers();
   }

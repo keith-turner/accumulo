@@ -25,7 +25,6 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
-import com.google.common.base.Preconditions;
 import org.apache.accumulo.core.data.TabletId;
 
 import com.google.common.hash.Hashing;
@@ -61,8 +60,8 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
 
   @Override
   public void init(InitParameters params) {
-   orderedScanServers = new ArrayList<>(params.getScanServers());
-   Collections.sort(orderedScanServers);
+    orderedScanServers = new ArrayList<>(params.getScanServers());
+    Collections.sort(orderedScanServers);
   }
 
   @Override
@@ -96,15 +95,14 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
         int numServers;
 
         if (busyAttempts < MAX_DEPTH) {
-          numServers = (int) Math.round(INITIAL_SERVERS
-              * Math.pow(orderedScanServers.size() / (double) INITIAL_SERVERS,
+          numServers = (int) Math.round(
+              INITIAL_SERVERS * Math.pow(orderedScanServers.size() / (double) INITIAL_SERVERS,
                   busyAttempts / (double) MAX_DEPTH));
         } else {
           numServers = orderedScanServers.size();
         }
 
-        int serverIndex =
-            (hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
+        int serverIndex = (hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
         serverToUse = orderedScanServers.get(serverIndex);
 
         if (busyAttempts > MAX_DEPTH) {
