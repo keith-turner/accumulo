@@ -40,6 +40,7 @@ import org.apache.accumulo.core.clientImpl.thrift.ConfigurationType;
 import org.apache.accumulo.core.clientImpl.thrift.TDiskUsage;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftTableOperationException;
+import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan;
@@ -59,6 +60,7 @@ import org.apache.accumulo.core.dataImpl.thrift.TRowRange;
 import org.apache.accumulo.core.dataImpl.thrift.TSummaries;
 import org.apache.accumulo.core.dataImpl.thrift.TSummaryRequest;
 import org.apache.accumulo.core.dataImpl.thrift.UpdateErrors;
+import org.apache.accumulo.core.file.blockfile.cache.impl.BlockCacheConfiguration;
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
@@ -585,6 +587,13 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   public void closeMultiScan(TInfo tinfo, long scanID) throws NoSuchScanIDException, TException {
     LOG.debug("close multi scan: {}", scanID);
     handler.closeMultiScan(tinfo, scanID);
+  }
+
+  @Override
+  public BlockCacheConfiguration getBlockCacheConfiguration(AccumuloConfiguration acuConf) {
+    return new BlockCacheConfiguration(acuConf, Property.SSERV_PREFIX,
+        Property.SSERV_INDEXCACHE_SIZE, Property.SSERV_DATACACHE_SIZE,
+        Property.SSERV_SUMMARYCACHE_SIZE, Property.SSERV_DEFAULT_BLOCKSIZE);
   }
 
   public static void main(String[] args) throws Exception {

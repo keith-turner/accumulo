@@ -129,8 +129,7 @@ public class RFileTest {
   private static final Configuration hadoopConf = new Configuration();
 
   @TempDir
-  private static final File tempFolder =
-      new File(System.getProperty("user.dir") + "/target", RFileTest.class.getSimpleName() + "/");
+  private static File tempDir;
 
   @BeforeAll
   public static void setupCryptoKeyFile() throws Exception {
@@ -305,7 +304,9 @@ public class RFileTest {
       cc.set(Property.TSERV_DEFAULT_BLOCKSIZE, Long.toString(100000));
       cc.set(Property.TSERV_DATACACHE_SIZE, Long.toString(100000000));
       cc.set(Property.TSERV_INDEXCACHE_SIZE, Long.toString(100000000));
-      manager.start(new BlockCacheConfiguration(cc));
+      manager.start(new BlockCacheConfiguration(cc, Property.TSERV_PREFIX,
+          Property.TSERV_INDEXCACHE_SIZE, Property.TSERV_DATACACHE_SIZE,
+          Property.TSERV_SUMMARYCACHE_SIZE, Property.TSERV_DEFAULT_BLOCKSIZE));
       LruBlockCache indexCache = (LruBlockCache) manager.getBlockCache(CacheType.INDEX);
       LruBlockCache dataCache = (LruBlockCache) manager.getBlockCache(CacheType.DATA);
 
@@ -1706,7 +1707,9 @@ public class RFileTest {
     aconf.set(Property.TSERV_DATACACHE_SIZE, Long.toString(100000000));
     aconf.set(Property.TSERV_INDEXCACHE_SIZE, Long.toString(100000000));
     BlockCacheManager manager = BlockCacheManagerFactory.getInstance(aconf);
-    manager.start(new BlockCacheConfiguration(aconf));
+    manager.start(new BlockCacheConfiguration(aconf, Property.TSERV_PREFIX,
+        Property.TSERV_INDEXCACHE_SIZE, Property.TSERV_DATACACHE_SIZE,
+        Property.TSERV_SUMMARYCACHE_SIZE, Property.TSERV_DEFAULT_BLOCKSIZE));
     CachableBuilder cb =
         new CachableBuilder().input(in2, "cache-1").length(data.length).conf(hadoopConf)
             .cryptoService(CryptoServiceFactory.newInstance(aconf, ClassloaderType.JAVA))
@@ -2321,7 +2324,7 @@ public class RFileTest {
 
     if (true) {
       FileOutputStream fileOutputStream =
-          new FileOutputStream(new File(tempFolder, "testEncryptedRootFile.rf"));
+          new FileOutputStream(new File(tempDir, "testEncryptedRootFile.rf"));
       fileOutputStream.write(testRfile.baos.toByteArray());
       fileOutputStream.flush();
       fileOutputStream.close();
