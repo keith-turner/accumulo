@@ -238,9 +238,11 @@ public class ThriftScanner {
 
   }
 
-  static long pause(long millis, long maxSleep, boolean runOnScanServer) throws InterruptedException {
-    if(!runOnScanServer) {
-      // the client side scan server plugin controls sleep time... this sleep is for regular scans where the scan server plugin does not have control
+  static long pause(long millis, long maxSleep, boolean runOnScanServer)
+      throws InterruptedException {
+    if (!runOnScanServer) {
+      // the client side scan server plugin controls sleep time... this sleep is for regular scans
+      // where the scan server plugin does not have control
       Thread.sleep(millis);
     }
     // wait 2 * last time, with +-10% random jitter
@@ -511,7 +513,7 @@ public class ThriftScanner {
         newLoc = loc;
       }
 
-      if(!delay.isZero()) {
+      if (!delay.isZero()) {
         try {
           Thread.sleep(delay.toMillis());
         } catch (InterruptedException e) {
@@ -519,7 +521,6 @@ public class ThriftScanner {
           throw new RuntimeException(e);
         }
       }
-
 
       try {
         var ret = scanRpc(newLoc, scanState, context);

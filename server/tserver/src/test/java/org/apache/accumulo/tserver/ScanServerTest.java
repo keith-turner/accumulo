@@ -25,7 +25,6 @@ import static org.easymock.EasyMock.partialMockBuilder;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.verify;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 
 import java.io.IOException;
@@ -34,7 +33,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -208,7 +206,8 @@ public class ScanServerTest {
     TabletResolver resolver = tablets::get;
 
     expect(handler.startMultiScan(tinfo, tcreds, tcols, titer, sextents, ssio, auths, false, tsc,
-        30L, classLoaderContext, execHints, resolver, 10)).andReturn(new InitialMultiScan(15, null));
+        30L, classLoaderContext, execHints, resolver, 10))
+            .andReturn(new InitialMultiScan(15, null));
     expect(handler.continueMultiScan(tinfo, 15)).andReturn(new MultiScanResult());
     handler.closeMultiScan(tinfo, 15);
 
