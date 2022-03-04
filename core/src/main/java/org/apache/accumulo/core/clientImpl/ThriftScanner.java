@@ -22,6 +22,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.io.IOException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -237,8 +238,11 @@ public class ThriftScanner {
 
   }
 
-  static long pause(long millis, long maxSleep) throws InterruptedException {
-    Thread.sleep(millis);
+  static long pause(long millis, long maxSleep, boolean runOnScanServer) throws InterruptedException {
+    if(!runOnScanServer) {
+      // the client side scan server plugin controls sleep time... this sleep is for regular scans where the scan server plugin does not have control
+      Thread.sleep(millis);
+    }
     // wait 2 * last time, with +-10% random jitter
     return (long) (Math.min(millis * 2, maxSleep) * (.9 + random.nextDouble() / 5));
   }
@@ -288,7 +292,7 @@ public class ThriftScanner {
               else if (log.isTraceEnabled())
                 log.trace("{}", error);
               lastError = error;
-              sleepMillis = pause(sleepMillis, maxSleepTime);
+              sleepMillis = pause(sleepMillis, maxSleepTime, scanState.runOnScanServer);
             } else {
               // when a tablet splits we do want to continue scanning the low child
               // of the split if we are already passed it
@@ -321,7 +325,7 @@ public class ThriftScanner {
             TraceUtil.setException(child1, e, false);
 
             lastError = error;
-            sleepMillis = pause(sleepMillis, maxSleepTime);
+            sleepMillis = pause(sleepMillis, maxSleepTime, scanState.runOnScanServer);
           } finally {
             child1.end();
           }
@@ -365,7 +369,7 @@ public class ThriftScanner {
           }
 
           TraceUtil.setException(child2, e, false);
-          sleepMillis = pause(sleepMillis, maxSleepTime);
+          sleepMillis = pause(sleepMillis, maxSleepTime, scanState.runOnScanServer);
         } catch (ScanServerBusyException e) {
           error = "Scan failed, scan server was busy " + loc;
           if (!error.equals(lastError))
@@ -421,7 +425,7 @@ public class ThriftScanner {
           }
 
           TraceUtil.setException(child2, e, false);
-          sleepMillis = pause(sleepMillis, maxSleepTime);
+          sleepMillis = pause(sleepMillis, maxSleepTime, scanState.runOnScanServer);
         } catch (TException e) {
           TabletLocator.getLocator(context, scanState.tableId).invalidateCache(context,
               loc.tablet_location);
@@ -445,7 +449,7 @@ public class ThriftScanner {
           }
 
           TraceUtil.setException(child2, e, false);
-          sleepMillis = pause(sleepMillis, maxSleepTime);
+          sleepMillis = pause(sleepMillis, maxSleepTime, scanState.runOnScanServer);
         } finally {
           child2.end();
         }
@@ -496,13 +500,26 @@ public class ThriftScanner {
 
       var action = actions.getAction(tabletId);
 
+      Duration delay = null;
+
       if (actions.getAction(tabletId) == ScanServerDispatcher.Action.USE_SCAN_SERVER) {
         // TODO what to use for session?
         newLoc = new TabletLocation(loc.tablet_extent, actions.getScanServer(tabletId), "none");
+        delay = actions.getDelay(actions.getScanServer(tabletId));
       } else {
-        // TODO handle other cases like wait... for now just use tserver
+        // TODO the delay for the tserver is not being properly handled
         newLoc = loc;
       }
+
+      if(!delay.isZero()) {
+        try {
+          Thread.sleep(delay.toMillis());
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException(e);
+        }
+      }
+
 
       try {
         var ret = scanRpc(newLoc, scanState, context);
