@@ -219,6 +219,7 @@ service TabletClientService extends client.ClientService {
     // name of the classloader context
     15:string classLoaderContext
     16:map<string, string> executionHints
+    17:i64 busyTimeout
   ) throws (
     1:client.ThriftSecurityException sec
     2:NotServingTabletException nste
@@ -230,6 +231,7 @@ service TabletClientService extends client.ClientService {
   data.ScanResult continueScan(
     2:trace.TInfo tinfo
     1:data.ScanID scanID
+    3:i64 busyTimeout
   ) throws (
     1:NoSuchScanIDException nssi
     2:NotServingTabletException nste
@@ -258,6 +260,7 @@ service TabletClientService extends client.ClientService {
     // name of the classloader context
     11:string classLoaderContext
     12:map<string, string> executionHints
+    13:i64 busyTimeout
   ) throws (
     1:client.ThriftSecurityException sec
     2:TSampleNotPresentException tsnpe
@@ -267,6 +270,7 @@ service TabletClientService extends client.ClientService {
   data.MultiScanResult continueMultiScan(
     2:trace.TInfo tinfo
     1:data.ScanID scanID
+    3:i64 busyTimeout
   ) throws (
     1:NoSuchScanIDException nssi
     2:TSampleNotPresentException tsnpe
