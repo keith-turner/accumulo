@@ -23,19 +23,15 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalUnit;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.data.TabletId;
 
 import com.google.common.hash.Hashing;
-import org.apache.hadoop.util.hash.Hash;
 
 public class DefaultEcScanManager implements ScanServerDispatcher {
 
-  private static final Actions NO_SCAN_SERVER_RESULT =
-     Actions.from(Collections.emptyList());
+  private static final Actions NO_SCAN_SERVER_RESULT = Actions.from(Collections.emptyList());
 
   private static final SecureRandom RANDOM = new SecureRandom();
   private static final long INITIAL_SLEEP_TIME = 100L;
@@ -59,7 +55,7 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
     }
 
     Map<String,Long> sleepTimes = new HashMap<>();
-    Map<String, List<TabletId>> serversTablets = new HashMap<>();
+    Map<String,List<TabletId>> serversTablets = new HashMap<>();
 
     for (TabletId tablet : params.getTablets()) {
 
@@ -98,7 +94,7 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
         }
       }
 
-      serversTablets.computeIfAbsent(serverToUse, k->new ArrayList<>()).add(tablet);
+      serversTablets.computeIfAbsent(serverToUse, k -> new ArrayList<>()).add(tablet);
       sleepTimes.merge(serverToUse, sleepTime, Long::max);
     }
 
@@ -106,7 +102,7 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
 
     var busyTimeout = Duration.of(50, ChronoUnit.MILLIS);
 
-    serversTablets.forEach( (server, tablets) -> {
+    serversTablets.forEach((server, tablets) -> {
       var delay = Duration.of(sleepTimes.getOrDefault(server, 0L), ChronoUnit.MILLIS);
       actions.add(new UseScanServerAction(server, tablets, delay, busyTimeout));
     });

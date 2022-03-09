@@ -466,9 +466,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       TRange range, List<TColumn> columns, int batchSize, List<IterInfo> ssiList,
       Map<String,Map<String,String>> ssio, List<ByteBuffer> authorizations, boolean waitForWrites,
       boolean isolated, long readaheadThreshold, TSamplerConfiguration samplerConfig,
-      long batchTimeOut, String classLoaderContext, Map<String,String> executionHints, long busyTimeout)
-      throws ThriftSecurityException, NotServingTabletException, TooManyFilesException,
-      TSampleNotPresentException, TException {
+      long batchTimeOut, String classLoaderContext, Map<String,String> executionHints,
+      long busyTimeout) throws ThriftSecurityException, NotServingTabletException,
+      TooManyFilesException, TSampleNotPresentException, TException {
 
     KeyExtent extent = getKeyExtent(textent);
     try {
@@ -498,8 +498,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   @Override
-  public ScanResult continueScan(TInfo tinfo, long scanID, long busyTimeout) throws NoSuchScanIDException,
-      NotServingTabletException, TooManyFilesException, TSampleNotPresentException, TException {
+  public ScanResult continueScan(TInfo tinfo, long scanID, long busyTimeout)
+      throws NoSuchScanIDException, NotServingTabletException, TooManyFilesException,
+      TSampleNotPresentException, TException {
     LOG.debug("continue scan: {}", scanID);
     try {
       return handler.continueScan(tinfo, scanID, busyTimeout);

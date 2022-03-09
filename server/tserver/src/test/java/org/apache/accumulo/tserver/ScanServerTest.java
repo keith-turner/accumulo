@@ -121,7 +121,8 @@ public class ScanServerTest {
     Map<String,String> execHints = new HashMap<>();
 
     expect(handler.startScan(tinfo, tcreds, textent, trange, tcols, 10, titer, ssio, auths, false,
-        false, 10, tsc, 30L, classLoaderContext, execHints, 0L)).andReturn(new InitialScan(15, null));
+        false, 10, tsc, 30L, classLoaderContext, execHints, 0L))
+            .andReturn(new InitialScan(15, null));
     expect(handler.continueScan(tinfo, 15, 0L)).andReturn(new ScanResult());
     handler.closeScan(tinfo, 15);
 

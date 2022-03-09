@@ -109,7 +109,8 @@ public interface ScanServerDispatcher {
       return tablets;
     }
 
-    @Override public boolean equals(Object o) {
+    @Override
+    public boolean equals(Object o) {
       if (this == o)
         return true;
       if (o == null || getClass() != o.getClass())
@@ -118,7 +119,8 @@ public interface ScanServerDispatcher {
       return server.equals(action.server) && tablets.equals(action.tablets);
     }
 
-    @Override public int hashCode() {
+    @Override
+    public int hashCode() {
       return Objects.hash(server, tablets);
     }
   }
@@ -128,17 +130,18 @@ public interface ScanServerDispatcher {
     private final Duration delay;
     private final Duration busyTimeout;
 
-    public UseScanServerAction(String server, Collection<TabletId> tablets, Duration delay, Duration busyTimeout) {
+    public UseScanServerAction(String server, Collection<TabletId> tablets, Duration delay,
+        Duration busyTimeout) {
       super(server, tablets);
       this.delay = delay;
       this.busyTimeout = busyTimeout;
     }
 
-    public Duration getDelay(){
+    public Duration getDelay() {
       return delay;
     }
 
-    public Duration getBusyTimeout(){
+    public Duration getBusyTimeout() {
       return busyTimeout;
     }
   }
@@ -149,7 +152,6 @@ public interface ScanServerDispatcher {
     }
   }
 
-
   // TODO need a better name.. this interface is used to communicate what actions the plugin would
   // like Accumulo to take for the scan... maybe EcScanActions
   public interface Actions extends Iterable<Action> {
@@ -158,18 +160,20 @@ public interface ScanServerDispatcher {
 
     public static Actions from(Collection<Action> actions) {
       return new Actions() {
-        @Override public Iterator<Action> iterator() {
-            return actions.iterator();
+        @Override
+        public Iterator<Action> iterator() {
+          return actions.iterator();
         }
 
-        @Override public Optional<Action> getAction(TabletId tablet) {
-            for (Action action : actions) {
-              if(action.getTablets().contains(tablet)){
-                return Optional.of(action);
-              }
+        @Override
+        public Optional<Action> getAction(TabletId tablet) {
+          for (Action action : actions) {
+            if (action.getTablets().contains(tablet)) {
+              return Optional.of(action);
             }
+          }
 
-            return Optional.empty();
+          return Optional.empty();
         }
       };
     }

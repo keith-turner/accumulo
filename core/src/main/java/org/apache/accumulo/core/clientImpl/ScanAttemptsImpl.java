@@ -19,7 +19,6 @@
 package org.apache.accumulo.core.clientImpl;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
@@ -39,8 +38,7 @@ public class ScanAttemptsImpl {
     private final Result result;
     private volatile long mutationCount = Long.MAX_VALUE;
 
-    public ScanAttemptImpl(ScanServerDispatcher.Action action, long time,
-        Result result) {
+    public ScanAttemptImpl(ScanServerDispatcher.Action action, long time, Result result) {
       this.requestedAction = action;
       this.time = time;
       this.result = result;
@@ -61,9 +59,9 @@ public class ScanAttemptsImpl {
       return requestedAction;
     }
 
-    private static Comparator<ScanAttempt> COMPARATOR = Comparator
-        .comparingLong(ScanAttempt::getTime).reversed().thenComparing(sa -> sa.getAction().getServer())
-        .thenComparing(ScanAttempt::getResult);
+    private static Comparator<ScanAttempt> COMPARATOR =
+        Comparator.comparingLong(ScanAttempt::getTime).reversed()
+            .thenComparing(sa -> sa.getAction().getServer()).thenComparing(ScanAttempt::getResult);
 
     @Override
     public int compareTo(ScanAttempt o) {
@@ -86,14 +84,15 @@ public class ScanAttemptsImpl {
       new ConcurrentSkipListMap<>();
   private long mutationCounter = 0;
 
-  public void add(ScanServerDispatcher.Action action, long time,
-      ScanAttempt.Result result) {
+  public void add(ScanServerDispatcher.Action action, long time, ScanAttempt.Result result) {
 
     ScanAttemptImpl sa = new ScanAttemptImpl(action, time, result);
 
     attempts.add(sa);
-    action.getTablets().forEach(tablet ->  attemptsByTablet.computeIfAbsent(tablet, k -> new ConcurrentSkipListSet<>()).add(sa));
-    attemptsByServer.computeIfAbsent(action.getServer(), k -> new ConcurrentSkipListSet<>()).add(sa);
+    action.getTablets().forEach(tablet -> attemptsByTablet
+        .computeIfAbsent(tablet, k -> new ConcurrentSkipListSet<>()).add(sa));
+    attemptsByServer.computeIfAbsent(action.getServer(), k -> new ConcurrentSkipListSet<>())
+        .add(sa);
 
     synchronized (this) {
       // now that the scan attempt obj is added to all concurrent data structs, make it visible

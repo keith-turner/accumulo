@@ -468,7 +468,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
     int maxTabletsPerRequest = Integer.MAX_VALUE;
 
-    Map<String, Long> busyTimeouts = new HashMap<>();
+    Map<String,Long> busyTimeouts = new HashMap<>();
 
     if (options.getConsistencyLevel().equals(ConsistencyLevel.EVENTUAL)) {
       binnedRanges = rebinToScanServers(binnedRanges, busyTimeouts);
@@ -516,7 +516,8 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
       final Map<KeyExtent,List<Range>> tabletsRanges = binnedRanges.get(tsLocation);
       if (maxTabletsPerRequest == Integer.MAX_VALUE || tabletsRanges.size() == 1) {
-        QueryTask queryTask = new QueryTask(tsLocation, tabletsRanges, failures, receiver, columns, busyTimeout);
+        QueryTask queryTask =
+            new QueryTask(tsLocation, tabletsRanges, failures, receiver, columns, busyTimeout);
         queryTasks.add(queryTask);
       } else {
         HashMap<KeyExtent,List<Range>> tabletSubset = new HashMap<>();
@@ -547,9 +548,8 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
     }
   }
 
-  private Map<String,Map<KeyExtent,List<Range>>>
-      rebinToScanServers(Map<String,Map<KeyExtent,List<Range>>> binnedRanges,
-      Map<String,Long> busyTimeouts) {
+  private Map<String,Map<KeyExtent,List<Range>>> rebinToScanServers(
+      Map<String,Map<KeyExtent,List<Range>>> binnedRanges, Map<String,Long> busyTimeouts) {
     ScanServerDispatcher ecsm = context.getScanServerDispatcher();
 
     List<TabletIdImpl> tabletIds =
@@ -601,8 +601,8 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
     Set<TabletId> tabletsSeen = new HashSet<>();
 
-    for(ScanServerDispatcher.Action action : actions) {
-      if(action instanceof ScanServerDispatcher.UseScanServerAction) {
+    for (ScanServerDispatcher.Action action : actions) {
+      if (action instanceof ScanServerDispatcher.UseScanServerAction) {
         String server = action.getServer();
         var ussAction = (ScanServerDispatcher.UseScanServerAction) action;
 
@@ -612,14 +612,14 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
         busyTimeouts.put(server, ussAction.getBusyTimeout().toMillis());
 
-        for(TabletId tablet : action.getTablets()){
-          if(tabletsSeen.add(tablet)) {
+        for (TabletId tablet : action.getTablets()) {
+          if (tabletsSeen.add(tablet)) {
             KeyExtent extent = ((TabletIdImpl) tablet).toKeyExtent();
             List<Range> ranges = extentToRangesMap.get(extent);
-            if(ranges != null) {
+            if (ranges != null) {
               rangeMap.put(extent, ranges);
             } else {
-              //TODO warn?? plugin gave back a tablet it was not given
+              // TODO warn?? plugin gave back a tablet it was not given
             }
           } else {
             // TODO warn?? plugin mapped a tablet to multiple servers
@@ -628,10 +628,10 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
       }
     }
 
-
     for (TabletIdImpl tablet : tabletIds) {
-      if(!tabletsSeen.contains(tablet)) {
-        // This tablet was not seen in the actions returned by the plugin so just send it to the tserver
+      if (!tabletsSeen.contains(tablet)) {
+        // This tablet was not seen in the actions returned by the plugin so just send it to the
+        // tserver
         // TODO log warn/debug???
         String server = extentToTserverMap.get(tablet.toKeyExtent());
         binnedRanges2.computeIfAbsent(server, k -> new HashMap<>()).put(tablet.toKeyExtent(),

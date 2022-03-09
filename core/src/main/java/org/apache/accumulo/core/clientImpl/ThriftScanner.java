@@ -59,7 +59,6 @@ import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.OpTimer;
 import org.apache.hadoop.io.Text;
-import org.apache.thrift.Option;
 import org.apache.thrift.TApplicationException;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
@@ -501,7 +500,7 @@ public class ThriftScanner {
         ScanServerDispatcher.UseScanServerAction ussAction =
             (ScanServerDispatcher.UseScanServerAction) action.get();
         newLoc = new TabletLocation(loc.tablet_extent, action.get().getServer(), "none");
-        delay =ussAction.getDelay();
+        delay = ussAction.getDelay();
         busyTimeout = ussAction.getBusyTimeout();
       } else {
         // TODO the delay for the tserver is not being properly handled
@@ -520,18 +519,18 @@ public class ThriftScanner {
       }
 
       try {
-        //TODO action could be empty
+        // TODO action could be empty
         var ret = scanRpc(newLoc, scanState, context, busyTimeout.toMillis());
-        scanState.scanAttempts.add(action.get(),
-            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.SUCCESS);
+        scanState.scanAttempts.add(action.get(), System.currentTimeMillis(),
+            ScanServerDispatcher.ScanAttempt.Result.SUCCESS);
         return ret;
       } catch (ScanServerBusyException ssbe) {
-        scanState.scanAttempts.add(action.get(),
-            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.BUSY);
+        scanState.scanAttempts.add(action.get(), System.currentTimeMillis(),
+            ScanServerDispatcher.ScanAttempt.Result.BUSY);
         throw ssbe;
       } catch (Exception e) {
-        scanState.scanAttempts.add(action.get(),
-            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.ERROR);
+        scanState.scanAttempts.add(action.get(), System.currentTimeMillis(),
+            ScanServerDispatcher.ScanAttempt.Result.ERROR);
         throw e;
       }
     } else {
@@ -540,9 +539,9 @@ public class ThriftScanner {
   }
 
   private static List<KeyValue> scanRpc(TabletLocation loc, ScanState scanState,
-      ClientContext context, long busyTimeout) throws AccumuloSecurityException, NotServingTabletException,
-      TException, NoSuchScanIDException, TooManyFilesException, TSampleNotPresentException,
-      ScanServerBusyException {
+      ClientContext context, long busyTimeout) throws AccumuloSecurityException,
+      NotServingTabletException, TException, NoSuchScanIDException, TooManyFilesException,
+      TSampleNotPresentException, ScanServerBusyException {
 
     OpTimer timer = null;
 
