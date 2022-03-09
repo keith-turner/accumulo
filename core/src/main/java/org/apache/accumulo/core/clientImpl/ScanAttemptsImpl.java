@@ -59,9 +59,10 @@ public class ScanAttemptsImpl {
       return requestedAction;
     }
 
+    //TODO this comparator is a bit iffy.. added the hashcode at the end in case two diff attempts have the same time and result
     private static Comparator<ScanAttempt> COMPARATOR =
         Comparator.comparingLong(ScanAttempt::getTime).reversed()
-            .thenComparing(sa -> sa.getAction().getServer()).thenComparing(ScanAttempt::getResult);
+            .thenComparing(ScanAttempt::getResult).thenComparing(ScanAttempt::hashCode);
 
     @Override
     public int compareTo(ScanAttempt o) {
@@ -78,8 +79,6 @@ public class ScanAttemptsImpl {
   }
 
   private SortedSet<ScanAttempt> attempts = new ConcurrentSkipListSet<>();
-  private ConcurrentSkipListMap<String,SortedSet<ScanAttempt>> attemptsByServer =
-      new ConcurrentSkipListMap<>();
   private ConcurrentSkipListMap<TabletId,SortedSet<ScanAttempt>> attemptsByTablet =
       new ConcurrentSkipListMap<>();
   private long mutationCounter = 0;
@@ -91,8 +90,6 @@ public class ScanAttemptsImpl {
     attempts.add(sa);
     action.getTablets().forEach(tablet -> attemptsByTablet
         .computeIfAbsent(tablet, k -> new ConcurrentSkipListSet<>()).add(sa));
-    attemptsByServer.computeIfAbsent(action.getServer(), k -> new ConcurrentSkipListSet<>())
-        .add(sa);
 
     synchronized (this) {
       // now that the scan attempt obj is added to all concurrent data structs, make it visible
@@ -115,12 +112,6 @@ public class ScanAttemptsImpl {
       @Override
       public Collection<ScanAttempt> all() {
         return Sets.filter(attempts,
-            attempt -> ((ScanAttemptImpl) attempt).getMutationCount() <= snapMC);
-      }
-
-      @Override
-      public SortedSet<ScanAttempt> forServer(String server) {
-        return Sets.filter(attemptsByServer.getOrDefault(server, Collections.emptySortedSet()),
             attempt -> ((ScanAttemptImpl) attempt).getMutationCount() <= snapMC);
       }
 

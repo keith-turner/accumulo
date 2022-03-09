@@ -31,13 +31,13 @@ import com.google.common.hash.Hashing;
 
 public class DefaultEcScanManager implements ScanServerDispatcher {
 
-  private static final Actions NO_SCAN_SERVER_RESULT = Actions.from(Collections.emptyList());
-
   private static final SecureRandom RANDOM = new SecureRandom();
   private static final long INITIAL_SLEEP_TIME = 100L;
   private static final long MAX_SLEEP_TIME = 300000L;
   private final int INITIAL_SERVERS = 3;
   private final int MAX_DEPTH = 3;
+
+  Duration defaultBusyTimeout;
 
   private List<String> orderedScanServers;
 
@@ -45,13 +45,29 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
   public void init(InitParameters params) {
     orderedScanServers = new ArrayList<>(params.getScanServers());
     Collections.sort(orderedScanServers);
+    defaultBusyTimeout = Duration.of(33, ChronoUnit.MILLIS);;
+  }
+
+  private String getLastSuccessfulScanServer(SortedSet<ScanAttempt> attempts) {
+    if(attempts.isEmpty())
+      return null;
+    var last = attempts.last();
+    if(last.getResult() != ScanAttempt.Result.SUCCESS)
+      return null;
+    var action = last.getAction();
+    if(action instanceof UseScanServerAction) {
+      return ((UseScanServerAction) action).getServer();
+    } else{
+      return null;
+    }
+
   }
 
   @Override
   public Actions determineActions(DispatcherParameters params) {
 
     if (orderedScanServers.isEmpty()) {
-      return NO_SCAN_SERVER_RESULT;
+      return Actions.from(List.of(new UseTserverAction(params.getTablets())));
     }
 
     Map<String,Long> sleepTimes = new HashMap<>();
@@ -62,13 +78,9 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
       SortedSet<ScanAttempt> attempts = params.getScanAttempts().forTablet(tablet);
 
       long sleepTime = 0;
-      String serverToUse;
+      String serverToUse = getLastSuccessfulScanServer(attempts);
 
-      if (!attempts.isEmpty() && attempts.last().getResult() == ScanAttempt.Result.SUCCESS
-          && orderedScanServers.contains(attempts.last().getAction().getServer())) {
-        // Stick with what was chosen last time
-        serverToUse = attempts.last().getAction().getServer();
-      } else {
+      if (serverToUse == null) {
         int hashCode = hashTablet(tablet);
 
         // TODO handle io errors
@@ -100,11 +112,13 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
 
     ArrayList<Action> actions = new ArrayList<>();
 
-    var busyTimeout = Duration.of(50, ChronoUnit.MILLIS);
-
     serversTablets.forEach((server, tablets) -> {
-      var delay = Duration.of(sleepTimes.getOrDefault(server, 0L), ChronoUnit.MILLIS);
-      actions.add(new UseScanServerAction(server, tablets, delay, busyTimeout));
+      long sleepTime = sleepTimes.getOrDefault(server, 0L);
+      Duration busyTimeout = defaultBusyTimeout;
+      if(sleepTime > 0) {
+        busyTimeout = Duration.of(sleepTime, ChronoUnit.MILLIS);
+      }
+      actions.add(new UseScanServerAction(server, tablets, Duration.ZERO, busyTimeout));
     });
 
     return Actions.from(actions);

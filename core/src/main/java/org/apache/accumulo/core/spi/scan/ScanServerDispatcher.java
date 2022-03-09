@@ -72,8 +72,6 @@ public interface ScanServerDispatcher {
   public interface ScanAttempts {
     Collection<ScanAttempt> all();
 
-    SortedSet<ScanAttempt> forServer(String server);
-
     SortedSet<ScanAttempt> forTablet(TabletId tablet);
   }
 
@@ -92,49 +90,41 @@ public interface ScanServerDispatcher {
 
   public static abstract class Action {
 
-    private final String server;
     private final Collection<TabletId> tablets;
 
-    protected Action(String server, Collection<TabletId> tablets) {
+    protected Action(Collection<TabletId> tablets) {
       Preconditions.checkArgument(tablets != null && !tablets.isEmpty());
-      this.server = Objects.requireNonNull(server);
       this.tablets = tablets;
-    }
-
-    public String getServer() {
-      return server;
     }
 
     public Collection<TabletId> getTablets() {
       return tablets;
     }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o)
-        return true;
-      if (o == null || getClass() != o.getClass())
-        return false;
-      Action action = (Action) o;
-      return server.equals(action.server) && tablets.equals(action.tablets);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(server, tablets);
-    }
   }
 
   public static class UseScanServerAction extends Action {
 
+    private final String server;
     private final Duration delay;
     private final Duration busyTimeout;
 
+    /**
+     *
+     * @param server The scan server address
+     * @param tablets The tablets to scan at the given scan server
+     * @param delay The amount of time to delay on the client side before trying to do the scan.
+     * @param busyTimeout The amount of time to wait for a scan to start on the server side before reporting busy.  For example if a scan request is sent to scan server with a busy timeout of 50ms and the scan has not started running within that time then the scan server will not ever run the scan and it will report back busy.  If the scan starts running, then it will never report back busy.  Setting a busy timeout that is <= 0 means that it will wait indefinitely on the server side for the task to start.
+     */
     public UseScanServerAction(String server, Collection<TabletId> tablets, Duration delay,
         Duration busyTimeout) {
-      super(server, tablets);
+      super(tablets);
+      this.server = Objects.requireNonNull(server);
       this.delay = delay;
       this.busyTimeout = busyTimeout;
+    }
+
+    public String getServer() {
+      return server;
     }
 
     public Duration getDelay() {
@@ -147,13 +137,11 @@ public interface ScanServerDispatcher {
   }
 
   public static class UseTserverAction extends Action {
-    public UseTserverAction(String server, Collection<TabletId> tablets) {
-      super(server, tablets);
+    public UseTserverAction(Collection<TabletId> tablets) {
+      super(tablets);
     }
   }
 
-  // TODO need a better name.. this interface is used to communicate what actions the plugin would
-  // like Accumulo to take for the scan... maybe EcScanActions
   public interface Actions extends Iterable<Action> {
 
     public Optional<Action> getAction(TabletId tablet);
