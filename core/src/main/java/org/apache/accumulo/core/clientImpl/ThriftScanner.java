@@ -499,7 +499,8 @@ public class ThriftScanner {
         // TODO what to use for session?
         ScanServerDispatcher.UseScanServerAction ussAction =
             (ScanServerDispatcher.UseScanServerAction) action.get();
-        newLoc = new TabletLocation(loc.tablet_extent, ((ScanServerDispatcher.UseScanServerAction) action.get()).getServer(), "none");
+        newLoc = new TabletLocation(loc.tablet_extent,
+            ((ScanServerDispatcher.UseScanServerAction) action.get()).getServer(), "none");
         delay = ussAction.getDelay();
         busyTimeout = ussAction.getBusyTimeout();
       } else {

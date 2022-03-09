@@ -45,19 +45,20 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
   public void init(InitParameters params) {
     orderedScanServers = new ArrayList<>(params.getScanServers());
     Collections.sort(orderedScanServers);
-    defaultBusyTimeout = Duration.of(33, ChronoUnit.MILLIS);;
+    defaultBusyTimeout = Duration.of(33, ChronoUnit.MILLIS);
+    ;
   }
 
   private String getLastSuccessfulScanServer(SortedSet<ScanAttempt> attempts) {
-    if(attempts.isEmpty())
+    if (attempts.isEmpty())
       return null;
     var last = attempts.last();
-    if(last.getResult() != ScanAttempt.Result.SUCCESS)
+    if (last.getResult() != ScanAttempt.Result.SUCCESS)
       return null;
     var action = last.getAction();
-    if(action instanceof UseScanServerAction) {
+    if (action instanceof UseScanServerAction) {
       return ((UseScanServerAction) action).getServer();
-    } else{
+    } else {
       return null;
     }
 
@@ -115,7 +116,7 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
     serversTablets.forEach((server, tablets) -> {
       long sleepTime = sleepTimes.getOrDefault(server, 0L);
       Duration busyTimeout = defaultBusyTimeout;
-      if(sleepTime > 0) {
+      if (sleepTime > 0) {
         busyTimeout = Duration.of(sleepTime, ChronoUnit.MILLIS);
       }
       actions.add(new UseScanServerAction(server, tablets, Duration.ZERO, busyTimeout));

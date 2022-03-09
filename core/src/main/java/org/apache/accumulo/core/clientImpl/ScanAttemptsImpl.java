@@ -59,7 +59,8 @@ public class ScanAttemptsImpl {
       return requestedAction;
     }
 
-    //TODO this comparator is a bit iffy.. added the hashcode at the end in case two diff attempts have the same time and result
+    // TODO this comparator is a bit iffy.. added the hashcode at the end in case two diff attempts
+    // have the same time and result
     private static Comparator<ScanAttempt> COMPARATOR =
         Comparator.comparingLong(ScanAttempt::getTime).reversed()
             .thenComparing(ScanAttempt::getResult).thenComparing(ScanAttempt::hashCode);

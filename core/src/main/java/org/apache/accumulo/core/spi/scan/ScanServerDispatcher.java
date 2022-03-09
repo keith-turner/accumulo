@@ -110,10 +110,19 @@ public interface ScanServerDispatcher {
 
     /**
      *
-     * @param server The scan server address
-     * @param tablets The tablets to scan at the given scan server
-     * @param delay The amount of time to delay on the client side before trying to do the scan.
-     * @param busyTimeout The amount of time to wait for a scan to start on the server side before reporting busy.  For example if a scan request is sent to scan server with a busy timeout of 50ms and the scan has not started running within that time then the scan server will not ever run the scan and it will report back busy.  If the scan starts running, then it will never report back busy.  Setting a busy timeout that is <= 0 means that it will wait indefinitely on the server side for the task to start.
+     * @param server
+     *          The scan server address
+     * @param tablets
+     *          The tablets to scan at the given scan server
+     * @param delay
+     *          The amount of time to delay on the client side before trying to do the scan.
+     * @param busyTimeout
+     *          The amount of time to wait for a scan to start on the server side before reporting
+     *          busy. For example if a scan request is sent to scan server with a busy timeout of
+     *          50ms and the scan has not started running within that time then the scan server will
+     *          not ever run the scan and it will report back busy. If the scan starts running, then
+     *          it will never report back busy. Setting a busy timeout that is <= 0 means that it
+     *          will wait indefinitely on the server side for the task to start.
      */
     public UseScanServerAction(String server, Collection<TabletId> tablets, Duration delay,
         Duration busyTimeout) {

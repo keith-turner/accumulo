@@ -34,8 +34,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
@@ -341,7 +339,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
     private final ScanServerDispatcher.Action action;
 
     private long getBusyTimeout(ScanServerDispatcher.Action action) {
-      if(action != null && action instanceof ScanServerDispatcher.UseScanServerAction) {
+      if (action != null && action instanceof ScanServerDispatcher.UseScanServerAction) {
         return ((ScanServerDispatcher.UseScanServerAction) action).getBusyTimeout().toMillis();
       }
 
@@ -380,8 +378,9 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
         }
         doLookup(context, tsLocation, tabletsRanges, tsFailures, unscanned, receiver, columns,
             options, authorizations, timeoutTracker, busyTimeout);
-        if(action != null) {
-          scanAttempts.add(action, System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.SUCCESS);
+        if (action != null) {
+          scanAttempts.add(action, System.currentTimeMillis(),
+              ScanServerDispatcher.ScanAttempt.Result.SUCCESS);
         }
 
         if (!tsFailures.isEmpty()) {
@@ -401,9 +400,10 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
           locator.invalidateCache(context, tsLocation);
         }
         log.debug("IOException thrown", e);
-        if(action != null) {
-          ScanServerDispatcher.ScanAttempt.Result result = ScanServerDispatcher.ScanAttempt.Result.IO_ERROR;
-          if(e.getCause() instanceof  ScanServerBusyException) {
+        if (action != null) {
+          ScanServerDispatcher.ScanAttempt.Result result =
+              ScanServerDispatcher.ScanAttempt.Result.IO_ERROR;
+          if (e.getCause() instanceof ScanServerBusyException) {
             result = ScanServerDispatcher.ScanAttempt.Result.BUSY;
           }
           scanAttempts.add(action, System.currentTimeMillis(), result);
@@ -573,7 +573,8 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
   }
 
   private Map<String,Map<KeyExtent,List<Range>>> rebinToScanServers(
-      Map<String,Map<KeyExtent,List<Range>>> binnedRanges, Map<String,ScanServerDispatcher.Action> serverActions) {
+      Map<String,Map<KeyExtent,List<Range>>> binnedRanges,
+      Map<String,ScanServerDispatcher.Action> serverActions) {
     ScanServerDispatcher ecsm = context.getScanServerDispatcher();
 
     List<TabletIdImpl> tabletIds =
@@ -592,7 +593,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
           @Override
           public ScanServerDispatcher.ScanAttempts getScanAttempts() {
-             return scanAttemptsSnapshot;
+            return scanAttemptsSnapshot;
           }
         };
 
@@ -636,13 +637,13 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
             // TODO warn?? plugin mapped a tablet to multiple servers
           }
         }
-      } else if(action instanceof ScanServerDispatcher.UseTserverAction) {
+      } else if (action instanceof ScanServerDispatcher.UseTserverAction) {
         for (TabletId tablet : action.getTablets()) {
           if (tabletsSeen.add(tablet)) {
             KeyExtent extent = ((TabletIdImpl) tablet).toKeyExtent();
             String server = extentToTserverMap.get(extent);
             List<Range> ranges = extentToRangesMap.get(extent);
-            if(ranges != null) {
+            if (ranges != null) {
               binnedRanges2.computeIfAbsent(server, k -> new HashMap<>()).put(extent, ranges);
             } else {
               // TODO warn?? plugin gave back a tablet it was not given
@@ -908,7 +909,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
     } catch (NoSuchScanIDException e) {
       log.debug("Server : {} msg : {}", server, e.getMessage(), e);
       throw new IOException(e);
-    } catch(ScanServerBusyException e) {
+    } catch (ScanServerBusyException e) {
       log.debug("Server : {} msg : {}", server, e.getMessage(), e);
       throw new IOException(e);
     } catch (TSampleNotPresentException e) {
