@@ -18,10 +18,7 @@
  */
 package org.apache.accumulo.core.clientImpl;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.SortedSet;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -38,19 +35,15 @@ public class ScanAttemptsImpl {
       implements org.apache.accumulo.core.spi.scan.ScanServerDispatcher.ScanAttempt {
 
     private final ScanServerDispatcher.Action requestedAction;
-    private final String server;
     private final long time;
     private final Result result;
-    private final TabletId tablet;
     private volatile long mutationCount = Long.MAX_VALUE;
 
-    public ScanAttemptImpl(ScanServerDispatcher.Action action, String server, long time,
-        Result result, TabletId tablet) {
+    public ScanAttemptImpl(ScanServerDispatcher.Action action, long time,
+        Result result) {
       this.requestedAction = action;
-      this.server = server;
       this.time = time;
       this.result = result;
-      this.tablet = tablet;
     }
 
     @Override
@@ -68,19 +61,9 @@ public class ScanAttemptsImpl {
       return requestedAction;
     }
 
-    @Override
-    public String getServer() {
-      return server;
-    }
-
-    @Override
-    public TabletId getTablet() {
-      return tablet;
-    }
-
     private static Comparator<ScanAttempt> COMPARATOR = Comparator
-        .comparingLong(ScanAttempt::getTime).reversed().thenComparing(ScanAttempt::getServer)
-        .thenComparing(ScanAttempt::getResult).thenComparing(ScanAttempt::getAction);
+        .comparingLong(ScanAttempt::getTime).reversed().thenComparing(sa -> sa.getAction().getServer())
+        .thenComparing(ScanAttempt::getResult);
 
     @Override
     public int compareTo(ScanAttempt o) {
@@ -94,58 +77,23 @@ public class ScanAttemptsImpl {
     public long getMutationCount() {
       return mutationCount;
     }
-
-    @Override
-    public int hashCode() {
-      final int prime = 31;
-      int result = 1;
-      result = prime * result + ((requestedAction == null) ? 0 : requestedAction.hashCode());
-      result = prime * result + ((this.result == null) ? 0 : this.result.hashCode());
-      result = prime * result + ((server == null) ? 0 : server.hashCode());
-      result = prime * result + (int) (time ^ (time >>> 32));
-      return result;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (this == obj)
-        return true;
-      if (obj == null)
-        return false;
-      if (getClass() != obj.getClass())
-        return false;
-      ScanAttemptImpl other = (ScanAttemptImpl) obj;
-      if (requestedAction != other.requestedAction)
-        return false;
-      if (result != other.result)
-        return false;
-      if (server == null) {
-        if (other.server != null)
-          return false;
-      } else if (!server.equals(other.server))
-        return false;
-      if (time != other.time)
-        return false;
-      return true;
-    }
-
   }
 
   private SortedSet<ScanAttempt> attempts = new ConcurrentSkipListSet<>();
-  private ConcurrentHashMap<TabletId,SortedSet<ScanAttempt>> attemptsByTablet =
-      new ConcurrentHashMap<>();
   private ConcurrentSkipListMap<String,SortedSet<ScanAttempt>> attemptsByServer =
+      new ConcurrentSkipListMap<>();
+  private ConcurrentSkipListMap<TabletId,SortedSet<ScanAttempt>> attemptsByTablet =
       new ConcurrentSkipListMap<>();
   private long mutationCounter = 0;
 
-  public void add(ScanServerDispatcher.Action action, String server, long time,
-      ScanAttempt.Result result, TabletId tablet) {
+  public void add(ScanServerDispatcher.Action action, long time,
+      ScanAttempt.Result result) {
 
-    ScanAttemptImpl sa = new ScanAttemptImpl(action, server, time, result, tablet);
+    ScanAttemptImpl sa = new ScanAttemptImpl(action, time, result);
 
     attempts.add(sa);
-    attemptsByTablet.computeIfAbsent(tablet, k -> new ConcurrentSkipListSet<>()).add(sa);
-    attemptsByServer.computeIfAbsent(server, k -> new ConcurrentSkipListSet<>()).add(sa);
+    action.getTablets().forEach(tablet ->  attemptsByTablet.computeIfAbsent(tablet, k -> new ConcurrentSkipListSet<>()).add(sa));
+    attemptsByServer.computeIfAbsent(action.getServer(), k -> new ConcurrentSkipListSet<>()).add(sa);
 
     synchronized (this) {
       // now that the scan attempt obj is added to all concurrent data structs, make it visible

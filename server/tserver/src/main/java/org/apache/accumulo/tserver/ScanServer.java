@@ -466,7 +466,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       TRange range, List<TColumn> columns, int batchSize, List<IterInfo> ssiList,
       Map<String,Map<String,String>> ssio, List<ByteBuffer> authorizations, boolean waitForWrites,
       boolean isolated, long readaheadThreshold, TSamplerConfiguration samplerConfig,
-      long batchTimeOut, String classLoaderContext, Map<String,String> executionHints)
+      long batchTimeOut, String classLoaderContext, Map<String,String> executionHints, long busyTimeout)
       throws ThriftSecurityException, NotServingTabletException, TooManyFilesException,
       TSampleNotPresentException, TException {
 
@@ -485,12 +485,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         throw new NotServingTabletException();
       }
 
-      // TODO get from config and/or pass from the thrift client
-      long busyTimeout = 50;
-
       InitialScan is = handler.startScan(tinfo, credentials, extent, range, columns, batchSize,
           ssiList, ssio, authorizations, waitForWrites, isolated, readaheadThreshold, samplerConfig,
-          batchTimeOut, classLoaderContext, executionHints, getScanTabletResolver(si), 50);
+          batchTimeOut, classLoaderContext, executionHints, getScanTabletResolver(si), busyTimeout);
       si.setScanId(is.getScanID());
       LOG.debug("started scan {} for extent {}", si.getScanId(), si.getExtent());
       return is;
@@ -501,12 +498,10 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   @Override
-  public ScanResult continueScan(TInfo tinfo, long scanID) throws NoSuchScanIDException,
+  public ScanResult continueScan(TInfo tinfo, long scanID, long busyTimeout) throws NoSuchScanIDException,
       NotServingTabletException, TooManyFilesException, TSampleNotPresentException, TException {
     LOG.debug("continue scan: {}", scanID);
     try {
-      // TODO get from config and/or pass from the thrift client
-      long busyTimeout = 50;
       return handler.continueScan(tinfo, scanID, busyTimeout);
     } catch (Exception e) {
       throw e;
@@ -524,7 +519,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       Map<TKeyExtent,List<TRange>> tbatch, List<TColumn> tcolumns, List<IterInfo> ssiList,
       Map<String,Map<String,String>> ssio, List<ByteBuffer> authorizations, boolean waitForWrites,
       TSamplerConfiguration tSamplerConfig, long batchTimeOut, String contextArg,
-      Map<String,String> executionHints)
+      Map<String,String> executionHints, long busyTimeout)
       throws ThriftSecurityException, TSampleNotPresentException, TException {
 
     if (tbatch.size() == 0) {
@@ -558,12 +553,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     try {
       ScanSession.TabletResolver tabletResolver = getBatchScanTabletResolver(tablets);
 
-      // TODO get from config and/or pass from the thrift client
-      long busyTimeout = 50;
-
       InitialMultiScan ims = handler.startMultiScan(tinfo, credentials, tcolumns, ssiList, batch,
           ssio, authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg,
-          executionHints, tabletResolver, 50);
+          executionHints, tabletResolver, busyTimeout);
       si.setScanId(ims.getScanID());
       LOG.debug("started scan: {}", si.getScanId());
       return ims;
@@ -573,12 +565,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   @Override
-  public MultiScanResult continueMultiScan(TInfo tinfo, long scanID)
+  public MultiScanResult continueMultiScan(TInfo tinfo, long scanID, long busyTimeout)
       throws NoSuchScanIDException, TSampleNotPresentException, TException {
     LOG.debug("continue multi scan: {}", scanID);
-
-    // TODO get from config and/or pass from the thrift client
-    long busyTimeout = 50;
 
     return handler.continueMultiScan(tinfo, scanID, busyTimeout);
   }

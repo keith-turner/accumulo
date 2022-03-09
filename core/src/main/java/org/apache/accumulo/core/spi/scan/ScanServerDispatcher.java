@@ -19,10 +19,7 @@
 package org.apache.accumulo.core.spi.scan;
 
 import java.time.Duration;
-import java.util.Collection;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
+import java.util.*;
 
 import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
@@ -70,10 +67,6 @@ public interface ScanServerDispatcher {
     Result getResult();
 
     ScanServerDispatcher.Action getAction();
-
-    String getServer();
-
-    TabletId getTablet();
   }
 
   public interface ScanAttempts {
@@ -97,22 +90,90 @@ public interface ScanServerDispatcher {
     ScanAttempts getScanAttempts();
   }
 
-  public enum Action {
-    WAIT, USE_SCAN_SERVER, USE_TABLET_SERVER,
-    // TODO remove... leaving here now to help think through things
-    // USE_FILES ... thinking about this possibility made me change names from scan server specific
-    // to more general eventual consistent handling
+  public static abstract class Action {
+
+    private final String server;
+    private final Collection<TabletId> tablets;
+
+    protected Action(String server, Collection<TabletId> tablets) {
+      Preconditions.checkArgument(tablets != null && !tablets.isEmpty());
+      this.server = Objects.requireNonNull(server);
+      this.tablets = tablets;
+    }
+
+    public String getServer() {
+      return server;
+    }
+
+    public Collection<TabletId> getTablets() {
+      return tablets;
+    }
+
+    @Override public boolean equals(Object o) {
+      if (this == o)
+        return true;
+      if (o == null || getClass() != o.getClass())
+        return false;
+      Action action = (Action) o;
+      return server.equals(action.server) && tablets.equals(action.tablets);
+    }
+
+    @Override public int hashCode() {
+      return Objects.hash(server, tablets);
+    }
   }
+
+  public static class UseScanServerAction extends Action {
+
+    private final Duration delay;
+    private final Duration busyTimeout;
+
+    public UseScanServerAction(String server, Collection<TabletId> tablets, Duration delay, Duration busyTimeout) {
+      super(server, tablets);
+      this.delay = delay;
+      this.busyTimeout = busyTimeout;
+    }
+
+    public Duration getDelay(){
+      return delay;
+    }
+
+    public Duration getBusyTimeout(){
+      return busyTimeout;
+    }
+  }
+
+  public static class UseTserverAction extends Action {
+    public UseTserverAction(String server, Collection<TabletId> tablets) {
+      super(server, tablets);
+    }
+  }
+
 
   // TODO need a better name.. this interface is used to communicate what actions the plugin would
   // like Accumulo to take for the scan... maybe EcScanActions
-  public interface ScanServerDispatcherResults {
+  public interface Actions extends Iterable<Action> {
 
-    Action getAction(TabletId tablet);
+    public Optional<Action> getAction(TabletId tablet);
 
-    String getScanServer(TabletId tablet);
+    public static Actions from(Collection<Action> actions) {
+      return new Actions() {
+        @Override public Iterator<Action> iterator() {
+            return actions.iterator();
+        }
 
-    Duration getDelay(String server);
+        @Override public Optional<Action> getAction(TabletId tablet) {
+            for (Action action : actions) {
+              if(action.getTablets().contains(tablet)){
+                return Optional.of(action);
+              }
+            }
+
+            return Optional.empty();
+        }
+      };
+    }
+
   }
 
   /**
@@ -123,5 +184,5 @@ public interface ScanServerDispatcher {
    *          parameters for the calculation
    * @return results
    */
-  ScanServerDispatcherResults determineActions(DispatcherParameters params);
+  Actions determineActions(DispatcherParameters params);
 }

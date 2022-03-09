@@ -23,15 +23,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import java.io.IOException;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.EnumMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedMap;
-import java.util.SortedSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
@@ -61,13 +53,13 @@ import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.spi.scan.ScanServerDispatcher;
-import org.apache.accumulo.core.spi.scan.ScanServerDispatcher.ScanServerDispatcherResults;
 import org.apache.accumulo.core.tabletserver.thrift.*;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.OpTimer;
 import org.apache.hadoop.io.Text;
+import org.apache.thrift.Option;
 import org.apache.thrift.TApplicationException;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
@@ -118,7 +110,7 @@ public class ThriftScanner {
             scanState.size, scanState.serverSideIteratorList, scanState.serverSideIteratorOptions,
             scanState.authorizations.getAuthorizationsBB(), waitForWrites, scanState.isolated,
             scanState.readaheadThreshold, null, scanState.batchTimeOut, classLoaderContext,
-            scanState.executionHints);
+            scanState.executionHints, 0L);
         if (waitForWrites)
           serversWaitedForWrites.get(ttype).add(server);
 
@@ -495,22 +487,27 @@ public class ThriftScanner {
         }
       };
 
-      ScanServerDispatcherResults actions =
+      ScanServerDispatcher.Actions actions =
           context.getScanServerDispatcher().determineActions(params);
 
       TabletLocation newLoc;
 
-      var action = actions.getAction(tabletId);
+      Optional<ScanServerDispatcher.Action> action = actions.getAction(tabletId);
 
       Duration delay = null;
-
-      if (actions.getAction(tabletId) == ScanServerDispatcher.Action.USE_SCAN_SERVER) {
+      Duration busyTimeout = null;
+      if (!action.isEmpty() && action.get() instanceof ScanServerDispatcher.UseScanServerAction) {
         // TODO what to use for session?
-        newLoc = new TabletLocation(loc.tablet_extent, actions.getScanServer(tabletId), "none");
-        delay = actions.getDelay(actions.getScanServer(tabletId));
+        ScanServerDispatcher.UseScanServerAction ussAction =
+            (ScanServerDispatcher.UseScanServerAction) action.get();
+        newLoc = new TabletLocation(loc.tablet_extent, action.get().getServer(), "none");
+        delay =ussAction.getDelay();
+        busyTimeout = ussAction.getBusyTimeout();
       } else {
         // TODO the delay for the tserver is not being properly handled
         newLoc = loc;
+        delay = Duration.ZERO;
+        busyTimeout = Duration.ZERO;
       }
 
       if (!delay.isZero()) {
@@ -523,26 +520,27 @@ public class ThriftScanner {
       }
 
       try {
-        var ret = scanRpc(newLoc, scanState, context);
-        scanState.scanAttempts.add(action, actions.getScanServer(tabletId),
-            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.SUCCESS, tabletId);
+        //TODO action could be empty
+        var ret = scanRpc(newLoc, scanState, context, busyTimeout.toMillis());
+        scanState.scanAttempts.add(action.get(),
+            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.SUCCESS);
         return ret;
       } catch (ScanServerBusyException ssbe) {
-        scanState.scanAttempts.add(action, actions.getScanServer(tabletId),
-            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.BUSY, tabletId);
+        scanState.scanAttempts.add(action.get(),
+            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.BUSY);
         throw ssbe;
       } catch (Exception e) {
-        scanState.scanAttempts.add(action, actions.getScanServer(tabletId),
-            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.ERROR, tabletId);
+        scanState.scanAttempts.add(action.get(),
+            System.currentTimeMillis(), ScanServerDispatcher.ScanAttempt.Result.ERROR);
         throw e;
       }
     } else {
-      return scanRpc(loc, scanState, context);
+      return scanRpc(loc, scanState, context, 0L);
     }
   }
 
   private static List<KeyValue> scanRpc(TabletLocation loc, ScanState scanState,
-      ClientContext context) throws AccumuloSecurityException, NotServingTabletException,
+      ClientContext context, long busyTimeout) throws AccumuloSecurityException, NotServingTabletException,
       TException, NoSuchScanIDException, TooManyFilesException, TSampleNotPresentException,
       ScanServerBusyException {
 
@@ -586,7 +584,7 @@ public class ThriftScanner {
             scanState.authorizations.getAuthorizationsBB(), waitForWrites, scanState.isolated,
             scanState.readaheadThreshold,
             SamplerConfigurationImpl.toThrift(scanState.samplerConfig), scanState.batchTimeOut,
-            scanState.classLoaderContext, scanState.executionHints);
+            scanState.classLoaderContext, scanState.executionHints, busyTimeout);
         if (waitForWrites)
           serversWaitedForWrites.get(ttype).add(loc.tablet_location);
 
@@ -608,7 +606,7 @@ public class ThriftScanner {
           timer = new OpTimer().start();
         }
 
-        sr = client.continueScan(tinfo, scanState.scanID);
+        sr = client.continueScan(tinfo, scanState.scanID, busyTimeout);
         if (!sr.more) {
           client.closeScan(tinfo, scanState.scanID);
           scanState.scanID = null;
