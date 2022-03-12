@@ -98,7 +98,7 @@ public class DefaultEcScanManager implements ScanServerDispatcher {
           numServers = orderedScanServers.size();
         }
 
-        int serverIndex = (hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
+        int serverIndex = Math.abs(hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
         serverToUse = orderedScanServers.get(serverIndex);
 
         if (busyAttempts > MAX_DEPTH) {
