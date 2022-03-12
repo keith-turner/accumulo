@@ -285,7 +285,19 @@ public class ClientContext implements AccumuloClient {
    * @return the list of scan servers
    */
   public List<String> getScanServers() {
-    return this.getZooCache().getChildren(this.getZooKeeperRoot() + Constants.ZSSERVERS);
+    List<String> liveScanServer = new ArrayList<>();
+    String root = this.getZooKeeperRoot() + Constants.ZSSERVERS;
+    var addrs = this.getZooCache().getChildren(root);
+    for (String addr : addrs) {
+      // check to see if the scan server is alive
+      if(!this.getZooCache().getChildren(root+"/"+addr).isEmpty()){
+        liveScanServer.add(addr);
+      }
+    }
+
+    //TODO something should probably clean up the dead scan servers in ZK... or make the top level ZK node an ephemeral node
+
+    return liveScanServer;
   }
 
   /**
