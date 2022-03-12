@@ -101,11 +101,11 @@ public interface ScanServerDispatcher {
       return tablets;
     }
 
-    public String toString(){
-      if(getTablets().size() == 1) {
-        return "tablet:"+getTablets().iterator().next();
+    public String toString() {
+      if (getTablets().size() == 1) {
+        return "tablet:" + getTablets().iterator().next();
       } else {
-        return "#tablets:"+getTablets().size();
+        return "#tablets:" + getTablets().size();
       }
     }
   }
@@ -153,8 +153,9 @@ public interface ScanServerDispatcher {
     }
 
     @Override
-    public String toString(){
-      return this.getClass().getSimpleName()+" server:"+server+" delay:"+delay+" busyTimeout:"+busyTimeout+" "+super.toString();
+    public String toString() {
+      return this.getClass().getSimpleName() + " server:" + server + " delay:" + delay
+          + " busyTimeout:" + busyTimeout + " " + super.toString();
     }
   }
 
@@ -164,8 +165,8 @@ public interface ScanServerDispatcher {
     }
 
     @Override
-    public String toString(){
-      return this.getClass().getSimpleName()+" "+super.toString();
+    public String toString() {
+      return this.getClass().getSimpleName() + " " + super.toString();
     }
   }
 

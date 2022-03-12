@@ -613,9 +613,9 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
     Set<TabletId> tabletsSeen = new HashSet<>();
 
-    if(log.isTraceEnabled()) {
+    if (log.isTraceEnabled()) {
       for (ScanServerDispatcher.Action action : actions) {
-        log.trace("Scan server dispatch action : {}"+action);
+        log.trace("Scan server dispatch action : {}" + action);
       }
     }
 

@@ -88,7 +88,7 @@ public class ScanCommand extends Command {
     }
   }
 
-  protected ConsistencyLevel getConsistency(CommandLine cl){
+  protected ConsistencyLevel getConsistency(CommandLine cl) {
     if (cl.hasOption(scanServerOpt.getOpt())) {
       String arg = cl.getOptionValue(scanServerOpt.getOpt());
       return ConsistencyLevel.valueOf(arg.toUpperCase());

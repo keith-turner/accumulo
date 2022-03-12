@@ -290,12 +290,13 @@ public class ClientContext implements AccumuloClient {
     var addrs = this.getZooCache().getChildren(root);
     for (String addr : addrs) {
       // check to see if the scan server is alive
-      if(!this.getZooCache().getChildren(root+"/"+addr).isEmpty()){
+      if (!this.getZooCache().getChildren(root + "/" + addr).isEmpty()) {
         liveScanServer.add(addr);
       }
     }
 
-    //TODO something should probably clean up the dead scan servers in ZK... or make the top level ZK node an ephemeral node
+    // TODO something should probably clean up the dead scan servers in ZK... or make the top level
+    // ZK node an ephemeral node
 
     return liveScanServer;
   }
