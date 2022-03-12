@@ -143,11 +143,21 @@ public interface ScanServerDispatcher {
     public Duration getBusyTimeout() {
       return busyTimeout;
     }
+
+    @Override
+    public String toString(){
+      return this.getClass().getSimpleName()+" server:"+server+" delay:"+delay+" busyTimeout:"+busyTimeout+" tablets:"+getTablets();
+    }
   }
 
   public static class UseTserverAction extends Action {
     public UseTserverAction(Collection<TabletId> tablets) {
       super(tablets);
+    }
+
+    @Override
+    public String toString(){
+      return this.getClass().getSimpleName()+" tablets:"+getTablets();
     }
   }
 

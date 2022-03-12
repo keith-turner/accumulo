@@ -613,6 +613,12 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
     Set<TabletId> tabletsSeen = new HashSet<>();
 
+    if(log.isTraceEnabled()) {
+      for (ScanServerDispatcher.Action action : actions) {
+        log.trace("Scan server dispatch action : {}"+action);
+      }
+    }
+
     for (ScanServerDispatcher.Action action : actions) {
       if (action instanceof ScanServerDispatcher.UseScanServerAction) {
         var ussAction = (ScanServerDispatcher.UseScanServerAction) action;
