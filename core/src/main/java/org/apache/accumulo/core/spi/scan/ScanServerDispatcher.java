@@ -100,6 +100,14 @@ public interface ScanServerDispatcher {
     public Collection<TabletId> getTablets() {
       return tablets;
     }
+
+    public String toString(){
+      if(getTablets().size() == 1) {
+        return "tablet:"+getTablets().iterator().next();
+      } else {
+        return "#tablets:"+getTablets().size();
+      }
+    }
   }
 
   public static class UseScanServerAction extends Action {
@@ -146,7 +154,7 @@ public interface ScanServerDispatcher {
 
     @Override
     public String toString(){
-      return this.getClass().getSimpleName()+" server:"+server+" delay:"+delay+" busyTimeout:"+busyTimeout+" tablets:"+getTablets();
+      return this.getClass().getSimpleName()+" server:"+server+" delay:"+delay+" busyTimeout:"+busyTimeout+" "+super.toString();
     }
   }
 
@@ -157,7 +165,7 @@ public interface ScanServerDispatcher {
 
     @Override
     public String toString(){
-      return this.getClass().getSimpleName()+" tablets:"+getTablets();
+      return this.getClass().getSimpleName()+" "+super.toString();
     }
   }
 
