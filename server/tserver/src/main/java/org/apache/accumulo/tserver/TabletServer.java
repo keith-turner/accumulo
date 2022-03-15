@@ -511,12 +511,12 @@ public class TabletServer extends AbstractServer {
     Entry<KeyExtent,TabletData> first = tabletInfo.firstEntry();
     TabletResourceManager newTrm0 = resourceManager.createTabletResourceManager(first.getKey(),
         getTableConfiguration(first.getKey()));
-    newTablets[0] = new Tablet(TabletServer.this, first.getKey(), newTrm0, first.getValue());
+    newTablets[0] = new Tablet(TabletServer.this, first.getKey(), newTrm0, first.getValue(), false);
 
     Entry<KeyExtent,TabletData> last = tabletInfo.lastEntry();
     TabletResourceManager newTrm1 = resourceManager.createTabletResourceManager(last.getKey(),
         getTableConfiguration(last.getKey()));
-    newTablets[1] = new Tablet(TabletServer.this, last.getKey(), newTrm1, last.getValue());
+    newTablets[1] = new Tablet(TabletServer.this, last.getKey(), newTrm1, last.getValue(), false);
 
     // roll tablet stats over into tablet server's statsKeeper object as
     // historical data
@@ -787,8 +787,8 @@ public class TabletServer extends AbstractServer {
       throw new RuntimeException(e);
     }
 
-    ThreadPoolExecutor distWorkQThreadPool =
-        ThreadPools.createExecutorService(getConfiguration(), Property.TSERV_WORKQ_THREADS, true);
+    ThreadPoolExecutor distWorkQThreadPool = ThreadPools.getServerThreadPools()
+        .createExecutorService(getConfiguration(), Property.TSERV_WORKQ_THREADS, true);
 
     bulkFailedCopyQ =
         new DistributedWorkQueue(getContext().getZooKeeperRoot() + Constants.ZBULK_FAILED_COPYQ,
@@ -822,8 +822,8 @@ public class TabletServer extends AbstractServer {
 
     int tabletCheckFrequency = 30 + random.nextInt(31); // random 30-60 minute delay
     // Periodically check that metadata of tablets matches what is held in memory
-    ThreadPools.watchCriticalScheduledTask(
-        ThreadPools.createGeneralScheduledExecutorService(aconf).scheduleWithFixedDelay(() -> {
+    ThreadPools.watchCriticalScheduledTask(ThreadPools.getServerThreadPools()
+        .createGeneralScheduledExecutorService(aconf).scheduleWithFixedDelay(() -> {
           final SortedMap<KeyExtent,Tablet> onlineTabletsSnapshot = onlineTablets.snapshot();
 
           Map<KeyExtent,Long> updateCounts = new HashMap<>();
@@ -967,7 +967,7 @@ public class TabletServer extends AbstractServer {
     }
 
     // Start the pool to handle outgoing replications
-    final ThreadPoolExecutor replicationThreadPool = ThreadPools
+    final ThreadPoolExecutor replicationThreadPool = ThreadPools.getServerThreadPools()
         .createExecutorService(getConfiguration(), Property.REPLICATION_WORKER_THREADS, false);
     replWorker.setExecutor(replicationThreadPool);
     replWorker.run();
