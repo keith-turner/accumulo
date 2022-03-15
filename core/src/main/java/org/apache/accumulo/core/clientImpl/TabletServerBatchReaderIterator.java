@@ -297,6 +297,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
       log.trace("Failed to execute multiscans against {} tablets, retrying...", failures.size());
 
     try {
+      // TODO need to reconcile this with any delay coming from the ScanServerDispatcher
       Thread.sleep(failSleepTime);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();

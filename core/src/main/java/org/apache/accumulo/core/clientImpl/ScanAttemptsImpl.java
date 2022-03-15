@@ -68,6 +68,8 @@ public class ScanAttemptsImpl {
         Comparator.comparingLong(ScanAttempt::getTime).reversed()
             .thenComparing(ScanAttempt::getResult).thenComparing(ScanAttempt::hashCode);
 
+    // TODO the requestedAction is not considered in hashCode, equals, or compareTo. Can probably replace the ScanAttempt::hashCode with the requestedAction, but need to make that comparable
+
     @Override
     public int hashCode() {
       final int prime = 31;
