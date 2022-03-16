@@ -20,12 +20,8 @@ package org.apache.accumulo.core.spi.scan;
 
 import java.time.Duration;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
-import java.util.SortedSet;
 import java.util.function.Supplier;
 
 import org.apache.accumulo.core.data.TabletId;
@@ -61,24 +57,18 @@ public interface ScanServerDispatcher {
 
   // this object is used to communicate what the previous actions were attempted, when they were
   // attempted, and the result of the attempt
-  interface ScanAttempt extends Comparable<ScanAttempt> {
+  interface ScanAttempt {
 
     // represents reasons that previous attempts to scan failed
     enum Result {
-      BUSY, IO_ERROR, ERROR, SUCCESS
+      BUSY, ERROR
     }
 
-    long getTime();
+    String getServer();
+
+    long getEndTime();
 
     Result getResult();
-
-    ScanServerDispatcher.Action getAction();
-  }
-
-  public interface ScanAttempts {
-    Collection<ScanAttempt> all();
-
-    SortedSet<ScanAttempt> forTablet(TabletId tablet);
   }
 
   public interface DispatcherParameters {
@@ -91,46 +81,24 @@ public interface ScanServerDispatcher {
     /**
      * @return scan attempt information (TODO: how is this used?)
      */
-    ScanAttempts getScanAttempts();
+    Collection<? extends ScanAttempt> getAttempts(TabletId tabletId);
   }
 
-  public static abstract class Action {
-
-    private final Collection<TabletId> tablets;
-
-    protected Action(Collection<TabletId> tablets) {
-      Preconditions.checkArgument(tablets != null && !tablets.isEmpty());
-      this.tablets = tablets;
-    }
-
-    public Collection<TabletId> getTablets() {
-      return tablets;
-    }
-
-    public String toString() {
-      if (getTablets().size() == 1) {
-        return "tablet:" + getTablets().iterator().next();
-      } else {
-        return "#tablets:" + getTablets().size();
-      }
-    }
-  }
-
-  public static class UseScanServerAction extends Action {
-
-    private final String server;
-    private final Duration delay;
-    private final Duration busyTimeout;
+  public interface Actions {
 
     /**
-     *
-     * @param server
-     *          The scan server address
-     * @param tablets
-     *          The tablets to scan at the given scan server
-     * @param delay
-     *          The amount of time to delay on the client side before trying to do the scan.
-     * @param busyTimeout
+     * @return what scan server to use for a given tablet.  Returning null indicates the tablet server should be used for this tablet.
+     */
+    String getScanServer(TabletId tabletId);
+
+    /**
+     * @return
+     *          The amount of time to wait on the client side before starting to contact servers.  Return  {@link Duration#ZERO} if no client side wait is desired.
+     */
+    public Duration getDelay();
+
+    /**
+     * @return
      *          The amount of time to wait for a scan to start on the server side before reporting
      *          busy. For example if a scan request is sent to scan server with a busy timeout of
      *          50ms and the scan has not started running within that time then the scan server will
@@ -138,68 +106,7 @@ public interface ScanServerDispatcher {
      *          it will never report back busy. Setting a busy timeout that is &le; 0 means that it
      *          will wait indefinitely on the server side for the task to start.
      */
-    public UseScanServerAction(String server, Collection<TabletId> tablets, Duration delay,
-        Duration busyTimeout) {
-      super(tablets);
-      this.server = Objects.requireNonNull(server);
-      this.delay = delay;
-      this.busyTimeout = busyTimeout;
-    }
-
-    public String getServer() {
-      return server;
-    }
-
-    public Duration getDelay() {
-      return delay;
-    }
-
-    public Duration getBusyTimeout() {
-      return busyTimeout;
-    }
-
-    @Override
-    public String toString() {
-      return this.getClass().getSimpleName() + " server:" + server + " delay:" + delay
-          + " busyTimeout:" + busyTimeout + " " + super.toString();
-    }
-  }
-
-  public static class UseTserverAction extends Action {
-    public UseTserverAction(Collection<TabletId> tablets) {
-      super(tablets);
-    }
-
-    @Override
-    public String toString() {
-      return this.getClass().getSimpleName() + " " + super.toString();
-    }
-  }
-
-  public interface Actions extends Iterable<Action> {
-
-    public Optional<Action> getAction(TabletId tablet);
-
-    public static Actions from(Collection<Action> actions) {
-      return new Actions() {
-        @Override
-        public Iterator<Action> iterator() {
-          return actions.iterator();
-        }
-
-        @Override
-        public Optional<Action> getAction(TabletId tablet) {
-          for (Action action : actions) {
-            if (action.getTablets().contains(tablet)) {
-              return Optional.of(action);
-            }
-          }
-
-          return Optional.empty();
-        }
-      };
-    }
-
+    public Duration getBusyTimeout();
   }
 
   /**

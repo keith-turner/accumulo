@@ -23,16 +23,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import java.io.IOException;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.EnumMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.SortedMap;
-import java.util.SortedSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
@@ -484,19 +475,19 @@ public class ThriftScanner {
     if (scanState.runOnScanServer) {
       var tabletId = new TabletIdImpl(loc.tablet_extent);
 
-      var params = new ScanServerDispatcher.DispatcherParameters() {
+      // obtain a snapshot once and always use it
+      var attempts = scanState.scanAttempts.snapshot();
 
-        // obtain a snapshot once and always use it
-        ScanServerDispatcher.ScanAttempts attempts = scanState.scanAttempts.snapshot();
+      var params = new ScanServerDispatcher.DispatcherParameters() {
 
         @Override
         public List<TabletId> getTablets() {
           return List.of(tabletId);
         }
 
-        @Override
-        public ScanServerDispatcher.ScanAttempts getScanAttempts() {
-          return attempts;
+        @Override public Collection<? extends ScanServerDispatcher.ScanAttempt> getAttempts(
+            TabletId tabletId) {
+          return attempts.getOrDefault(tabletId, Set.of());
         }
       };
 
@@ -505,18 +496,14 @@ public class ThriftScanner {
 
       TabletLocation newLoc;
 
-      Optional<ScanServerDispatcher.Action> action = actions.getAction(tabletId);
-
       Duration delay = null;
       Duration busyTimeout = null;
-      if (!action.isEmpty() && action.get() instanceof ScanServerDispatcher.UseScanServerAction) {
+      String scanServer = actions.getScanServer(tabletId);
+      if (scanServer != null) {
         // TODO what to use for session?
-        ScanServerDispatcher.UseScanServerAction ussAction =
-            (ScanServerDispatcher.UseScanServerAction) action.get();
-        newLoc = new TabletLocation(loc.tablet_extent,
-            ((ScanServerDispatcher.UseScanServerAction) action.get()).getServer(), "none");
-        delay = ussAction.getDelay();
-        busyTimeout = ussAction.getBusyTimeout();
+        newLoc = new TabletLocation(loc.tablet_extent, scanServer, "none");
+        delay = actions.getDelay();
+        busyTimeout = actions.getBusyTimeout();
       } else {
         // TODO the delay for the tserver is not being properly handled
         newLoc = loc;
@@ -533,19 +520,16 @@ public class ThriftScanner {
         }
       }
 
+      var reporter = scanState.scanAttempts.createReporter(newLoc.tablet_location, tabletId);
+
       try {
-        // TODO action could be empty
         var ret = scanRpc(newLoc, scanState, context, busyTimeout.toMillis());
-        scanState.scanAttempts.add(action.get(), System.currentTimeMillis(),
-            ScanServerDispatcher.ScanAttempt.Result.SUCCESS);
         return ret;
       } catch (ScanServerBusyException ssbe) {
-        scanState.scanAttempts.add(action.get(), System.currentTimeMillis(),
-            ScanServerDispatcher.ScanAttempt.Result.BUSY);
+        reporter.report(ScanServerDispatcher.ScanAttempt.Result.BUSY);
         throw ssbe;
       } catch (Exception e) {
-        scanState.scanAttempts.add(action.get(), System.currentTimeMillis(),
-            ScanServerDispatcher.ScanAttempt.Result.ERROR);
+        reporter.report(ScanServerDispatcher.ScanAttempt.Result.ERROR);
         throw e;
       }
     } else {

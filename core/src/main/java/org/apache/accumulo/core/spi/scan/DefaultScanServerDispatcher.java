@@ -38,7 +38,7 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
 
   private static final SecureRandom RANDOM = new SecureRandom();
   private static final long INITIAL_SLEEP_TIME = 100L;
-  private static final long MAX_SLEEP_TIME = 300000L;
+  private static final long MAX_SLEEP_TIME = Duration.ofMinutes(30).toMillis();
   private final int INITIAL_SERVERS = 3;
   private final int MAX_DEPTH = 3;
 
@@ -51,21 +51,6 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
     defaultBusyTimeout = Duration.of(33, ChronoUnit.MILLIS);
   }
 
-  private String getLastSuccessfulScanServer(SortedSet<ScanAttempt> attempts) {
-    if (attempts.isEmpty())
-      return null;
-    var last = attempts.last();
-    if (last.getResult() != ScanAttempt.Result.SUCCESS)
-      return null;
-    var action = last.getAction();
-    if (action instanceof UseScanServerAction) {
-      return ((UseScanServerAction) action).getServer();
-    } else {
-      return null;
-    }
-
-  }
-
   @Override
   public Actions determineActions(DispatcherParameters params) {
 
@@ -73,25 +58,35 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
     Collections.sort(orderedScanServers);
 
     if (orderedScanServers.isEmpty()) {
-      return Actions.from(List.of(new UseTserverAction(params.getTablets())));
+      return new Actions() {
+        @Override public String getScanServer(TabletId tabletId) {
+          return null;
+        }
+
+        @Override public Duration getDelay() {
+          return Duration.ZERO;
+        }
+
+        @Override public Duration getBusyTimeout() {
+          return Duration.ZERO;
+        }
+      };
     }
 
-    Map<String,Long> sleepTimes = new HashMap<>();
-    Map<String,List<TabletId>> serversTablets = new HashMap<>();
+   Map<TabletId, String> serversToUse = new HashMap<>();
+
+    long maxBusyAttempts = 0;
 
     for (TabletId tablet : params.getTablets()) {
 
-      SortedSet<ScanAttempt> attempts = params.getScanAttempts().forTablet(tablet);
+      // TODO handle io errors
+      long busyAttempts = params.getAttempts(tablet).stream().filter(sa -> sa.getResult() == ScanAttempt.Result.BUSY).count();
 
-      long sleepTime = 0;
-      String serverToUse = getLastSuccessfulScanServer(attempts);
+      maxBusyAttempts = Math.max(maxBusyAttempts, busyAttempts);
 
-      if (serverToUse == null) {
+      String serverToUse = null;
+
         int hashCode = hashTablet(tablet);
-
-        // TODO handle io errors
-        int busyAttempts = (int) attempts.stream()
-            .filter(scanAttempt -> scanAttempt.getResult() == ScanAttempt.Result.BUSY).count();
 
         int numServers;
 
@@ -105,30 +100,36 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
 
         int serverIndex =
             Math.abs(hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
+
+        // TODO could check if errors were seen on this server in past attempts
         serverToUse = orderedScanServers.get(serverIndex);
 
-        if (busyAttempts > MAX_DEPTH) {
-          sleepTime = (long) (INITIAL_SLEEP_TIME * Math.pow(2, busyAttempts - (MAX_DEPTH + 1)));
-          sleepTime = Math.min(sleepTime, MAX_SLEEP_TIME);
-        }
-      }
-
-      serversTablets.computeIfAbsent(serverToUse, k -> new ArrayList<>()).add(tablet);
-      sleepTimes.merge(serverToUse, sleepTime, Long::max);
+      serversToUse.put(tablet, serverToUse);
     }
 
-    ArrayList<Action> actions = new ArrayList<>();
+    //TODO make configurable
+    long busyTimeout = 33L;
 
-    serversTablets.forEach((server, tablets) -> {
-      long sleepTime = sleepTimes.getOrDefault(server, 0L);
-      Duration busyTimeout = defaultBusyTimeout;
-      if (sleepTime > 0) {
-        busyTimeout = Duration.of(sleepTime, ChronoUnit.MILLIS);
+    if (maxBusyAttempts > MAX_DEPTH) {
+      busyTimeout = (long) (INITIAL_SLEEP_TIME * Math.pow(2, maxBusyAttempts - (MAX_DEPTH + 1)));
+      busyTimeout = Math.min(busyTimeout, MAX_SLEEP_TIME);
+    }
+
+    Duration busyTO = Duration.ofMillis(busyTimeout);
+
+    return new Actions() {
+      @Override public String getScanServer(TabletId tabletId) {
+        return serversToUse.get(tabletId);
       }
-      actions.add(new UseScanServerAction(server, tablets, Duration.ZERO, busyTimeout));
-    });
 
-    return Actions.from(actions);
+      @Override public Duration getDelay() {
+        return Duration.ZERO;
+      }
+
+      @Override public Duration getBusyTimeout() {
+        return busyTO;
+      }
+    };
   }
 
   private int hashTablet(TabletId tablet) {
