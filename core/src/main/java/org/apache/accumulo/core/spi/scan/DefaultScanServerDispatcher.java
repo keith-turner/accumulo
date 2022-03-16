@@ -28,13 +28,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import com.google.common.base.Suppliers;
 import org.apache.accumulo.core.data.TabletId;
 
+import com.google.common.base.Suppliers;
 import com.google.common.hash.Hashing;
 
 public class DefaultScanServerDispatcher implements ScanServerDispatcher {
@@ -63,60 +62,64 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
   @Override
   public Actions determineActions(DispatcherParameters params) {
 
-    // only get this once and use it for the entire method so that the method uses a consistent snapshot
+    // only get this once and use it for the entire method so that the method uses a consistent
+    // snapshot
     List<String> orderedScanServers = orderedScanServersSupplier.get();
 
     if (orderedScanServers.isEmpty()) {
       return new Actions() {
-        @Override public String getScanServer(TabletId tabletId) {
+        @Override
+        public String getScanServer(TabletId tabletId) {
           return null;
         }
 
-        @Override public Duration getDelay() {
+        @Override
+        public Duration getDelay() {
           return Duration.ZERO;
         }
 
-        @Override public Duration getBusyTimeout() {
+        @Override
+        public Duration getBusyTimeout() {
           return Duration.ZERO;
         }
       };
     }
 
-   Map<TabletId, String> serversToUse = new HashMap<>();
+    Map<TabletId,String> serversToUse = new HashMap<>();
 
     long maxBusyAttempts = 0;
 
     for (TabletId tablet : params.getTablets()) {
 
       // TODO handle io errors
-      long busyAttempts = params.getAttempts(tablet).stream().filter(sa -> sa.getResult() == ScanAttempt.Result.BUSY).count();
+      long busyAttempts = params.getAttempts(tablet).stream()
+          .filter(sa -> sa.getResult() == ScanAttempt.Result.BUSY).count();
 
       maxBusyAttempts = Math.max(maxBusyAttempts, busyAttempts);
 
       String serverToUse = null;
 
-        int hashCode = hashTablet(tablet);
+      int hashCode = hashTablet(tablet);
 
-        int numServers;
+      int numServers;
 
-        if (busyAttempts < MAX_DEPTH) {
-          numServers = (int) Math.round(
-              INITIAL_SERVERS * Math.pow(orderedScanServers.size() / (double) INITIAL_SERVERS,
-                  busyAttempts / (double) MAX_DEPTH));
-        } else {
-          numServers = orderedScanServers.size();
-        }
+      if (busyAttempts < MAX_DEPTH) {
+        numServers = (int) Math
+            .round(INITIAL_SERVERS * Math.pow(orderedScanServers.size() / (double) INITIAL_SERVERS,
+                busyAttempts / (double) MAX_DEPTH));
+      } else {
+        numServers = orderedScanServers.size();
+      }
 
-        int serverIndex =
-            Math.abs(hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
+      int serverIndex = Math.abs(hashCode + RANDOM.nextInt(numServers)) % orderedScanServers.size();
 
-        // TODO could check if errors were seen on this server in past attempts
-        serverToUse = orderedScanServers.get(serverIndex);
+      // TODO could check if errors were seen on this server in past attempts
+      serverToUse = orderedScanServers.get(serverIndex);
 
       serversToUse.put(tablet, serverToUse);
     }
 
-    //TODO make configurable
+    // TODO make configurable
     long busyTimeout = 33L;
 
     if (maxBusyAttempts > MAX_DEPTH) {
@@ -127,15 +130,18 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
     Duration busyTO = Duration.ofMillis(busyTimeout);
 
     return new Actions() {
-      @Override public String getScanServer(TabletId tabletId) {
+      @Override
+      public String getScanServer(TabletId tabletId) {
         return serversToUse.get(tabletId);
       }
 
-      @Override public Duration getDelay() {
+      @Override
+      public Duration getDelay() {
         return Duration.ZERO;
       }
 
-      @Override public Duration getBusyTimeout() {
+      @Override
+      public Duration getBusyTimeout() {
         return busyTO;
       }
     };

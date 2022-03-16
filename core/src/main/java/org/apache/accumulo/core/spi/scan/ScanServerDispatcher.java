@@ -87,24 +87,24 @@ public interface ScanServerDispatcher {
   public interface Actions {
 
     /**
-     * @return what scan server to use for a given tablet.  Returning null indicates the tablet server should be used for this tablet.
+     * @return what scan server to use for a given tablet. Returning null indicates the tablet
+     *         server should be used for this tablet.
      */
     String getScanServer(TabletId tabletId);
 
     /**
-     * @return
-     *          The amount of time to wait on the client side before starting to contact servers.  Return  {@link Duration#ZERO} if no client side wait is desired.
+     * @return The amount of time to wait on the client side before starting to contact servers.
+     *         Return {@link Duration#ZERO} if no client side wait is desired.
      */
     public Duration getDelay();
 
     /**
-     * @return
-     *          The amount of time to wait for a scan to start on the server side before reporting
-     *          busy. For example if a scan request is sent to scan server with a busy timeout of
-     *          50ms and the scan has not started running within that time then the scan server will
-     *          not ever run the scan and it will report back busy. If the scan starts running, then
-     *          it will never report back busy. Setting a busy timeout that is &le; 0 means that it
-     *          will wait indefinitely on the server side for the task to start.
+     * @return The amount of time to wait for a scan to start on the server side before reporting
+     *         busy. For example if a scan request is sent to scan server with a busy timeout of
+     *         50ms and the scan has not started running within that time then the scan server will
+     *         not ever run the scan and it will report back busy. If the scan starts running, then
+     *         it will never report back busy. Setting a busy timeout that is &le; 0 means that it
+     *         will wait indefinitely on the server side for the task to start.
      */
     public Duration getBusyTimeout();
   }

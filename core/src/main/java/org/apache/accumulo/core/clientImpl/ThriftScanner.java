@@ -480,22 +480,29 @@ public class ThriftScanner {
 
       var tabletId = new TabletIdImpl(loc.tablet_extent);
 
-      if(scanState.scanID != null && scanState.prevLoc != null && scanState.prevLoc.tablet_session.equals("scan_server") && scanState.prevLoc.tablet_extent.equals(loc.tablet_extent)) {
-        // this is the case of continuing a scan on a scan server for the same tablet, so lets not call the scan server dispatcher and just go back to the previous scan server
+      if (scanState.scanID != null && scanState.prevLoc != null
+          && scanState.prevLoc.tablet_session.equals("scan_server")
+          && scanState.prevLoc.tablet_extent.equals(loc.tablet_extent)) {
+        // this is the case of continuing a scan on a scan server for the same tablet, so lets not
+        // call the scan server dispatcher and just go back to the previous scan server
         newLoc = scanState.prevLoc;
-        log.trace("For tablet {} continuing scan on scan server {} without consulting scan server dispatcher, using busyTimeout {}", loc.tablet_extent, newLoc.tablet_location, scanState.busyTimeout);
+        log.trace(
+            "For tablet {} continuing scan on scan server {} without consulting scan server dispatcher, using busyTimeout {}",
+            loc.tablet_extent, newLoc.tablet_location, scanState.busyTimeout);
       } else {
         // obtain a snapshot once and always use it
         var attempts = scanState.scanAttempts.snapshot();
 
         var params = new ScanServerDispatcher.DispatcherParameters() {
 
-          @Override public List<TabletId> getTablets() {
+          @Override
+          public List<TabletId> getTablets() {
             return List.of(tabletId);
           }
 
-          @Override public Collection<? extends ScanServerDispatcher.ScanAttempt> getAttempts(
-              TabletId tabletId) {
+          @Override
+          public Collection<? extends ScanServerDispatcher.ScanAttempt>
+              getAttempts(TabletId tabletId) {
             return attempts.getOrDefault(tabletId, Set.of());
           }
         };
@@ -510,7 +517,9 @@ public class ThriftScanner {
           newLoc = new TabletLocation(loc.tablet_extent, scanServer, "scan_server");
           delay = actions.getDelay();
           scanState.busyTimeout = actions.getBusyTimeout();
-          log.trace("For tablet {} scan server dispatcher chose scan_server:{} delay:{} busyTimeout:{}", loc.tablet_extent, scanServer, delay, scanState.busyTimeout);
+          log.trace(
+              "For tablet {} scan server dispatcher chose scan_server:{} delay:{} busyTimeout:{}",
+              loc.tablet_extent, scanServer, delay, scanState.busyTimeout);
         } else {
           newLoc = loc;
           delay = actions.getDelay();

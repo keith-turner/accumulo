@@ -20,18 +20,14 @@ package org.apache.accumulo.core.clientImpl;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.spi.scan.ScanServerDispatcher;
 import org.apache.accumulo.core.spi.scan.ScanServerDispatcher.ScanAttempt;
 
-import com.google.common.collect.Sets;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import com.google.common.collect.Collections2;
+import com.google.common.collect.Maps;
 
 public class ScanAttemptsImpl {
 
@@ -49,11 +45,13 @@ public class ScanAttemptsImpl {
       this.time = time;
     }
 
-    @Override public String getServer() {
+    @Override
+    public String getServer() {
       return server;
     }
 
-    @Override public long getEndTime() {
+    @Override
+    public long getEndTime() {
       return time;
     }
 
@@ -72,14 +70,14 @@ public class ScanAttemptsImpl {
 
   }
 
-  private Map<TabletId, Collection<ScanAttemptImpl>> attempts = new ConcurrentHashMap<>();
+  private Map<TabletId,Collection<ScanAttemptImpl>> attempts = new ConcurrentHashMap<>();
   private long mutationCounter = 0;
 
   private AtomicInteger currentIteration = new AtomicInteger(0);
 
   public void add(TabletId tablet, ScanAttempt.Result result, String server, long endTime) {
 
-    ScanAttemptImpl sa = new ScanAttemptImpl(result, server,  endTime);
+    ScanAttemptImpl sa = new ScanAttemptImpl(result, server, endTime);
 
     attempts.computeIfAbsent(tablet, k -> Collections.synchronizedList(new ArrayList<>())).add(sa);
 
@@ -99,19 +97,21 @@ public class ScanAttemptsImpl {
   ScanAttemptReporter createReporter(String server, TabletId tablet) {
     var iteration = currentIteration.get();
     return new ScanAttemptReporter() {
-      @Override public void report(ScanAttempt.Result result) {
+      @Override
+      public void report(ScanAttempt.Result result) {
         add(tablet, result, server, System.currentTimeMillis());
       }
     };
   }
 
-  Map<TabletId, Collection<ScanAttemptImpl>> snapshot() {
+  Map<TabletId,Collection<ScanAttemptImpl>> snapshot() {
     // allows only seeing scan attempt objs that were added before this call
 
     long snapMC;
     synchronized (ScanAttemptsImpl.this) {
       snapMC = mutationCounter;
     }
-    return Maps.transformValues(attempts, tabletAttemptList -> Collections2.filter(tabletAttemptList, sai -> sai.getMutationCount() <= snapMC));
+    return Maps.transformValues(attempts, tabletAttemptList -> Collections2
+        .filter(tabletAttemptList, sai -> sai.getMutationCount() <= snapMC));
   }
 }
