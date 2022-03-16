@@ -498,6 +498,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
       busyTimeout = scanServerData.actions.getBusyTimeout().toMillis();
       reporters = scanServerData.reporters;
       scanServerDispatcherDelay = scanServerData.actions.getDelay();
+      binnedRanges = scanServerData.binnedRanges;
     } else {
       // when there are lots of threads and a few tablet servers
       // it is good to break request to tablet servers up, the
