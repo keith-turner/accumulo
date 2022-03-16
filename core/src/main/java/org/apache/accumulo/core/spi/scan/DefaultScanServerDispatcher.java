@@ -29,7 +29,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedSet;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
+import com.google.common.base.Suppliers;
 import org.apache.accumulo.core.data.TabletId;
 
 import com.google.common.hash.Hashing;
@@ -42,20 +45,26 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
   private final int INITIAL_SERVERS = 3;
   private final int MAX_DEPTH = 3;
 
-  InitParameters init;
-  Duration defaultBusyTimeout;
+  private Supplier<List<String>> orderedScanServersSupplier;
+  private Duration defaultBusyTimeout;
 
   @Override
   public void init(InitParameters params) {
-    init = params;
+    // avoid constantly resorting the scan servers, just do it periodically in case they change
+    orderedScanServersSupplier = Suppliers.memoizeWithExpiration(() -> {
+      List<String> oss = new ArrayList<>(params.getScanServers().get());
+      Collections.sort(oss);
+      return Collections.unmodifiableList(oss);
+    }, 100, TimeUnit.MILLISECONDS);
+
     defaultBusyTimeout = Duration.of(33, ChronoUnit.MILLIS);
   }
 
   @Override
   public Actions determineActions(DispatcherParameters params) {
 
-    List<String> orderedScanServers = new ArrayList<>(init.getScanServers().get());
-    Collections.sort(orderedScanServers);
+    // only get this once and use it for the entire method so that the method uses a consistent snapshot
+    List<String> orderedScanServers = orderedScanServersSupplier.get();
 
     if (orderedScanServers.isEmpty()) {
       return new Actions() {
