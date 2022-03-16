@@ -617,10 +617,6 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
 
     Map<String,Map<KeyExtent,List<Range>>> binnedRanges2 = new HashMap<>();
 
-    if (log.isTraceEnabled()) {
-      log.trace("Scan server dispatch actions : {}" + actions);
-    }
-
     Map<String,ScanAttemptsImpl.ScanAttemptReporter> reporters = new HashMap<>();
 
     for (TabletIdImpl tabletId : tabletIds) {

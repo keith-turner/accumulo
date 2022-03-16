@@ -81,7 +81,7 @@ public class ScanAttemptsImpl {
 
     ScanAttemptImpl sa = new ScanAttemptImpl(result, server,  endTime);
 
-    attempts.computeIfAbsent(tablet, k -> new ConcurrentSkipListSet<>()).add(sa);
+    attempts.computeIfAbsent(tablet, k -> Collections.synchronizedList(new ArrayList<>())).add(sa);
 
     synchronized (this) {
       // now that the scan attempt obj is added to all concurrent data structs, make it visible
