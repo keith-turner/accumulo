@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
+import com.google.common.base.Preconditions;
 import org.apache.accumulo.core.data.TabletId;
 
 import com.google.common.base.Suppliers;
@@ -39,13 +40,14 @@ import com.google.common.hash.Hashing;
 public class DefaultScanServerDispatcher implements ScanServerDispatcher {
 
   private static final SecureRandom RANDOM = new SecureRandom();
-  private static final long INITIAL_SLEEP_TIME = 100L;
-  private static final long MAX_SLEEP_TIME = Duration.ofMinutes(30).toMillis();
-  private final int INITIAL_SERVERS = 3;
-  private final int MAX_DEPTH = 3;
+
+  private Duration initialBusyTimeout;
+  private  Duration maxBusyTimeout;
+
+  private int initialServers;
+  private int maxDepth;
 
   private Supplier<List<String>> orderedScanServersSupplier;
-  private Duration defaultBusyTimeout;
 
   @Override
   public void init(InitParameters params) {
@@ -56,7 +58,17 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
       return Collections.unmodifiableList(oss);
     }, 100, TimeUnit.MILLISECONDS);
 
-    defaultBusyTimeout = Duration.of(33, ChronoUnit.MILLIS);
+    var opts = params.getOptions();
+
+    initialServers = Integer.parseInt(opts.getOrDefault("initialServers","3"));
+    maxDepth = Integer.parseInt(opts.getOrDefault("maxDepth","3"));
+    initialBusyTimeout =  Duration.parse(opts.getOrDefault("initialBusyTimeout","PT0.033S"));
+    maxBusyTimeout =  Duration.parse(opts.getOrDefault("maxBusyTimeout","PT30M"));
+
+    Preconditions.checkArgument(initialServers > 0, "initialServers must be positive : %s", initialServers);
+    Preconditions.checkArgument(maxDepth > 0, "maxDepth must be positive : %s", maxDepth);
+    Preconditions.checkArgument(initialBusyTimeout.compareTo(Duration.ZERO) > 0, "initialBusyTimeout must be positive %s", initialBusyTimeout);
+    Preconditions.checkArgument(maxBusyTimeout.compareTo(Duration.ZERO) > 0, "maxBusyTimeout must be positive %s", maxBusyTimeout);
   }
 
   @Override
@@ -103,10 +115,10 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
 
       int numServers;
 
-      if (busyAttempts < MAX_DEPTH) {
+      if (busyAttempts < maxDepth) {
         numServers = (int) Math
-            .round(INITIAL_SERVERS * Math.pow(orderedScanServers.size() / (double) INITIAL_SERVERS,
-                busyAttempts / (double) MAX_DEPTH));
+            .round(initialServers * Math.pow(orderedScanServers.size() / (double) initialServers,
+                busyAttempts / (double) maxDepth));
       } else {
         numServers = orderedScanServers.size();
       }
@@ -119,12 +131,11 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
       serversToUse.put(tablet, serverToUse);
     }
 
-    // TODO make configurable
-    long busyTimeout = 33L;
+    long busyTimeout = initialBusyTimeout.toMillis();
 
-    if (maxBusyAttempts > MAX_DEPTH) {
-      busyTimeout = (long) (INITIAL_SLEEP_TIME * Math.pow(2, maxBusyAttempts - (MAX_DEPTH + 1)));
-      busyTimeout = Math.min(busyTimeout, MAX_SLEEP_TIME);
+    if (maxBusyAttempts > maxDepth) {
+      busyTimeout = (long) (busyTimeout * Math.pow(2, maxBusyAttempts - (maxDepth + 1)));
+      busyTimeout = Math.min(busyTimeout, maxBusyTimeout.toMillis());
     }
 
     Duration busyTO = Duration.ofMillis(busyTimeout);
