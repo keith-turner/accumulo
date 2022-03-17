@@ -79,6 +79,7 @@ public class ScanAttemptsImpl {
 
     ScanAttemptImpl sa = new ScanAttemptImpl(result, server, endTime);
 
+    // TODO will get concurrent mod exceptions with list w/ iters probably
     attempts.computeIfAbsent(tablet, k -> Collections.synchronizedList(new ArrayList<>())).add(sa);
 
     synchronized (this) {
