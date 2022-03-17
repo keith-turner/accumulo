@@ -378,41 +378,35 @@ public class ClientContext implements AccumuloClient {
         scanServerDispatcher = impl.getDeclaredConstructor().newInstance();
         scanServerDispatcher.init(new ScanServerDispatcher.InitParameters() {
           @Override
-          public Supplier<Map<String,String>> getOptions() {
-            return () -> {
+          public Map<String,String> getOptions() {
               Map<String,String> sserverProps = new HashMap<>();
               ClientProperty
                   .getPrefix(info.getProperties(),
                       ClientProperty.SCAN_SERVER_DISPATCHER_OPTS_PREFIX.getKey())
                   .forEach((k, v) -> {
-                    sserverProps.put(k.toString(), v.toString());
+                    sserverProps.put(k.toString().substring(ClientProperty.SCAN_SERVER_DISPATCHER_OPTS_PREFIX.getKey().length()), v.toString());
                   });
               return sserverProps;
-            };
           }
 
           @Override
-          public Supplier<ServiceEnvironment> getServiceEnv() {
-            return () -> new ServiceEnvironment() {
+          public ServiceEnvironment getServiceEnv() {
+            return new ServiceEnvironment() {
 
-              @Override
-              public String getTableName(TableId tableId) throws TableNotFoundException {
+              @Override public String getTableName(TableId tableId) throws TableNotFoundException {
                 return getTableIdToNameMap().get(tableId);
               }
 
-              @Override
-              public <T> T instantiate(String className, Class<T> base) throws Exception {
+              @Override public <T> T instantiate(String className, Class<T> base) throws Exception {
                 throw new UnsupportedOperationException();
               }
 
-              @Override
-              public <T> T instantiate(TableId tableId, String className, Class<T> base)
+              @Override public <T> T instantiate(TableId tableId, String className, Class<T> base)
                   throws Exception {
                 throw new UnsupportedOperationException();
               }
 
-              @Override
-              public Configuration getConfiguration() {
+              @Override public Configuration getConfiguration() {
                 try {
                   return new ConfigurationImpl(
                       new ConfigurationCopy(instanceOperations().getSystemConfiguration()));
@@ -421,8 +415,7 @@ public class ClientContext implements AccumuloClient {
                 }
               }
 
-              @Override
-              public Configuration getConfiguration(TableId tableId) {
+              @Override public Configuration getConfiguration(TableId tableId) {
                 try {
                   return new ConfigurationImpl(new ConfigurationCopy(
                       tableOperations().getConfiguration(getTableName(tableId))));
@@ -430,7 +423,6 @@ public class ClientContext implements AccumuloClient {
                   throw new RuntimeException("Error getting table configuration", e);
                 }
               }
-
             };
           }
 
