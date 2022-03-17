@@ -22,7 +22,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -31,9 +30,9 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import com.google.common.base.Preconditions;
 import org.apache.accumulo.core.data.TabletId;
 
+import com.google.common.base.Preconditions;
 import com.google.common.base.Suppliers;
 import com.google.common.hash.Hashing;
 
@@ -42,7 +41,7 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private Duration initialBusyTimeout;
-  private  Duration maxBusyTimeout;
+  private Duration maxBusyTimeout;
 
   private int initialServers;
   private int maxDepth;
@@ -60,15 +59,18 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
 
     var opts = params.getOptions();
 
-    initialServers = Integer.parseInt(opts.getOrDefault("initialServers","3"));
-    maxDepth = Integer.parseInt(opts.getOrDefault("maxDepth","3"));
-    initialBusyTimeout =  Duration.parse(opts.getOrDefault("initialBusyTimeout","PT0.033S"));
-    maxBusyTimeout =  Duration.parse(opts.getOrDefault("maxBusyTimeout","PT30M"));
+    initialServers = Integer.parseInt(opts.getOrDefault("initialServers", "3"));
+    maxDepth = Integer.parseInt(opts.getOrDefault("maxDepth", "3"));
+    initialBusyTimeout = Duration.parse(opts.getOrDefault("initialBusyTimeout", "PT0.033S"));
+    maxBusyTimeout = Duration.parse(opts.getOrDefault("maxBusyTimeout", "PT30M"));
 
-    Preconditions.checkArgument(initialServers > 0, "initialServers must be positive : %s", initialServers);
+    Preconditions.checkArgument(initialServers > 0, "initialServers must be positive : %s",
+        initialServers);
     Preconditions.checkArgument(maxDepth > 0, "maxDepth must be positive : %s", maxDepth);
-    Preconditions.checkArgument(initialBusyTimeout.compareTo(Duration.ZERO) > 0, "initialBusyTimeout must be positive %s", initialBusyTimeout);
-    Preconditions.checkArgument(maxBusyTimeout.compareTo(Duration.ZERO) > 0, "maxBusyTimeout must be positive %s", maxBusyTimeout);
+    Preconditions.checkArgument(initialBusyTimeout.compareTo(Duration.ZERO) > 0,
+        "initialBusyTimeout must be positive %s", initialBusyTimeout);
+    Preconditions.checkArgument(maxBusyTimeout.compareTo(Duration.ZERO) > 0,
+        "maxBusyTimeout must be positive %s", maxBusyTimeout);
   }
 
   @Override
