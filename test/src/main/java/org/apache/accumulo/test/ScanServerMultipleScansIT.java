@@ -20,6 +20,7 @@ package org.apache.accumulo.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -51,7 +52,9 @@ import org.apache.hadoop.io.Text;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
+@Tag(MINI_CLUSTER_ONLY)
 public class ScanServerMultipleScansIT extends SharedMiniClusterBase {
 
   private static class ScanServerITConfiguration implements MiniClusterConfigurationCallback {
