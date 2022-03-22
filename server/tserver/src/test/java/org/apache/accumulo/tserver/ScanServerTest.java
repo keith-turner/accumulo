@@ -44,6 +44,7 @@ import org.apache.accumulo.core.dataImpl.thrift.ScanResult;
 import org.apache.accumulo.core.dataImpl.thrift.TColumn;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TRange;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
 import org.apache.accumulo.core.tabletserver.thrift.TSamplerConfiguration;
@@ -100,9 +101,58 @@ public class ScanServerTest {
       return resolver;
     }
 
+    @Override
+    protected boolean insertScanReferences(TabletMetadata tm) {
+      return true;
+    }
+
+    @Override
+    protected void deleteScanReferences(long sessionId, boolean batchScan) {}
+
   }
 
   private ThriftClientHandler handler;
+
+  @Test
+  public void testScan() throws Exception {
+    handler = createMock(ThriftClientHandler.class);
+
+    TInfo tinfo = createMock(TInfo.class);
+    TCredentials tcreds = createMock(TCredentials.class);
+    KeyExtent sextent = createMock(KeyExtent.class);
+    TRange trange = createMock(TRange.class);
+    List<TColumn> tcols = new ArrayList<>();
+    List<IterInfo> titer = new ArrayList<>();
+    Map<String,Map<String,String>> ssio = new HashMap<>();
+    List<ByteBuffer> auths = new ArrayList<>();
+    TSamplerConfiguration tsc = createMock(TSamplerConfiguration.class);
+    String classLoaderContext = new String();
+    Map<String,String> execHints = new HashMap<>();
+    TabletResolver resolver = createMock(TabletResolver.class);
+
+    expect(handler.startScan(tinfo, tcreds, sextent, trange, tcols, 10, titer, ssio, auths, false,
+        false, 10, tsc, 30L, classLoaderContext, execHints, resolver, 0L))
+            .andReturn(new InitialScan(15, null));
+    expect(handler.continueScan(tinfo, 15, 0L)).andReturn(new ScanResult());
+    handler.closeScan(tinfo, 15);
+
+    replay(handler);
+
+    TestScanServer ss = partialMockBuilder(TestScanServer.class).createMock();
+    ss.loadTablet = true;
+    ss.handler = handler;
+    ss.extent = sextent;
+    ss.resolver = resolver;
+    ss.tablets = new HashMap<>();
+
+    TKeyExtent textent = createMock(TKeyExtent.class);
+    InitialScan is = ss.startScan(tinfo, tcreds, textent, trange, tcols, 10, titer, ssio, auths,
+        false, false, 10, tsc, 30L, classLoaderContext, execHints, 0L);
+    assertEquals(15, is.getScanID());
+    ss.continueScan(tinfo, is.getScanID(), 0L);
+    ss.closeScan(tinfo, is.getScanID());
+    verify(handler);
+  }
 
   @Test
   public void testTabletLoadFailure() throws Exception {
@@ -129,7 +179,6 @@ public class ScanServerTest {
     replay(handler);
 
     TestScanServer ss = partialMockBuilder(TestScanServer.class).createMock();
-    ss.maxConcurrentScans = 1;
     ss.loadTablet = false;
     ss.handler = handler;
     ss.tablets = new HashMap<>();
@@ -168,7 +217,6 @@ public class ScanServerTest {
     replay(handler);
 
     TestScanServer ss = partialMockBuilder(TestScanServer.class).createMock();
-    ss.maxConcurrentScans = 1;
     ss.loadTablet = true;
     ss.handler = handler;
     ss.extent = extent;
@@ -206,7 +254,6 @@ public class ScanServerTest {
     replay(handler);
 
     TestScanServer ss = partialMockBuilder(TestScanServer.class).createMock();
-    ss.maxConcurrentScans = 1;
     ss.loadTablet = true;
     ss.handler = handler;
     ss.resolver = resolver;
@@ -242,7 +289,6 @@ public class ScanServerTest {
     replay(handler);
 
     TestScanServer ss = partialMockBuilder(TestScanServer.class).createMock();
-    ss.maxConcurrentScans = 1;
     ss.loadTablet = true;
     ss.resolver = resolver;
     ss.handler = handler;

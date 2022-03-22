@@ -27,12 +27,15 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -62,6 +65,8 @@ import org.apache.accumulo.core.dataImpl.thrift.TSummaryRequest;
 import org.apache.accumulo.core.dataImpl.thrift.UpdateErrors;
 import org.apache.accumulo.core.file.blockfile.cache.impl.BlockCacheConfiguration;
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
+import org.apache.accumulo.core.metadata.ScanServerRefTabletFile;
+import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metrics.MetricsUtil;
@@ -87,8 +92,6 @@ import org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.Halt;
-import org.apache.accumulo.core.util.ServerServices;
-import org.apache.accumulo.core.util.ServerServices.Service;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockLossReason;
@@ -109,8 +112,10 @@ import org.apache.accumulo.tserver.compactions.CompactionManager;
 import org.apache.accumulo.tserver.compactions.ExternalCompactionJob;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.apache.accumulo.tserver.metrics.TabletServerScanMetrics;
+import org.apache.accumulo.tserver.session.MultiScanSession;
 import org.apache.accumulo.tserver.session.ScanSession;
 import org.apache.accumulo.tserver.session.ScanSession.TabletResolver;
+import org.apache.accumulo.tserver.session.SingleScanSession;
 import org.apache.accumulo.tserver.tablet.Tablet;
 import org.apache.accumulo.tserver.tablet.TabletData;
 import org.apache.commons.lang3.tuple.MutableTriple;
@@ -227,8 +232,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   private static final Logger LOG = LoggerFactory.getLogger(ScanServer.class);
 
   protected ThriftClientHandler handler;
-  protected int maxConcurrentScans;
+  private UUID serverLockUUID;
   private final LoadingCache<KeyExtent,TabletMetadata> tabletMetadataCache;
+  private final Map<StoredTabletFile,AtomicInteger> allReservedFiles = new ConcurrentHashMap<>();
 
   public ScanServer(ServerOpts opts, String[] args) {
     super(opts, args, true);
@@ -307,7 +313,8 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         throw e;
       }
 
-      tabletServerLock = new ServiceLock(zoo.getZooKeeper(), zLockPath, UUID.randomUUID());
+      serverLockUUID = UUID.randomUUID();
+      tabletServerLock = new ServiceLock(zoo.getZooKeeper(), zLockPath, serverLockUUID);
 
       LockWatcher lw = new LockWatcher() {
 
@@ -327,8 +334,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         }
       };
 
-      byte[] lockContent = new ServerServices(getClientAddressString(), Service.SSERV_CLIENT)
-          .toString().getBytes(UTF_8);
+      // Don't use the normal ServerServices lock content, instead put the server UUID here.
+      byte[] lockContent = serverLockUUID.toString().getBytes(UTF_8);
+
       for (int i = 0; i < 120 / 5; i++) {
         zoo.putPersistentData(zLockPath.toString(), new byte[0], NodeExistsPolicy.SKIP);
 
@@ -383,6 +391,10 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       LOG.info("Stopping Thrift Servers");
       address.server.stop();
 
+      LOG.info("Removing server scan references");
+      this.getContext().getAmple().deleteScanServerFileReferences(clientAddress.toString(),
+          serverLockUUID);
+
       try {
         LOG.debug("Closing filesystems");
         VolumeManager mgr = getContext().getVolumeManager();
@@ -414,12 +426,67 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     }
   }
 
+  protected boolean insertScanReferences(TabletMetadata tm) {
+    final String serverAddress = clientAddress.toString();
+    final String clientAddress = TServerUtils.clientAddress.get();
+    final Set<ScanServerRefTabletFile> refsToAdd = new HashSet<>();
+    tm.getFiles().forEach(f -> {
+      AtomicInteger count = this.allReservedFiles.computeIfAbsent(f, x -> new AtomicInteger(0));
+      if (count.get() == 0) {
+        refsToAdd.add(new ScanServerRefTabletFile(f.getPathStr(), serverAddress, serverLockUUID,
+            clientAddress));
+      }
+      count.incrementAndGet();
+    });
+
+    if (refsToAdd.isEmpty()) {
+      return true;
+    }
+    try {
+      this.getContext().getAmple().putScanServerFileReferences(refsToAdd);
+    } catch (Exception e) {
+      LOG.error("Error inserting scan server references", e);
+      return false;
+    }
+    return true;
+  }
+
+  protected void deleteScanReferences(long sessionId, boolean batchScan) {
+    final String serverAddress = clientAddress.toString();
+    final String clientAddress = TServerUtils.clientAddress.get();
+    Tablet tablet = null;
+    if (!batchScan) {
+      SingleScanSession session = (SingleScanSession) sessionManager.getSession(sessionId);
+      tablet = session.getTabletResolver().getTablet(session.extent);
+    } else {
+      MultiScanSession session = (MultiScanSession) sessionManager.getSession(sessionId);
+      tablet = session.getTabletResolver().getTablet(session.threadPoolExtent);
+    }
+    final Set<StoredTabletFile> files = tablet.getDatafiles().keySet();
+    final Set<ScanServerRefTabletFile> filesToRemove = new HashSet<>();
+    files.forEach(f -> {
+      AtomicInteger count = this.allReservedFiles.get(f);
+      if (count != null && count.decrementAndGet() == 0) {
+        filesToRemove.add(new ScanServerRefTabletFile(f.getPathStr(), serverAddress, serverLockUUID,
+            clientAddress));
+      }
+    });
+    if (!filesToRemove.isEmpty()) {
+      this.getContext().getAmple().deleteScanServerFileReferences(filesToRemove);
+    }
+  }
+
   protected ScanInformation loadTablet(KeyExtent extent)
       throws IllegalArgumentException, IOException, AccumuloException {
 
     // Need to call ScanServerKeyExtent.toKeyExtent so that the cache key
     // is the unique per tablet, not unique per scan.
     TabletMetadata tabletMetadata = getTabletMetadata(extent);
+
+    while (!insertScanReferences(tabletMetadata)) {
+      tabletMetadataCache.invalidate(extent);
+      tabletMetadata = getTabletMetadata(extent);
+    }
 
     // Need to call ScanServerKeyExtent.toKeyExtent for the equivalence checks that
     // happen inside AssignmentHandler.
@@ -487,9 +554,17 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         throw new NotServingTabletException();
       }
 
-      InitialScan is = handler.startScan(tinfo, credentials, extent, range, columns, batchSize,
-          ssiList, ssio, authorizations, waitForWrites, isolated, readaheadThreshold, samplerConfig,
-          batchTimeOut, classLoaderContext, executionHints, getScanTabletResolver(si), busyTimeout);
+      InitialScan is = null;
+      try {
+        is = handler.startScan(tinfo, credentials, extent, range, columns, batchSize, ssiList, ssio,
+            authorizations, waitForWrites, isolated, readaheadThreshold, samplerConfig,
+            batchTimeOut, classLoaderContext, executionHints, getScanTabletResolver(si),
+            busyTimeout);
+      } catch (Exception e) {
+        LOG.error("Error starting scan", e);
+        deleteScanReferences(is.getScanID(), false);
+        throw e;
+      }
       si.setScanId(is.getScanID());
       LOG.debug("started scan {} for extent {}", si.getScanId(), si.getExtent());
       return is;
@@ -507,6 +582,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     try {
       return handler.continueScan(tinfo, scanID, busyTimeout);
     } catch (Exception e) {
+      deleteScanReferences(scanID, false);
       throw e;
     }
   }
@@ -514,6 +590,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   @Override
   public void closeScan(TInfo tinfo, long scanID) throws TException {
     LOG.debug("close scan: {}", scanID);
+    deleteScanReferences(scanID, false);
     handler.closeScan(tinfo, scanID);
   }
 
@@ -556,9 +633,16 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     try {
       ScanSession.TabletResolver tabletResolver = getBatchScanTabletResolver(tablets);
 
-      InitialMultiScan ims = handler.startMultiScan(tinfo, credentials, tcolumns, ssiList, batch,
-          ssio, authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg,
-          executionHints, tabletResolver, busyTimeout);
+      InitialMultiScan ims = null;
+      try {
+        ims = handler.startMultiScan(tinfo, credentials, tcolumns, ssiList, batch, ssio,
+            authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg, executionHints,
+            tabletResolver, busyTimeout);
+      } catch (Exception e) {
+        LOG.error("Error starting scan", e);
+        deleteScanReferences(ims.getScanID(), true);
+        throw e;
+      }
       si.setScanId(ims.getScanID());
       LOG.debug("started scan: {}", si.getScanId());
       return ims;
@@ -572,12 +656,18 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       throws NoSuchScanIDException, TSampleNotPresentException, TException {
     LOG.debug("continue multi scan: {}", scanID);
 
-    return handler.continueMultiScan(tinfo, scanID, busyTimeout);
+    try {
+      return handler.continueMultiScan(tinfo, scanID, busyTimeout);
+    } catch (Exception e) {
+      deleteScanReferences(scanID, true);
+      throw e;
+    }
   }
 
   @Override
   public void closeMultiScan(TInfo tinfo, long scanID) throws NoSuchScanIDException, TException {
     LOG.debug("close multi scan: {}", scanID);
+    deleteScanReferences(scanID, true);
     handler.closeMultiScan(tinfo, scanID);
   }
 
