@@ -452,8 +452,6 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   protected void deleteScanReferences(long sessionId, boolean batchScan) {
-    final String serverAddress = clientAddress.toString();
-    final String clientAddress = TServerUtils.clientAddress.get();
     Tablet tablet = null;
     if (!batchScan) {
       SingleScanSession session = (SingleScanSession) sessionManager.getSession(sessionId);
@@ -462,6 +460,12 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       MultiScanSession session = (MultiScanSession) sessionManager.getSession(sessionId);
       tablet = session.getTabletResolver().getTablet(session.threadPoolExtent);
     }
+    deleteScanReferences(tablet);
+  }
+
+  protected void deleteScanReferences(Tablet tablet) {
+    final String serverAddress = clientAddress.toString();
+    final String clientAddress = TServerUtils.clientAddress.get();
     final Set<StoredTabletFile> files = tablet.getDatafiles().keySet();
     final Set<ScanServerRefTabletFile> filesToRemove = new HashSet<>();
     files.forEach(f -> {
@@ -562,7 +566,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
             busyTimeout);
       } catch (Exception e) {
         LOG.error("Error starting scan", e);
-        deleteScanReferences(is.getScanID(), false);
+        deleteScanReferences(si.getTablet());
         throw e;
       }
       si.setScanId(is.getScanID());
@@ -640,7 +644,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
             tabletResolver, busyTimeout);
       } catch (Exception e) {
         LOG.error("Error starting scan", e);
-        deleteScanReferences(ims.getScanID(), true);
+        tablets.values().forEach(tablet -> deleteScanReferences(tablet));
         throw e;
       }
       si.setScanId(ims.getScanID());

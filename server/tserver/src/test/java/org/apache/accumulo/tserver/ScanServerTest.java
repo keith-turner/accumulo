@@ -109,6 +109,9 @@ public class ScanServerTest {
     @Override
     protected void deleteScanReferences(long sessionId, boolean batchScan) {}
 
+    @Override
+    protected void deleteScanReferences(Tablet tablet) {}
+
   }
 
   private ThriftClientHandler handler;
