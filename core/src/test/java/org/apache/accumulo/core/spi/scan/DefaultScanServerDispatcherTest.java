@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.core.spi.scan;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
@@ -30,8 +32,7 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.TabletIdImpl;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.hadoop.io.Text;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class DefaultScanServerDispatcherTest {
 
@@ -112,8 +113,8 @@ public class DefaultScanServerDispatcherTest {
 
       servers.add(actions.getScanServer(tabletId));
     }
-
-    Assert.assertEquals(3, servers.size());
+    
+    assertEquals(3, servers.size());
   }
 
 }
