@@ -249,8 +249,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     @Override
     public @Nullable TabletMetadata load(KeyExtent keyExtent) {
       long t1 = System.currentTimeMillis();
-      var tm = ample.readTablet(keyExtent, TabletMetadata.ColumnType.FILES,
-          TabletMetadata.ColumnType.PREV_ROW);
+      var tm = ample.readTablet(keyExtent);
       long t2 = System.currentTimeMillis();
       LOG.trace("Read metadata for 1 tablet in {} ms", t2 - t1);
       return tm;
@@ -262,8 +261,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         loadAll(Set<? extends KeyExtent> keys) {
       long t1 = System.currentTimeMillis();
       var tms = ample.readTablets().forTablets((Collection<KeyExtent>) keys)
-          .fetch(TabletMetadata.ColumnType.FILES, TabletMetadata.ColumnType.PREV_ROW).build()
-          .stream().collect(Collectors.toMap(tm -> tm.getExtent(), tm -> tm));
+          .build().stream().collect(Collectors.toMap(tm -> tm.getExtent(), tm -> tm));
       long t2 = System.currentTimeMillis();
       LOG.trace("Read metadata for {} tablets in {} ms", keys.size(), t2 - t1);
       return tms;
