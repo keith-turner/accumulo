@@ -259,7 +259,8 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
     // TODO maybe have separate prop from cahce for expiring refs
     ThreadPools.watchCriticalScheduledTask(getContext().getScheduledExecutor()
-        .scheduleWithFixedDelay(() -> cleanUpReservedFiles(2 * cacheExpiration), cacheExpiration, cacheExpiration, TimeUnit.MILLISECONDS));
+        .scheduleWithFixedDelay(() -> cleanUpReservedFiles(2 * cacheExpiration), cacheExpiration,
+            cacheExpiration, TimeUnit.MILLISECONDS));
   }
 
   protected ThriftClientHandler getHandler() {
