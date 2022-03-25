@@ -88,6 +88,7 @@ import org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.Halt;
+import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockLossReason;
@@ -255,6 +256,10 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
               .build(key -> getContext().getAmple().readTablet(key));
     }
     handler = getHandler();
+
+    // TODO maybe have separate prop from cahce for expiring refs
+    ThreadPools.watchCriticalScheduledTask(getContext().getScheduledExecutor()
+        .scheduleWithFixedDelay(() -> cleanUpReservedFiles(2 * cacheExpiration), cacheExpiration, cacheExpiration, TimeUnit.MILLISECONDS));
   }
 
   protected ThriftClientHandler getHandler() {
@@ -426,9 +431,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     Set<Long> activeReservations = new ConcurrentSkipListSet<>();
     volatile long lastUseTime;
 
-    boolean shouldDelete() {
+    boolean shouldDelete(long expireTimeMs) {
       return activeReservations.isEmpty()
-          && System.currentTimeMillis() - lastUseTime > 10 * 600 * 1000;
+          && System.currentTimeMillis() - lastUseTime > expireTimeMs;
     }
   }
 
@@ -565,8 +570,6 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
           filesToReserve.add(file);
           tabletsToCheck.add(extent);
           LOG.trace("RFFS {} need to add scan ref for file {}", myReservationId, file);
-        } else {
-          LOG.trace("RFFS {} file already has scan reference {}", myReservationId, file);
         }
       });
 
@@ -649,9 +652,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       scanSessionFiles = session.getTabletResolver().getTablet(sss.extent).getDatafiles().keySet();
     } else if (session instanceof MultiScanSession) {
       var mss = (MultiScanSession) session;
-      // TODO the mss.queries field may change over the life of the session and my not be correct to
-      // use here... need to further analyze
-      scanSessionFiles = mss.queries.keySet().stream()
+      scanSessionFiles = mss.exents.stream()
           .flatMap(e -> mss.getTabletResolver().getTablet(e).getDatafiles().keySet().stream())
           .collect(Collectors.toSet());
     } else {
@@ -688,11 +689,11 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   // TODO need to periodically call this
-  private void cleanUpReservedFiles() {
+  private void cleanUpReservedFiles(long expireTimeMs) {
     List<StoredTabletFile> candidates = new ArrayList<>();
 
     reservedFiles.forEach((file, reservationInfo) -> {
-      if (reservationInfo.shouldDelete()) {
+      if (reservationInfo.shouldDelete(expireTimeMs)) {
         candidates.add(file);
       }
     });
@@ -711,7 +712,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         // modifying them
         for (StoredTabletFile candidate : candidates) {
           var reservation = reservedFiles.get(candidate);
-          if (reservation != null && reservation.shouldDelete()) {
+          if (reservation != null && reservation.shouldDelete(expireTimeMs)) {
             refsToDelete.add(
                 new ScanServerRefTabletFile(candidate.getPathStr(), serverAddress, serverLockUUID));
             confirmed.add(candidate);
