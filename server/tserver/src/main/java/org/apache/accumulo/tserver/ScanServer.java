@@ -30,11 +30,9 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import com.google.common.collect.Sets;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.clientImpl.thrift.ConfigurationType;
@@ -125,6 +123,7 @@ import org.slf4j.LoggerFactory;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Scheduler;
+import com.google.common.collect.Sets;
 
 public class ScanServer extends TabletServer implements TabletClientService.Iface {
 
@@ -428,19 +427,20 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     volatile long lastUseTime;
 
     boolean shouldDelete() {
-      return activeReservations.isEmpty() && System.currentTimeMillis() - lastUseTime > 10 * 600 * 1000;
+      return activeReservations.isEmpty()
+          && System.currentTimeMillis() - lastUseTime > 10 * 600 * 1000;
     }
   }
 
   private Set<StoredTabletFile> lockedFiles = new HashSet<>();
-  private Map<StoredTabletFile, ReservedFile> reservedFiles = new ConcurrentHashMap<>();
+  private Map<StoredTabletFile,ReservedFile> reservedFiles = new ConcurrentHashMap<>();
   private AtomicLong nextScanReservationId = new AtomicLong();
 
   private void lockFiles(Collection<StoredTabletFile> files) {
 
     synchronized (lockedFiles) {
 
-      while(!Collections.disjoint(files, lockedFiles)) {
+      while (!Collections.disjoint(files, lockedFiles)) {
         try {
           lockedFiles.wait();
         } catch (InterruptedException e) {
@@ -449,7 +449,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       }
 
       for (StoredTabletFile file : files) {
-        if(!lockedFiles.add(file)) {
+        if (!lockedFiles.add(file)) {
           throw new IllegalStateException("file unexpectedly not added");
         }
       }
@@ -460,7 +460,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   private void unlockFiles(Collection<StoredTabletFile> files) {
     synchronized (lockedFiles) {
       for (StoredTabletFile file : files) {
-        if(!lockedFiles.remove(file)){
+        if (!lockedFiles.remove(file)) {
           throw new IllegalStateException("tried to unlock file that was not locked");
         }
       }
@@ -469,17 +469,16 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     }
   }
 
-
   class ScanReservation implements AutoCloseable {
 
     private final Collection<StoredTabletFile> files;
     private final long myReservationId;
-    private final Map<KeyExtent, TabletMetadata> tabletsMetadata;
+    private final Map<KeyExtent,TabletMetadata> tabletsMetadata;
 
-    ScanReservation(Map<KeyExtent, TabletMetadata> tabletsMetadata, long myReservationId) {
+    ScanReservation(Map<KeyExtent,TabletMetadata> tabletsMetadata, long myReservationId) {
       this.tabletsMetadata = tabletsMetadata;
-      this.files = tabletsMetadata.values().stream().flatMap(tm -> tm.getFiles().stream()).collect(
-          Collectors.toSet());
+      this.files = tabletsMetadata.values().stream().flatMap(tm -> tm.getFiles().stream())
+          .collect(Collectors.toSet());
       this.myReservationId = myReservationId;
     }
 
@@ -496,42 +495,44 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     Tablet newTablet(KeyExtent extent) throws IOException {
       var tabletMetadata = getTabletMetadata(extent);
       TabletData data = new TabletData(tabletMetadata);
-      TabletResourceManager trm =
-          resourceManager.createTabletResourceManager(tabletMetadata.getExtent(), getTableConfiguration(tabletMetadata.getExtent()));
+      TabletResourceManager trm = resourceManager.createTabletResourceManager(
+          tabletMetadata.getExtent(), getTableConfiguration(tabletMetadata.getExtent()));
       return new Tablet(ScanServer.this, tabletMetadata.getExtent(), trm, data, true);
     }
 
-    @Override public void close() {
+    @Override
+    public void close() {
       lockFiles(files);
-      try{
+      try {
         for (StoredTabletFile file : files) {
           var reservedFile = reservedFiles.get(file);
 
-          if(!reservedFile.activeReservations.remove(myReservationId)){
+          if (!reservedFile.activeReservations.remove(myReservationId)) {
             throw new IllegalStateException("reservation id was not in set as expected");
           }
 
           LOG.trace("RFFS {} unreserved reference for file {}", myReservationId, file);
 
-          //TODO maybe use nano time
+          // TODO maybe use nano time
           reservedFile.lastUseTime = System.currentTimeMillis();
         }
-      }finally {
+      } finally {
         unlockFiles(files);
       }
     }
   }
 
-  private Map<KeyExtent, TabletMetadata> reserveFilesInner(Collection<KeyExtent> extents, long myReservationId)
-      throws NotServingTabletException, AccumuloException {
-    //RFS is an acronym for Reference files for scan
-    LOG.trace("RFFS {} ensuring files are referenced for scan of extents {}", myReservationId, extents);
+  private Map<KeyExtent,TabletMetadata> reserveFilesInner(Collection<KeyExtent> extents,
+      long myReservationId) throws NotServingTabletException, AccumuloException {
+    // RFS is an acronym for Reference files for scan
+    LOG.trace("RFFS {} ensuring files are referenced for scan of extents {}", myReservationId,
+        extents);
 
-    Map<KeyExtent, TabletMetadata> tabletsMetadata = new HashMap<>();
+    Map<KeyExtent,TabletMetadata> tabletsMetadata = new HashMap<>();
 
     for (KeyExtent extent : extents) {
       TabletMetadata tabletMetadata = getTabletMetadata(extent);
-      if(tabletMetadata == null) {
+      if (tabletMetadata == null) {
         LOG.trace("RFFS {} extent not found in metadata table {}", myReservationId, extent);
         throw new NotServingTabletException();
       }
@@ -541,27 +542,25 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       boolean canLoad =
           AssignmentHandler.checkTabletMetadata(extent, getTabletSession(), tabletMetadata, true);
 
-      //TODO handle canLoad == false
+      // TODO handle canLoad == false
     }
 
-    Map<StoredTabletFile, KeyExtent> allFiles = new HashMap<>();
+    Map<StoredTabletFile,KeyExtent> allFiles = new HashMap<>();
 
     tabletsMetadata.forEach((extent, tm) -> {
       tm.getFiles().forEach(file -> allFiles.put(file, extent));
     });
 
-
     lockFiles(allFiles.keySet());
-    try{
+    try {
       Set<StoredTabletFile> filesToReserve = new HashSet<>();
       List<ScanServerRefTabletFile> refs = new ArrayList<>();
       Set<KeyExtent> tabletsToCheck = new HashSet<>();
 
-
       String serverAddress = clientAddress.toString();
 
       allFiles.forEach((file, extent) -> {
-        if(!reservedFiles.containsKey(file)) {
+        if (!reservedFiles.containsKey(file)) {
           refs.add(new ScanServerRefTabletFile(file.getPathStr(), serverAddress, serverLockUUID));
           filesToReserve.add(file);
           tabletsToCheck.add(extent);
@@ -571,20 +570,24 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         }
       });
 
-      if(!filesToReserve.isEmpty()) {
+      if (!filesToReserve.isEmpty()) {
         getContext().getAmple().putScanServerFileReferences(refs);
 
-        // After we insert the scan server refs we need to check and see if the tablet is still using the file. As long as the tablet is still using the files then the Accumulo GC should not have deleted the files.  This assumes the Accumulo GC reads scan server refs after tablet refs from the metadata table.
+        // After we insert the scan server refs we need to check and see if the tablet is still
+        // using the file. As long as the tablet is still using the files then the Accumulo GC
+        // should not have deleted the files. This assumes the Accumulo GC reads scan server refs
+        // after tablet refs from the metadata table.
 
-        if(tabletMetadataCache != null) {
+        if (tabletMetadataCache != null) {
           // lets clear the cache so we get the latest
           tabletsToCheck.forEach(tabletMetadataCache::invalidate);
         }
 
-        //TODO would be more efficient to use batch scanner instead of looking tablets up one by one... but also want tablet metadata to end up in cache
+        // TODO would be more efficient to use batch scanner instead of looking tablets up one by
+        // one... but also want tablet metadata to end up in cache
         for (KeyExtent extent : tabletsToCheck) {
           TabletMetadata metadataAfter = getTabletMetadata(extent);
-          if(metadataAfter == null) {
+          if (metadataAfter == null) {
             getContext().getAmple().deleteScanServerFileReferences(refs);
             throw new NotServingTabletException();
           }
@@ -593,23 +596,27 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
           filesToReserve.removeAll(metadataAfter.getFiles());
         }
 
-        // if this is not empty it means some files that we reserved are no longer referenced by tablets.  This means there could have been a time gap where nothing referenced a file meaning it could have been GCed.
-        if(!filesToReserve.isEmpty()) {
-          LOG.trace("RFFS {} tablet files changed while attempting to reference files {}", myReservationId, filesToReserve);
+        // if this is not empty it means some files that we reserved are no longer referenced by
+        // tablets. This means there could have been a time gap where nothing referenced a file
+        // meaning it could have been GCed.
+        if (!filesToReserve.isEmpty()) {
+          LOG.trace("RFFS {} tablet files changed while attempting to reference files {}",
+              myReservationId, filesToReserve);
           getContext().getAmple().deleteScanServerFileReferences(refs);
           return null;
         }
       }
 
       for (StoredTabletFile file : allFiles.keySet()) {
-        if(!reservedFiles.computeIfAbsent(file, k->new ReservedFile()).activeReservations.add(myReservationId)){
+        if (!reservedFiles.computeIfAbsent(file, k -> new ReservedFile()).activeReservations
+            .add(myReservationId)) {
           throw new IllegalStateException("reservation id unexpectedly already in set");
         }
 
         LOG.trace("RFFS {} reserved reference for startScan {}", myReservationId, file);
       }
 
-    }finally {
+    } finally {
       unlockFiles(allFiles.keySet());
     }
 
@@ -621,8 +628,8 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
     long myReservationId = nextScanReservationId.incrementAndGet();
 
-   Map<KeyExtent, TabletMetadata> tabletsMetadata = reserveFilesInner(extents, myReservationId);
-    while(tabletsMetadata == null) {
+    Map<KeyExtent,TabletMetadata> tabletsMetadata = reserveFilesInner(extents, myReservationId);
+    while (tabletsMetadata == null) {
       tabletsMetadata = reserveFilesInner(extents, myReservationId);
     }
 
@@ -630,78 +637,86 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   ScanReservation reserveFiles(long scanId) throws NoSuchScanIDException {
-    var session = (ScanSession)sessionManager.getSession(scanId);
-    if(session == null) {
+    var session = (ScanSession) sessionManager.getSession(scanId);
+    if (session == null) {
       throw new NoSuchScanIDException();
     }
 
     Set<StoredTabletFile> scanSessionFiles;
 
-    if(session instanceof  SingleScanSession) {
-      var sss = (SingleScanSession)session;
-      scanSessionFiles =
-          session.getTabletResolver().getTablet(sss.extent).getDatafiles().keySet();
-    } else if(session instanceof MultiScanSession) {
-      var mss = (MultiScanSession)session;
-      // TODO the  mss.queries field may change over the life of the session and my not be correct to use here... need to further analyze
-      scanSessionFiles = mss.queries.keySet().stream().flatMap(e -> mss.getTabletResolver().getTablet(e).getDatafiles().keySet().stream()).collect(Collectors.toSet());
+    if (session instanceof SingleScanSession) {
+      var sss = (SingleScanSession) session;
+      scanSessionFiles = session.getTabletResolver().getTablet(sss.extent).getDatafiles().keySet();
+    } else if (session instanceof MultiScanSession) {
+      var mss = (MultiScanSession) session;
+      // TODO the mss.queries field may change over the life of the session and my not be correct to
+      // use here... need to further analyze
+      scanSessionFiles = mss.queries.keySet().stream()
+          .flatMap(e -> mss.getTabletResolver().getTablet(e).getDatafiles().keySet().stream())
+          .collect(Collectors.toSet());
     } else {
-      throw new IllegalArgumentException("Unknown session type "+session.getClass().getName());
+      throw new IllegalArgumentException("Unknown session type " + session.getClass().getName());
     }
 
     long myReservationId = nextScanReservationId.incrementAndGet();
 
     lockFiles(scanSessionFiles);
-    try{
-      if(!reservedFiles.keySet().containsAll(scanSessionFiles)) {
-        // the files are no longer reserved in the metadata table, so lets pretend there is no scan session
-        if(LOG.isTraceEnabled()) {
-          LOG.trace("RFFS {} files are no longer referenced on continue scan {} {}", myReservationId, scanId,
-              Sets.difference(scanSessionFiles, reservedFiles.keySet()));
+    try {
+      if (!reservedFiles.keySet().containsAll(scanSessionFiles)) {
+        // the files are no longer reserved in the metadata table, so lets pretend there is no scan
+        // session
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("RFFS {} files are no longer referenced on continue scan {} {}",
+              myReservationId, scanId, Sets.difference(scanSessionFiles, reservedFiles.keySet()));
         }
         throw new NoSuchScanIDException();
       }
 
       for (StoredTabletFile file : scanSessionFiles) {
-        if(!reservedFiles.get(file).activeReservations.add(myReservationId)) {
+        if (!reservedFiles.get(file).activeReservations.add(myReservationId)) {
           throw new IllegalStateException("reservation id unexpectedly already in set");
         }
 
-        LOG.trace("RFFS {} reserved reference for continue scan {} {}", myReservationId, scanId, file);
+        LOG.trace("RFFS {} reserved reference for continue scan {} {}", myReservationId, scanId,
+            file);
       }
-    }finally {
+    } finally {
       unlockFiles(scanSessionFiles);
     }
 
-    return new ScanReservation(scanSessionFiles,myReservationId);
+    return new ScanReservation(scanSessionFiles, myReservationId);
   }
 
-  //TODO need to periodically call this
-  private void cleanUpReservedFiles(){
+  // TODO need to periodically call this
+  private void cleanUpReservedFiles() {
     List<StoredTabletFile> candidates = new ArrayList<>();
 
     reservedFiles.forEach((file, reservationInfo) -> {
-      if(reservationInfo.shouldDelete()) {
+      if (reservationInfo.shouldDelete()) {
         candidates.add(file);
       }
     });
 
-    if(!candidates.isEmpty()) {
-      // gain exclusive access to files to avoid multiple threads adding/deleting file reservations at same time
+    if (!candidates.isEmpty()) {
+      // gain exclusive access to files to avoid multiple threads adding/deleting file reservations
+      // at same time
       lockFiles(candidates);
-      try{
+      try {
         List<ScanServerRefTabletFile> refsToDelete = new ArrayList<>();
         List<StoredTabletFile> confirmed = new ArrayList<>();
 
         String serverAddress = clientAddress.toString();
 
-        // check that is still a candidate now that files are locked and no other thread should be modifying them
+        // check that is still a candidate now that files are locked and no other thread should be
+        // modifying them
         for (StoredTabletFile candidate : candidates) {
           var reservation = reservedFiles.get(candidate);
-          if(reservation != null && reservation.shouldDelete()) {
-            refsToDelete.add(new ScanServerRefTabletFile(candidate.getPathStr(), serverAddress, serverLockUUID));
+          if (reservation != null && reservation.shouldDelete()) {
+            refsToDelete.add(
+                new ScanServerRefTabletFile(candidate.getPathStr(), serverAddress, serverLockUUID));
             confirmed.add(candidate);
-            LOG.trace("RFFS referenced files has not been used recently, removing reference {}", candidate);
+            LOG.trace("RFFS referenced files has not been used recently, removing reference {}",
+                candidate);
           }
         }
 
@@ -710,7 +725,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         // those refs were successfully removed from metadata table, so remove them from the map
         reservedFiles.keySet().removeAll(confirmed);
 
-      }finally {
+      } finally {
         unlockFiles(candidates);
       }
     }
@@ -751,12 +766,12 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
     KeyExtent extent = getKeyExtent(textent);
 
-    try(ScanReservation reservation = reserveFiles(Collections.singleton(extent))) {
+    try (ScanReservation reservation = reserveFiles(Collections.singleton(extent))) {
 
       Tablet tablet = reservation.newTablet(extent);
 
-      InitialScan is = handler.startScan(tinfo, credentials, extent, range, columns, batchSize, ssiList, ssio,
-          authorizations, waitForWrites, isolated, readaheadThreshold, samplerConfig,
+      InitialScan is = handler.startScan(tinfo, credentials, extent, range, columns, batchSize,
+          ssiList, ssio, authorizations, waitForWrites, isolated, readaheadThreshold, samplerConfig,
           batchTimeOut, classLoaderContext, executionHints, getScanTabletResolver(tablet),
           busyTimeout);
 
@@ -774,7 +789,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       TSampleNotPresentException, TException {
     LOG.debug("continue scan: {}", scanID);
 
-    try(ScanReservation reservation = reserveFiles(scanID)) {
+    try (ScanReservation reservation = reserveFiles(scanID)) {
       return handler.continueScan(tinfo, scanID, busyTimeout);
     }
   }
@@ -804,7 +819,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       batch.put(extent, entry.getValue());
     }
 
-    try(ScanReservation reservation = reserveFiles(batch.keySet())) {
+    try (ScanReservation reservation = reserveFiles(batch.keySet())) {
 
       HashMap<KeyExtent,Tablet> tablets = new HashMap<>();
       batch.keySet().forEach(extent -> {
@@ -817,9 +832,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
       ScanSession.TabletResolver tabletResolver = getBatchScanTabletResolver(tablets);
 
-      InitialMultiScan ims = handler.startMultiScan(tinfo, credentials, tcolumns, ssiList, batch, ssio,
-            authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg, executionHints,
-            tabletResolver, busyTimeout);
+      InitialMultiScan ims = handler.startMultiScan(tinfo, credentials, tcolumns, ssiList, batch,
+          ssio, authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg,
+          executionHints, tabletResolver, busyTimeout);
 
       LOG.debug("started scan: {}", ims.getScanID());
       return ims;
@@ -827,7 +842,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       throw e;
     } catch (AccumuloException e) {
       // TODO is this correct thing to do?
-     throw new RuntimeException(e);
+      throw new RuntimeException(e);
     }
   }
 
@@ -836,7 +851,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       throws NoSuchScanIDException, TSampleNotPresentException, TException {
     LOG.debug("continue multi scan: {}", scanID);
 
-    try(ScanReservation reservation = reserveFiles(scanID)) {
+    try (ScanReservation reservation = reserveFiles(scanID)) {
       return handler.continueMultiScan(tinfo, scanID, busyTimeout);
     }
   }
