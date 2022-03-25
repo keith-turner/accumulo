@@ -30,6 +30,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -63,6 +64,7 @@ import org.apache.accumulo.core.file.blockfile.cache.impl.BlockCacheConfiguratio
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
 import org.apache.accumulo.core.metadata.ScanServerRefTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
+import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metrics.MetricsUtil;
@@ -118,9 +120,11 @@ import org.apache.accumulo.tserver.tablet.TabletData;
 import org.apache.commons.lang3.tuple.MutableTriple;
 import org.apache.thrift.TException;
 import org.apache.zookeeper.KeeperException;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Scheduler;
@@ -231,7 +235,40 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
   protected ThriftClientHandler handler;
   private UUID serverLockUUID;
+  private final TabletMetadataLoader tabletMetadataLoader;
   private final LoadingCache<KeyExtent,TabletMetadata> tabletMetadataCache;
+
+  private static class TabletMetadataLoader implements CacheLoader<KeyExtent,TabletMetadata> {
+
+    private final Ample ample;
+
+    private TabletMetadataLoader(Ample ample) {
+      this.ample = ample;
+    }
+
+    @Override
+    public @Nullable TabletMetadata load(KeyExtent keyExtent) {
+      long t1 = System.currentTimeMillis();
+      var tm = ample.readTablet(keyExtent, TabletMetadata.ColumnType.FILES,
+          TabletMetadata.ColumnType.PREV_ROW);
+      long t2 = System.currentTimeMillis();
+      LOG.trace("Read metadata for 1 tablet in {} ms", t2 - t1);
+      return tm;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<? extends KeyExtent,? extends TabletMetadata>
+        loadAll(Set<? extends KeyExtent> keys) {
+      long t1 = System.currentTimeMillis();
+      var tms = ample.readTablets().forTablets((Collection<KeyExtent>) keys)
+          .fetch(TabletMetadata.ColumnType.FILES, TabletMetadata.ColumnType.PREV_ROW).build()
+          .stream().collect(Collectors.toMap(tm -> tm.getExtent(), tm -> tm));
+      long t2 = System.currentTimeMillis();
+      LOG.trace("Read metadata for {} tablets in {} ms", keys.size(), t2 - t1);
+      return tms;
+    }
+  }
 
   public ScanServer(ServerOpts opts, String[] args) {
     super(opts, args, true);
@@ -242,6 +279,9 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
     long cacheExpiration =
         getConfiguration().getTimeInMillis(Property.SSERV_CACHED_TABLET_METADATA_EXPIRATION);
+
+    tabletMetadataLoader = new TabletMetadataLoader(getContext().getAmple());
+
     if (cacheExpiration == 0L) {
       LOG.warn("Tablet metadata caching disabled, may cause excessive scans on metadata table.");
       tabletMetadataCache = null;
@@ -252,8 +292,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       }
       tabletMetadataCache =
           Caffeine.newBuilder().expireAfterWrite(cacheExpiration, TimeUnit.MILLISECONDS)
-              .scheduler(Scheduler.systemScheduler())
-              .build(key -> getContext().getAmple().readTablet(key));
+              .scheduler(Scheduler.systemScheduler()).build(tabletMetadataLoader);
     }
     handler = getHandler();
 
@@ -420,11 +459,13 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     }
   }
 
-  private TabletMetadata getTabletMetadata(KeyExtent extent) {
+  @SuppressWarnings("unchecked")
+  private Map<KeyExtent,TabletMetadata> getTabletMetadata(Collection<KeyExtent> extents) {
     if (tabletMetadataCache == null) {
-      return getContext().getAmple().readTablet(extent);
+      return (Map<KeyExtent,TabletMetadata>) tabletMetadataLoader
+          .loadAll((Set<? extends KeyExtent>) extents);
     } else {
-      return tabletMetadataCache.get(extent);
+      return tabletMetadataCache.getAll(extents);
     }
   }
 
@@ -442,11 +483,46 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   private Map<StoredTabletFile,ReservedFile> reservedFiles = new ConcurrentHashMap<>();
   private AtomicLong nextScanReservationId = new AtomicLong();
 
-  private void lockFiles(Collection<StoredTabletFile> files) {
+  private class FilesLock implements AutoCloseable {
+
+    private final Collection<StoredTabletFile> files;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    public FilesLock(Collection<StoredTabletFile> files) {
+      this.files = files;
+    }
+
+    Collection<StoredTabletFile> getLockedFiles() {
+      return files;
+    }
+
+    @Override
+    public void close() {
+      // only allow close to be called once
+      if (!closed.compareAndSet(false, true)) {
+        return;
+      }
+
+      synchronized (lockedFiles) {
+        for (StoredTabletFile file : files) {
+          if (!lockedFiles.remove(file)) {
+            throw new IllegalStateException("tried to unlock file that was not locked");
+          }
+        }
+
+        lockedFiles.notifyAll();
+      }
+    }
+  }
+
+  private FilesLock lockFiles(Collection<StoredTabletFile> files) {
+
+    // lets ensure we lock and unlock that same set of files even if the passed in files changes
+    var filesCopy = Set.copyOf(files);
 
     synchronized (lockedFiles) {
 
-      while (!Collections.disjoint(files, lockedFiles)) {
+      while (!Collections.disjoint(filesCopy, lockedFiles)) {
         try {
           lockedFiles.wait();
         } catch (InterruptedException e) {
@@ -454,25 +530,14 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         }
       }
 
-      for (StoredTabletFile file : files) {
+      for (StoredTabletFile file : filesCopy) {
         if (!lockedFiles.add(file)) {
           throw new IllegalStateException("file unexpectedly not added");
         }
       }
     }
 
-  }
-
-  private void unlockFiles(Collection<StoredTabletFile> files) {
-    synchronized (lockedFiles) {
-      for (StoredTabletFile file : files) {
-        if (!lockedFiles.remove(file)) {
-          throw new IllegalStateException("tried to unlock file that was not locked");
-        }
-      }
-
-      lockedFiles.notifyAll();
-    }
+    return new FilesLock(filesCopy);
   }
 
   class ScanReservation implements AutoCloseable {
@@ -484,7 +549,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     ScanReservation(Map<KeyExtent,TabletMetadata> tabletsMetadata, long myReservationId) {
       this.tabletsMetadata = tabletsMetadata;
       this.files = tabletsMetadata.values().stream().flatMap(tm -> tm.getFiles().stream())
-          .collect(Collectors.toSet());
+          .collect(Collectors.toUnmodifiableSet());
       this.myReservationId = myReservationId;
     }
 
@@ -508,9 +573,8 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
     @Override
     public void close() {
-      lockFiles(files);
-      try {
-        for (StoredTabletFile file : files) {
+      try (FilesLock flock = lockFiles(files)) {
+        for (StoredTabletFile file : flock.getLockedFiles()) {
           var reservedFile = reservedFiles.get(file);
 
           if (!reservedFile.activeReservations.remove(myReservationId)) {
@@ -522,8 +586,6 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
           // TODO maybe use nano time
           reservedFile.lastUseTime = System.currentTimeMillis();
         }
-      } finally {
-        unlockFiles(files);
       }
     }
   }
@@ -534,16 +596,14 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     LOG.trace("RFFS {} ensuring files are referenced for scan of extents {}", myReservationId,
         extents);
 
-    Map<KeyExtent,TabletMetadata> tabletsMetadata = new HashMap<>();
+    Map<KeyExtent,TabletMetadata> tabletsMetadata = getTabletMetadata(extents);
 
     for (KeyExtent extent : extents) {
-      TabletMetadata tabletMetadata = getTabletMetadata(extent);
+      var tabletMetadata = tabletsMetadata.get(extent);
       if (tabletMetadata == null) {
         LOG.trace("RFFS {} extent not found in metadata table {}", myReservationId, extent);
         throw new NotServingTabletException();
       }
-
-      tabletsMetadata.put(extent, tabletMetadata);
 
       boolean canLoad =
           AssignmentHandler.checkTabletMetadata(extent, getTabletSession(), tabletMetadata, true);
@@ -557,22 +617,21 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       tm.getFiles().forEach(file -> allFiles.put(file, extent));
     });
 
-    lockFiles(allFiles.keySet());
-    try {
+    try (FilesLock flock = lockFiles(allFiles.keySet())) {
       Set<StoredTabletFile> filesToReserve = new HashSet<>();
       List<ScanServerRefTabletFile> refs = new ArrayList<>();
       Set<KeyExtent> tabletsToCheck = new HashSet<>();
 
       String serverAddress = clientAddress.toString();
 
-      allFiles.forEach((file, extent) -> {
+      for (StoredTabletFile file : flock.getLockedFiles()) {
         if (!reservedFiles.containsKey(file)) {
           refs.add(new ScanServerRefTabletFile(file.getPathStr(), serverAddress, serverLockUUID));
           filesToReserve.add(file);
-          tabletsToCheck.add(extent);
+          tabletsToCheck.add(Objects.requireNonNull(allFiles.get(file)));
           LOG.trace("RFFS {} need to add scan ref for file {}", myReservationId, file);
         }
-      });
+      }
 
       if (!filesToReserve.isEmpty()) {
         getContext().getAmple().putScanServerFileReferences(refs);
@@ -584,13 +643,13 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
         if (tabletMetadataCache != null) {
           // lets clear the cache so we get the latest
-          tabletsToCheck.forEach(tabletMetadataCache::invalidate);
+          tabletMetadataCache.invalidateAll(tabletsToCheck);
         }
 
-        // TODO would be more efficient to use batch scanner instead of looking tablets up one by
-        // one... but also want tablet metadata to end up in cache
+        var tabletsToCheckMetadata = getTabletMetadata(tabletsToCheck);
+
         for (KeyExtent extent : tabletsToCheck) {
-          TabletMetadata metadataAfter = getTabletMetadata(extent);
+          TabletMetadata metadataAfter = tabletsToCheckMetadata.get(extent);
           if (metadataAfter == null) {
             getContext().getAmple().deleteScanServerFileReferences(refs);
             throw new NotServingTabletException();
@@ -611,7 +670,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         }
       }
 
-      for (StoredTabletFile file : allFiles.keySet()) {
+      for (StoredTabletFile file : flock.getLockedFiles()) {
         if (!reservedFiles.computeIfAbsent(file, k -> new ReservedFile()).activeReservations
             .add(myReservationId)) {
           throw new IllegalStateException("reservation id unexpectedly already in set");
@@ -620,8 +679,6 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         LOG.trace("RFFS {} reserved reference for startScan {}", myReservationId, file);
       }
 
-    } finally {
-      unlockFiles(allFiles.keySet());
     }
 
     return tabletsMetadata;
@@ -650,20 +707,20 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
     if (session instanceof SingleScanSession) {
       var sss = (SingleScanSession) session;
-      scanSessionFiles = session.getTabletResolver().getTablet(sss.extent).getDatafiles().keySet();
+      scanSessionFiles =
+          Set.copyOf(session.getTabletResolver().getTablet(sss.extent).getDatafiles().keySet());
     } else if (session instanceof MultiScanSession) {
       var mss = (MultiScanSession) session;
       scanSessionFiles = mss.exents.stream()
           .flatMap(e -> mss.getTabletResolver().getTablet(e).getDatafiles().keySet().stream())
-          .collect(Collectors.toSet());
+          .collect(Collectors.toUnmodifiableSet());
     } else {
       throw new IllegalArgumentException("Unknown session type " + session.getClass().getName());
     }
 
     long myReservationId = nextScanReservationId.incrementAndGet();
 
-    lockFiles(scanSessionFiles);
-    try {
+    try (FilesLock flock = lockFiles(scanSessionFiles)) {
       if (!reservedFiles.keySet().containsAll(scanSessionFiles)) {
         // the files are no longer reserved in the metadata table, so lets pretend there is no scan
         // session
@@ -674,7 +731,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         throw new NoSuchScanIDException();
       }
 
-      for (StoredTabletFile file : scanSessionFiles) {
+      for (StoredTabletFile file : flock.getLockedFiles()) {
         if (!reservedFiles.get(file).activeReservations.add(myReservationId)) {
           throw new IllegalStateException("reservation id unexpectedly already in set");
         }
@@ -682,14 +739,11 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         LOG.trace("RFFS {} reserved reference for continue scan {} {}", myReservationId, scanId,
             file);
       }
-    } finally {
-      unlockFiles(scanSessionFiles);
     }
 
     return new ScanReservation(scanSessionFiles, myReservationId);
   }
 
-  // TODO need to periodically call this
   private void cleanUpReservedFiles(long expireTimeMs) {
     List<StoredTabletFile> candidates = new ArrayList<>();
 
@@ -702,8 +756,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
     if (!candidates.isEmpty()) {
       // gain exclusive access to files to avoid multiple threads adding/deleting file reservations
       // at same time
-      lockFiles(candidates);
-      try {
+      try (FilesLock flock = lockFiles(candidates)) {
         List<ScanServerRefTabletFile> refsToDelete = new ArrayList<>();
         List<StoredTabletFile> confirmed = new ArrayList<>();
 
@@ -711,7 +764,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
         // check that is still a candidate now that files are locked and no other thread should be
         // modifying them
-        for (StoredTabletFile candidate : candidates) {
+        for (StoredTabletFile candidate : flock.getLockedFiles()) {
           var reservation = reservedFiles.get(candidate);
           if (reservation != null && reservation.shouldDelete(expireTimeMs)) {
             refsToDelete.add(
@@ -727,8 +780,6 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
         // those refs were successfully removed from metadata table, so remove them from the map
         reservedFiles.keySet().removeAll(confirmed);
 
-      } finally {
-        unlockFiles(candidates);
       }
     }
   }
