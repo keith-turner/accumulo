@@ -76,7 +76,8 @@ public class DefaultScanServerDispatcherTest {
       this.attempts = Map.of();
     }
 
-    DaParams(TabletId tablet, Map<TabletId, Collection<? extends ScanServerDispatcher.ScanAttempt>> attempts) {
+    DaParams(TabletId tablet,
+        Map<TabletId,Collection<? extends ScanServerDispatcher.ScanAttempt>> attempts) {
       this.tablets = Set.of(tablet);
       this.attempts = attempts;
     }
@@ -104,15 +105,18 @@ public class DefaultScanServerDispatcherTest {
       this.result = result;
     }
 
-    @Override public String getServer() {
+    @Override
+    public String getServer() {
       return server;
     }
 
-    @Override public long getEndTime() {
+    @Override
+    public long getEndTime() {
       return endTime;
     }
 
-    @Override public Result getResult() {
+    @Override
+    public Result getResult() {
       return result;
     }
   }
@@ -136,14 +140,16 @@ public class DefaultScanServerDispatcherTest {
 
       servers.add(actions.getScanServer(tabletId));
     }
-    
+
     assertEquals(3, servers.size());
   }
 
-  private void runBusyTest(int numServers, int busyAttempts, int expectedServers, long expectedBusyTimeout) {
+  private void runBusyTest(int numServers, int busyAttempts, int expectedServers,
+      long expectedBusyTimeout) {
     DefaultScanServerDispatcher dispatcher = new DefaultScanServerDispatcher();
 
-    var servers = Stream.iterate(1, i -> i <= numServers, i->i+1).map(i -> "s"+i+":"+i).collect(Collectors.toSet());
+    var servers = Stream.iterate(1, i -> i <= numServers, i -> i + 1).map(i -> "s" + i + ":" + i)
+        .collect(Collectors.toSet());
 
     dispatcher.init(new InitParams(servers));
 
@@ -151,13 +157,17 @@ public class DefaultScanServerDispatcherTest {
 
     var tabletId = nti("1", "m");
 
-    var tabletAttempts = Stream.iterate(1, i -> i <= busyAttempts, i->i+1).map(i -> (new TestScanAttempt("ss"+i+":"+i, i, ScanServerDispatcher.ScanAttempt.Result.BUSY))).collect(Collectors.toList());
+    var tabletAttempts = Stream.iterate(1, i -> i <= busyAttempts, i -> i + 1)
+        .map(i -> (new TestScanAttempt("ss" + i + ":" + i, i,
+            ScanServerDispatcher.ScanAttempt.Result.BUSY)))
+        .collect(Collectors.toList());
 
-    Map<TabletId, Collection<? extends ScanServerDispatcher.ScanAttempt>> attempts = new HashMap<>();
+    Map<TabletId,Collection<? extends ScanServerDispatcher.ScanAttempt>> attempts = new HashMap<>();
     attempts.put(tabletId, tabletAttempts);
 
-    for (int i = 0; i < 100*numServers; i++) {
-      ScanServerDispatcher.Actions actions = dispatcher.determineActions(new DaParams(tabletId, attempts));
+    for (int i = 0; i < 100 * numServers; i++) {
+      ScanServerDispatcher.Actions actions =
+          dispatcher.determineActions(new DaParams(tabletId, attempts));
 
       assertEquals(expectedBusyTimeout, actions.getBusyTimeout().toMillis());
       assertEquals(0, actions.getDelay().toMillis());
@@ -169,50 +179,50 @@ public class DefaultScanServerDispatcherTest {
   }
 
   @Test
-  public void testBusy(){
-  runBusyTest(1000, 0, 3,33);
+  public void testBusy() {
+    runBusyTest(1000, 0, 3, 33);
     runBusyTest(1000, 1, 21, 33);
-    runBusyTest(1000, 2, 144,33);
+    runBusyTest(1000, 2, 144, 33);
     runBusyTest(1000, 3, 1000, 33);
-    runBusyTest(1000, 4, 1000,33);
-    runBusyTest(1000, 5, 1000,33*8);
-    runBusyTest(1000, 9, 1000,33*8*8*8*8*8);
-    runBusyTest(1000, 10, 1000,1800000);
+    runBusyTest(1000, 4, 1000, 33);
+    runBusyTest(1000, 5, 1000, 33 * 8);
+    runBusyTest(1000, 9, 1000, 33 * 8 * 8 * 8 * 8 * 8);
+    runBusyTest(1000, 10, 1000, 1800000);
 
-    runBusyTest(27, 0, 3,33);
-    runBusyTest(27, 1, 6,33);
-    runBusyTest(27, 2, 13,33);
-    runBusyTest(27, 3, 27,33);
-    runBusyTest(27, 4, 27,33);
-    runBusyTest(27, 5, 27,33*8);
+    runBusyTest(27, 0, 3, 33);
+    runBusyTest(27, 1, 6, 33);
+    runBusyTest(27, 2, 13, 33);
+    runBusyTest(27, 3, 27, 33);
+    runBusyTest(27, 4, 27, 33);
+    runBusyTest(27, 5, 27, 33 * 8);
 
-    runBusyTest(6, 0, 3,33);
-    runBusyTest(6, 1, 4,33);
-    runBusyTest(6, 2, 5,33);
-    runBusyTest(6, 3, 6,33);
-    runBusyTest(6, 4, 6,33);
-    runBusyTest(6, 5, 6,33*8);
+    runBusyTest(6, 0, 3, 33);
+    runBusyTest(6, 1, 4, 33);
+    runBusyTest(6, 2, 5, 33);
+    runBusyTest(6, 3, 6, 33);
+    runBusyTest(6, 4, 6, 33);
+    runBusyTest(6, 5, 6, 33 * 8);
 
-
-    for(int i=0;i<4;i++) {
-      runBusyTest(1, i, 1,33);
-      runBusyTest(2, i, 2,33);
-      runBusyTest(3, i, 3,33);
+    for (int i = 0; i < 4; i++) {
+      runBusyTest(1, i, 1, 33);
+      runBusyTest(2, i, 2, 33);
+      runBusyTest(3, i, 3, 33);
     }
   }
 
   @Test
-  public void testCoverage(){
+  public void testCoverage() {
     DefaultScanServerDispatcher dispatcher = new DefaultScanServerDispatcher();
-    var servers = Stream.iterate(1, i -> i <= 20, i->i+1).map(i -> "s"+i+":"+i).collect(Collectors.toSet());
+    var servers = Stream.iterate(1, i -> i <= 20, i -> i + 1).map(i -> "s" + i + ":" + i)
+        .collect(Collectors.toSet());
     dispatcher.init(new InitParams(servers));
 
     Set<String> allServersSeen = new HashSet<>();
 
-    for(int t = 0; t<100; t++) {
+    for (int t = 0; t < 100; t++) {
       Set<String> serversSeen = new HashSet<>();
 
-      var tabletId = nti(""+t, "m");
+      var tabletId = nti("" + t, "m");
 
       for (int i = 0; i < 100; i++) {
         ScanServerDispatcher.Actions actions = dispatcher.determineActions(new DaParams(tabletId));
