@@ -136,7 +136,7 @@ public class DefaultScanServerDispatcher implements ScanServerDispatcher {
     long busyTimeout = initialBusyTimeout.toMillis();
 
     if (maxBusyAttempts > maxDepth) {
-      busyTimeout = (long) (busyTimeout * Math.pow(2, maxBusyAttempts - (maxDepth + 1)));
+      busyTimeout = (long) (busyTimeout * Math.pow(8, maxBusyAttempts - (maxDepth + 1)));
       busyTimeout = Math.min(busyTimeout, maxBusyTimeout.toMillis());
     }
 
