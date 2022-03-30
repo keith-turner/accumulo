@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.tserver.TabletServer;
 
-public abstract class ScanTask<T> {
+public abstract class ScanTask<T> implements Runnable {
 
   protected final TabletServer server;
   protected AtomicBoolean interruptFlag;
@@ -153,7 +153,7 @@ public abstract class ScanTask<T> {
     // make this method stop working now that something is being
     // returned
     resultQueue = null;
-    
+
     if (r instanceof Throwable)
       throw new ExecutionException((Throwable) r);
 
