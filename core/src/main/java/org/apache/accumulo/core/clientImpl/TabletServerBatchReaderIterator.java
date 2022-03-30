@@ -601,7 +601,8 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
             return scanAttemptsSnapshot.getOrDefault(tabletId, Set.of());
           }
 
-          @Override public Map<String,String> getHints() {
+          @Override
+          public Map<String,String> getHints() {
             return options.executionHints;
           }
         };

@@ -515,8 +515,9 @@ public class ThriftScanner {
             return attempts.getOrDefault(tabletId, Set.of());
           }
 
-          @Override public Map<String,String> getHints() {
-            if(scanState.executionHints == null)
+          @Override
+          public Map<String,String> getHints() {
+            if (scanState.executionHints == null)
               return Map.of();
             return scanState.executionHints;
           }

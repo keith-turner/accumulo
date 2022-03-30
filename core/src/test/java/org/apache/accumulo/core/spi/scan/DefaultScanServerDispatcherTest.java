@@ -18,13 +18,7 @@
  */
 package org.apache.accumulo.core.spi.scan;
 
-import org.apache.accumulo.core.data.TableId;
-import org.apache.accumulo.core.data.TabletId;
-import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.dataImpl.TabletIdImpl;
-import org.apache.accumulo.core.spi.common.ServiceEnvironment;
-import org.apache.hadoop.io.Text;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -35,7 +29,13 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.data.TabletId;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.dataImpl.TabletIdImpl;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
+import org.apache.hadoop.io.Text;
+import org.junit.jupiter.api.Test;
 
 public class DefaultScanServerDispatcherTest {
 
@@ -54,7 +54,7 @@ public class DefaultScanServerDispatcherTest {
       this.scanServers = scanServers;
     }
 
-    InitParams(Set<String> scanServers, Map<String, String> opts) {
+    InitParams(Set<String> scanServers, Map<String,String> opts) {
       this.opts = opts;
       this.scanServers = scanServers;
     }
@@ -101,7 +101,8 @@ public class DefaultScanServerDispatcherTest {
       return attempts.getOrDefault(tabletId, Set.of());
     }
 
-    @Override public Map<String,String> getHints() {
+    @Override
+    public Map<String,String> getHints() {
       return Map.of();
     }
   }
@@ -156,11 +157,14 @@ public class DefaultScanServerDispatcherTest {
 
     assertEquals(3, servers.size());
   }
-  private void runBusyTest(int numServers, int busyAttempts, int expectedServers, long expectedBusyTimeout) {
+
+  private void runBusyTest(int numServers, int busyAttempts, int expectedServers,
+      long expectedBusyTimeout) {
     runBusyTest(numServers, busyAttempts, expectedServers, expectedBusyTimeout, Map.of());
   }
 
-  private void runBusyTest(int numServers, int busyAttempts, int expectedServers, long expectedBusyTimeout, Map<String,String> opts) {
+  private void runBusyTest(int numServers, int busyAttempts, int expectedServers,
+      long expectedBusyTimeout, Map<String,String> opts) {
     DefaultScanServerDispatcher dispatcher = new DefaultScanServerDispatcher();
 
     var servers = Stream.iterate(1, i -> i <= numServers, i -> i + 1).map(i -> "s" + i + ":" + i)
@@ -252,22 +256,24 @@ public class DefaultScanServerDispatcherTest {
   }
 
   @Test
-  public void testOpts(){
-    var opts = Map.of("initialServers", "5", "maxDepth","4", "initialBusyTimeout","PT0.066S", "maxBusyTimeout", "PT10M");
+  public void testOpts() {
+    var opts = Map.of("initialServers", "5", "maxDepth", "4", "initialBusyTimeout", "PT0.066S",
+        "maxBusyTimeout", "PT10M");
 
     runBusyTest(1000, 0, 5, 66, opts);
     runBusyTest(1000, 1, 19, 66, opts);
     runBusyTest(1000, 2, 71, 66, opts);
     runBusyTest(1000, 3, 266, 66, opts);
     runBusyTest(1000, 4, 1000, 66, opts);
-    runBusyTest(1000, 8, 1000, 66*8*8*8, opts);
+    runBusyTest(1000, 8, 1000, 66 * 8 * 8 * 8, opts);
     runBusyTest(1000, 10, 1000, 600000, opts);
   }
 
   @Test
-  public void testUnknownOpts(){
+  public void testUnknownOpts() {
     var opts = Map.of("abc", "3");
-    var exception = assertThrows(IllegalArgumentException.class, ()->runBusyTest(1000, 0, 5, 66, opts));
+    var exception =
+        assertThrows(IllegalArgumentException.class, () -> runBusyTest(1000, 0, 5, 66, opts));
     assertTrue(exception.getMessage().contains("abc"));
   }
 }
