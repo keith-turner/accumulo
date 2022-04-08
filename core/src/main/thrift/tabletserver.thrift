@@ -198,8 +198,7 @@ struct TCompactionStats{
   3:i64 fileSize;
 }
 
-service TabletClientService {
-
+service TabletScanClientService {
   // scan a range of keys
   data.InitialScan startScan(
     11:trace.TInfo tinfo
@@ -283,6 +282,31 @@ service TabletClientService {
   ) throws (
     1:NoSuchScanIDException nssi
   )
+
+  list<ActiveScan> getActiveScans(
+    2:trace.TInfo tinfo
+    1:security.TCredentials credentials
+  ) throws (
+    1:client.ThriftSecurityException sec
+  )
+
+  void halt(
+    3:trace.TInfo tinfo
+    1:security.TCredentials credentials
+    2:string lock
+  ) throws (
+    1:client.ThriftSecurityException sec
+  )
+
+  oneway void fastHalt(
+    3:trace.TInfo tinfo
+    1:security.TCredentials credentials
+    2:string lock
+  )
+
+}
+
+service TabletClientService {
 
   //the following calls support a batch update to multiple tablets on a tablet server
   data.UpdateID startUpdate(
@@ -444,27 +468,6 @@ service TabletClientService {
   )
 
   TabletStats getHistoricalStats(
-    2:trace.TInfo tinfo
-    1:security.TCredentials credentials
-  ) throws (
-    1:client.ThriftSecurityException sec
-  )
-
-  void halt(
-    3:trace.TInfo tinfo
-    1:security.TCredentials credentials
-    2:string lock
-  ) throws (
-    1:client.ThriftSecurityException sec
-  )
-
-  oneway void fastHalt(
-    3:trace.TInfo tinfo
-    1:security.TCredentials credentials
-    2:string lock
-  )
-
-  list<ActiveScan> getActiveScans(
     2:trace.TInfo tinfo
     1:security.TCredentials credentials
   ) throws (

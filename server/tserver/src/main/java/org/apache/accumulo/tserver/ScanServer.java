@@ -45,32 +45,19 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.clientImpl.thrift.ConfigurationType;
-import org.apache.accumulo.core.clientImpl.thrift.TDiskUsage;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
-import org.apache.accumulo.core.clientImpl.thrift.ThriftTableOperationException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.InitialMultiScan;
 import org.apache.accumulo.core.dataImpl.thrift.InitialScan;
 import org.apache.accumulo.core.dataImpl.thrift.IterInfo;
-import org.apache.accumulo.core.dataImpl.thrift.MapFileInfo;
 import org.apache.accumulo.core.dataImpl.thrift.MultiScanResult;
 import org.apache.accumulo.core.dataImpl.thrift.ScanResult;
-import org.apache.accumulo.core.dataImpl.thrift.TCMResult;
 import org.apache.accumulo.core.dataImpl.thrift.TColumn;
-import org.apache.accumulo.core.dataImpl.thrift.TConditionalMutation;
-import org.apache.accumulo.core.dataImpl.thrift.TConditionalSession;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
-import org.apache.accumulo.core.dataImpl.thrift.TMutation;
 import org.apache.accumulo.core.dataImpl.thrift.TRange;
-import org.apache.accumulo.core.dataImpl.thrift.TRowRange;
-import org.apache.accumulo.core.dataImpl.thrift.TSummaries;
-import org.apache.accumulo.core.dataImpl.thrift.TSummaryRequest;
-import org.apache.accumulo.core.dataImpl.thrift.UpdateErrors;
 import org.apache.accumulo.core.file.blockfile.cache.impl.BlockCacheConfiguration;
-import org.apache.accumulo.core.master.thrift.TabletServerStatus;
 import org.apache.accumulo.core.metadata.ScanServerRefTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample;
@@ -81,20 +68,13 @@ import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
-import org.apache.accumulo.core.tabletserver.thrift.ActiveCompaction;
 import org.apache.accumulo.core.tabletserver.thrift.ActiveScan;
-import org.apache.accumulo.core.tabletserver.thrift.ConstraintViolationException;
 import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
 import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
-import org.apache.accumulo.core.tabletserver.thrift.TDurability;
-import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.TSampleNotPresentException;
 import org.apache.accumulo.core.tabletserver.thrift.TSamplerConfiguration;
-import org.apache.accumulo.core.tabletserver.thrift.TUnloadTabletGoal;
-import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
-import org.apache.accumulo.core.tabletserver.thrift.TabletClientService.Iface;
-import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
+import org.apache.accumulo.core.tabletserver.thrift.TabletScanClientService;
 import org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
@@ -139,7 +119,7 @@ import com.github.benmanes.caffeine.cache.Scheduler;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 
-public class ScanServer extends TabletServer implements TabletClientService.Iface {
+public class ScanServer extends TabletServer implements TabletScanClientService.Iface {
 
   /**
    * A compaction manager that does nothing
@@ -221,7 +201,7 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
 
   private static final Logger LOG = LoggerFactory.getLogger(ScanServer.class);
 
-  protected ThriftClientHandler handler;
+  protected ThriftScanClientHandler handler;
   private UUID serverLockUUID;
   private final TabletMetadataLoader tabletMetadataLoader;
   private final LoadingCache<KeyExtent,TabletMetadata> tabletMetadataCache;
@@ -296,8 +276,8 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   @VisibleForTesting
-  protected ThriftClientHandler getHandler() {
-    return new ThriftClientHandler(this);
+  protected ThriftScanClientHandler getHandler() {
+    return new ThriftScanClientHandler(this);
   }
 
   /**
@@ -308,12 +288,12 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
    *           host unknown
    */
   protected ServerAddress startScanServerClientService() throws UnknownHostException {
-    Iface rpcProxy = TraceUtil.wrapService(this);
+    TabletScanClientService.Iface rpcProxy = TraceUtil.wrapService(this);
     if (getContext().getThriftServerType() == ThriftServerType.SASL) {
       rpcProxy = TCredentialsUpdatingWrapper.service(rpcProxy, getClass(), getConfiguration());
     }
-    final TabletClientService.Processor<Iface> processor =
-        new TabletClientService.Processor<>(rpcProxy);
+    final TabletScanClientService.Processor<TabletScanClientService.Iface> processor =
+        new TabletScanClientService.Processor<>(rpcProxy);
 
     Property maxMessageSizeProperty =
         (getConfiguration().get(Property.SSERV_MAX_MESSAGE_SIZE) != null
@@ -934,6 +914,23 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
   }
 
   @Override
+  public List<ActiveScan> getActiveScans(TInfo tinfo, TCredentials credentials)
+      throws ThriftSecurityException, TException {
+    return handler.getActiveScans(tinfo, credentials);
+  }
+
+  @Override
+  public void halt(TInfo tinfo, TCredentials credentials, String lock)
+      throws ThriftSecurityException, TException {
+    handler.halt(tinfo, credentials, lock);
+  }
+  
+  @Override
+  public void fastHalt(TInfo tinfo, TCredentials credentials, String lock) throws TException {
+    handler.fastHalt(tinfo, credentials, lock);
+  }
+
+  @Override
   public BlockCacheConfiguration getBlockCacheConfiguration(AccumuloConfiguration acuConf) {
     return new BlockCacheConfiguration(acuConf, Property.SSERV_PREFIX,
         Property.SSERV_INDEXCACHE_SIZE, Property.SSERV_DATACACHE_SIZE,
@@ -945,345 +942,5 @@ public class ScanServer extends TabletServer implements TabletClientService.Ifac
       tserver.runServer();
     }
   }
-
-  @Override
-  public String getRootTabletLocation() throws TException {
-    return null;
-  }
-
-  @Override
-  public String getInstanceId() throws TException {
-    return null;
-  }
-
-  @Override
-  public String getZooKeepers() throws TException {
-    return null;
-  }
-
-  @Override
-  public List<String> bulkImportFiles(TInfo tinfo, TCredentials credentials, long tid,
-      String tableId, List<String> files, String errorDir, boolean setTime)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {
-    return null;
-  }
-
-  @Override
-  public boolean isActive(TInfo tinfo, long tid) throws TException {
-    return false;
-  }
-
-  @Override
-  public void ping(TCredentials credentials) throws ThriftSecurityException, TException {}
-
-  @Override
-  public List<TDiskUsage> getDiskUsage(Set<String> tables, TCredentials credentials)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {
-    return null;
-  }
-
-  @Override
-  public Set<String> listLocalUsers(TInfo tinfo, TCredentials credentials)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public void createLocalUser(TInfo tinfo, TCredentials credentials, String principal,
-      ByteBuffer password) throws ThriftSecurityException, TException {}
-
-  @Override
-  public void dropLocalUser(TInfo tinfo, TCredentials credentials, String principal)
-      throws ThriftSecurityException, TException {}
-
-  @Override
-  public void changeLocalUserPassword(TInfo tinfo, TCredentials credentials, String principal,
-      ByteBuffer password) throws ThriftSecurityException, TException {}
-
-  @Override
-  public boolean authenticate(TInfo tinfo, TCredentials credentials)
-      throws ThriftSecurityException, TException {
-    return false;
-  }
-
-  @Override
-  public boolean authenticateUser(TInfo tinfo, TCredentials credentials, TCredentials toAuth)
-      throws ThriftSecurityException, TException {
-    return false;
-  }
-
-  @Override
-  public void changeAuthorizations(TInfo tinfo, TCredentials credentials, String principal,
-      List<ByteBuffer> authorizations) throws ThriftSecurityException, TException {}
-
-  @Override
-  public List<ByteBuffer> getUserAuthorizations(TInfo tinfo, TCredentials credentials,
-      String principal) throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public boolean hasSystemPermission(TInfo tinfo, TCredentials credentials, String principal,
-      byte sysPerm) throws ThriftSecurityException, TException {
-    return false;
-  }
-
-  @Override
-  public boolean hasTablePermission(TInfo tinfo, TCredentials credentials, String principal,
-      String tableName, byte tblPerm)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {
-    return false;
-  }
-
-  @Override
-  public boolean hasNamespacePermission(TInfo tinfo, TCredentials credentials, String principal,
-      String ns, byte tblNspcPerm)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {
-    return false;
-  }
-
-  @Override
-  public void grantSystemPermission(TInfo tinfo, TCredentials credentials, String principal,
-      byte permission) throws ThriftSecurityException, TException {}
-
-  @Override
-  public void revokeSystemPermission(TInfo tinfo, TCredentials credentials, String principal,
-      byte permission) throws ThriftSecurityException, TException {}
-
-  @Override
-  public void grantTablePermission(TInfo tinfo, TCredentials credentials, String principal,
-      String tableName, byte permission)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {}
-
-  @Override
-  public void revokeTablePermission(TInfo tinfo, TCredentials credentials, String principal,
-      String tableName, byte permission)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {}
-
-  @Override
-  public void grantNamespacePermission(TInfo tinfo, TCredentials credentials, String principal,
-      String ns, byte permission)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {}
-
-  @Override
-  public void revokeNamespacePermission(TInfo tinfo, TCredentials credentials, String principal,
-      String ns, byte permission)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {}
-
-  @Override
-  public Map<String,String> getConfiguration(TInfo tinfo, TCredentials credentials,
-      ConfigurationType type) throws TException {
-    return null;
-  }
-
-  @Override
-  public Map<String,String> getTableConfiguration(TInfo tinfo, TCredentials credentials,
-      String tableName) throws ThriftTableOperationException, TException {
-    return null;
-  }
-
-  @Override
-  public Map<String,String> getNamespaceConfiguration(TInfo tinfo, TCredentials credentials,
-      String ns) throws ThriftTableOperationException, TException {
-    return null;
-  }
-
-  @Override
-  public boolean checkClass(TInfo tinfo, TCredentials credentials, String className,
-      String interfaceMatch) throws TException {
-    return false;
-  }
-
-  @Override
-  public boolean checkTableClass(TInfo tinfo, TCredentials credentials, String tableId,
-      String className, String interfaceMatch)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {
-    return false;
-  }
-
-  @Override
-  public boolean checkNamespaceClass(TInfo tinfo, TCredentials credentials, String namespaceId,
-      String className, String interfaceMatch)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {
-    return false;
-  }
-
-  @Override
-  public long startUpdate(TInfo tinfo, TCredentials credentials, TDurability durability)
-      throws ThriftSecurityException, TException {
-    return 0;
-  }
-
-  @Override
-  public void applyUpdates(TInfo tinfo, long updateID, TKeyExtent keyExtent,
-      List<TMutation> mutations) throws TException {}
-
-  @Override
-  public UpdateErrors closeUpdate(TInfo tinfo, long updateID)
-      throws NoSuchScanIDException, TException {
-    return null;
-  }
-
-  @Override
-  public void update(TInfo tinfo, TCredentials credentials, TKeyExtent keyExtent,
-      TMutation mutation, TDurability durability) throws ThriftSecurityException,
-      NotServingTabletException, ConstraintViolationException, TException {}
-
-  @Override
-  public TConditionalSession startConditionalUpdate(TInfo tinfo, TCredentials credentials,
-      List<ByteBuffer> authorizations, String tableID, TDurability durability,
-      String classLoaderContext) throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public List<TCMResult> conditionalUpdate(TInfo tinfo, long sessID,
-      Map<TKeyExtent,List<TConditionalMutation>> mutations, List<String> symbols)
-      throws NoSuchScanIDException, TException {
-    return null;
-  }
-
-  @Override
-  public void invalidateConditionalUpdate(TInfo tinfo, long sessID) throws TException {}
-
-  @Override
-  public void closeConditionalUpdate(TInfo tinfo, long sessID) throws TException {}
-
-  @Override
-  public List<TKeyExtent> bulkImport(TInfo tinfo, TCredentials credentials, long tid,
-      Map<TKeyExtent,Map<String,MapFileInfo>> files, boolean setTime)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public void loadFiles(TInfo tinfo, TCredentials credentials, long tid, String dir,
-      Map<TKeyExtent,Map<String,MapFileInfo>> files, boolean setTime) throws TException {}
-
-  @Override
-  public void splitTablet(TInfo tinfo, TCredentials credentials, TKeyExtent extent,
-      ByteBuffer splitPoint)
-      throws ThriftSecurityException, NotServingTabletException, TException {}
-
-  @Override
-  public void loadTablet(TInfo tinfo, TCredentials credentials, String lock, TKeyExtent extent)
-      throws TException {}
-
-  @Override
-  public void unloadTablet(TInfo tinfo, TCredentials credentials, String lock, TKeyExtent extent,
-      TUnloadTabletGoal goal, long requestTime) throws TException {}
-
-  @Override
-  public void flush(TInfo tinfo, TCredentials credentials, String lock, String tableId,
-      ByteBuffer startRow, ByteBuffer endRow) throws TException {}
-
-  @Override
-  public void flushTablet(TInfo tinfo, TCredentials credentials, String lock, TKeyExtent extent)
-      throws TException {}
-
-  @Override
-  public void chop(TInfo tinfo, TCredentials credentials, String lock, TKeyExtent extent)
-      throws TException {}
-
-  @Override
-  public void compact(TInfo tinfo, TCredentials credentials, String lock, String tableId,
-      ByteBuffer startRow, ByteBuffer endRow) throws TException {}
-
-  @Override
-  public TabletServerStatus getTabletServerStatus(TInfo tinfo, TCredentials credentials)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public List<TabletStats> getTabletStats(TInfo tinfo, TCredentials credentials, String tableId)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public TabletStats getHistoricalStats(TInfo tinfo, TCredentials credentials)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public void halt(TInfo tinfo, TCredentials credentials, String lock)
-      throws ThriftSecurityException, TException {}
-
-  @Override
-  public void fastHalt(TInfo tinfo, TCredentials credentials, String lock) throws TException {
-    handler.fastHalt(tinfo, credentials, lock);
-  }
-
-  @Override
-  public List<ActiveScan> getActiveScans(TInfo tinfo, TCredentials credentials)
-      throws ThriftSecurityException, TException {
-    return handler.getActiveScans(tinfo, credentials);
-  }
-
-  @Override
-  public List<ActiveCompaction> getActiveCompactions(TInfo tinfo, TCredentials credentials)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public void removeLogs(TInfo tinfo, TCredentials credentials, List<String> filenames)
-      throws TException {}
-
-  @Override
-  public List<String> getActiveLogs(TInfo tinfo, TCredentials credentials) throws TException {
-    return null;
-  }
-
-  @Override
-  public TSummaries startGetSummaries(TInfo tinfo, TCredentials credentials,
-      TSummaryRequest request)
-      throws ThriftSecurityException, ThriftTableOperationException, TException {
-    return null;
-  }
-
-  @Override
-  public TSummaries startGetSummariesForPartition(TInfo tinfo, TCredentials credentials,
-      TSummaryRequest request, int modulus, int remainder)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public TSummaries startGetSummariesFromFiles(TInfo tinfo, TCredentials credentials,
-      TSummaryRequest request, Map<String,List<TRowRange>> files)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public TSummaries contiuneGetSummaries(TInfo tinfo, long sessionId)
-      throws NoSuchScanIDException, TException {
-    return null;
-  }
-
-  @Override
-  public List<TCompactionQueueSummary> getCompactionQueueInfo(TInfo tinfo, TCredentials credentials)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public TExternalCompactionJob reserveCompactionJob(TInfo tinfo, TCredentials credentials,
-      String queueName, long priority, String compactor, String externalCompactionId)
-      throws ThriftSecurityException, TException {
-    return null;
-  }
-
-  @Override
-  public void compactionJobFinished(TInfo tinfo, TCredentials credentials,
-      String externalCompactionId, TKeyExtent extent, long fileSize, long entries)
-      throws TException {}
-
-  @Override
-  public void compactionJobFailed(TInfo tinfo, TCredentials credentials,
-      String externalCompactionId, TKeyExtent extent) throws TException {}
 
 }
