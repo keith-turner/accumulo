@@ -179,7 +179,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;
 
-public class TabletServer extends AbstractServer implements TabletScanningServer {
+public class TabletServer extends AbstractServer {
 
   private static final SecureRandom random = new SecureRandom();
   private static final Logger log = LoggerFactory.getLogger(TabletServer.class);
@@ -1409,23 +1409,4 @@ public class TabletServer extends AbstractServer implements TabletScanningServer
         Property.TSERV_SUMMARYCACHE_SIZE, Property.TSERV_DEFAULT_BLOCKSIZE);
   }
 
-  @Override
-  public ZooCache getManagerLockCache() {
-    return this.managerLockCache;
-  }
-
-  @Override
-  public SessionManager getSessionManager() {
-    return this.sessionManager;
-  }
-
-  @Override
-  public TabletServerResourceManager getResourceManager() {
-    return this.resourceManager;
-  }
-
-  @Override
-  public GarbageCollectionLogger getGCLogger() {
-    return this.gcLogger;
-  }
 }

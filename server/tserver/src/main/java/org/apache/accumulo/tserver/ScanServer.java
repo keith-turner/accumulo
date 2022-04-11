@@ -84,10 +84,8 @@ import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockLossReason;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockWatcher;
-import org.apache.accumulo.fate.zookeeper.ZooCache;
 import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.fate.zookeeper.ZooUtil.NodeExistsPolicy;
-import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.fs.VolumeManager;
@@ -105,7 +103,6 @@ import org.apache.accumulo.tserver.metrics.TabletServerScanMetrics;
 import org.apache.accumulo.tserver.session.MultiScanSession;
 import org.apache.accumulo.tserver.session.ScanSession;
 import org.apache.accumulo.tserver.session.ScanSession.TabletResolver;
-import org.apache.accumulo.tserver.session.SessionManager;
 import org.apache.accumulo.tserver.session.SingleScanSession;
 import org.apache.accumulo.tserver.tablet.Tablet;
 import org.apache.accumulo.tserver.tablet.TabletData;
@@ -123,8 +120,7 @@ import com.github.benmanes.caffeine.cache.Scheduler;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 
-public class ScanServer extends TabletServer
-    implements TabletScanningServer, TabletScanClientService.Iface {
+public class ScanServer extends TabletServer implements TabletScanClientService.Iface {
 
   /**
    * A compaction manager that does nothing
@@ -942,26 +938,6 @@ public class ScanServer extends TabletServer
     return new BlockCacheConfiguration(acuConf, Property.SSERV_PREFIX,
         Property.SSERV_INDEXCACHE_SIZE, Property.SSERV_DATACACHE_SIZE,
         Property.SSERV_SUMMARYCACHE_SIZE, Property.SSERV_DEFAULT_BLOCKSIZE);
-  }
-
-  @Override
-  public ZooCache getManagerLockCache() {
-    return this.managerLockCache;
-  }
-
-  @Override
-  public SessionManager getSessionManager() {
-    return this.sessionManager;
-  }
-
-  @Override
-  public TabletServerResourceManager getResourceManager() {
-    return this.resourceManager;
-  }
-
-  @Override
-  public GarbageCollectionLogger getGCLogger() {
-    return this.gcLogger;
   }
 
   public static void main(String[] args) throws Exception {
