@@ -38,6 +38,7 @@ import org.apache.accumulo.core.manager.thrift.FateService;
 import org.apache.accumulo.core.manager.thrift.ManagerClientService;
 import org.apache.accumulo.core.rpc.SaslConnectionParams.SaslMechanism;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
+import org.apache.accumulo.core.tabletserver.thrift.TabletScanClientService;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod;
@@ -100,13 +101,16 @@ public class ThriftUtil {
       TTransport transport) {
 
     TProtocol protocol = protocolFactory.getProtocol(transport);
-    if (factory instanceof ClientService.Client.Factory) {
+
+    if (factory.getClass().equals(ClientService.Client.Factory.class)) {
       protocol = new TMultiplexedProtocol(protocol, "ClientService");
-    } else if (factory instanceof TabletClientService.Client.Factory) {
+    } else if (factory.getClass().equals(TabletClientService.Client.Factory.class)) {
       protocol = new TMultiplexedProtocol(protocol, "TabletClientService");
-    } else if (factory instanceof FateService.Client.Factory) {
+    } else if (factory.getClass().equals(TabletScanClientService.Client.Factory.class)) {
+      protocol = new TMultiplexedProtocol(protocol, "TabletScanClientService");
+    } else if (factory.getClass().equals(FateService.Client.Factory.class)) {
       protocol = new TMultiplexedProtocol(protocol, "FateService");
-    } else if (factory instanceof ManagerClientService.Client.Factory) {
+    } else if (factory.getClass().equals(ManagerClientService.Client.Factory.class)) {
       protocol = new TMultiplexedProtocol(protocol, "ManagerClientService");
     }
 
@@ -232,6 +236,34 @@ public class ThriftUtil {
   public static TabletClientService.Client getTServerClient(HostAndPort address,
       ClientContext context, long timeout) throws TTransportException {
     return getClient(new TabletClientService.Client.Factory(), address, context, timeout);
+  }
+
+  /**
+   * Create a TabletServer ThriftScanClientHandler client
+   *
+   * @param address
+   *          Server address for client to connect to
+   * @param context
+   *          RPC options
+   */
+  public static TabletScanClientService.Client getTServerScanClient(HostAndPort address,
+      ClientContext context) throws TTransportException {
+    return getClient(new TabletScanClientService.Client.Factory(), address, context);
+  }
+
+  /**
+   * Create a TabletServer ThriftScanClientHandler client
+   *
+   * @param address
+   *          Server address for client to connect to
+   * @param context
+   *          Options for connecting to the server
+   * @param timeout
+   *          Socket timeout which overrides the ClientContext timeout
+   */
+  public static TabletScanClientService.Client getTServerScanClient(HostAndPort address,
+      ClientContext context, long timeout) throws TTransportException {
+    return getClient(new TabletScanClientService.Client.Factory(), address, context, timeout);
   }
 
   /**

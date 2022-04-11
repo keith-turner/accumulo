@@ -89,6 +89,7 @@ import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.spi.fs.VolumeChooserEnvironment;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.tabletserver.thrift.TabletClientService;
+import org.apache.accumulo.core.tabletserver.thrift.TabletScanClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.ComparablePair;
 import org.apache.accumulo.core.util.Halt;
@@ -178,7 +179,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;
 
-public class TabletServer extends AbstractServer {
+public class TabletServer extends AbstractServer implements TabletScanningServer {
 
   private static final SecureRandom random = new SecureRandom();
   private static final Logger log = LoggerFactory.getLogger(TabletServer.class);
@@ -418,6 +419,7 @@ public class TabletServer extends AbstractServer {
   private final ReentrantLock recoveryLock = new ReentrantLock(true);
   private ClientServiceHandler clientHandler;
   private ThriftClientHandler thriftClientHandler;
+  private ThriftScanClientHandler scanClientHandler;
   private final ServerBulkImportStatus bulkImportStatus = new ServerBulkImportStatus();
   protected CompactionManager compactionManager;
 
@@ -425,7 +427,7 @@ public class TabletServer extends AbstractServer {
     return lockID;
   }
 
-  void requestStop() {
+  public void requestStop() {
     serverStopRequested = true;
   }
 
@@ -617,6 +619,10 @@ public class TabletServer extends AbstractServer {
     return new ThriftClientHandler(this);
   }
 
+  protected ThriftScanClientHandler getThriftScanClientHandler() {
+    return new ThriftScanClientHandler(this);
+  }
+
   private void returnManagerConnection(ManagerClientService.Client client) {
     ThriftUtil.returnClient(client, context);
   }
@@ -645,9 +651,24 @@ public class TabletServer extends AbstractServer {
       thriftHandlerProcessor = new TabletClientService.Processor<>(thriftHandlerRpcProxy);
     }
 
+    scanClientHandler = getThriftScanClientHandler();
+    TabletScanClientService.Iface thriftScanHandlerRpcProxy =
+        TraceUtil.wrapService(scanClientHandler);
+    final TabletScanClientService.Processor<
+        TabletScanClientService.Iface> thriftScanHandlerProcessor;
+    if (getContext().getThriftServerType() == ThriftServerType.SASL) {
+      TabletScanClientService.Iface tcredProxy = TCredentialsUpdatingWrapper
+          .service(thriftScanHandlerRpcProxy, ThriftScanClientHandler.class, getConfiguration());
+      thriftScanHandlerProcessor = new TabletScanClientService.Processor<>(tcredProxy);
+    } else {
+      thriftScanHandlerProcessor =
+          new TabletScanClientService.Processor<>(thriftScanHandlerRpcProxy);
+    }
+
     TMultiplexedProcessor muxProcessor = new TMultiplexedProcessor();
     muxProcessor.registerProcessor("ClientService", clientHandlerProcessor);
     muxProcessor.registerProcessor("TabletClientService", thriftHandlerProcessor);
+    muxProcessor.registerProcessor("TabletScanClientService", thriftScanHandlerProcessor);
 
     HostAndPort address = startServer(getConfiguration(), clientAddress.getHost(), muxProcessor);
     log.info("address = {}", address);
@@ -1386,5 +1407,25 @@ public class TabletServer extends AbstractServer {
     return new BlockCacheConfiguration(acuConf, Property.TSERV_PREFIX,
         Property.TSERV_INDEXCACHE_SIZE, Property.TSERV_DATACACHE_SIZE,
         Property.TSERV_SUMMARYCACHE_SIZE, Property.TSERV_DEFAULT_BLOCKSIZE);
+  }
+
+  @Override
+  public ZooCache getManagerLockCache() {
+    return this.managerLockCache;
+  }
+
+  @Override
+  public SessionManager getSessionManager() {
+    return this.sessionManager;
+  }
+
+  @Override
+  public TabletServerResourceManager getResourceManager() {
+    return this.resourceManager;
+  }
+
+  @Override
+  public GarbageCollectionLogger getGCLogger() {
+    return this.gcLogger;
   }
 }

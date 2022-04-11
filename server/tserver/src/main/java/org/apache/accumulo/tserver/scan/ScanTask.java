@@ -27,11 +27,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.accumulo.tserver.TabletServer;
+import org.apache.accumulo.tserver.TabletScanningServer;
 
 public abstract class ScanTask<T> implements Runnable {
 
-  protected final TabletServer server;
+  protected final TabletScanningServer server;
   protected AtomicBoolean interruptFlag;
   protected ArrayBlockingQueue<Object> resultQueue;
   protected AtomicInteger state;
@@ -41,7 +41,7 @@ public abstract class ScanTask<T> implements Runnable {
   private static final int ADDED = 2;
   private static final int CANCELED = 3;
 
-  ScanTask(TabletServer server) {
+  ScanTask(TabletScanningServer server) {
     this.server = server;
     interruptFlag = new AtomicBoolean(false);
     runState = new AtomicReference<>(ScanRunState.QUEUED);

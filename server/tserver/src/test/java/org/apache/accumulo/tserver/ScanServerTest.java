@@ -73,7 +73,7 @@ public class ScanServerTest {
     }
 
     @Override
-    protected ThriftClientHandler getHandler() {
+    protected ThriftScanClientHandler getHandler() {
       return handler;
     }
 
@@ -108,11 +108,11 @@ public class ScanServerTest {
 
   }
 
-  private ThriftClientHandler handler;
+  private ThriftScanClientHandler handler;
 
   @Test
   public void testScan() throws Exception {
-    handler = createMock(ThriftClientHandler.class);
+    handler = createMock(ThriftScanClientHandler.class);
 
     TInfo tinfo = createMock(TInfo.class);
     TCredentials tcreds = createMock(TCredentials.class);
@@ -161,7 +161,7 @@ public class ScanServerTest {
 
   @Test
   public void testTabletLoadFailure() throws Exception {
-    handler = createMock(ThriftClientHandler.class);
+    handler = createMock(ThriftScanClientHandler.class);
 
     TInfo tinfo = createMock(TInfo.class);
     TCredentials tcreds = createMock(TCredentials.class);
@@ -195,7 +195,7 @@ public class ScanServerTest {
 
   @Test
   public void testBatchScan() throws Exception {
-    handler = createMock(ThriftClientHandler.class);
+    handler = createMock(ThriftScanClientHandler.class);
 
     TInfo tinfo = createMock(TInfo.class);
     TCredentials tcreds = createMock(TCredentials.class);
@@ -256,7 +256,7 @@ public class ScanServerTest {
 
   @Test
   public void testBatchScanNoRanges() throws Exception {
-    handler = createMock(ThriftClientHandler.class);
+    handler = createMock(ThriftScanClientHandler.class);
 
     TInfo tinfo = createMock(TInfo.class);
     TCredentials tcreds = createMock(TCredentials.class);

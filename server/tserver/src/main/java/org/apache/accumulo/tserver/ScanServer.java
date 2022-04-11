@@ -84,8 +84,10 @@ import org.apache.accumulo.fate.util.UtilWaitThread;
 import org.apache.accumulo.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockLossReason;
 import org.apache.accumulo.fate.zookeeper.ServiceLock.LockWatcher;
+import org.apache.accumulo.fate.zookeeper.ZooCache;
 import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.fate.zookeeper.ZooUtil.NodeExistsPolicy;
+import org.apache.accumulo.server.GarbageCollectionLogger;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.fs.VolumeManager;
@@ -103,10 +105,12 @@ import org.apache.accumulo.tserver.metrics.TabletServerScanMetrics;
 import org.apache.accumulo.tserver.session.MultiScanSession;
 import org.apache.accumulo.tserver.session.ScanSession;
 import org.apache.accumulo.tserver.session.ScanSession.TabletResolver;
+import org.apache.accumulo.tserver.session.SessionManager;
 import org.apache.accumulo.tserver.session.SingleScanSession;
 import org.apache.accumulo.tserver.tablet.Tablet;
 import org.apache.accumulo.tserver.tablet.TabletData;
 import org.apache.thrift.TException;
+import org.apache.thrift.TMultiplexedProcessor;
 import org.apache.zookeeper.KeeperException;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
@@ -119,7 +123,8 @@ import com.github.benmanes.caffeine.cache.Scheduler;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 
-public class ScanServer extends TabletServer implements TabletScanClientService.Iface {
+public class ScanServer extends TabletServer
+    implements TabletScanningServer, TabletScanClientService.Iface {
 
   /**
    * A compaction manager that does nothing
@@ -199,16 +204,6 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
 
   }
 
-  private static final Logger LOG = LoggerFactory.getLogger(ScanServer.class);
-
-  protected ThriftScanClientHandler handler;
-  private UUID serverLockUUID;
-  private final TabletMetadataLoader tabletMetadataLoader;
-  private final LoadingCache<KeyExtent,TabletMetadata> tabletMetadataCache;
-  protected Set<StoredTabletFile> lockedFiles = new HashSet<>();
-  protected Map<StoredTabletFile,ReservedFile> reservedFiles = new ConcurrentHashMap<>();
-  protected AtomicLong nextScanReservationId = new AtomicLong();
-
   private static class TabletMetadataLoader implements CacheLoader<KeyExtent,TabletMetadata> {
 
     private final Ample ample;
@@ -239,9 +234,18 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
     }
   }
 
+  private static final Logger LOG = LoggerFactory.getLogger(ScanServer.class);
+
+  protected ThriftScanClientHandler handler;
+  private UUID serverLockUUID;
+  private final TabletMetadataLoader tabletMetadataLoader;
+  private final LoadingCache<KeyExtent,TabletMetadata> tabletMetadataCache;
+  protected Set<StoredTabletFile> lockedFiles = new HashSet<>();
+  protected Map<StoredTabletFile,ReservedFile> reservedFiles = new ConcurrentHashMap<>();
+  protected AtomicLong nextScanReservationId = new AtomicLong();
+
   public ScanServer(ServerOpts opts, String[] args) {
     super(opts, args, true);
-
     // Note: The way to control the number of concurrent scans that a ScanServer will
     // perform is by using Property.SSERV_SCAN_EXECUTORS_DEFAULT_THREADS or the number
     // of threads in Property.SSERV_SCAN_EXECUTORS_PREFIX.
@@ -295,11 +299,14 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
     final TabletScanClientService.Processor<TabletScanClientService.Iface> processor =
         new TabletScanClientService.Processor<>(rpcProxy);
 
+    TMultiplexedProcessor muxProcessor = new TMultiplexedProcessor();
+    muxProcessor.registerProcessor("TabletScanClientService", processor);
+
     Property maxMessageSizeProperty =
         (getConfiguration().get(Property.SSERV_MAX_MESSAGE_SIZE) != null
             ? Property.SSERV_MAX_MESSAGE_SIZE : Property.GENERAL_MAX_MESSAGE_SIZE);
     ServerAddress sp = TServerUtils.startServer(getContext(), getHostname(),
-        Property.SSERV_CLIENTPORT, processor, this.getClass().getSimpleName(),
+        Property.SSERV_CLIENTPORT, muxProcessor, this.getClass().getSimpleName(),
         "Thrift Client Server", Property.SSERV_PORTSEARCH, Property.SSERV_MINTHREADS,
         Property.SSERV_MINTHREADS_TIMEOUT, Property.SSERV_THREADCHECK, maxMessageSizeProperty);
 
@@ -924,7 +931,7 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
       throws ThriftSecurityException, TException {
     handler.halt(tinfo, credentials, lock);
   }
-  
+
   @Override
   public void fastHalt(TInfo tinfo, TCredentials credentials, String lock) throws TException {
     handler.fastHalt(tinfo, credentials, lock);
@@ -935,6 +942,26 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
     return new BlockCacheConfiguration(acuConf, Property.SSERV_PREFIX,
         Property.SSERV_INDEXCACHE_SIZE, Property.SSERV_DATACACHE_SIZE,
         Property.SSERV_SUMMARYCACHE_SIZE, Property.SSERV_DEFAULT_BLOCKSIZE);
+  }
+
+  @Override
+  public ZooCache getManagerLockCache() {
+    return this.managerLockCache;
+  }
+
+  @Override
+  public SessionManager getSessionManager() {
+    return this.sessionManager;
+  }
+
+  @Override
+  public TabletServerResourceManager getResourceManager() {
+    return this.resourceManager;
+  }
+
+  @Override
+  public GarbageCollectionLogger getGCLogger() {
+    return this.gcLogger;
   }
 
   public static void main(String[] args) throws Exception {
