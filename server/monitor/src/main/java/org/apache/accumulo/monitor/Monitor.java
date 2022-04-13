@@ -58,6 +58,7 @@ import org.apache.accumulo.core.manager.thrift.ManagerClientService;
 import org.apache.accumulo.core.manager.thrift.ManagerMonitorInfo;
 import org.apache.accumulo.core.master.thrift.TableInfo;
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
+import org.apache.accumulo.core.rpc.ThriftClientTypes;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.tabletserver.thrift.ActiveCompaction;
 import org.apache.accumulo.core.tabletserver.thrift.ActiveScan;
@@ -428,7 +429,7 @@ public class Monitor extends AbstractServer implements HighlyAvailableService {
         address = new ServerServices(new String(zk.getData(path + "/" + locks.get(0)), UTF_8))
             .getAddress(Service.GC_CLIENT);
         GCMonitorService.Client client =
-            ThriftUtil.getClient(new GCMonitorService.Client.Factory(), address, context);
+            ThriftUtil.getClient(ThriftClientTypes.GC, address, context);
         try {
           result = client.getStatus(TraceUtil.traceInfo(), context.rpcCreds());
         } finally {
@@ -676,8 +677,8 @@ public class Monitor extends AbstractServer implements HighlyAvailableService {
   private CompactionCoordinatorService.Client getCoordinator(HostAndPort address) {
     if (coordinatorClient == null) {
       try {
-        coordinatorClient = ThriftUtil.getClient(new CompactionCoordinatorService.Client.Factory(),
-            address, getContext());
+        coordinatorClient =
+            ThriftUtil.getClient(ThriftClientTypes.COORDINATOR, address, getContext());
       } catch (Exception e) {
         log.error("Unable to get Compaction coordinator at {}", address);
         throw new IllegalStateException(coordinatorMissingMsg, e);
@@ -692,7 +693,7 @@ public class Monitor extends AbstractServer implements HighlyAvailableService {
       final HostAndPort parsedServer = HostAndPort.fromString(server);
       TabletScanClientService.Client tserver = null;
       try {
-        tserver = ThriftUtil.getTServerScanClient(parsedServer, context);
+        tserver = ThriftUtil.getClient(ThriftClientTypes.TABLET_SERVER_SCAN, parsedServer, context);
         List<ActiveScan> scans = tserver.getActiveScans(null, context.rpcCreds());
         allScans.put(parsedServer, new ScanStats(scans));
         scansFetchedNanos = System.nanoTime();
@@ -720,7 +721,7 @@ public class Monitor extends AbstractServer implements HighlyAvailableService {
       final HostAndPort parsedServer = HostAndPort.fromString(server);
       Client tserver = null;
       try {
-        tserver = ThriftUtil.getTServerClient(parsedServer, context);
+        tserver = ThriftUtil.getClient(ThriftClientTypes.TABLET_SERVER, parsedServer, context);
         var compacts = tserver.getActiveCompactions(null, context.rpcCreds());
         allCompactions.put(parsedServer, new CompactionStats(compacts));
         compactsFetchedNanos = System.nanoTime();
