@@ -286,14 +286,15 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
    *           host unknown
    */
   protected ServerAddress startScanServerClientService() throws UnknownHostException {
-    
+
     TProcessor processor = null;
     try {
-      processor = ThriftServerTypes.getScanServerThriftServer(this, getContext(), getConfiguration());
+      processor =
+          ThriftServerTypes.getScanServerThriftServer(this, getContext(), getConfiguration());
     } catch (Exception e) {
       throw new RuntimeException("Error creating thrift server processor", e);
-   }
-    
+    }
+
     Property maxMessageSizeProperty =
         (getConfiguration().get(Property.SSERV_MAX_MESSAGE_SIZE) != null
             ? Property.SSERV_MAX_MESSAGE_SIZE : Property.GENERAL_MAX_MESSAGE_SIZE);
