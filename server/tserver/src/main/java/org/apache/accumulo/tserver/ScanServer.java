@@ -76,7 +76,6 @@ import org.apache.accumulo.core.tabletserver.thrift.TSampleNotPresentException;
 import org.apache.accumulo.core.tabletserver.thrift.TSamplerConfiguration;
 import org.apache.accumulo.core.tabletserver.thrift.TabletScanClientService;
 import org.apache.accumulo.core.tabletserver.thrift.TooManyFilesException;
-import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.threads.ThreadPools;
@@ -90,9 +89,8 @@ import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.rpc.ServerAddress;
-import org.apache.accumulo.server.rpc.TCredentialsUpdatingWrapper;
 import org.apache.accumulo.server.rpc.TServerUtils;
-import org.apache.accumulo.server.rpc.ThriftServerType;
+import org.apache.accumulo.server.rpc.ThriftServerTypes;
 import org.apache.accumulo.server.security.SecurityUtil;
 import org.apache.accumulo.tserver.TabletServerResourceManager.TabletResourceManager;
 import org.apache.accumulo.tserver.compactions.Compactable;
@@ -107,7 +105,7 @@ import org.apache.accumulo.tserver.session.SingleScanSession;
 import org.apache.accumulo.tserver.tablet.Tablet;
 import org.apache.accumulo.tserver.tablet.TabletData;
 import org.apache.thrift.TException;
-import org.apache.thrift.TMultiplexedProcessor;
+import org.apache.thrift.TProcessor;
 import org.apache.zookeeper.KeeperException;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
@@ -288,21 +286,19 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
    *           host unknown
    */
   protected ServerAddress startScanServerClientService() throws UnknownHostException {
-    TabletScanClientService.Iface rpcProxy = TraceUtil.wrapService(this);
-    if (getContext().getThriftServerType() == ThriftServerType.SASL) {
-      rpcProxy = TCredentialsUpdatingWrapper.service(rpcProxy, getClass(), getConfiguration());
-    }
-    final TabletScanClientService.Processor<TabletScanClientService.Iface> processor =
-        new TabletScanClientService.Processor<>(rpcProxy);
-
-    TMultiplexedProcessor muxProcessor = new TMultiplexedProcessor();
-    muxProcessor.registerProcessor("TabletScanClientService", processor);
-
+    
+    TProcessor processor = null;
+    try {
+      processor = ThriftServerTypes.getScanServerThriftServer(this, getContext(), getConfiguration());
+    } catch (Exception e) {
+      throw new RuntimeException("Error creating thrift server processor", e);
+   }
+    
     Property maxMessageSizeProperty =
         (getConfiguration().get(Property.SSERV_MAX_MESSAGE_SIZE) != null
             ? Property.SSERV_MAX_MESSAGE_SIZE : Property.GENERAL_MAX_MESSAGE_SIZE);
     ServerAddress sp = TServerUtils.startServer(getContext(), getHostname(),
-        Property.SSERV_CLIENTPORT, muxProcessor, this.getClass().getSimpleName(),
+        Property.SSERV_CLIENTPORT, processor, this.getClass().getSimpleName(),
         "Thrift Client Server", Property.SSERV_PORTSEARCH, Property.SSERV_MINTHREADS,
         Property.SSERV_MINTHREADS_TIMEOUT, Property.SSERV_THREADCHECK, maxMessageSizeProperty);
 

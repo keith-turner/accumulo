@@ -167,7 +167,6 @@ public class ThriftUtil {
     }
   }
 
-
   /**
    * Create a transport that is not pooled
    *

@@ -91,7 +91,8 @@ import com.beust.jcommander.Parameter;
  */
 public class NullTserver {
 
-  public static class NullTServerThriftClientHandler implements TabletClientService.Iface, TabletScanClientService.Iface {
+  public static class NullTServerThriftClientHandler
+      implements TabletClientService.Iface, TabletScanClientService.Iface {
 
     private long updateSession = 1;
 

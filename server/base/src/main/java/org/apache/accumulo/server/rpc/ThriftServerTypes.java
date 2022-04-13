@@ -94,8 +94,8 @@ public class ThriftServerTypes {
           new ServerType<>(ThriftClientTypes.TABLET_SERVER);
 
   private static final ServerType<TabletScanClientService.Client,
-  TabletScanClientService.Client.Factory> TABLET_SERVER_SCAN =
-      new ServerType<>(ThriftClientTypes.TABLET_SERVER_SCAN);
+      TabletScanClientService.Client.Factory> TABLET_SERVER_SCAN =
+          new ServerType<>(ThriftClientTypes.TABLET_SERVER_SCAN);
 
   public static TProcessor getCompactorThriftServer(CompactorService.Iface serviceHandler,
       ServerContext context, AccumuloConfiguration conf) throws Exception {
@@ -144,8 +144,7 @@ public class ThriftServerTypes {
 
   public static TProcessor getTabletServerThriftServer(ClientServiceHandler clientHandler,
       TabletClientService.Iface tserverHandler, TabletScanClientService.Iface tserverScanHandler,
-      ServerContext context, AccumuloConfiguration conf)
-      throws Exception {
+      ServerContext context, AccumuloConfiguration conf) throws Exception {
     TMultiplexedProcessor muxProcessor = new TMultiplexedProcessor();
     muxProcessor.registerProcessor(CLIENT.getServiceName(), CLIENT.getServer(
         ClientService.Processor.class, ClientService.Iface.class, clientHandler, context, conf));
@@ -157,10 +156,16 @@ public class ThriftServerTypes {
             TabletScanClientService.Iface.class, tserverScanHandler, context, conf));
     return muxProcessor;
   }
-  
-  public static TProcessor getScanServerThriftServer(TabletScanClientService.Iface tserverScanHandler,
-      ServerContext context, AccumuloConfiguration conf) throws Exception {
-    return TABLET_SERVER_SCAN.getServer(TabletScanClientService.Processor.class,
-            TabletScanClientService.Iface.class, tserverScanHandler, context, conf);
+
+  public static TProcessor getScanServerThriftServer(
+      TabletScanClientService.Iface tserverScanHandler, ServerContext context,
+      AccumuloConfiguration conf) throws Exception {
+    // Server needs to be multiplexed because the TabletScanClientService is also serviced
+    // by the TabletServer which is using a MultiplexedProcessor
+    TMultiplexedProcessor muxProcessor = new TMultiplexedProcessor();
+    muxProcessor.registerProcessor("TabletScanClientService",
+        TABLET_SERVER_SCAN.getServer(TabletScanClientService.Processor.class,
+            TabletScanClientService.Iface.class, tserverScanHandler, context, conf));
+    return muxProcessor;
   }
 }
