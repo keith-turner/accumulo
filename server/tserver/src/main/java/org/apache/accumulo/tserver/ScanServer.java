@@ -90,7 +90,7 @@ import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.rpc.ServerAddress;
 import org.apache.accumulo.server.rpc.TServerUtils;
-import org.apache.accumulo.server.rpc.ThriftServerTypes;
+import org.apache.accumulo.server.rpc.ThriftProcessorTypes;
 import org.apache.accumulo.server.security.SecurityUtil;
 import org.apache.accumulo.tserver.TabletServerResourceManager.TabletResourceManager;
 import org.apache.accumulo.tserver.compactions.Compactable;
@@ -290,7 +290,7 @@ public class ScanServer extends TabletServer implements TabletScanClientService.
     TProcessor processor = null;
     try {
       processor =
-          ThriftServerTypes.getScanServerThriftServer(this, getContext(), getConfiguration());
+          ThriftProcessorTypes.getScanServerTProcessor(this, getContext(), getConfiguration());
     } catch (Exception e) {
       throw new RuntimeException("Error creating thrift server processor", e);
     }

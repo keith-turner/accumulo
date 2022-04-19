@@ -156,9 +156,8 @@ public class ThriftProcessorTypes {
     return muxProcessor;
   }
 
-  public static TProcessor getScanServerTProcessor(
-      TabletScanClientService.Iface tserverScanHandler, ServerContext context,
-      AccumuloConfiguration conf) throws Exception {
+  public static TProcessor getScanServerTProcessor(TabletScanClientService.Iface tserverScanHandler,
+      ServerContext context, AccumuloConfiguration conf) throws Exception {
     // Server needs to be multiplexed because the TabletScanClientService is also serviced
     // by the TabletServer which is using a MultiplexedProcessor
     TMultiplexedProcessor muxProcessor = new TMultiplexedProcessor();
