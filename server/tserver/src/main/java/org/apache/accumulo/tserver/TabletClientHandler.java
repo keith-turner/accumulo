@@ -150,10 +150,10 @@ public class TabletClientHandler implements TabletClientService.Iface {
   private final RowLocks rowLocks = new RowLocks();
 
   public TabletClientHandler(TabletServer server, TransactionWatcher watcher) {
-    this.server = server;
     this.context = server.getContext();
     this.watcher = watcher;
     this.security = AuditedSecurityOperation.getInstance(context);
+    this.server = server;
     MAX_TIME_TO_WAIT_FOR_SCAN_RESULT_MILLIS = server.getContext().getConfiguration()
         .getTimeInMillis(Property.TSERV_SCAN_RESULTS_MAX_TIMEOUT);
     log.debug("{} created", TabletClientHandler.class.getName());

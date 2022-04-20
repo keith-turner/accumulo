@@ -94,12 +94,7 @@ public class ThriftUtil {
    */
   public static <T extends TServiceClient> T createClient(ThriftClientType<T,?> type,
       TTransport transport) {
-
-    TProtocol protocol = protocolFactory.getProtocol(transport);
-    if (type.isMultiplexed()) {
-      protocol = new TMultiplexedProtocol(protocol, type.getServiceName());
-    }
-    return type.getClient(protocol);
+    return type.getClient(protocolFactory.getProtocol(transport));
   }
 
   /**

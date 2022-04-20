@@ -1024,6 +1024,9 @@ public class Manager extends AbstractServer
         HighlyAvailableServiceWrapper.service(managerClientHandler, this);
 
     ServerAddress sa;
+    TProcessor processor = ThriftProcessorTypes.getManagerTProcessor(fateServiceHandler, haProxy,
+        getContext(), getConfiguration());
+
     try {
       TProcessor processor = ThriftProcessorTypes.getManagerTProcessor(fateServiceHandler, haProxy,
           getContext(), getConfiguration());
