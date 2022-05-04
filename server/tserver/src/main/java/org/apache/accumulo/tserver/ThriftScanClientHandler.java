@@ -278,7 +278,7 @@ public class ThriftScanClientHandler implements TabletScanClientService.Iface {
       }
     } catch (CancellationException ce) {
       server.getSessionManager().removeSession(scanID);
-      Tablet tablet = server.getOnlineTablet(scanSession.extent);
+      TabletBase tablet = scanSession.getTabletResolver().getTablet(scanSession.extent);
       if (busyTimeout > 0)
         throw new ScanServerBusyException();
       else if (tablet == null || tablet.isClosed()) {
