@@ -171,8 +171,8 @@ public class ScanServer extends AbstractServer
   // this condition is used to signal changes to influxFiles
   private final Condition reservationCondition ;
   // the key is the set of files that have reservations in the metadata table, the value contains information about which scans are currently using the file
-  protected Map<StoredTabletFile,ReservedFile> reservedFiles = new ConcurrentHashMap<>();
-  protected AtomicLong nextScanReservationId = new AtomicLong();
+  private final Map<StoredTabletFile,ReservedFile> reservedFiles = new ConcurrentHashMap<>();
+  private final AtomicLong nextScanReservationId = new AtomicLong();
 
   private final ServerContext context;
   private final SessionManager sessionManager;

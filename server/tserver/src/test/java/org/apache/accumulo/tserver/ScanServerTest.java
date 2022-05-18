@@ -148,9 +148,6 @@ public class ScanServerTest {
     ss.extent = sextent;
     ss.resolver = resolver;
     ss.reservation = reservation;
-    ss.lockedFiles = new HashSet<>();
-    ss.reservedFiles = new ConcurrentHashMap<>();
-    ss.nextScanReservationId = new AtomicLong();
     ss.clientAddress = HostAndPort.fromParts("127.0.0.1", 1234);
 
     TKeyExtent textent = createMock(TKeyExtent.class);
@@ -241,9 +238,6 @@ public class ScanServerTest {
     ss.extent = extent;
     ss.resolver = resolver;
     ss.reservation = reservation;
-    ss.lockedFiles = new HashSet<>();
-    ss.reservedFiles = new ConcurrentHashMap<>();
-    ss.nextScanReservationId = new AtomicLong();
     ss.clientAddress = HostAndPort.fromParts("127.0.0.1", 1234);
 
     Map<TKeyExtent,List<TRange>> extents = new HashMap<>();
@@ -287,9 +281,6 @@ public class ScanServerTest {
     TestScanServer ss = partialMockBuilder(TestScanServer.class).createMock();
     ss.delegate = handler;
     ss.resolver = resolver;
-    ss.lockedFiles = new HashSet<>();
-    ss.reservedFiles = new ConcurrentHashMap<>();
-    ss.nextScanReservationId = new AtomicLong();
     ss.clientAddress = HostAndPort.fromParts("127.0.0.1", 1234);
 
     assertThrows(TException.class, () -> {
