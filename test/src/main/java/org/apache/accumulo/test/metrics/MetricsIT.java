@@ -33,6 +33,7 @@ import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
+import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
@@ -89,7 +90,7 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
     cluster.stop();
 
     Set<String> unexpectedMetrics = Set.of(METRICS_SCAN_YIELDS, METRICS_UPDATE_ERRORS,
-        METRICS_REPLICATION_QUEUE, METRICS_COMPACTOR_MAJC_STUCK);
+        METRICS_REPLICATION_QUEUE, METRICS_COMPACTOR_MAJC_STUCK, METRICS_SCAN_BUSY_TIMEOUT);
     Set<String> flakyMetrics = Set.of(METRICS_GC_WAL_ERRORS, METRICS_FATE_TYPE_IN_PROGRESS);
 
     Map<String,String> expectedMetricNames = this.getMetricFields();
@@ -140,6 +141,9 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
         writer.addMutation(m);
       }
       client.tableOperations().compact(tableName, new CompactionConfig());
+      try (Scanner scanner = client.createScanner(tableName)) {
+        scanner.forEach((k, v) -> {});
+      }
       client.tableOperations().delete(tableName);
       while (client.tableOperations().exists(tableName)) {
         Thread.sleep(1000);
