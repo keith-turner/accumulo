@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -111,6 +112,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.beust.jcommander.Parameter;
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
@@ -121,6 +123,15 @@ import com.google.common.collect.Sets;
 
 public class ScanServer extends AbstractServer
     implements TabletScanClientService.Iface, TabletHostingServer {
+
+  public static class ScanServerOpts extends ServerOpts {
+    @Parameter(required = false, names = {"-g", "--group"}, description = "compaction queue name")
+    private String groupName = "";
+
+    public String getGroupName() {
+      return groupName;
+    }
+  }
 
   private static final Logger log = LoggerFactory.getLogger(ScanServer.class);
 
@@ -187,7 +198,9 @@ public class ScanServer extends AbstractServer
 
   private ZooCache managerLockCache;
 
-  public ScanServer(ServerOpts opts, String[] args) {
+  private final String groupName;
+
+  public ScanServer(ScanServerOpts opts, String[] args) {
     super("sserver", opts, args);
 
     context = super.getContext();
@@ -230,6 +243,8 @@ public class ScanServer extends AbstractServer
     }
 
     delegate = newThriftScanClientHandler(new WriteTracker());
+
+    this.groupName = opts.getGroupName();
 
     ThreadPools.watchCriticalScheduledTask(getContext().getScheduledExecutor()
         .scheduleWithFixedDelay(() -> cleanUpReservedFiles(scanServerReservationExpiration),
@@ -286,6 +301,7 @@ public class ScanServer extends AbstractServer
           getContext().getZooKeeperRoot() + Constants.ZSSERVERS + "/" + getClientAddressString());
 
       try {
+        byte[] groupName = this.groupName.getBytes(StandardCharsets.UTF_8);
         // Old zk nodes can be cleaned up by ZooZap
         zoo.putPersistentData(zLockPath.toString(), new byte[] {}, NodeExistsPolicy.SKIP);
       } catch (KeeperException e) {
@@ -318,7 +334,7 @@ public class ScanServer extends AbstractServer
       };
 
       // Don't use the normal ServerServices lock content, instead put the server UUID here.
-      byte[] lockContent = serverLockUUID.toString().getBytes(UTF_8);
+      byte[] lockContent = (serverLockUUID.toString() + "," + groupName).getBytes(UTF_8);
 
       for (int i = 0; i < 120 / 5; i++) {
         zoo.putPersistentData(zLockPath.toString(), new byte[0], NodeExistsPolicy.SKIP);
@@ -961,7 +977,7 @@ public class ScanServer extends AbstractServer
   }
 
   public static void main(String[] args) throws Exception {
-    try (ScanServer tserver = new ScanServer(new ServerOpts(), args)) {
+    try (ScanServer tserver = new ScanServer(new ScanServerOpts(), args)) {
       tserver.runServer();
     }
   }
