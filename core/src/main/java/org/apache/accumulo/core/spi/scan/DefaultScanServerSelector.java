@@ -78,7 +78,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
  * <li><b>group : </b> Scan servers can be started with an optional group. If specified, this option
  * will limit the scan servers used to those that were started with this group name. If not
  * specified, the set of scan servers that did not specify a group will be used. Grouping scan
- * servers supports at least two usecases. First groups can be used to dedicate resources for
+ * servers supports at least two use cases. First groups can be used to dedicate resources for
  * certain scans. Second groups can be used to have different hardware/VM types for scans, for
  * example could have some scans use expensive high memory VMs and others use cheaper burstable VMs.
  * <li><b>attemptPlans : </b> A list of configuration to use for each scan attempt. Each list object
