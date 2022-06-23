@@ -48,7 +48,7 @@ public interface ScanServerSelector {
    */
   public interface ScanServer {
     /**
-     * @return the address in the form of <host>:<port> where the scan server is running.
+     * @return the address in the form of {@code <host>:<port>} where the scan server is running.
      */
     String getAddress();
 
