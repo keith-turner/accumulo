@@ -77,7 +77,10 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
  * {@link org.apache.accumulo.core.client.ScannerBase#setExecutionHints(Map)}</li>
  * <li><b>group : </b> Scan servers can be started with an optional group. If specified, this option
  * will limit the scan servers used to those that were started with this group name. If not
- * specified, the set of scan servers that did not specify a group will be used.
+ * specified, the set of scan servers that did not specify a group will be used. Grouping scan
+ * servers supports at least two usecases. First groups can be used to dedicate resources for
+ * certain scans. Second groups can be used to have different hardware/VM types for scans, for
+ * example could have some scans use expensive high memory VMs and others use cheaper burstable VMs.
  * <li><b>attemptPlans : </b> A list of configuration to use for each scan attempt. Each list object
  * has the following fields:
  * <ul>
@@ -218,7 +221,7 @@ public class DefaultScanServerSelector implements ScanServerSelector {
     boolean isDefault = false;
     int busyTimeoutMultiplier;
     String maxBusyTimeout;
-    String group = "";
+    String group = ScanServerSelector.DEFAULT_SCAN_SERVER_GROUP_NAME;
 
     transient boolean parsed = false;
     transient long parsedMaxBusyTimeout;

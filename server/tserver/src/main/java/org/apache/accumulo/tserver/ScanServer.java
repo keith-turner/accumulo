@@ -25,7 +25,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -66,6 +65,7 @@ import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metrics.MetricsUtil;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
+import org.apache.accumulo.core.spi.scan.ScanServerSelector;
 import org.apache.accumulo.core.tabletserver.thrift.ActiveScan;
 import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
 import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
@@ -125,8 +125,11 @@ public class ScanServer extends AbstractServer
     implements TabletScanClientService.Iface, TabletHostingServer {
 
   public static class ScanServerOpts extends ServerOpts {
-    @Parameter(required = false, names = {"-g", "--group"}, description = "compaction queue name")
-    private String groupName = "";
+    @Parameter(required = false, names = {"-g", "--group"},
+        description = "Optional group name that will be made available to the ScanServerSelector client plugin.  If not specified will be set to '"
+            + ScanServerSelector.DEFAULT_SCAN_SERVER_GROUP_NAME
+            + "'.  Groups support at least two use cases : dedicating resources to scans and/or using different hardware for scans.")
+    private String groupName = ScanServerSelector.DEFAULT_SCAN_SERVER_GROUP_NAME;
 
     public String getGroupName() {
       return groupName;
@@ -244,7 +247,7 @@ public class ScanServer extends AbstractServer
 
     delegate = newThriftScanClientHandler(new WriteTracker());
 
-    this.groupName = opts.getGroupName();
+    this.groupName = Objects.requireNonNull(opts.getGroupName());
 
     ThreadPools.watchCriticalScheduledTask(getContext().getScheduledExecutor()
         .scheduleWithFixedDelay(() -> cleanUpReservedFiles(scanServerReservationExpiration),
@@ -301,7 +304,6 @@ public class ScanServer extends AbstractServer
           getContext().getZooKeeperRoot() + Constants.ZSSERVERS + "/" + getClientAddressString());
 
       try {
-        byte[] groupName = this.groupName.getBytes(StandardCharsets.UTF_8);
         // Old zk nodes can be cleaned up by ZooZap
         zoo.putPersistentData(zLockPath.toString(), new byte[] {}, NodeExistsPolicy.SKIP);
       } catch (KeeperException e) {

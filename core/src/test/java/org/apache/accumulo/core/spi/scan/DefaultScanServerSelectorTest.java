@@ -57,7 +57,8 @@ public class DefaultScanServerSelectorTest {
     InitParams(Set<String> scanServers, Map<String,String> opts) {
       this.opts = opts;
       this.scanServers = new HashMap<>();
-      scanServers.forEach(sserv -> this.scanServers.put(sserv, ""));
+      scanServers.forEach(
+          sserv -> this.scanServers.put(sserv, ScanServerSelector.DEFAULT_SCAN_SERVER_GROUP_NAME));
     }
 
     InitParams(Map<String,String> scanServers, Map<String,String> opts) {
@@ -410,7 +411,8 @@ public class DefaultScanServerSelectorTest {
         "[" + defaultProfile + ", " + profile1 + "," + profile2 + "]".replace('\'', '"'));
 
     DefaultScanServerSelector selector = new DefaultScanServerSelector();
-    selector.init(new InitParams(Map.of("ss1:1", "", "ss2:2", "", "ss3:3", "", "ss4:4", "g1",
+    var dg = ScanServerSelector.DEFAULT_SCAN_SERVER_GROUP_NAME;
+    selector.init(new InitParams(Map.of("ss1:1", dg, "ss2:2", dg, "ss3:3", dg, "ss4:4", "g1",
         "ss5:5", "g1", "ss6:6", "g2", "ss7:7", "g2", "ss8:8", "g2"), opts));
 
     Set<String> servers = new HashSet<>();

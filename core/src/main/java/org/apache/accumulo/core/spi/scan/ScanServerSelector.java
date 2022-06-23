@@ -42,6 +42,11 @@ import com.google.common.base.Preconditions;
 public interface ScanServerSelector {
 
   /**
+   * The scan server group name that will be used when one is not specified.
+   */
+  public static final String DEFAULT_SCAN_SERVER_GROUP_NAME = "default";
+
+  /**
    * Information about a scan server.
    *
    * @since 2.1.0
@@ -53,8 +58,9 @@ public interface ScanServerSelector {
     String getAddress();
 
     /**
-     * @return the group name set when the scan server was started. If not set them the empty string
-     *         is returned.
+     * @return the group name set when the scan server was started. If a group name was not set for
+     *         the scan server, then the string {@value #DEFAULT_SCAN_SERVER_GROUP_NAME} is
+     *         returned.
      */
     String getGroup();
   }
