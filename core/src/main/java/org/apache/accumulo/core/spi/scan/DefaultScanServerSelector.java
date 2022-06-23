@@ -75,7 +75,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
  * <li><b>scanTypeActivations : </b> A list of scan types that will activate this profile. Scan
  * types are specified by setting {@code scan_type=<scan_type>} as execution on the scanner. See
  * {@link org.apache.accumulo.core.client.ScannerBase#setExecutionHints(Map)}</li>
- * <li><b>group< : </b> Scan servers can be started with an optional group. If specified this option
+ * <li><b>group : </b> Scan servers can be started with an optional group. If specified, this option
  * will limit the scan servers used to those that were started with this group name. If not
  * specified, the set of scan servers that did not specify a group will be used.
  * <li><b>attemptPlans : </b> A list of configuration to use for each scan attempt. Each list object
