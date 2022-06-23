@@ -27,6 +27,8 @@ import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
@@ -81,6 +83,7 @@ public class ClusterConfigParser {
   }
 
   public static void outputShellVariables(Map<String,String> config, PrintStream out) {
+
     for (String section : SECTIONS) {
       if (config.containsKey(section)) {
         out.printf(PROPERTY_FORMAT, section.toUpperCase() + "_HOSTS", config.get(section));
@@ -108,17 +111,16 @@ public class ClusterConfigParser {
         }
       }
     }
-    if (config.containsKey("sserver.group")) {
-      out.printf(PROPERTY_FORMAT, "SSERVER_GROUPS", config.get("sserver.group"));
-    }
-    String groups = config.get("sserver.group");
-    if (StringUtils.isNotEmpty(groups)) {
-      String[] g = groups.split(" ");
-      for (int i = 0; i < g.length; i++) {
-        if (config.containsKey("sserver." + g[i])) {
-          out.printf(PROPERTY_FORMAT, "SSERVER_HOSTS_" + g[i], config.get("sserver." + g[i]));
-        }
-      }
+
+    String prefix = "sserver.";
+    Set<String> sserverGroups = config.keySet().stream().filter(k -> k.startsWith(prefix))
+        .map(k -> k.substring(prefix.length())).collect(Collectors.toSet());
+
+    if (!sserverGroups.isEmpty()) {
+      out.printf(PROPERTY_FORMAT, "SSERVER_GROUPS",
+          sserverGroups.stream().collect(Collectors.joining(" ")));
+      sserverGroups.forEach(
+          ssg -> out.printf(PROPERTY_FORMAT, "SSERVER_HOSTS_" + ssg, config.get(prefix + ssg)));
     }
 
     out.flush();
