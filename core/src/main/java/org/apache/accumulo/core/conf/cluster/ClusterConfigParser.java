@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -113,15 +112,15 @@ public class ClusterConfigParser {
       }
     }
 
-    String prefix = "sserver.";
-    Set<String> sserverGroups = config.keySet().stream().filter(k -> k.startsWith(prefix))
-        .map(k -> k.substring(prefix.length())).collect(Collectors.toSet());
+    String sserverPrefix = "sserver.";
+    Set<String> sserverGroups = config.keySet().stream().filter(k -> k.startsWith(sserverPrefix))
+        .map(k -> k.substring(sserverPrefix.length())).collect(Collectors.toSet());
 
     if (!sserverGroups.isEmpty()) {
       out.printf(PROPERTY_FORMAT, "SSERVER_GROUPS",
           sserverGroups.stream().collect(Collectors.joining(" ")));
-      sserverGroups.forEach(
-          ssg -> out.printf(PROPERTY_FORMAT, "SSERVER_HOSTS_" + ssg, config.get(prefix + ssg)));
+      sserverGroups.forEach(ssg -> out.printf(PROPERTY_FORMAT, "SSERVER_HOSTS_" + ssg,
+          config.get(sserverPrefix + ssg)));
     }
 
     out.flush();
