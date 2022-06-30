@@ -76,7 +76,7 @@ public class ClusterConfigParserTest {
     Map<String,String> contents =
         ClusterConfigParser.parseConfiguration(new File(configFile.toURI()).getAbsolutePath());
 
-    assertEquals(11, contents.size());
+    assertEquals(10, contents.size());
     assertTrue(contents.containsKey("manager"));
     assertEquals("localhost1 localhost2", contents.get("manager"));
     assertTrue(contents.containsKey("monitor"));
@@ -89,8 +89,6 @@ public class ClusterConfigParserTest {
     assertTrue(contents.containsKey("compaction.coordinator"));
     assertEquals("localhost1 localhost2", contents.get("compaction.coordinator"));
     assertFalse(contents.containsKey("compaction.compactor"));
-    assertTrue(contents.containsKey("compaction.compactor.queue"));
-    assertEquals("q1 q2", contents.get("compaction.compactor.queue"));
     assertTrue(contents.containsKey("compaction.compactor.q1"));
     assertEquals("localhost1 localhost2", contents.get("compaction.compactor.q1"));
     assertTrue(contents.containsKey("compaction.compactor.q2"));
