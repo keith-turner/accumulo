@@ -23,6 +23,7 @@ import static java.util.function.Predicate.not;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -44,6 +45,7 @@ import org.apache.accumulo.server.replication.proto.Replication.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.PeekingIterator;
 
@@ -135,10 +137,14 @@ public class GarbageCollectionAlgorithm {
 
   private void removeCandidatesInUse(GarbageCollectionEnvironment gce,
       SortedMap<String,String> candidateMap) {
+
+    Set<TableId> tableIdsBefore = gce.getCandidateTableIDs();
+    Set<TableId> tableIdsSeen = new HashSet<>();
     var refStream = gce.getReferences();
     Iterator<Reference> iter = refStream.iterator();
     while (iter.hasNext()) {
       Reference ref = iter.next();
+      tableIdsSeen.add(ref.getTableId());
 
       if (ref.isDirectory()) {
         var dirReference = (ReferenceDirectory) ref;
@@ -172,6 +178,9 @@ public class GarbageCollectionAlgorithm {
           log.debug("Candidate was still in use: {}", relativePath);
       }
     }
+    Set<TableId> tableIdsAfter = gce.getCandidateTableIDs();
+    ensureAllTablesChecked(Collections.unmodifiableSet(tableIdsBefore),
+        Collections.unmodifiableSet(tableIdsSeen), Collections.unmodifiableSet(tableIdsAfter));
   }
 
   private long removeBlipCandidates(GarbageCollectionEnvironment gce,
@@ -214,6 +223,46 @@ public class GarbageCollectionAlgorithm {
     }
 
     return blipCount;
+  }
+
+  @VisibleForTesting
+  /**
+   * Double check no tables were missed during GC
+   */
+  protected void ensureAllTablesChecked(Set<TableId> tableIdsBefore, Set<TableId> tableIdsSeen,
+      Set<TableId> tableIdsAfter) {
+
+    // if a table was added or deleted during this run, it is acceptable to not
+    // have seen those tables ids when scanning the metadata table. So get the intersection
+    final Set<TableId> tableIdsMustHaveSeen = new HashSet<>(tableIdsBefore);
+    tableIdsMustHaveSeen.retainAll(tableIdsAfter);
+
+    if (tableIdsMustHaveSeen.isEmpty() && !tableIdsSeen.isEmpty()) {
+      throw new RuntimeException("Garbage collection will not proceed because "
+          + "table ids were seen in the metadata table and none were seen Zookeeper. "
+          + "This can have two causes. First, total number of tables going to/from "
+          + "zero during a GC cycle will cause this. Second, it could be caused by "
+          + "corruption of the metadata table and/or Zookeeper. Only the second cause "
+          + "is problematic, but there is no way to distinguish between the two causes "
+          + "so this GC cycle will not proceed. The first cause should be transient "
+          + "and one would not expect to see this message repeated in subsequent GC cycles.");
+    }
+
+    // From that intersection, remove all the table ids that were seen.
+    tableIdsMustHaveSeen.removeAll(tableIdsSeen);
+
+    // If anything is left then we missed a table and may not have removed rfiles references
+    // from the candidates list that are acutally still in use, which would
+    // result in the rfiles being deleted in the next step of the GC process
+    if (!tableIdsMustHaveSeen.isEmpty()) {
+      log.error("TableIDs before: " + tableIdsBefore);
+      log.error("TableIDs after : " + tableIdsAfter);
+      log.error("TableIDs seen  : " + tableIdsSeen);
+      log.error("TableIDs that should have been seen but were not: " + tableIdsMustHaveSeen);
+      // maybe a scan failed?
+      throw new RuntimeException(
+          "Saw table IDs in ZK that were not in metadata table:  " + tableIdsMustHaveSeen);
+    }
   }
 
   protected void confirmDeletesFromReplication(GarbageCollectionEnvironment gce,

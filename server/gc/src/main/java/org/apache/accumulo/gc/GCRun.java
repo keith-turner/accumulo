@@ -49,9 +49,11 @@ import org.apache.accumulo.core.gc.Reference;
 import org.apache.accumulo.core.gc.ReferenceDirectory;
 import org.apache.accumulo.core.gc.ReferenceFile;
 import org.apache.accumulo.core.manager.state.tables.TableState;
+import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.ValidationUtil;
 import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
@@ -59,6 +61,8 @@ import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.volume.Volume;
+import org.apache.accumulo.fate.util.UtilWaitThread;
+import org.apache.accumulo.fate.zookeeper.ZooReader;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.fs.VolumeUtil;
@@ -66,6 +70,7 @@ import org.apache.accumulo.server.gc.GcVolumeUtil;
 import org.apache.accumulo.server.replication.proto.Replication;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -172,7 +177,19 @@ public class GCRun implements GarbageCollectionEnvironment {
 
   @Override
   public Set<TableId> getTableIDs() {
-    return context.getTableIdToNameMap().keySet();
+    final String tablesPath = context.getZooKeeperRoot() + Constants.ZTABLES;
+    final ZooReader zr = context.getZooReader();
+    final Set<TableId> tids = new HashSet<>();
+    while (true) {
+      try {
+        zr.sync(tablesPath);
+        zr.getChildren(tablesPath).forEach(t -> tids.add(TableId.of(t)));
+        return tids;
+      } catch (KeeperException | InterruptedException e) {
+        log.error("Error getting tables from ZooKeeper, retrying", e);
+        UtilWaitThread.sleepUninterruptibly(1, TimeUnit.SECONDS);
+      }
+    }
   }
 
   @Override
@@ -461,5 +478,19 @@ public class GCRun implements GarbageCollectionEnvironment {
 
   public long getCandidatesStat() {
     return candidates;
+  }
+
+  @Override
+  public Set<TableId> getCandidateTableIDs() {
+    if (level == DataLevel.ROOT) {
+      return Collections.singleton(MetadataTable.ID);
+    } else if (level == DataLevel.METADATA) {
+      Set<TableId> tableIds = new HashSet<>(getTableIDs());
+      tableIds.remove(MetadataTable.ID);
+      tableIds.remove(RootTable.ID);
+      return tableIds;
+    } else {
+      throw new RuntimeException("Unexpected Table in GC Env: " + this.level.name());
+    }
   }
 }

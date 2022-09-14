@@ -73,6 +73,14 @@ public interface GarbageCollectionEnvironment {
   Stream<Reference> getReferences();
 
   /**
+   * Return a list of TableIDs for which we are considering deletes. For the root table this would
+   * be the metadata table. For the metadata table, this would be the other tables in the system.
+   *
+   * @return The table ids
+   */
+  Set<TableId> getCandidateTableIDs();
+
+  /**
    * Return the set of tableIDs for the given instance this GarbageCollector is running over
    *
    * @return The valueSet for the table name to table id map.
