@@ -36,6 +36,7 @@ import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.util.MapCounter;
+import org.apache.accumulo.fate.FateTxId;
 import org.apache.accumulo.fate.Repo;
 import org.apache.accumulo.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.manager.Manager;
@@ -47,6 +48,8 @@ import org.apache.thrift.TException;
 import org.slf4j.LoggerFactory;
 
 class CompactionDriver extends ManagerRepo {
+
+  private static final org.slf4j.Logger log = LoggerFactory.getLogger(CompactionDriver.class);
 
   public static String createCompactionCancellationPath(InstanceId instanceId, TableId tableId) {
     return Constants.ZROOT + "/" + instanceId + Constants.ZTABLES + "/" + tableId.canonical()
@@ -116,6 +119,9 @@ class CompactionDriver extends ManagerRepo {
 
       tabletCount++;
     }
+
+    log.debug("{} tabletsToWaitFor:{} tabletsSeen:{} compactionId:{}", FateTxId.formatTid(tid),
+        tabletsToWaitFor, tabletCount, compactId);
 
     long scanTime = System.currentTimeMillis() - t1;
 

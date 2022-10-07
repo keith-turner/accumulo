@@ -1882,6 +1882,9 @@ public class Tablet extends TabletBase {
 
   public void compactAll(long compactionId, CompactionConfig compactionConfig) {
 
+    log.debug("{} compactAll(compactionId:{}, config:{}) lastCompactID:{}", getExtent(),
+        compactionId, compactionConfig, lastCompactID.get());
+
     synchronized (this) {
       if (lastCompactID.get() >= compactionId) {
         return;
