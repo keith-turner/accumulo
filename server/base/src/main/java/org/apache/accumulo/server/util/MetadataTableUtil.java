@@ -183,6 +183,7 @@ public class MetadataTableUtil {
   public static void updateTabletCompactID(KeyExtent extent, long compactID, ServerContext context,
       ServiceLock zooLock) {
     TabletMutator tablet = context.getAmple().mutateTablet(extent);
+    log.debug("Setting compaction id for " + extent + " to " + compactID + " in metadata table");
     tablet.putCompactionId(compactID);
     tablet.putZooLock(zooLock);
     tablet.mutate();

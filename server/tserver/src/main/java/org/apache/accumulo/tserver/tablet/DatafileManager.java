@@ -499,6 +499,7 @@ class DatafileManager {
           filesInUseByScans, newFile, compactionIdToWrite, dfv,
           tablet.getTabletServer().getClientAddressString(), lastLocation,
           tablet.getTabletServer().getLock(), ecid);
+      log.debug("Setting last compact id var " + extent + " " + compactionIdToWrite + " majc");
       tablet.setLastCompactionID(compactionIdToWrite);
       removeFilesAfterScan(filesInUseByScans);
 

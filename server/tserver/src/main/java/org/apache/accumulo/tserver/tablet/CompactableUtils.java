@@ -444,7 +444,8 @@ public class CompactableUtils {
       if (selectedFiles.isEmpty()) {
         MetadataTableUtil.updateTabletCompactID(tablet.getExtent(), compactionId,
             tablet.getTabletServer().getContext(), tablet.getTabletServer().getLock());
-
+        log.debug(
+            "Setting last compact id var " + tablet.getExtent() + " " + compactionId + " no files");
         tablet.setLastCompactionID(compactionId);
       }
 

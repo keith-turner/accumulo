@@ -196,8 +196,11 @@ public class ManagerMetadataUtil {
     if (size.getNumEntries() > 0)
       tablet.putFile(path, size);
 
-    if (compactionId != null)
+    if (compactionId != null) {
+      log.debug(
+          "Setting compaction id for " + extent + " to " + compactionId + " in metadata table");
       tablet.putCompactionId(compactionId);
+    }
 
     TServerInstance self = getTServerInstance(address, zooLock);
     tablet.putLocation(self, LocationType.LAST);
