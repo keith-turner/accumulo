@@ -140,7 +140,7 @@ public class RFileOperations extends FileOperations {
       // cache
       try {
         outputStream.setDropBehind(Boolean.TRUE);
-        LOG.trace("Called setDropBehind(TRUE) for stream writing file {}", options.filename);
+        LOG.debug("Called setDropBehind(TRUE) for stream writing file {}", options.filename);
       } catch (UnsupportedOperationException e) {
         LOG.debug("setDropBehind not enabled for file: {}", options.filename);
       } catch (IOException e) {

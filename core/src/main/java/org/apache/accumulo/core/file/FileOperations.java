@@ -390,8 +390,8 @@ public abstract class FileOperations {
       return this;
     }
 
-    public WriterBuilder dropCachesBehind() {
-      this.dropCacheBehind(true);
+    public WriterBuilder dropCachesBehind(boolean shouldDrop) {
+      this.dropCacheBehind(shouldDrop);
       return this;
     }
 
@@ -443,8 +443,8 @@ public abstract class FileOperations {
       return this;
     }
 
-    public ReaderBuilder dropCachesBehind() {
-      this.dropCacheBehind(true);
+    public ReaderBuilder dropCachesBehind(boolean shouldDrop) {
+      this.dropCacheBehind(shouldDrop);
       return this;
     }
 

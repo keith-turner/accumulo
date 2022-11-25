@@ -42,7 +42,6 @@ import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.file.FileOperations;
-import org.apache.accumulo.core.file.FileOperations.WriterBuilder;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.file.FileSKVWriter;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
@@ -224,13 +223,10 @@ public class FileCompactor implements Callable<CompactionStats> {
         dropCacheBehindMajcOutput = true;
       }
 
-      WriterBuilder outBuilder = fileFactory.newWriterBuilder()
+      mfw = fileFactory.newWriterBuilder()
           .forFile(outputFile.getMetaInsert(), ns, ns.getConf(), cryptoService)
-          .withTableConfiguration(acuTableConf).withRateLimiter(env.getWriteLimiter());
-      if (dropCacheBehindMajcOutput) {
-        outBuilder.dropCachesBehind();
-      }
-      mfw = outBuilder.build();
+          .withTableConfiguration(acuTableConf).withRateLimiter(env.getWriteLimiter())
+          .dropCachesBehind(dropCacheBehindMajcOutput).build();
 
       Map<String,Set<ByteSequence>> lGroups = getLocalityGroups(acuTableConf);
 
@@ -320,6 +316,13 @@ public class FileCompactor implements Callable<CompactionStats> {
 
     List<SortedKeyValueIterator<Key,Value>> iters = new ArrayList<>(filesToCompact.size());
 
+    boolean dropCacheBehindMajcInput = false;
+    if (!RootTable.ID.equals(this.extent.tableId())
+        && !MetadataTable.ID.equals(this.extent.tableId())
+        && acuTableConf.getBoolean(Property.TABLE_MAJC_INPUT_DROP_CACHE)) {
+      dropCacheBehindMajcInput = true;
+    }
+
     for (TabletFile mapFile : filesToCompact.keySet()) {
       try {
 
@@ -330,7 +333,7 @@ public class FileCompactor implements Callable<CompactionStats> {
         reader = fileFactory.newReaderBuilder()
             .forFile(mapFile.getPathStr(), fs, fs.getConf(), cryptoService)
             .withTableConfiguration(acuTableConf).withRateLimiter(env.getReadLimiter())
-            .dropCachesBehind().build();
+            .dropCachesBehind(dropCacheBehindMajcInput).build();
 
         readers.add(reader);
 

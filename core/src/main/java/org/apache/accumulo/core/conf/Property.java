@@ -969,6 +969,11 @@ public enum Property {
       "Setting this property to true will call"
           + "FSDataOutputStream.setDropBehind(true) on the major compaction output stream.",
       "2.1.1"),
+  TABLE_MAJC_INPUT_DROP_CACHE("table.compaction.major.input.drop.cache", "false",
+      PropertyType.BOOLEAN,
+      "Setting this property to true will call"
+          + "FSDataOutputStream.setDropBehind(true) on the major compaction input stream(s).",
+      "2.1.1"),
   TABLE_MAJC_RATIO("table.compaction.major.ratio", "3", PropertyType.FRACTION,
       "Minimum ratio of total input size to maximum input RFile size for"
           + " running a major compaction. ",

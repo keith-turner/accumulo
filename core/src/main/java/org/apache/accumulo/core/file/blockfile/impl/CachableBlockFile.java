@@ -96,7 +96,7 @@ public class CachableBlockFile {
           // cache
           try {
             is.setDropBehind(Boolean.TRUE);
-            log.trace("Called setDropBehind(TRUE) for stream reading file {}", dataFile);
+            log.debug("Called setDropBehind(TRUE) for stream reading file {}", dataFile);
           } catch (UnsupportedOperationException e) {
             log.debug("setDropBehind not enabled for wal file: {}", dataFile);
           } catch (IOException e) {
