@@ -459,7 +459,7 @@ public class ScanServer extends AbstractServer
     /* This constructor is called when continuing a scan */
     ScanReservation(Collection<StoredTabletFile> files, long myReservationId) {
       this.tabletsMetadata = null;
-      this.failures = null;
+      this.failures = Map.of();
       this.files = files;
       this.myReservationId = myReservationId;
     }
@@ -894,6 +894,7 @@ public class ScanServer extends AbstractServer
     LOG.debug("continue scan: {}", scanID);
 
     try (ScanReservation reservation = reserveFiles(scanID)) {
+      Preconditions.checkState(reservation.getFailures().isEmpty());
       return delegate.continueScan(tinfo, scanID, busyTimeout);
     }
   }
@@ -938,6 +939,11 @@ public class ScanServer extends AbstractServer
           ssio, authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg,
           executionHints, getBatchScanTabletResolver(tablets), busyTimeout);
 
+      if (!reservation.getFailures().keySet().equals(ims.result.failures.keySet())) {
+        throw new IllegalStateException("Failure sets not equal "
+            + reservation.getFailures().keySet() + " " + ims.result.failures.keySet());
+      }
+
       LOG.debug("started scan: {}", ims.getScanID());
       return ims;
     } catch (TException e) {
@@ -955,6 +961,7 @@ public class ScanServer extends AbstractServer
     LOG.debug("continue multi scan: {}", scanID);
 
     try (ScanReservation reservation = reserveFiles(scanID)) {
+      Preconditions.checkState(reservation.getFailures().isEmpty());
       return delegate.continueMultiScan(tinfo, scanID, busyTimeout);
     }
   }
