@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -735,9 +736,15 @@ public class ScanServer extends AbstractServer
       return Set.copyOf(session.getTabletResolver().getTablet(sss.extent).getDatafiles().keySet());
     } else if (session instanceof MultiScanSession) {
       var mss = (MultiScanSession) session;
-      return mss.exents.stream()
-          .flatMap(e -> mss.getTabletResolver().getTablet(e).getDatafiles().keySet().stream())
-          .collect(Collectors.toUnmodifiableSet());
+      return mss.exents.stream().flatMap(e -> {
+        var tablet = mss.getTabletResolver().getTablet(e);
+        if (tablet == null) {
+          // not all tablets passed to a multiscan are present in the metadata table
+          return Stream.empty();
+        } else {
+          return tablet.getDatafiles().keySet().stream();
+        }
+      }).collect(Collectors.toUnmodifiableSet());
     } else {
       throw new IllegalArgumentException("Unknown session type " + session.getClass().getName());
     }
