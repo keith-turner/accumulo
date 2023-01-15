@@ -953,11 +953,6 @@ public class ScanServer extends AbstractServer
           ssio, authorizations, waitForWrites, tSamplerConfig, batchTimeOut, contextArg,
           executionHints, getBatchScanTabletResolver(tablets), busyTimeout);
 
-      if (!reservation.getFailures().keySet().equals(ims.result.failures.keySet())) {
-        throw new IllegalStateException("Failure sets not equal "
-            + reservation.getFailures().keySet() + " " + ims.result.failures.keySet());
-      }
-
       LOG.debug("started scan: {}", ims.getScanID());
       return ims;
     } catch (TException e) {
