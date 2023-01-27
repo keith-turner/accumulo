@@ -123,6 +123,8 @@ import com.google.protobuf.InvalidProtocolBufferException;
 public class SimpleGarbageCollector extends AccumuloServerContext implements Iface {
   private static final Text EMPTY_TEXT = new Text();
 
+  public static final Logger reflog = LoggerFactory.getLogger("org.apache.accumulo.gc.refs");
+
   /**
    * Options for the garbage collector.
    */
@@ -315,13 +317,22 @@ public class SimpleGarbageCollector extends AccumuloServerContext implements Ifa
 
       scanner.setRange(MetadataSchema.BlipSection.getRange());
 
-      return Iterators.transform(scanner.iterator(), entry -> entry.getKey().getRow().toString()
-          .substring(MetadataSchema.BlipSection.getRowPrefix().length()));
+      reflog.trace("Starting blips");
+      return Iterators.transform(scanner.iterator(), entry -> {
+        if (reflog.isTraceEnabled()) {
+          reflog.trace("blip {} {}", entry.getKey().toStringNoTruncate(), entry.getValue());
+        }
+        return entry.getKey().getRow().toString()
+            .substring(MetadataSchema.BlipSection.getRowPrefix().length());
+      });
     }
 
     @Override
     public Iterator<Entry<Key,Value>> getReferenceIterator()
         throws TableNotFoundException, AccumuloException, AccumuloSecurityException {
+
+      reflog.trace("starting references");
+
       IsolatedScanner scanner =
           new IsolatedScanner(getConnector().createScanner(tableName, Authorizations.EMPTY));
       scanner.fetchColumnFamily(DataFileColumnFamily.NAME);

@@ -56,6 +56,8 @@ import com.google.common.collect.Iterators;
  */
 public class TabletIterator implements Iterator<Map<Key,Value>> {
 
+  public static final Logger reflog = LoggerFactory.getLogger("org.apache.accumulo.gc.refs");
+
   private static final Logger log = LoggerFactory.getLogger(TabletIterator.class);
 
   private SortedMap<Key,Value> currentTabletKeys;
@@ -146,6 +148,8 @@ public class TabletIterator implements Iterator<Map<Key,Value>> {
         if (!lastTable.equals(currentTable) && (per != null || lastEndRow != null)) {
           log.info("Metadata inconsistency on table transition : " + lastTable + " " + currentTable
               + " " + per + " " + lastEndRow);
+          reflog.info("Metadata inconsistency on table transition : " + lastTable + " "
+              + currentTable + " " + per + " " + lastEndRow);
 
           currentTabletKeys = null;
           resetScanner();
@@ -159,6 +163,8 @@ public class TabletIterator implements Iterator<Map<Key,Value>> {
       if (!Objects.equals(per, lastEndRow)) {
 
         log.info("Metadata inconsistency : " + per + " != " + lastEndRow + " metadataKey = "
+            + prevEndRowKey);
+        reflog.info("Metadata inconsistency : " + per + " != " + lastEndRow + " metadataKey = "
             + prevEndRowKey);
 
         currentTabletKeys = null;
@@ -221,6 +227,11 @@ public class TabletIterator implements Iterator<Map<Key,Value>> {
       while (iter.hasNext()) {
         Entry<Key,Value> entry = iter.next();
 
+        if (reflog.isTraceEnabled()) {
+          reflog.trace("ref kv {} {}", entry.getKey().toStringNoTruncate(),
+              entry.getValue().toString());
+        }
+
         if (curMetaDataRow == null) {
           curMetaDataRow = entry.getKey().getRow();
         }
@@ -240,6 +251,7 @@ public class TabletIterator implements Iterator<Map<Key,Value>> {
 
       if (!sawPrevEndRow && tm.size() > 0) {
         log.warn("Metadata problem : tablet " + curMetaDataRow + " has no prev end row");
+        reflog.warn("Metadata problem : tablet " + curMetaDataRow + " has no prev end row");
         resetScanner();
         curMetaDataRow = null;
         tm.clear();
@@ -273,6 +285,7 @@ public class TabletIterator implements Iterator<Map<Key,Value>> {
     }
 
     log.info("Resetting " + MetadataTable.NAME + " scanner to " + range);
+    reflog.info("Resetting " + MetadataTable.NAME + " scanner to " + range);
 
     scanner.setRange(range);
     iter = scanner.iterator();
