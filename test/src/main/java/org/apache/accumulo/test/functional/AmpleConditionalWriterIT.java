@@ -18,6 +18,10 @@
  */
 package org.apache.accumulo.test.functional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
@@ -30,7 +34,11 @@ import org.apache.accumulo.core.client.ConditionalWriter.Status;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.metadata.*;
+import org.apache.accumulo.core.metadata.MetadataTable;
+import org.apache.accumulo.core.metadata.RootTable;
+import org.apache.accumulo.core.metadata.StoredTabletFile;
+import org.apache.accumulo.core.metadata.TServerInstance;
+import org.apache.accumulo.core.metadata.TabletOperationId;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
@@ -40,14 +48,9 @@ import org.apache.accumulo.harness.AccumuloClusterHarness;
 import org.apache.accumulo.server.metadata.ConditionalTabletsMutatorImpl;
 import org.apache.accumulo.server.zookeeper.TransactionWatcher;
 import org.apache.hadoop.io.Text;
-import org.junit.Assert;
 import org.junit.jupiter.api.Test;
 
 public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
-
-  Location newLocation(TServerInstance ts, LocationType lt) {
-    return new Location(ts.getHostPort(), ts.getSession(), lt);
-  }
 
   @Test
   public void testLocations() throws Exception {
@@ -71,60 +74,55 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
 
       var context = cluster.getServerContext();
 
-      Assert.assertNull(context.getAmple().readTablet(e1).getLocation());
+      assertNull(context.getAmple().readTablet(e1).getLocation());
 
       var ctmi = new ConditionalTabletsMutatorImpl(context);
       ctmi.mutateTablet(e1).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts1, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts1)).submit();
       var results = ctmi.process();
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(newLocation(ts1, LocationType.FUTURE),
-          context.getAmple().readTablet(e1).getLocation());
+      assertEquals(Location.future(ts1), context.getAmple().readTablet(e1).getLocation());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
       ctmi.mutateTablet(e1).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts2, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts2)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(newLocation(ts1, LocationType.FUTURE),
-          context.getAmple().readTablet(e1).getLocation());
+      assertEquals(Location.future(ts1), context.getAmple().readTablet(e1).getLocation());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
-      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(ts1, LocationType.FUTURE)
-          .putLocation(ts1, LocationType.CURRENT).deleteLocation(ts1, LocationType.FUTURE).submit();
+      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(Location.future(ts1))
+          .putLocation(Location.current(ts1)).deleteLocation(Location.future(ts1)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(newLocation(ts1, LocationType.CURRENT),
-          context.getAmple().readTablet(e1).getLocation());
+      assertEquals(Location.current(ts1), context.getAmple().readTablet(e1).getLocation());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
-      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(ts1, LocationType.FUTURE)
-          .putLocation(ts1, LocationType.CURRENT).deleteLocation(ts1, LocationType.FUTURE).submit();
+      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(Location.future(ts1))
+          .putLocation(Location.current(ts1)).deleteLocation(Location.future(ts1)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(newLocation(ts1, LocationType.CURRENT),
-          context.getAmple().readTablet(e1).getLocation());
+      assertEquals(Location.current(ts1), context.getAmple().readTablet(e1).getLocation());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
-      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(ts2, LocationType.FUTURE)
-          .putLocation(ts2, LocationType.CURRENT).deleteLocation(ts2, LocationType.FUTURE).submit();
+      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(Location.future(ts2))
+          .putLocation(Location.current(ts2)).deleteLocation(Location.future(ts2)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(newLocation(ts1, LocationType.CURRENT),
-          context.getAmple().readTablet(e1).getLocation());
+      assertEquals(Location.current(ts1), context.getAmple().readTablet(e1).getLocation());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
-      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(ts1, LocationType.CURRENT)
-          .deleteLocation(ts1, LocationType.CURRENT).submit();
+      ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(Location.current(ts1))
+          .deleteLocation(Location.current(ts1)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
-      Assert.assertNull(context.getAmple().readTablet(e1).getLocation());
+      assertNull(context.getAmple().readTablet(e1).getLocation());
     }
   }
 
@@ -166,49 +164,49 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
       ctmi.mutateTablet(e1).requireAbsentOperation().requireFile(stf1).requireFile(stf2)
           .requireFile(stf3).putFile(stf4, new DataFileValue(0, 0)).submit();
       var results = ctmi.process();
-      Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(Set.of(), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(), context.getAmple().readTablet(e1).getFiles());
 
       // simulate minor compacts where the tablet location is not set
       for (StoredTabletFile file : List.of(stf1, stf2, stf3)) {
         ctmi = new ConditionalTabletsMutatorImpl(context);
-        ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(ts1, LocationType.CURRENT)
+        ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(Location.current(ts1))
             .putFile(file, new DataFileValue(0, 0)).submit();
         results = ctmi.process();
-        Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
+        assertEquals(Status.REJECTED, results.get(e1).getStatus());
       }
 
-      Assert.assertEquals(Set.of(), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(), context.getAmple().readTablet(e1).getFiles());
 
       // set the location
       ctmi = new ConditionalTabletsMutatorImpl(context);
       ctmi.mutateTablet(e1).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts1, LocationType.CURRENT).submit();
+          .putLocation(Location.current(ts1)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
       // simulate minor compacts where the tablet location is wrong
       for (StoredTabletFile file : List.of(stf1, stf2, stf3)) {
         ctmi = new ConditionalTabletsMutatorImpl(context);
-        ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(ts2, LocationType.CURRENT)
+        ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(Location.current(ts2))
             .putFile(file, new DataFileValue(0, 0)).submit();
         results = ctmi.process();
-        Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
+        assertEquals(Status.REJECTED, results.get(e1).getStatus());
       }
 
-      Assert.assertEquals(Set.of(), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(), context.getAmple().readTablet(e1).getFiles());
 
       // simulate minor compacts where the tablet location is set
       for (StoredTabletFile file : List.of(stf1, stf2, stf3)) {
         ctmi = new ConditionalTabletsMutatorImpl(context);
-        ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(ts1, LocationType.CURRENT)
+        ctmi.mutateTablet(e1).requireAbsentOperation().requireLocation(Location.current(ts1))
             .putFile(file, new DataFileValue(0, 0)).submit();
         results = ctmi.process();
-        Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+        assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
       }
 
-      Assert.assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
 
       // simulate a compaction
       ctmi = new ConditionalTabletsMutatorImpl(context);
@@ -216,9 +214,9 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
           .requireFile(stf3).putFile(stf4, new DataFileValue(0, 0)).deleteFile(stf1)
           .deleteFile(stf2).deleteFile(stf3).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(Set.of(stf4), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(stf4), context.getAmple().readTablet(e1).getFiles());
 
       // without this the metadata constraint will not allow the bulk file to be added to metadata
       TransactionWatcher.ZooArbitrator.start(context, Constants.BULK_ARBITRATOR_TYPE, 9L);
@@ -231,9 +229,9 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
           .putFile(stf5, new DataFileValue(0, 0)).putBulkFile(stf5, 9L)
           .putFile(stf5, new DataFileValue(0, 0)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(Set.of(stf4, stf5), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(stf4, stf5), context.getAmple().readTablet(e1).getFiles());
 
       // simulate a compaction
       var stf6 = new StoredTabletFile(
@@ -242,9 +240,9 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
       ctmi.mutateTablet(e1).requireAbsentOperation().requireFile(stf4).requireFile(stf5)
           .putFile(stf6, new DataFileValue(0, 0)).deleteFile(stf4).deleteFile(stf5).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(Set.of(stf6), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(stf6), context.getAmple().readTablet(e1).getFiles());
 
       // simulate trying to re bulk import file after a compaction
       ctmi = new ConditionalTabletsMutatorImpl(context);
@@ -252,9 +250,9 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
           .putFile(stf5, new DataFileValue(0, 0)).putBulkFile(stf5, 9L)
           .putFile(stf5, new DataFileValue(0, 0)).submit();
       results = ctmi.process();
-      Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
-      Assert.assertEquals(Set.of(stf6), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(stf6), context.getAmple().readTablet(e1).getFiles());
     }
   }
 
@@ -284,49 +282,43 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
 
       var ctmi = new ConditionalTabletsMutatorImpl(context);
       ctmi.mutateTablet(e1).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts1, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts1)).submit();
       ctmi.mutateTablet(e2).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts2, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts2)).submit();
       var results = ctmi.process();
 
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
-      Assert.assertEquals(Status.ACCEPTED, results.get(e2).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e2).getStatus());
 
-      Assert.assertEquals(newLocation(ts1, LocationType.FUTURE),
-          context.getAmple().readTablet(e1).getLocation());
-      Assert.assertEquals(newLocation(ts2, LocationType.FUTURE),
-          context.getAmple().readTablet(e2).getLocation());
-      Assert.assertNull(context.getAmple().readTablet(e3).getLocation());
-      Assert.assertNull(context.getAmple().readTablet(e4).getLocation());
+      assertEquals(Location.future(ts1), context.getAmple().readTablet(e1).getLocation());
+      assertEquals(Location.future(ts2), context.getAmple().readTablet(e2).getLocation());
+      assertNull(context.getAmple().readTablet(e3).getLocation());
+      assertNull(context.getAmple().readTablet(e4).getLocation());
 
-      Assert.assertEquals(Set.of(e1, e2), results.keySet());
+      assertEquals(Set.of(e1, e2), results.keySet());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
       ctmi.mutateTablet(e1).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts2, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts2)).submit();
       ctmi.mutateTablet(e2).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts1, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts1)).submit();
       ctmi.mutateTablet(e3).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts1, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts1)).submit();
       ctmi.mutateTablet(e4).requireAbsentOperation().requireAbsentLocation()
-          .putLocation(ts2, LocationType.FUTURE).submit();
+          .putLocation(Location.future(ts2)).submit();
       results = ctmi.process();
 
-      Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
-      Assert.assertEquals(Status.REJECTED, results.get(e2).getStatus());
-      Assert.assertEquals(Status.ACCEPTED, results.get(e3).getStatus());
-      Assert.assertEquals(Status.ACCEPTED, results.get(e4).getStatus());
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
+      assertEquals(Status.REJECTED, results.get(e2).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e3).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e4).getStatus());
 
-      Assert.assertEquals(newLocation(ts1, LocationType.FUTURE),
-          context.getAmple().readTablet(e1).getLocation());
-      Assert.assertEquals(newLocation(ts2, LocationType.FUTURE),
-          context.getAmple().readTablet(e2).getLocation());
-      Assert.assertEquals(newLocation(ts1, LocationType.FUTURE),
-          context.getAmple().readTablet(e3).getLocation());
-      Assert.assertEquals(newLocation(ts2, LocationType.FUTURE),
-          context.getAmple().readTablet(e4).getLocation());
+      assertEquals(Location.future(ts1), context.getAmple().readTablet(e1).getLocation());
+      assertEquals(Location.future(ts2), context.getAmple().readTablet(e2).getLocation());
+      assertEquals(Location.future(ts1), context.getAmple().readTablet(e3).getLocation());
+      assertEquals(Location.future(ts2), context.getAmple().readTablet(e4).getLocation());
 
-      Assert.assertEquals(Set.of(e1, e2, e3, e4), results.keySet());
+      assertEquals(Set.of(e1, e2, e3, e4), results.keySet());
 
     }
   }
@@ -348,7 +340,6 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
       var e1 = new KeyExtent(tid, new Text("c"), null);
       var e2 = new KeyExtent(tid, new Text("f"), new Text("c"));
       var e3 = new KeyExtent(tid, new Text("j"), new Text("f"));
-      var e4 = new KeyExtent(tid, null, new Text("j"));
 
       var context = cluster.getServerContext();
 
@@ -364,17 +355,15 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
           .submit();
       var results = ctmi.process();
 
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
-      Assert.assertEquals(Status.ACCEPTED, results.get(e2).getStatus());
-      Assert.assertEquals(Status.REJECTED, results.get(e3).getStatus());
-      Assert.assertEquals(TabletOperation.SPLITTING,
-          context.getAmple().readTablet(e1).getOperation());
-      Assert.assertEquals(opid1, context.getAmple().readTablet(e1).getOperationId());
-      Assert.assertEquals(TabletOperation.MERGING,
-          context.getAmple().readTablet(e2).getOperation());
-      Assert.assertEquals(opid2, context.getAmple().readTablet(e2).getOperationId());
-      Assert.assertEquals(null, context.getAmple().readTablet(e3).getOperation());
-      Assert.assertEquals(null, context.getAmple().readTablet(e3).getOperationId());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e2).getStatus());
+      assertEquals(Status.REJECTED, results.get(e3).getStatus());
+      assertEquals(TabletOperation.SPLITTING, context.getAmple().readTablet(e1).getOperation());
+      assertEquals(opid1, context.getAmple().readTablet(e1).getOperationId());
+      assertEquals(TabletOperation.MERGING, context.getAmple().readTablet(e2).getOperation());
+      assertEquals(opid2, context.getAmple().readTablet(e2).getOperationId());
+      assertEquals(null, context.getAmple().readTablet(e3).getOperation());
+      assertEquals(null, context.getAmple().readTablet(e3).getOperationId());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
       ctmi.mutateTablet(e1).requireOperation(TabletOperation.MERGING, opid2).deleteOperation()
@@ -383,12 +372,10 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
           .submit();
       results = ctmi.process();
 
-      Assert.assertEquals(Status.REJECTED, results.get(e1).getStatus());
-      Assert.assertEquals(Status.REJECTED, results.get(e2).getStatus());
-      Assert.assertEquals(TabletOperation.SPLITTING,
-          context.getAmple().readTablet(e1).getOperation());
-      Assert.assertEquals(TabletOperation.MERGING,
-          context.getAmple().readTablet(e2).getOperation());
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
+      assertEquals(Status.REJECTED, results.get(e2).getStatus());
+      assertEquals(TabletOperation.SPLITTING, context.getAmple().readTablet(e1).getOperation());
+      assertEquals(TabletOperation.MERGING, context.getAmple().readTablet(e2).getOperation());
 
       ctmi = new ConditionalTabletsMutatorImpl(context);
       ctmi.mutateTablet(e1).requireOperation(TabletOperation.SPLITTING, opid1).deleteOperation()
@@ -397,12 +384,12 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
           .submit();
       results = ctmi.process();
 
-      Assert.assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
-      Assert.assertEquals(Status.ACCEPTED, results.get(e2).getStatus());
-      Assert.assertEquals(null, context.getAmple().readTablet(e1).getOperation());
-      Assert.assertEquals(null, context.getAmple().readTablet(e1).getOperationId());
-      Assert.assertEquals(null, context.getAmple().readTablet(e2).getOperation());
-      Assert.assertEquals(null, context.getAmple().readTablet(e2).getOperationId());
+      assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+      assertEquals(Status.ACCEPTED, results.get(e2).getStatus());
+      assertEquals(null, context.getAmple().readTablet(e1).getOperation());
+      assertEquals(null, context.getAmple().readTablet(e1).getOperationId());
+      assertEquals(null, context.getAmple().readTablet(e2).getOperation());
+      assertEquals(null, context.getAmple().readTablet(e2).getOperationId());
     }
   }
 
@@ -413,30 +400,29 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
     var rootMeta = context.getAmple().readTablet(RootTable.EXTENT);
     var loc = rootMeta.getLocation();
 
-    Assert.assertEquals(LocationType.CURRENT, loc.getType());
-    Assert.assertFalse(rootMeta.getCompactId().isPresent());
+    assertEquals(LocationType.CURRENT, loc.getType());
+    assertFalse(rootMeta.getCompactId().isPresent());
 
     var ctmi = new ConditionalTabletsMutatorImpl(context);
     ctmi.mutateTablet(RootTable.EXTENT).requireAbsentOperation().requireAbsentLocation()
         .putCompactionId(7).submit();
     var results = ctmi.process();
-    Assert.assertEquals(Status.REJECTED, results.get(RootTable.EXTENT).getStatus());
-    Assert.assertFalse(context.getAmple().readTablet(RootTable.EXTENT).getCompactId().isPresent());
+    assertEquals(Status.REJECTED, results.get(RootTable.EXTENT).getStatus());
+    assertFalse(context.getAmple().readTablet(RootTable.EXTENT).getCompactId().isPresent());
 
     ctmi = new ConditionalTabletsMutatorImpl(context);
     ctmi.mutateTablet(RootTable.EXTENT).requireAbsentOperation()
-        .requireLocation(loc, LocationType.FUTURE).putCompactionId(7).submit();
+        .requireLocation(Location.future(loc.getServerInstance())).putCompactionId(7).submit();
     results = ctmi.process();
-    Assert.assertEquals(Status.REJECTED, results.get(RootTable.EXTENT).getStatus());
-    Assert.assertFalse(context.getAmple().readTablet(RootTable.EXTENT).getCompactId().isPresent());
+    assertEquals(Status.REJECTED, results.get(RootTable.EXTENT).getStatus());
+    assertFalse(context.getAmple().readTablet(RootTable.EXTENT).getCompactId().isPresent());
 
     ctmi = new ConditionalTabletsMutatorImpl(context);
     ctmi.mutateTablet(RootTable.EXTENT).requireAbsentOperation()
-        .requireLocation(loc, LocationType.CURRENT).putCompactionId(7).submit();
+        .requireLocation(Location.current(loc.getServerInstance())).putCompactionId(7).submit();
     results = ctmi.process();
-    Assert.assertEquals(Status.ACCEPTED, results.get(RootTable.EXTENT).getStatus());
-    Assert.assertEquals(7L,
-        context.getAmple().readTablet(RootTable.EXTENT).getCompactId().getAsLong());
+    assertEquals(Status.ACCEPTED, results.get(RootTable.EXTENT).getStatus());
+    assertEquals(7L, context.getAmple().readTablet(RootTable.EXTENT).getCompactId().getAsLong());
   }
 
 }

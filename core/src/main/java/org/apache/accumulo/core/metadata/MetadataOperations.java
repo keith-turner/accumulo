@@ -30,6 +30,7 @@ import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.MetadataTime;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletOperation;
 import org.apache.hadoop.io.Text;
 
@@ -56,7 +57,7 @@ public class MetadataOperations {
     Ample.ConditionalTabletMutator conditionalMutator =
         ctm.mutateTablet(extent).requireAbsentOperation();
 
-    conditionalMutator.requireLocation(tsi, TabletMetadata.LocationType.CURRENT);
+    conditionalMutator.requireLocation(Location.current(tsi));
     conditionalMutator.requirePrevEndRow(extent.prevEndRow());
     // TODO could add a conditional check to ensure file is not already there
 
@@ -87,7 +88,7 @@ public class MetadataOperations {
     conditionalMutator.requireAbsentLocation();
     conditionalMutator.requirePrevEndRow(extent.prevEndRow());
 
-    conditionalMutator.putLocation(tsi, TabletMetadata.LocationType.FUTURE);
+    conditionalMutator.putLocation(Location.future(tsi));
 
     conditionalMutator.submit();
   }
@@ -97,24 +98,11 @@ public class MetadataOperations {
     Ample.ConditionalTabletMutator conditionalMutator =
         ctm.mutateTablet(extent).requireAbsentOperation();
 
-    conditionalMutator.requireLocation(tsi, TabletMetadata.LocationType.FUTURE);
+    conditionalMutator.requireLocation(Location.future(tsi));
     conditionalMutator.requirePrevEndRow(extent.prevEndRow());
 
-    conditionalMutator.putLocation(tsi, TabletMetadata.LocationType.CURRENT);
-    conditionalMutator.deleteLocation(tsi, TabletMetadata.LocationType.FUTURE);
-
-    conditionalMutator.submit();
-  }
-
-  public static void deleteLocation(Ample.ConditionalTabletsMutator ctm, KeyExtent extent,
-      TServerInstance tsi, TabletMetadata.LocationType locType) {
-    Ample.ConditionalTabletMutator conditionalMutator =
-        ctm.mutateTablet(extent).requireAbsentOperation();
-
-    conditionalMutator.requireLocation(tsi, locType);
-    conditionalMutator.requirePrevEndRow(extent.prevEndRow());
-
-    conditionalMutator.deleteLocation(tsi, locType);
+    conditionalMutator.putLocation(Location.current(tsi));
+    conditionalMutator.deleteLocation(Location.future(tsi));
 
     conditionalMutator.submit();
   }

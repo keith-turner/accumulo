@@ -664,7 +664,7 @@ public class Manager extends AbstractServer implements LiveTServerSet.Listener, 
         return TabletGoalState.UNASSIGNED;
       }
 
-      if (tls.current != null && serversToShutdown.contains(tls.current)) {
+      if (tls.current != null && serversToShutdown.contains(tls.current.getServerInstance())) {
         return TabletGoalState.SUSPENDED;
       }
       // Handle merge transitions
@@ -705,7 +705,7 @@ public class Manager extends AbstractServer implements LiveTServerSet.Listener, 
       if (state == TabletGoalState.HOSTED) {
         // Maybe this tablet needs to be migrated
         TServerInstance dest = migrations.get(extent);
-        if (dest != null && tls.current != null && !dest.equals(tls.current)) {
+        if (dest != null && tls.current != null && !dest.equals(tls.current.getServerInstance())) {
           return TabletGoalState.UNASSIGNED;
         }
       }
