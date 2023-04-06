@@ -22,7 +22,6 @@ import java.time.Duration;
 
 import org.apache.accumulo.core.data.TabletId;
 
-//TODO add since tag
 public interface ScanServerSelections {
 
   /**

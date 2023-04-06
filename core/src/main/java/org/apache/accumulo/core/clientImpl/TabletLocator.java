@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 
 import org.apache.accumulo.core.client.AccumuloException;
@@ -272,12 +273,12 @@ public abstract class TabletLocator {
       return tablet_extent;
     }
 
-    public String getTserverLocation() {
-      return tserverLocation;
+    public Optional<String> getTserverLocation() {
+      return Optional.ofNullable(tserverLocation);
     }
 
-    public String getTserverSession() {
-      return tserverSession;
+    public Optional<String> getTserverSession() {
+      return Optional.ofNullable(tserverSession);
     }
   }
 

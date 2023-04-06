@@ -302,7 +302,7 @@ public class ConfigurableScanServerSelectorTest {
             + "'attemptPlans':[{'servers':'100%', 'busyTimeout':'10m'}]}";
 
     var opts = Map.of("profiles",
-        "[" + profile1 + ", " + defaultProfile + "," + profile2 + "]".replace('\'', '"'));
+        "[" + defaultProfile + ", " + profile1 + "," + profile2 + "]".replace('\'', '"'));
 
     runBusyTest(1000, 0, 5, 5, opts);
     runBusyTest(1000, 1, 20, 33, opts);

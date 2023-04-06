@@ -205,13 +205,6 @@ public class ClientContext implements AccumuloClient {
                 }
               }).collect(Collectors.toSet());
         }
-
-        @Override
-        public Supplier<Collection<ScanServerInfo>> getScanServers(Set<String> requiredGroups,
-            Duration maxWaitTime) {
-          // TODO implement
-          throw new UnsupportedOperationException();
-        }
       });
       return scanServerSelector;
     } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
