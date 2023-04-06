@@ -18,8 +18,10 @@
  */
 package org.apache.accumulo.core.spi.scan;
 
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import org.apache.accumulo.core.client.ScannerBase;
@@ -79,6 +81,29 @@ public interface ScanServerSelector {
      */
     Supplier<Collection<ScanServerInfo>> getScanServers();
 
+    /**
+     * @param requiredGroups a set of groups for which scan servers are required to be present. If
+     *        there are no scan servers in the required groups, then this method will wait up to the
+     *        specified time for scan servers in the required groups to be present. This method
+     *        supports the use case where a user want eventual scans to only be processed by scan
+     *        servers and not tservers. Its expected that events like restarting a group of scan
+     *        servers will happen and this method helps avoid having to fall back to tsevers for
+     *        that case. Falling back to tservers when a group of scan servers is temporarily
+     *        unavailable could put sudden destabilizing load on tservers.
+     * @param maxWaitTime this is the max time to wait for scan servers in the required groups to be
+     *        present.
+     *
+     * @return the set of live ScanServers. Each time the supplier is called it may return something
+     *         different. A good practice would be to call this no more than once per a call to
+     *         {@link ScanServerSelector#selectServers(SelectorParameters)} so that decisions are
+     *         made using a consistent set of scan servers. The returned collection may or may not
+     *         contain scan servers in the required group depending on if the max wait time was
+     *         reached.
+     *
+     * @since ELASTICITY_VERSION
+     */
+    Supplier<Collection<ScanServerInfo>> getScanServers(Set<String> requiredGroups,
+        Duration maxWaitTime);
   }
 
   /**

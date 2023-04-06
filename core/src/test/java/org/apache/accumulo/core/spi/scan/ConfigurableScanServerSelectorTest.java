@@ -91,6 +91,13 @@ public class ConfigurableScanServerSelectorTest {
 
       }).collect(Collectors.toSet());
     }
+
+    @Override
+    public Supplier<Collection<ScanServerInfo>> getScanServers(Set<String> requiredGroups,
+        Duration maxWaitTime) {
+      // TODO test that expected params are passed in
+      return getScanServers();
+    }
   }
 
   static class DaParams implements ScanServerSelector.SelectorParameters {
@@ -295,7 +302,7 @@ public class ConfigurableScanServerSelectorTest {
             + "'attemptPlans':[{'servers':'100%', 'busyTimeout':'10m'}]}";
 
     var opts = Map.of("profiles",
-        "[" + defaultProfile + ", " + profile1 + "," + profile2 + "]".replace('\'', '"'));
+        "[" + profile1 + ", " + defaultProfile + "," + profile2 + "]".replace('\'', '"'));
 
     runBusyTest(1000, 0, 5, 5, opts);
     runBusyTest(1000, 1, 20, 33, opts);

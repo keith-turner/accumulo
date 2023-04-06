@@ -29,6 +29,7 @@ import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -37,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
@@ -202,6 +204,13 @@ public class ClientContext implements AccumuloClient {
                   return entry.getValue().getSecond();
                 }
               }).collect(Collectors.toSet());
+        }
+
+        @Override
+        public Supplier<Collection<ScanServerInfo>> getScanServers(Set<String> requiredGroups,
+            Duration maxWaitTime) {
+          // TODO implement
+          throw new UnsupportedOperationException();
         }
       });
       return scanServerSelector;

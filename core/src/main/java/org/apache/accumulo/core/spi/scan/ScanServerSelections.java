@@ -22,6 +22,7 @@ import java.time.Duration;
 
 import org.apache.accumulo.core.data.TabletId;
 
+//TODO add since tag
 public interface ScanServerSelections {
 
   /**
@@ -29,25 +30,6 @@ public interface ScanServerSelections {
    *         should be used for this tablet.
    */
   String getScanServer(TabletId tabletId);
-
-  /**
-   * TODO document
-   *
-   * @since 3.X.0
-   */
-  enum NoScanServerAction {
-    USER_TSERVER,
-    WAIT_FOR_SCAN_SERVERS
-  }
-
-  /**
-   * Action to take when there are zero active scan servers.
-   *
-   * @since 3.X.0
-   */
-  default NoScanServerAction getNoScanServerAction(){
-    return NoScanServerAction.USER_TSERVER;
-  }
 
   /**
    * @return The amount of time to wait on the client side before starting to contact servers.
