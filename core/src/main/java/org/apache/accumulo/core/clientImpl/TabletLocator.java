@@ -58,25 +58,35 @@ public abstract class TabletLocator {
     return isValid;
   }
 
-  public abstract TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow,
-      boolean retry) throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
+  /**
+   * Used to indicate if a user of this interface needs a tablet hosted or not.  This simple enum was created instead of using a boolean for code clarity.
+   */
+  enum HostingNeed {
+    HOSTED,
+    NONE
+  }
+
+  //TODO document and rename to findTablet
+  public abstract TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow, HostingNeed hostingNeed) throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
 
   public abstract <T extends Mutation> void binMutations(ClientContext context, List<T> mutations,
       Map<String,TabletServerMutations<T>> binnedMutations, List<T> failures)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
 
+  //TODO update docs and rename to findTablets
   /**
    * This method finds what tablets overlap a given set of ranges, passing each range and its
    * associated tablet to the range consumer. If a range overlaps multiple tablets then it can be
    * passed to the range consumer multiple times.
    */
   public abstract List<Range> locateTablets(ClientContext context, List<Range> ranges,
-      BiConsumer<TabletLocation,Range> rangeConsumer)
+      BiConsumer<TabletLocation,Range> rangeConsumer, HostingNeed hostingNeed)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
 
+  //TODO update javdocs
   /**
    * The behavior of this method is similar to
-   * {@link #locateTablets(ClientContext, List, BiConsumer)}, except it bins ranges to the passed in
+   * {@link #locateTablets(ClientContext, List, BiConsumer, HostingNeed)}, except it bins ranges to the passed in
    * binnedRanges map instead of passing them to a consumer.
    *
    */
@@ -84,7 +94,7 @@ public abstract class TabletLocator {
       Map<String,Map<KeyExtent,List<Range>>> binnedRanges)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     return locateTablets(context, ranges,
-        ((cachedTablet, range) -> TabletLocatorImpl.addRange(binnedRanges, cachedTablet, range)));
+        ((cachedTablet, range) -> TabletLocatorImpl.addRange(binnedRanges, cachedTablet, range)), HostingNeed.HOSTED);
   }
 
   public abstract void invalidateCache(KeyExtent failedExtent);

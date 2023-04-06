@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
@@ -66,6 +67,7 @@ import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.spi.scan.ScanServerAttempt;
 import org.apache.accumulo.core.spi.scan.ScanServerSelections;
+import org.apache.accumulo.core.spi.scan.ScanServerSelections.NoScanServerAction;
 import org.apache.accumulo.core.spi.scan.ScanServerSelector;
 import org.apache.accumulo.core.tabletscan.thrift.ScanServerBusyException;
 import org.apache.accumulo.core.tabletscan.thrift.TSampleNotPresentException;
@@ -317,7 +319,7 @@ public class ThriftScanner {
   }
 
   private static ScanAddress getScanServerAddress(ClientContext context, ScanState scanState,
-      TabletLocation loc) {
+                                                            TabletLocation loc) {
     Preconditions.checkArgument(scanState.runOnScanServer);
 
     ScanAddress addr = null;
@@ -369,10 +371,20 @@ public class ThriftScanner {
         log.trace("For tablet {} scan server selector chose scan_server:{} delay:{} busyTimeout:{}",
             loc.getExtent(), scanServer, delay, scanState.busyTimeout);
       } else {
-        addr = new ScanAddress(loc.getTserverLocation(), ServerType.TSERVER, loc);
-        delay = actions.getDelay();
-        scanState.busyTimeout = Duration.ZERO;
-        log.trace("For tablet {} scan server selector chose tablet_server", loc.getExtent());
+        if(numScanServers > 0 || (numScanServers == 0 && actions.getNoScanServerAction() == NoScanServerAction.USER_TSERVER)){
+          if(locHasTserverLocation) {
+            addr = new ScanAddress(loc.getTserverLocation(), ServerType.TSERVER, loc);
+            delay = actions.getDelay();
+            scanState.busyTimeout = Duration.ZERO;
+            log.trace("For tablet {} scan server selector chose tablet_server", loc.getExtent());
+          } else {
+            // TODO kick back and require hosted
+          }
+
+        } else {
+          // TODO wait for scan servers
+
+        }
       }
 
       if (!delay.isZero()) {
@@ -398,6 +410,8 @@ public class ThriftScanner {
 
     ScanAddress addr = null;
 
+    var hostingNeed = scanState.runOnScanServer ? TabletLocator.HostingNeed.NONE : TabletLocator.HostingNeed.HOSTED;
+
     while (addr == null) {
       long currentTime = System.currentTimeMillis();
       if ((currentTime - startTime) / 1000.0 > timeOut) {
@@ -408,8 +422,9 @@ public class ThriftScanner {
 
       Span child1 = TraceUtil.startSpan(ThriftScanner.class, "scan::locateTablet");
       try (Scope locateSpan = child1.makeCurrent()) {
+
         loc = TabletLocator.getLocator(context, scanState.tableId).locateTablet(context,
-            scanState.startRow, scanState.skipStartRow, false);
+            scanState.startRow, scanState.skipStartRow, hostingNeed);
 
         if (loc == null) {
           context.requireNotDeleted(scanState.tableId);
