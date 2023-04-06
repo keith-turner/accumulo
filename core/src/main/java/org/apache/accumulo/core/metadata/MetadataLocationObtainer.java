@@ -106,7 +106,7 @@ public class MetadataLocationObtainer implements TabletLocationObtainer {
       serverSideIteratorList.add(new IterInfo(10000, WholeRowIterator.class.getName(), "WRI"));
       Map<String,Map<String,String>> serverSideIteratorOptions = Collections.emptyMap();
       boolean more = ThriftScanner.getBatchFromServer(context, range, src.getExtent(),
-          src.getTserverLocation(), encodedResults, locCols, serverSideIteratorList,
+          src.getTserverLocation().get(), encodedResults, locCols, serverSideIteratorList,
           serverSideIteratorOptions, Constants.SCAN_BATCH_SIZE, Authorizations.EMPTY, 0L, null);
 
       decodeRows(encodedResults, results);
@@ -115,7 +115,7 @@ public class MetadataLocationObtainer implements TabletLocationObtainer {
         range = new Range(results.lastKey().followingKey(PartialKey.ROW_COLFAM_COLQUAL_COLVIS_TIME),
             true, new Key(stopRow).followingKey(PartialKey.ROW), false);
         encodedResults.clear();
-        ThriftScanner.getBatchFromServer(context, range, src.getExtent(), src.getTserverLocation(),
+        ThriftScanner.getBatchFromServer(context, range, src.getExtent(), src.getTserverLocation().get(),
             encodedResults, locCols, serverSideIteratorList, serverSideIteratorOptions,
             Constants.SCAN_BATCH_SIZE, Authorizations.EMPTY, 0L, null);
 
@@ -142,7 +142,7 @@ public class MetadataLocationObtainer implements TabletLocationObtainer {
       if (log.isTraceEnabled()) {
         log.trace("{} lookup failed", src.getExtent().tableId(), e);
       }
-      parent.invalidateCache(context, src.getTserverLocation());
+      parent.invalidateCache(context, src.getTserverLocation().get());
     }
 
     return null;
