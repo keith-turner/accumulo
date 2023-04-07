@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -35,6 +36,7 @@ import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.ScannerBase;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.clientImpl.ClientContext;
@@ -44,6 +46,7 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.metrics.MetricsProducer;
+import org.apache.accumulo.core.spi.scan.ConfigurableScanServerSelector;
 import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
 import org.apache.accumulo.harness.SharedMiniClusterBase;
 import org.apache.accumulo.test.metrics.TestStatsDRegistryFactory;
@@ -211,27 +214,45 @@ public class OnDemandIT extends SharedMiniClusterBase {
     assertEquals(0, rows.size());
   }
 
-
   public long countTabletsWithLocation(AccumuloClient client, String tableName) throws Exception {
-    var ctx = (ClientContext)client;
-    try(var tablets = ctx.getAmple().readTablets().forTable(ctx.getTableId(tableName)).build()) {
-      return tablets.stream().filter(tabletMetadata -> tabletMetadata.getLocation() != null).count();
+    var ctx = (ClientContext) client;
+    try (var tablets = ctx.getAmple().readTablets().forTable(ctx.getTableId(tableName)).build()) {
+      return tablets.stream().filter(tabletMetadata -> tabletMetadata.getLocation() != null)
+          .count();
     }
   }
+
+  public static final String SCAN_SERVER_SELECTOR_CONFIG =
+      "[{'isDefault':true,'maxBusyTimeout':'5m',"
+          + "'busyTimeoutMultiplier':8, 'scanTypeActivations':[], 'enableTabletServerFallback':false"
+          + "'attemptPlans':[{'servers':'3', 'busyTimeout':'33ms', 'salt':'one'},"
+          + "{'servers':'13', 'busyTimeout':'33ms', 'salt':'two'},"
+          + "{'servers':'100%', 'busyTimeout':'33ms'}]}]";
 
   @Test
   public void testScanHostedAndUnhosted() throws Exception {
     String tableName = super.getUniqueNames(1)[0];
 
+    // create configuration that makes eventual scans wait for scan servers when there are none
+    // instead of falling back to the tserver.
+    var clientProps = new Properties();
+    clientProps.putAll(getClientProps());
+    String scanServerSelectorProfiles = "[{'isDefault':true,'maxBusyTimeout':'5m',"
+        + "'busyTimeoutMultiplier':8, 'scanTypeActivations':[], 'enableTabletServerFallback':false"
+        + "'attemptPlans':[{'servers':'3', 'busyTimeout':'1s'}]}]";
+    clientProps.put("scan.server.selector.impl", ConfigurableScanServerSelector.class.getName());
+    clientProps.put("scan.server.selector.opts.profiles",
+        scanServerSelectorProfiles.replace("'", "\""));
 
-    try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
+    try (AccumuloClient c = Accumulo.newClient().from(clientProps).build()) {
 
-      SortedSet<Text> splits = new TreeSet<>(List.of(new Text("005"),new Text("013"),new Text("027"),new Text("075")));
+      SortedSet<Text> splits = new TreeSet<>(
+          List.of(new Text("005"), new Text("013"), new Text("027"), new Text("075")));
       c.tableOperations().create(tableName, new NewTableConfiguration().withSplits(splits));
-      try(var writer = c.createBatchWriter(tableName)) {
-        IntStream.range(0, 100).mapToObj(i -> String.format("%03d",i)).forEach(row -> {
+      try (var writer = c.createBatchWriter(tableName)) {
+        IntStream.range(0, 100).mapToObj(i -> String.format("%03d", i)).forEach(row -> {
           Mutation m = new Mutation(row);
-          m.put("","","");
+          m.put("", "", "");
           try {
             writer.addMutation(m);
           } catch (MutationsRejectedException e) {
@@ -242,15 +263,26 @@ public class OnDemandIT extends SharedMiniClusterBase {
 
       c.tableOperations().onDemand(tableName);
 
-      while(countTabletsWithLocation(c, tableName) > 0) {
+      // wait for all tablets to be unhosted
+      while (countTabletsWithLocation(c, tableName) > 0) {
         Thread.sleep(25);
       }
 
-      try(var scanner = c.createScanner(tableName)) {
-        scanner.setRange(new Range("050",null));
+      // scan a subset of the table causing some tablets to be hosted
+      try (var scanner = c.createScanner(tableName)) {
+        scanner.setRange(new Range("050", null));
         Assertions.assertEquals(50, scanner.stream().count());
       }
 
+      Assertions.assertEquals(2, countTabletsWithLocation(c, tableName));
+
+      // Scan should only use scan servers and should scan tablets with and without locations.
+      try (var scanner = c.createScanner(tableName)) {
+        scanner.setConsistencyLevel(ScannerBase.ConsistencyLevel.EVENTUAL);
+        Assertions.assertEquals(100, scanner.stream().count());
+      }
+
+      // ensure tablets without a location were not brought online by the eventual scan
       Assertions.assertEquals(2, countTabletsWithLocation(c, tableName));
     }
   }
