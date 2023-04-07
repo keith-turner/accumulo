@@ -234,7 +234,8 @@ public class TabletLocatorImpl extends TabletLocator {
 
           row.set(mutation.getRow());
 
-          TabletLocation tl = _locateTablet(context, row, false, false, false, lcSession);
+          TabletLocation tl =
+              _locateTablet(context, row, false, false, false, lcSession, HostingNeed.HOSTED);
 
           if (tl == null || !addMutation(binnedMutations, mutation, tl, lcSession)) {
             bringOnDemandTabletsOnline(context, new Range(row));
@@ -301,7 +302,7 @@ public class TabletLocatorImpl extends TabletLocator {
 
   private List<Range> locateTablets(ClientContext context, List<Range> ranges,
       BiConsumer<TabletLocation,Range> rangeConsumer, boolean useCache,
-      LockCheckerSession lcSession)
+      LockCheckerSession lcSession, HostingNeed hostingNeed)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     List<Range> failures = new ArrayList<>();
     List<TabletLocation> tabletLocations = new ArrayList<>();
@@ -325,10 +326,10 @@ public class TabletLocatorImpl extends TabletLocator {
       if (useCache) {
         tl = lcSession.checkLock(locateTabletInCache(startRow));
       } else if (!lookupFailed) {
-        tl = _locateTablet(context, startRow, false, false, false, lcSession);
+        tl = _locateTablet(context, startRow, false, false, false, lcSession, hostingNeed);
       }
 
-      if (tl == null) {
+      if (tl == null && hostingNeed == HostingNeed.HOSTED) {
         bringOnDemandTabletsOnline(context, range);
         failures.add(range);
         if (!useCache) {
@@ -346,7 +347,8 @@ public class TabletLocatorImpl extends TabletLocator {
           row.append(new byte[] {0}, 0, 1);
           tl = lcSession.checkLock(locateTabletInCache(row));
         } else {
-          tl = _locateTablet(context, tl.getExtent().endRow(), true, false, false, lcSession);
+          tl = _locateTablet(context, tl.getExtent().endRow(), true, false, false, lcSession,
+              hostingNeed);
         }
 
         if (tl == null) {
@@ -409,7 +411,7 @@ public class TabletLocatorImpl extends TabletLocator {
       // sort ranges... therefore try binning ranges using only the cache
       // and sort whatever fails and retry
 
-      failures = locateTablets(context, ranges, rangeConsumer, true, lcSession);
+      failures = locateTablets(context, ranges, rangeConsumer, true, lcSession, hostingNeed);
     } finally {
       rLock.unlock();
     }
@@ -421,7 +423,7 @@ public class TabletLocatorImpl extends TabletLocator {
       // try lookups again
       wLock.lock();
       try {
-        failures = locateTablets(context, failures, rangeConsumer, false, lcSession);
+        failures = locateTablets(context, failures, rangeConsumer, false, lcSession, hostingNeed);
       } finally {
         wLock.unlock();
       }
@@ -523,9 +525,9 @@ public class TabletLocatorImpl extends TabletLocator {
     while (true) {
 
       LockCheckerSession lcSession = new LockCheckerSession();
-      TabletLocation tl = _locateTablet(context, row, skipRow, retry, true, lcSession);
+      TabletLocation tl = _locateTablet(context, row, skipRow, retry, true, lcSession, hostingNeed);
 
-      if (tl == null && !alreadyMarkedOnDemand) {
+      if (tl == null && !alreadyMarkedOnDemand && hostingNeed == HostingNeed.HOSTED) {
         bringOnDemandTabletsOnline(context, new Range(row));
         alreadyMarkedOnDemand = true;
       }
@@ -758,7 +760,7 @@ public class TabletLocatorImpl extends TabletLocator {
   }
 
   protected TabletLocation _locateTablet(ClientContext context, Text row, boolean skipRow,
-      boolean retry, boolean lock, LockCheckerSession lcSession)
+      boolean retry, boolean lock, LockCheckerSession lcSession, HostingNeed hostingNeed)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
 
     if (skipRow) {
@@ -791,6 +793,10 @@ public class TabletLocatorImpl extends TabletLocator {
       } else {
         tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession);
       }
+    }
+
+    if (hostingNeed == HostingNeed.HOSTED && tl != null && tl.getTserverLocation().isEmpty()) {
+      return null;
     }
 
     return tl;
