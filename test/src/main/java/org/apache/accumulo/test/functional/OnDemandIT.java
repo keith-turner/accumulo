@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.IntStream;
 
@@ -35,9 +36,12 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
+import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.clientImpl.TabletLocator;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.data.Mutation;
+import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.metrics.MetricsProducer;
 import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
@@ -47,6 +51,7 @@ import org.apache.accumulo.test.metrics.TestStatsDSink;
 import org.apache.accumulo.test.metrics.TestStatsDSink.Metric;
 import org.apache.hadoop.io.Text;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -204,6 +209,50 @@ public class OnDemandIT extends SharedMiniClusterBase {
       s.iterator().forEachRemaining((e) -> rows.remove(e.getKey().getRow().charAt(0)));
     }
     assertEquals(0, rows.size());
+  }
+
+
+  public long countTabletsWithLocation(AccumuloClient client, String tableName) throws Exception {
+    var ctx = (ClientContext)client;
+    try(var tablets = ctx.getAmple().readTablets().forTable(ctx.getTableId(tableName)).build()) {
+      return tablets.stream().filter(tabletMetadata -> tabletMetadata.getLocation() != null).count();
+    }
+  }
+
+  @Test
+  public void testScanHostedAndUnhosted() throws Exception {
+    String tableName = super.getUniqueNames(1)[0];
+
+
+    try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
+
+      SortedSet<Text> splits = new TreeSet<>(List.of(new Text("005"),new Text("013"),new Text("027"),new Text("075")));
+      c.tableOperations().create(tableName, new NewTableConfiguration().withSplits(splits));
+      try(var writer = c.createBatchWriter(tableName)) {
+        IntStream.range(0, 100).mapToObj(i -> String.format("%03d",i)).forEach(row -> {
+          Mutation m = new Mutation(row);
+          m.put("","","");
+          try {
+            writer.addMutation(m);
+          } catch (MutationsRejectedException e) {
+            throw new RuntimeException(e);
+          }
+        });
+      }
+
+      c.tableOperations().onDemand(tableName);
+
+      while(countTabletsWithLocation(c, tableName) > 0) {
+        Thread.sleep(25);
+      }
+
+      try(var scanner = c.createScanner(tableName)) {
+        scanner.setRange(new Range("050",null));
+        Assertions.assertEquals(50, scanner.stream().count());
+      }
+
+      Assertions.assertEquals(2, countTabletsWithLocation(c, tableName));
+    }
   }
 
 }
