@@ -208,7 +208,7 @@ public class TabletLocatorImpl extends TabletLocator {
 
       for (T mutation : mutations) {
         row.set(mutation.getRow());
-        TabletLocation tl = locateTabletInCache(row);
+        TabletLocation tl = locateTabletInCache(row, HostingNeed.HOSTED);
         if (tl == null || !addMutation(binnedMutations, mutation, tl, lcSession)) {
           notInCache.add(mutation);
         }
@@ -260,7 +260,7 @@ public class TabletLocatorImpl extends TabletLocator {
   private <T extends Mutation> boolean addMutation(
       Map<String,TabletServerMutations<T>> binnedMutations, T mutation, TabletLocation tl,
       LockCheckerSession lcSession) {
-    TabletServerMutations<T> tsm = binnedMutations.get(tl.getTserverLocation());
+    TabletServerMutations<T> tsm = binnedMutations.get(tl.getTserverLocation().get());
 
     if (tsm == null) {
       // do lock check once per tserver here to make binning faster
@@ -274,7 +274,7 @@ public class TabletLocatorImpl extends TabletLocator {
     }
 
     // its possible the same tserver could be listed with different sessions
-    if (tsm.getSession().equals(tl.getTserverSession())) {
+    if (tsm.getSession().equals(tl.getTserverSession().get())) {
       tsm.addMutation(tl.getExtent(), mutation);
       return true;
     }
@@ -324,7 +324,7 @@ public class TabletLocatorImpl extends TabletLocator {
       TabletLocation tl = null;
 
       if (useCache) {
-        tl = lcSession.checkLock(locateTabletInCache(startRow));
+        tl = lcSession.checkLock(locateTabletInCache(startRow, hostingNeed));
       } else if (!lookupFailed) {
         tl = _locateTablet(context, startRow, false, false, false, lcSession, hostingNeed);
       }
@@ -345,7 +345,7 @@ public class TabletLocatorImpl extends TabletLocator {
         if (useCache) {
           Text row = new Text(tl.getExtent().endRow());
           row.append(new byte[] {0}, 0, 1);
-          tl = lcSession.checkLock(locateTabletInCache(row));
+          tl = lcSession.checkLock(locateTabletInCache(row, hostingNeed));
         } else {
           tl = _locateTablet(context, tl.getExtent().endRow(), true, false, false, lcSession,
               hostingNeed);
@@ -471,7 +471,8 @@ public class TabletLocatorImpl extends TabletLocator {
     wLock.lock();
     try {
       for (TabletLocation cacheEntry : metaCache.values()) {
-        if (cacheEntry.getTserverLocation().equals(server)) {
+        var loc = cacheEntry.getTserverLocation();
+        if (loc.isPresent() && loc.get().equals(server)) {
           badExtents.add(cacheEntry.getExtent());
           invalidatedCount++;
         }
@@ -746,14 +747,17 @@ public class TabletLocatorImpl extends TabletLocator {
     }
   }
 
-  private TabletLocation locateTabletInCache(Text row) {
+  private TabletLocation locateTabletInCache(Text row, HostingNeed hostingNeed) {
 
     Entry<Text,TabletLocation> entry = metaCache.ceilingEntry(row);
 
     if (entry != null) {
       KeyExtent ke = entry.getValue().getExtent();
       if (ke.prevEndRow() == null || ke.prevEndRow().compareTo(row) < 0) {
-        return entry.getValue();
+        if (hostingNeed == HostingNeed.HOSTED
+            && entry.getValue().getTserverLocation().isPresent()) {
+          return entry.getValue();
+        }
       }
     }
     return null;
@@ -773,12 +777,12 @@ public class TabletLocatorImpl extends TabletLocator {
     if (lock) {
       rLock.lock();
       try {
-        tl = processInvalidatedAndCheckLock(context, lcSession, row);
+        tl = processInvalidatedAndCheckLock(context, lcSession, row, hostingNeed);
       } finally {
         rLock.unlock();
       }
     } else {
-      tl = processInvalidatedAndCheckLock(context, lcSession, row);
+      tl = processInvalidatedAndCheckLock(context, lcSession, row, hostingNeed);
     }
 
     if (tl == null) {
@@ -786,12 +790,12 @@ public class TabletLocatorImpl extends TabletLocator {
       if (lock) {
         wLock.lock();
         try {
-          tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession);
+          tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession, hostingNeed);
         } finally {
           wLock.unlock();
         }
       } else {
-        tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession);
+        tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession, hostingNeed);
       }
     }
 
@@ -803,17 +807,17 @@ public class TabletLocatorImpl extends TabletLocator {
   }
 
   private TabletLocation lookupTabletLocationAndCheckLock(ClientContext context, Text row,
-      boolean retry, LockCheckerSession lcSession)
+      boolean retry, LockCheckerSession lcSession, HostingNeed hostingNeed)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     lookupTabletLocation(context, row, retry, lcSession);
-    return lcSession.checkLock(locateTabletInCache(row));
+    return lcSession.checkLock(locateTabletInCache(row, hostingNeed));
   }
 
   private TabletLocation processInvalidatedAndCheckLock(ClientContext context,
-      LockCheckerSession lcSession, Text row)
+      LockCheckerSession lcSession, Text row, HostingNeed hostingNeed)
       throws AccumuloSecurityException, AccumuloException, TableNotFoundException {
     processInvalidated(context, lcSession);
-    return lcSession.checkLock(locateTabletInCache(row));
+    return lcSession.checkLock(locateTabletInCache(row, hostingNeed));
   }
 
   @SuppressFBWarnings(value = {"UL_UNRELEASED_LOCK", "UL_UNRELEASED_LOCK_EXCEPTION_PATH"},
