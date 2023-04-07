@@ -61,7 +61,8 @@ public class TimeoutTabletLocator extends SyncingTabletLocator {
 
   @Override
   public TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow,
-      HostingNeed hostingNeed) throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+      HostingNeed hostingNeed)
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     try {
       TabletLocation ret = super.locateTablet(context, row, skipRow, hostingNeed);
 

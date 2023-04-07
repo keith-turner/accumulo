@@ -66,7 +66,8 @@ public class SyncingTabletLocator extends TabletLocator {
 
   @Override
   public TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow,
-      HostingNeed hostingNeed) throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+      HostingNeed hostingNeed)
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     return syncLocator().locateTablet(context, row, skipRow, hostingNeed);
   }
 

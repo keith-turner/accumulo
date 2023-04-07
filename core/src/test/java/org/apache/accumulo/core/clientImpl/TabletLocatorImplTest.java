@@ -40,6 +40,7 @@ import java.util.TreeMap;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.TableOperations;
+import org.apache.accumulo.core.clientImpl.TabletLocator.HostingNeed;
 import org.apache.accumulo.core.clientImpl.TabletLocator.TabletLocation;
 import org.apache.accumulo.core.clientImpl.TabletLocator.TabletLocations;
 import org.apache.accumulo.core.clientImpl.TabletLocator.TabletServerMutations;
@@ -63,6 +64,7 @@ import org.easymock.EasyMock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+//TODO test caching no location
 public class TabletLocatorImplTest {
 
   private static final KeyExtent ROOT_TABLE_EXTENT = RootTable.EXTENT;
@@ -173,7 +175,7 @@ public class TabletLocatorImplTest {
 
     for (Entry<KeyExtent,TabletLocation> entry : mcke.entrySet()) {
       setLocation(tservers, metaTabLoc, METADATA_TABLE_EXTENT, entry.getKey(),
-          entry.getValue().getTserverLocation());
+          entry.getValue().getTserverLocation().get());
     }
 
     return tab1TabletCache;
@@ -503,10 +505,10 @@ public class TabletLocatorImplTest {
     public TabletLocations lookupTablet(ClientContext context, TabletLocation src, Text row,
         Text stopRow, TabletLocator parent) {
 
-      Map<KeyExtent,SortedMap<Key,Value>> tablets = tservers.get(src.getTserverLocation());
+      Map<KeyExtent,SortedMap<Key,Value>> tablets = tservers.get(src.getTserverLocation().get());
 
       if (tablets == null) {
-        parent.invalidateCache(context, src.getTserverLocation());
+        parent.invalidateCache(context, src.getTserverLocation().get());
         return null;
       }
 
@@ -670,7 +672,7 @@ public class TabletLocatorImplTest {
 
   private void locateTabletTest(TabletLocatorImpl cache, String row, boolean skipRow,
       KeyExtent expected, String server) throws Exception {
-    TabletLocation tl = cache.locateTablet(context, new Text(row), skipRow, false);
+    TabletLocation tl = cache.locateTablet(context, new Text(row), skipRow, HostingNeed.HOSTED);
 
     if (expected == null) {
       if (tl != null) {
@@ -679,7 +681,7 @@ public class TabletLocatorImplTest {
       assertNull(tl);
     } else {
       assertNotNull(tl);
-      assertEquals(server, tl.getTserverLocation());
+      assertEquals(server, tl.getTserverLocation().get());
       assertEquals(expected, tl.getExtent());
     }
   }
@@ -1493,7 +1495,8 @@ public class TabletLocatorImplTest {
     ts3.put(mte2, new TreeMap<>());
     tservers.tservers.put("tserver3", ts3);
 
-    assertNull(tab0TabletCache.locateTablet(context, new Text("row_0000000000"), false, false));
+    assertNull(tab0TabletCache.locateTablet(context, new Text("row_0000000000"), false,
+        HostingNeed.HOSTED));
 
   }
 
@@ -1549,7 +1552,7 @@ public class TabletLocatorImplTest {
     setLocation(tservers, "tserver2", METADATA_TABLE_EXTENT, ke1, "L2", "I2");
 
     var e = assertThrows(IllegalStateException.class,
-        () -> metaCache.locateTablet(context, new Text("a"), false, false));
+        () -> metaCache.locateTablet(context, new Text("a"), false, HostingNeed.HOSTED));
     assertTrue(e.getMessage().startsWith("Tablet has multiple locations : "));
 
   }

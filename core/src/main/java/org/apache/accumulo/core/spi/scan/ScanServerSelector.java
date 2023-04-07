@@ -21,7 +21,6 @@ package org.apache.accumulo.core.spi.scan;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -110,19 +109,29 @@ public interface ScanServerSelector {
     Map<String,String> getHints();
 
     /**
-     * @return something less than or equals to what was set on {@link ScannerBase#setTimeout(long, TimeUnit)}.  TODO what about infinite case?
+     * @return something less than or equals to what was set on
+     *         {@link ScannerBase#setTimeout(long, TimeUnit)}. TODO what about infinite case?
      *
-     * ELASTICITY_TODO
+     *         ELASTICITY_TODO
      * @since XXX
      */
     Duration getTimeout();
   }
 
   /**
-   * <p>Uses the {@link SelectorParameters} to determine which, if any, ScanServer should be used for
-   * scanning a tablet.</p>
+   * <p>
+   * Uses the {@link SelectorParameters} to determine which, if any, ScanServer should be used for
+   * scanning a tablet.
+   * </p>
    *
-   * <p>In the case where there are zero scan servers available and an implementation does not want to fall back to tablet servers, its ok to wait and poll for scan servers.  The maximum time an implementation should wait is {@link SelectorParameters#getTimeout()}.  If after this duration there are still no scan servers the implementation should throw {@link org.apache.accumulo.core.client.TimedOutException} with a message suitable for users OR fall back to tablet servers.</p>
+   * <p>
+   * In the case where there are zero scan servers available and an implementation does not want to
+   * fall back to tablet servers, its ok to wait and poll for scan servers. The maximum time an
+   * implementation should wait is {@link SelectorParameters#getTimeout()}. If after this duration
+   * there are still no scan servers the implementation should throw
+   * {@link org.apache.accumulo.core.client.TimedOutException} with a message suitable for users OR
+   * fall back to tablet servers.
+   * </p>
    *
    * @param params parameters for the calculation
    * @return results

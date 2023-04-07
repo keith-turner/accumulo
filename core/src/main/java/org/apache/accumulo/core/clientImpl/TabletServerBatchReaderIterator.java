@@ -34,7 +34,6 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -641,7 +640,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
   }
 
   private ScanServerData binRangesForScanServers(TabletLocator tabletLocator, List<Range> ranges,
-                                                 Map<String,Map<KeyExtent,List<Range>>> binnedRanges, long startTime)
+      Map<String,Map<KeyExtent,List<Range>>> binnedRanges, long startTime)
       throws AccumuloException, TableNotFoundException, AccumuloSecurityException {
 
     ScanServerSelector ecsm = context.getScanServerSelector();
@@ -652,7 +651,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
     Set<TabletIdImpl> tabletIds = new HashSet<>();
 
     List<Range> failures = tabletLocator.locateTablets(context, ranges, (cachedTablet, range) -> {
-      if(cachedTablet.getTserverLocation().isPresent()) {
+      if (cachedTablet.getTserverLocation().isPresent()) {
         extentToTserverMap.put(cachedTablet.getExtent(), cachedTablet.getTserverLocation().get());
       }
       extentToRangesMap.computeIfAbsent(cachedTablet.getExtent(), k -> new ArrayList<>())
@@ -667,8 +666,10 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
     // get a snapshot of this once,not each time the plugin request it
     var scanAttemptsSnapshot = scanAttempts.snapshot();
 
-    // compute this once so that something consistent is offered to the selector instead of something changing
-    Duration timeoutLeft = Duration.ofMillis(retryTimeout).minus(Duration.ofMillis(System.currentTimeMillis() - startTime));
+    // compute this once so that something consistent is offered to the selector instead of
+    // something changing
+    Duration timeoutLeft = Duration.ofMillis(retryTimeout)
+        .minus(Duration.ofMillis(System.currentTimeMillis() - startTime));
 
     ScanServerSelector.SelectorParameters params = new ScanServerSelector.SelectorParameters() {
       @Override
@@ -692,7 +693,7 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
       }
     };
 
-    //TODO what happens when TimedOutException is thrown
+    // TODO what happens when TimedOutException is thrown
     var actions = ecsm.selectServers(params);
 
     Map<String,ScanServerAttemptReporter> reporters = new HashMap<>();
@@ -705,16 +706,18 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
       if (serverToUse == null) {
         // no scan server was given so use the tablet server
         serverToUse = extentToTserverMap.get(extent);
-        if(serverToUse != null) {
+        if (serverToUse != null) {
           log.trace("For tablet {} scan server selector chose tablet_server", tabletId);
-        }else{
-          log.trace("For tablet {} scan server selector chose tablet_server, but tablet is not hosted", tabletId);
+        } else {
+          log.trace(
+              "For tablet {} scan server selector chose tablet_server, but tablet is not hosted",
+              tabletId);
         }
       } else {
         log.trace("For tablet {} scan server selector chose scan_server:{}", tabletId, serverToUse);
       }
 
-      if(serverToUse != null) {
+      if (serverToUse != null) {
         var rangeMap = binnedRanges.computeIfAbsent(serverToUse, k -> new HashMap<>());
         List<Range> extentRanges = extentToRangesMap.get(extent);
         rangeMap.put(extent, extentRanges);
@@ -727,7 +730,8 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
     }
 
     if (!failures.isEmpty()) {
-      // if there are failures at this point its because tablets are not hosted, so lets attempt to get them hosted
+      // if there are failures at this point its because tablets are not hosted, so lets attempt to
+      // get them hosted
       tabletLocator.locateTablets(context, ranges, (cachedTablet, range) -> {}, HostingNeed.HOSTED);
       return new ScanServerData(failures);
     }

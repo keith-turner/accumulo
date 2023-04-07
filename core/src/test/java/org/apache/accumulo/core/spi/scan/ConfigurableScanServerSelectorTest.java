@@ -91,13 +91,6 @@ public class ConfigurableScanServerSelectorTest {
 
       }).collect(Collectors.toSet());
     }
-
-    @Override
-    public Supplier<Collection<ScanServerInfo>> getScanServers(Set<String> requiredGroups,
-        Duration maxWaitTime) {
-      // TODO test that expected params are passed in
-      return getScanServers();
-    }
   }
 
   static class DaParams implements ScanServerSelector.SelectorParameters {
@@ -132,6 +125,12 @@ public class ConfigurableScanServerSelectorTest {
     @Override
     public Map<String,String> getHints() {
       return hints;
+    }
+
+    @Override
+    public Duration getTimeout() {
+      // TODO test and make settable
+      return Duration.ofDays(356);
     }
   }
 

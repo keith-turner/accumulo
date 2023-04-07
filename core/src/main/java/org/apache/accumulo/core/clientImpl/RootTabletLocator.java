@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
-import com.google.common.base.Preconditions;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.clientImpl.TabletLocatorImpl.TabletServerLockChecker;
 import org.apache.accumulo.core.data.Mutation;
@@ -44,6 +43,8 @@ import org.apache.accumulo.core.util.OpTimer;
 import org.apache.hadoop.io.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
 
 public class RootTabletLocator extends TabletLocator {
 
@@ -72,7 +73,8 @@ public class RootTabletLocator extends TabletLocator {
   public List<Range> locateTablets(ClientContext context, List<Range> ranges,
       BiConsumer<TabletLocation,Range> rangeConsumer, HostingNeed hostingNeed) {
 
-    // only expect the hosted case so this code only handles that, so throw an exception is something else is seed
+    // only expect the hosted case so this code only handles that, so throw an exception is
+    // something else is seed
     Preconditions.checkArgument(hostingNeed == HostingNeed.HOSTED);
 
     TabletLocation rootTabletLocation = getRootTabletLocation(context);
@@ -137,7 +139,8 @@ public class RootTabletLocator extends TabletLocator {
   @Override
   public TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow,
       HostingNeed hostingNeed) {
-    // only expect the hosted case so this code only handles that, so throw an exception is something else is seed
+    // only expect the hosted case so this code only handles that, so throw an exception is
+    // something else is seed
     Preconditions.checkArgument(hostingNeed == HostingNeed.HOSTED);
 
     TabletLocation location = getRootTabletLocation(context);

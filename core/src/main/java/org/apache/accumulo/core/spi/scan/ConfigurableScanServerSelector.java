@@ -36,6 +36,7 @@ import java.util.function.Supplier;
 import org.apache.accumulo.core.client.TimedOutException;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.data.TabletId;
+import org.apache.accumulo.core.util.UtilWaitThread;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Suppliers;
@@ -46,7 +47,6 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.apache.accumulo.core.util.UtilWaitThread;
 
 /**
  * The default Accumulo selector for scan servers. This dispatcher will :
@@ -225,7 +225,7 @@ public class ConfigurableScanServerSelector implements ScanServerSelector {
     int busyTimeoutMultiplier;
     String maxBusyTimeout;
     String group = ScanServerSelector.DEFAULT_SCAN_SERVER_GROUP_NAME;
-    //TODO document and test
+    // TODO document and test
     boolean enableTabletServerFallback = true;
 
     transient boolean parsed = false;
@@ -336,14 +336,14 @@ public class ConfigurableScanServerSelector implements ScanServerSelector {
 
     long start = System.nanoTime();
 
-    while(orderedScanServers.isEmpty() && !profile.enableTabletServerFallback) {
+    while (orderedScanServers.isEmpty() && !profile.enableTabletServerFallback) {
       // there are no scan servers and tablet server fallback is disabled so wait...
       UtilWaitThread.sleep(100);
-      orderedScanServers =
-              orderedScanServersSupplier.get().getOrDefault(profile.group, List.of());
+      orderedScanServers = orderedScanServersSupplier.get().getOrDefault(profile.group, List.of());
 
-      if(Duration.ofNanos(System.nanoTime() - start).compareTo(params.getTimeout()) > 0) {
-        throw new TimedOutException("No scan servers became available within the scanner timeout period.");
+      if (Duration.ofNanos(System.nanoTime() - start).compareTo(params.getTimeout()) > 0) {
+        throw new TimedOutException(
+            "No scan servers became available within the scanner timeout period.");
       }
     }
 

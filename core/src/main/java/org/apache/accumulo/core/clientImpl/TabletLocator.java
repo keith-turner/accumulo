@@ -63,7 +63,7 @@ public abstract class TabletLocator {
    * Used to indicate if a user of this interface needs a tablet hosted or not. This simple enum was
    * created instead of using a boolean for code clarity.
    */
-  enum HostingNeed {
+  public enum HostingNeed {
     HOSTED, NONE
   }
 
@@ -216,19 +216,13 @@ public abstract class TabletLocator {
   public static class TabletLocations {
 
     private final List<TabletLocation> locations;
-    private final List<KeyExtent> locationless;
 
-    public TabletLocations(List<TabletLocation> locations, List<KeyExtent> locationless) {
+    public TabletLocations(List<TabletLocation> locations) {
       this.locations = locations;
-      this.locationless = locationless;
     }
 
     public List<TabletLocation> getLocations() {
       return locations;
-    }
-
-    public List<KeyExtent> getLocationless() {
-      return locationless;
     }
   }
 
@@ -246,6 +240,21 @@ public abstract class TabletLocator {
       this.tablet_extent = tablet_extent;
       this.tserverLocation = interner.intern(tablet_location);
       this.tserverSession = interner.intern(session);
+    }
+
+    public TabletLocation(KeyExtent tablet_extent, Optional<String> tablet_location,
+        Optional<String> session) {
+      checkArgument(tablet_extent != null, "tablet_extent is null");
+      this.tablet_extent = tablet_extent;
+      this.tserverLocation = tablet_location.map(interner::intern).orElse(null);
+      this.tserverSession = session.map(interner::intern).orElse(null);
+    }
+
+    public TabletLocation(KeyExtent tablet_extent) {
+      checkArgument(tablet_extent != null, "tablet_extent is null");
+      this.tablet_extent = tablet_extent;
+      this.tserverLocation = null;
+      this.tserverSession = null;
     }
 
     @Override
@@ -273,6 +282,7 @@ public abstract class TabletLocator {
       return tablet_extent;
     }
 
+    // TODO analyze all usages of this
     public Optional<String> getTserverLocation() {
       return Optional.ofNullable(tserverLocation);
     }

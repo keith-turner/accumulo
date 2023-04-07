@@ -115,9 +115,9 @@ public class MetadataLocationObtainer implements TabletLocationObtainer {
         range = new Range(results.lastKey().followingKey(PartialKey.ROW_COLFAM_COLQUAL_COLVIS_TIME),
             true, new Key(stopRow).followingKey(PartialKey.ROW), false);
         encodedResults.clear();
-        ThriftScanner.getBatchFromServer(context, range, src.getExtent(), src.getTserverLocation().get(),
-            encodedResults, locCols, serverSideIteratorList, serverSideIteratorOptions,
-            Constants.SCAN_BATCH_SIZE, Authorizations.EMPTY, 0L, null);
+        ThriftScanner.getBatchFromServer(context, range, src.getExtent(),
+            src.getTserverLocation().get(), encodedResults, locCols, serverSideIteratorList,
+            serverSideIteratorOptions, Constants.SCAN_BATCH_SIZE, Authorizations.EMPTY, 0L, null);
 
         decodeRows(encodedResults, results);
       }
@@ -218,7 +218,6 @@ public class MetadataLocationObtainer implements TabletLocationObtainer {
     Text session = null;
 
     List<TabletLocation> results = new ArrayList<>();
-    ArrayList<KeyExtent> locationless = new ArrayList<>();
 
     Text lastRowFromKey = new Text();
 
@@ -252,12 +251,12 @@ public class MetadataLocationObtainer implements TabletLocationObtainer {
         if (location != null) {
           results.add(new TabletLocation(ke, location.toString(), session.toString()));
         } else {
-          locationless.add(ke);
+          results.add(new TabletLocation(ke));
         }
         location = null;
       }
     }
 
-    return new TabletLocations(results, locationless);
+    return new TabletLocations(results);
   }
 }
