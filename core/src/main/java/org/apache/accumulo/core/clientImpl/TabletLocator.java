@@ -282,7 +282,6 @@ public abstract class TabletLocator {
       return tablet_extent;
     }
 
-    // TODO analyze all usages of this
     public Optional<String> getTserverLocation() {
       return Optional.ofNullable(tserverLocation);
     }

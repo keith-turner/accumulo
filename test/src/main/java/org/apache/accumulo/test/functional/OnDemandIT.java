@@ -162,7 +162,6 @@ public class OnDemandIT extends SharedMiniClusterBase {
       }
       stats = ManagerAssignmentIT.getTabletStats(c, tableId);
       assertEquals(0, stats.size());
-
     }
   }
 
@@ -267,6 +266,7 @@ public class OnDemandIT extends SharedMiniClusterBase {
         Assertions.assertEquals(50, scanner.stream().count());
       }
 
+      // the above scan should only cause two tablets to be hosted so check this
       Assertions.assertTrue(countTabletsWithLocation(c, tableName) <= 2);
 
       // TODO run test where scan times out because of no scan servers... maybe in scan server IT
@@ -283,9 +283,20 @@ public class OnDemandIT extends SharedMiniClusterBase {
         Assertions.assertEquals(100, scanner.stream().count());
       }
 
+      try (var scanner = c.createBatchScanner(tableName)) {
+        scanner.setConsistencyLevel(ScannerBase.ConsistencyLevel.EVENTUAL);
+        scanner.setRanges(List.of(new Range()));
+        Assertions.assertEquals(100, scanner.stream().count());
+      }
+
       // ensure tablets without a location were not brought online by the eventual scan
       Assertions.assertTrue(countTabletsWithLocation(c, tableName) <= 2);
+
+      // esnure an immediate scans works when the cache contains tablets w/ and w/o locations
+      try (var scanner = c.createScanner(tableName)) {
+        scanner.setConsistencyLevel(ScannerBase.ConsistencyLevel.IMMEDIATE);
+        Assertions.assertEquals(100, scanner.stream().count());
+      }
     }
   }
-
 }

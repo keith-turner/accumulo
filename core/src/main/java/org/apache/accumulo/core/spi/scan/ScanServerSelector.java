@@ -116,19 +116,19 @@ public interface ScanServerSelector {
      * be periodically called and as long as it returns an empty optional the function will continue
      * to wait.
      *
-     * @param condition periodically calls this to see if it is true.
-     * @param maxWaitTime the maximum time to wait for the predicate to become true
+     * @param condition periodically calls this to see if it is non-empty.
+     * @param maxWaitTime the maximum time to wait for the condition to become non-empty
      * @param description a description of what is being waited on, used for error messages and
      *        logging
-     * @return The first non-empty optional supplied by the condition. An empty optional if the
+     * @return The first non-empty optional returned by the condition. An empty optional if the
      *         maxWaitTime was exceeded without the condition ever returning a non-empty optional.
      *
      * @throws org.apache.accumulo.core.client.TableDeletedException if the table is deleted while
-     *         waiting for the predicate to become true. Do not catch this exception and let it
+     *         waiting for the condition to become non-empty. Do not catch this exception, let it
      *         escape.
      * @throws org.apache.accumulo.core.client.TimedOutException if the timeout specified by
      *         {@link ScannerBase#setTimeout(long, TimeUnit)} is exceeded while waiting. Do not
-     *         catch this exception and let it escape.
+     *         catch this exception, let it escape.
      *
      * @since ELASTICITY_TODO
      */

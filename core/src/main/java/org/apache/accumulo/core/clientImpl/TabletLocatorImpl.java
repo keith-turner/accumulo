@@ -18,10 +18,9 @@
  */
 package org.apache.accumulo.core.clientImpl;
 
-import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,6 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
@@ -50,9 +50,6 @@ import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
-import org.apache.accumulo.core.metadata.schema.TabletMetadata;
-import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
-import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.OpTimer;
@@ -62,6 +59,9 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.WritableComparator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -99,6 +99,9 @@ public class TabletLocatorImpl extends TabletLocator {
   private final Lock rLock = rwLock.readLock();
   private final Lock wLock = rwLock.writeLock();
   private final AtomicLong onDemandTabletsOnlinedCount = new AtomicLong(0);
+
+  private final Cache<KeyExtent,Long> recentOndemandRequest =
+      CacheBuilder.newBuilder().expireAfterWrite(Duration.ofSeconds(30)).build();
 
   public interface TabletLocationObtainer {
     /**
@@ -208,8 +211,8 @@ public class TabletLocatorImpl extends TabletLocator {
 
       for (T mutation : mutations) {
         row.set(mutation.getRow());
-        TabletLocation tl = locateTabletInCache(row, HostingNeed.HOSTED);
-        if (tl == null || !addMutation(binnedMutations, mutation, tl, lcSession)) {
+        TabletLocation tl = locateTabletInCache(row);
+        if (!addMutation(binnedMutations, mutation, tl, lcSession)) {
           notInCache.add(mutation);
         }
       }
@@ -217,36 +220,34 @@ public class TabletLocatorImpl extends TabletLocator {
       rLock.unlock();
     }
 
+    List<KeyExtent> locationLess = new ArrayList<>();
+
     if (!notInCache.isEmpty()) {
       notInCache.sort((o1, o2) -> WritableComparator.compareBytes(o1.getRow(), 0,
           o1.getRow().length, o2.getRow(), 0, o2.getRow().length));
 
       wLock.lock();
       try {
-        boolean failed = false;
         for (T mutation : notInCache) {
-          if (failed) {
-            // when one table does not return a location, something is probably
-            // screwy, go ahead and fail everything.
-            failures.add(mutation);
-            continue;
-          }
 
           row.set(mutation.getRow());
 
           TabletLocation tl =
               _locateTablet(context, row, false, false, false, lcSession, HostingNeed.HOSTED);
 
-          if (tl == null || !addMutation(binnedMutations, mutation, tl, lcSession)) {
-            bringOnDemandTabletsOnline(context, new Range(row));
+          if (!addMutation(binnedMutations, mutation, tl, lcSession)) {
             failures.add(mutation);
-            failed = true;
+            if (tl != null && tl.getTserverLocation().isEmpty()) {
+              locationLess.add(tl.getExtent());
+            }
           }
         }
       } finally {
         wLock.unlock();
       }
     }
+
+    bringOnDemandTabletsOnline(context, locationLess);
 
     if (timer != null) {
       timer.stop();
@@ -260,6 +261,11 @@ public class TabletLocatorImpl extends TabletLocator {
   private <T extends Mutation> boolean addMutation(
       Map<String,TabletServerMutations<T>> binnedMutations, T mutation, TabletLocation tl,
       LockCheckerSession lcSession) {
+
+    if (tl == null || tl.getTserverLocation().isEmpty()) {
+      return false;
+    }
+
     TabletServerMutations<T> tsm = binnedMutations.get(tl.getTserverLocation().get());
 
     if (tsm == null) {
@@ -302,12 +308,11 @@ public class TabletLocatorImpl extends TabletLocator {
 
   private List<Range> locateTablets(ClientContext context, List<Range> ranges,
       BiConsumer<TabletLocation,Range> rangeConsumer, boolean useCache,
-      LockCheckerSession lcSession, HostingNeed hostingNeed)
+      LockCheckerSession lcSession, HostingNeed hostingNeed,
+      Consumer<KeyExtent> locationlessConsumer)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     List<Range> failures = new ArrayList<>();
     List<TabletLocation> tabletLocations = new ArrayList<>();
-
-    boolean lookupFailed = false;
 
     l1: for (Range range : ranges) {
 
@@ -324,17 +329,13 @@ public class TabletLocatorImpl extends TabletLocator {
       TabletLocation tl = null;
 
       if (useCache) {
-        tl = lcSession.checkLock(locateTabletInCache(startRow, hostingNeed));
-      } else if (!lookupFailed) {
+        tl = lcSession.checkLock(locateTabletInCache(startRow));
+      } else {
         tl = _locateTablet(context, startRow, false, false, false, lcSession, hostingNeed);
       }
 
-      if (tl == null && hostingNeed == HostingNeed.HOSTED) {
-        bringOnDemandTabletsOnline(context, range);
+      if (tl == null) {
         failures.add(range);
-        if (!useCache) {
-          lookupFailed = true;
-        }
         continue;
       }
 
@@ -345,7 +346,7 @@ public class TabletLocatorImpl extends TabletLocator {
         if (useCache) {
           Text row = new Text(tl.getExtent().endRow());
           row.append(new byte[] {0}, 0, 1);
-          tl = lcSession.checkLock(locateTabletInCache(row, hostingNeed));
+          tl = lcSession.checkLock(locateTabletInCache(row));
         } else {
           tl = _locateTablet(context, tl.getExtent().endRow(), true, false, false, lcSession,
               hostingNeed);
@@ -353,12 +354,19 @@ public class TabletLocatorImpl extends TabletLocator {
 
         if (tl == null) {
           failures.add(range);
-          if (!useCache) {
-            lookupFailed = true;
-          }
           continue l1;
         }
         tabletLocations.add(tl);
+      }
+
+      // pass all tablets without a location before failing range
+      tabletLocations.stream().filter(tloc -> tloc.getTserverLocation().isEmpty())
+          .map(TabletLocation::getExtent).forEach(locationlessConsumer);
+
+      if (hostingNeed == HostingNeed.HOSTED
+          && !tabletLocations.stream().allMatch(tloc -> tloc.getTserverLocation().isPresent())) {
+        failures.add(range);
+        continue;
       }
 
       // Ensure the extents found are non overlapping and have no holes. When reading some extents
@@ -371,9 +379,6 @@ public class TabletLocatorImpl extends TabletLocator {
         }
       } else {
         failures.add(range);
-        if (!useCache) {
-          lookupFailed = true;
-        }
       }
 
     }
@@ -411,7 +416,8 @@ public class TabletLocatorImpl extends TabletLocator {
       // sort ranges... therefore try binning ranges using only the cache
       // and sort whatever fails and retry
 
-      failures = locateTablets(context, ranges, rangeConsumer, true, lcSession, hostingNeed);
+      failures = locateTablets(context, ranges, rangeConsumer, true, lcSession, hostingNeed,
+          keyExtent -> {});
     } finally {
       rLock.unlock();
     }
@@ -420,13 +426,28 @@ public class TabletLocatorImpl extends TabletLocator {
       // sort failures by range start key
       Collections.sort(failures);
 
+      // use a hashset because some ranges may overlap the same extent, so want to avoid duplicate
+      // extents
+      HashSet<KeyExtent> locationLess = new HashSet<>();
+      Consumer<KeyExtent> locationLessConsumer;
+      if (hostingNeed == HostingNeed.HOSTED) {
+        locationLessConsumer = locationLess::add;
+      } else {
+        locationLessConsumer = keyExtent -> {};
+      }
+
       // try lookups again
       wLock.lock();
       try {
-        failures = locateTablets(context, failures, rangeConsumer, false, lcSession, hostingNeed);
+
+        failures = locateTablets(context, failures, rangeConsumer, false, lcSession, hostingNeed,
+            locationLessConsumer);
       } finally {
         wLock.unlock();
       }
+
+      bringOnDemandTabletsOnline(context, locationLess);
+
     }
 
     if (timer != null) {
@@ -513,44 +534,31 @@ public class TabletLocatorImpl extends TabletLocator {
 
     OpTimer timer = null;
 
-    // TODO remove this and examine how it was used by callers
-    boolean retry = false;
+    // TODO examine what callers of this method set deleted retry parameter to true.
 
     if (log.isTraceEnabled()) {
-      log.trace("tid={} Locating tablet  table={} row={} skipRow={} retry={}",
-          Thread.currentThread().getId(), tableId, TextUtil.truncate(row), skipRow, retry);
+      log.trace("tid={} Locating tablet  table={} row={} skipRow={}",
+          Thread.currentThread().getId(), tableId, TextUtil.truncate(row), skipRow);
       timer = new OpTimer().start();
     }
 
-    boolean alreadyMarkedOnDemand = false;
-    while (true) {
+    LockCheckerSession lcSession = new LockCheckerSession();
+    TabletLocation tl = _locateTablet(context, row, skipRow, false, true, lcSession, hostingNeed);
 
-      LockCheckerSession lcSession = new LockCheckerSession();
-      TabletLocation tl = _locateTablet(context, row, skipRow, retry, true, lcSession, hostingNeed);
-
-      if (tl == null && !alreadyMarkedOnDemand && hostingNeed == HostingNeed.HOSTED) {
-        bringOnDemandTabletsOnline(context, new Range(row));
-        alreadyMarkedOnDemand = true;
-      }
-
-      if (retry && tl == null) {
-        sleepUninterruptibly(100, MILLISECONDS);
-        if (log.isTraceEnabled()) {
-          log.trace("Failed to locate tablet containing row {} in table {}, will retry...",
-              TextUtil.truncate(row), tableId);
-        }
-        continue;
-      }
-
-      if (timer != null) {
-        timer.stop();
-        log.trace("tid={} Located tablet {} at {} in {}", Thread.currentThread().getId(),
-            (tl == null ? "null" : tl.getExtent()), (tl == null ? "null" : tl.getTserverLocation()),
-            String.format("%.3f secs", timer.scale(SECONDS)));
-      }
-
-      return tl;
+    if (timer != null) {
+      timer.stop();
+      log.trace("tid={} Located tablet {} at {} in {}", Thread.currentThread().getId(),
+          (tl == null ? "null" : tl.getExtent()), (tl == null ? "null" : tl.getTserverLocation()),
+          String.format("%.3f secs", timer.scale(SECONDS)));
     }
+
+    if (tl != null && hostingNeed == HostingNeed.HOSTED && tl.getTserverLocation().isEmpty()) {
+      bringOnDemandTabletsOnline(context, List.of(tl.getExtent()));
+      return null;
+    }
+
+    return tl;
+
   }
 
   @Override
@@ -558,8 +566,13 @@ public class TabletLocatorImpl extends TabletLocator {
     return onDemandTabletsOnlinedCount.get();
   }
 
-  private void bringOnDemandTabletsOnline(ClientContext context, Range range)
+  private void bringOnDemandTabletsOnline(ClientContext context,
+      Collection<KeyExtent> extentsToBringOnline)
       throws AccumuloException, AccumuloSecurityException {
+
+    if (extentsToBringOnline.isEmpty()) {
+      return;
+    }
 
     // Confirm that table is in an on-demand state. Don't throw an exception
     // if the table is not found, calling code will already handle it.
@@ -570,53 +583,24 @@ public class TabletLocatorImpl extends TabletLocator {
         return;
       }
     } catch (TableNotFoundException e) {
+      // TODO throw this
       log.trace("bringOnDemandTabletsOnline: table not found: {}", tableId);
       return;
     }
 
-    final Text scanRangeStart = range.getStartKey().getRow();
-    final Text scanRangeEnd = range.getEndKey().getRow();
-    // Turn the scan range into a KeyExtent and bring online all ondemand tablets
-    // that are overlapped by the scan range
-    final KeyExtent scanRangeKE = new KeyExtent(tableId, scanRangeEnd, scanRangeStart);
-
-    List<TKeyExtent> extentsToBringOnline = new ArrayList<>();
-
-    TabletsMetadata m = context.getAmple().readTablets().forTable(tableId)
-        .overlapping(scanRangeStart, true, null).build();
-    for (TabletMetadata tm : m) {
-      final KeyExtent tabletExtent = tm.getExtent();
-      log.trace("Evaluating tablet {} against range {}", tabletExtent, scanRangeKE);
-      if (tm.getEndRow() != null && tm.getEndRow().compareTo(scanRangeStart) < 0) {
-        // the end row of this tablet is before the start row, skip it
-        log.trace("tablet {} is before scan start range: {}", tabletExtent, scanRangeStart);
-        continue;
-      }
-      if (tm.getPrevEndRow() != null && tm.getPrevEndRow().compareTo(scanRangeEnd) > 0) {
-        // the start row of this tablet is after the scan range end row, skip it
-        log.trace("tablet {} is after scan end range: {}", tabletExtent, scanRangeEnd);
-        continue;
-      }
-      if (scanRangeKE.overlaps(tabletExtent)) {
-        if (!tm.getOnDemand()) {
-          Location loc = tm.getLocation();
-          if (loc != null) {
-            log.debug("tablet {} has location of: {}:{}", tabletExtent, loc.getType(),
-                loc.getHostPort());
-          }
-          extentsToBringOnline.add(tabletExtent.toThrift());
-        } else {
-          log.trace("Tablet {} already marked as onDemand, but not hosted yet", tabletExtent);
-        }
+    List<TKeyExtent> thriftExtents = new ArrayList<>();
+    for (var extent : extentsToBringOnline) {
+      // TODO will this put it if it expired?
+      if (recentOndemandRequest.asMap().putIfAbsent(extent, System.currentTimeMillis()) == null) {
+        thriftExtents.add(extent.toThrift());
+        log.debug("Marking tablet as onDemand: {}", extent);
       }
     }
-    if (extentsToBringOnline.isEmpty()) {
-      return;
-    }
-    log.debug("Marking tablets as onDemand: {}", extentsToBringOnline);
+
     ThriftClientTypes.TABLET_MGMT.executeVoid(context,
         client -> client.bringOnDemandTabletsOnline(TraceUtil.traceInfo(), context.rpcCreds(),
-            tableId.canonical(), extentsToBringOnline));
+            tableId.canonical(), thriftExtents));
+
     onDemandTabletsOnlinedCount.addAndGet(extentsToBringOnline.size());
   }
 
@@ -747,19 +731,14 @@ public class TabletLocatorImpl extends TabletLocator {
     }
   }
 
-  private TabletLocation locateTabletInCache(Text row, HostingNeed hostingNeed) {
+  private TabletLocation locateTabletInCache(Text row) {
 
     Entry<Text,TabletLocation> entry = metaCache.ceilingEntry(row);
 
     if (entry != null) {
       KeyExtent ke = entry.getValue().getExtent();
       if (ke.prevEndRow() == null || ke.prevEndRow().compareTo(row) < 0) {
-        if (hostingNeed == HostingNeed.NONE) {
-          return entry.getValue();
-        } else if (hostingNeed == HostingNeed.HOSTED
-            && entry.getValue().getTserverLocation().isPresent()) {
-          return entry.getValue();
-        }
+        return entry.getValue();
       }
     }
     return null;
@@ -779,47 +758,43 @@ public class TabletLocatorImpl extends TabletLocator {
     if (lock) {
       rLock.lock();
       try {
-        tl = processInvalidatedAndCheckLock(context, lcSession, row, hostingNeed);
+        tl = processInvalidatedAndCheckLock(context, lcSession, row);
       } finally {
         rLock.unlock();
       }
     } else {
-      tl = processInvalidatedAndCheckLock(context, lcSession, row, hostingNeed);
+      tl = processInvalidatedAndCheckLock(context, lcSession, row);
     }
 
-    if (tl == null) {
+    if (tl == null || (hostingNeed == HostingNeed.HOSTED && tl.getTserverLocation().isEmpty())) {
       // not in cache, so obtain info
       if (lock) {
         wLock.lock();
         try {
-          tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession, hostingNeed);
+          tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession);
         } finally {
           wLock.unlock();
         }
       } else {
-        tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession, hostingNeed);
+        tl = lookupTabletLocationAndCheckLock(context, row, retry, lcSession);
       }
-    }
-
-    if (hostingNeed == HostingNeed.HOSTED && tl != null && tl.getTserverLocation().isEmpty()) {
-      return null;
     }
 
     return tl;
   }
 
   private TabletLocation lookupTabletLocationAndCheckLock(ClientContext context, Text row,
-      boolean retry, LockCheckerSession lcSession, HostingNeed hostingNeed)
+      boolean retry, LockCheckerSession lcSession)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
     lookupTabletLocation(context, row, retry, lcSession);
-    return lcSession.checkLock(locateTabletInCache(row, hostingNeed));
+    return lcSession.checkLock(locateTabletInCache(row));
   }
 
   private TabletLocation processInvalidatedAndCheckLock(ClientContext context,
-      LockCheckerSession lcSession, Text row, HostingNeed hostingNeed)
+      LockCheckerSession lcSession, Text row)
       throws AccumuloSecurityException, AccumuloException, TableNotFoundException {
     processInvalidated(context, lcSession);
-    return lcSession.checkLock(locateTabletInCache(row, hostingNeed));
+    return lcSession.checkLock(locateTabletInCache(row));
   }
 
   @SuppressFBWarnings(value = {"UL_UNRELEASED_LOCK", "UL_UNRELEASED_LOCK_EXCEPTION_PATH"},
