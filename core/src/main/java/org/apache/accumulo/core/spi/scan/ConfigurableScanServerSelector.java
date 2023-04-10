@@ -341,10 +341,13 @@ public class ConfigurableScanServerSelector implements ScanServerSelector {
       orderedScanServers = params.waitUntil(
           () -> Optional.ofNullable(orderedScanServersSupplier.get().get(finalProfile.group)),
           Duration.ofMillis(Long.MAX_VALUE), "Waiting for scan servers in group " + profile.group)
-          .orElse(List.of());
+          .get();
+      // at this point the list should be non empty unless there is a bug
+      Preconditions.checkState(!orderedScanServers.isEmpty());
     }
 
     if (orderedScanServers.isEmpty()) {
+      // there are no scan servers so fall back to the tablet server
       return new ScanServerSelections() {
         @Override
         public String getScanServer(TabletId tabletId) {
