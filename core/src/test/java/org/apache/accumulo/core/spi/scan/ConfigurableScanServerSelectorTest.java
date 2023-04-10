@@ -29,6 +29,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -128,10 +129,12 @@ public class ConfigurableScanServerSelectorTest {
     }
 
     @Override
-    public Duration getTimeout() {
-      // TODO test and make settable
-      return Duration.ofDays(356);
+    public <T> Optional<T> waitUntil(Supplier<Optional<T>> condition, Duration maxWaitTime,
+        String description) {
+      // TODO wait and test
+      return condition.get();
     }
+
   }
 
   static class TestScanServerAttempt implements ScanServerAttempt {

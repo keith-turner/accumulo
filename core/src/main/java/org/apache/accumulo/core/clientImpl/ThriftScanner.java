@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
@@ -77,6 +78,7 @@ import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
 import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.OpTimer;
+import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.hadoop.io.Text;
 import org.apache.thrift.TApplicationException;
 import org.apache.thrift.TException;
@@ -301,6 +303,34 @@ public class ThriftScanner {
     }
   }
 
+  static <T> Optional<T> waitUntil(Supplier<Optional<T>> condition, Duration maxWaitTime,
+      String description, Duration timeoutLeft, ClientContext context, TableId tableId,
+      Logger log) {
+    long startTime = System.nanoTime();
+    Optional<T> optional = condition.get();
+    while (optional.isEmpty()) {
+      log.trace("For tableId {} scan server selector is waiting for '{}'", tableId, description);
+
+      var elapsedTime = Duration.ofNanos(System.nanoTime() - startTime);
+
+      if (elapsedTime.compareTo(timeoutLeft) > 0) {
+        throw new TimedOutException("While waiting for '" + description
+            + "' in order to select a scan server, the scan timed out. ");
+      }
+
+      if (elapsedTime.compareTo(maxWaitTime) > 0) {
+        return Optional.empty();
+      }
+
+      context.requireNotDeleted(tableId);
+
+      // TODO use retry
+      UtilWaitThread.sleep(100);
+    }
+
+    return optional;
+  }
+
   public static class ScanTimedOutException extends TimedOutException {
 
     private static final long serialVersionUID = 1L;
@@ -341,8 +371,6 @@ public class ThriftScanner {
       // obtain a snapshot once and only expose this snapshot to the plugin for consistency
       var attempts = scanState.scanAttempts.snapshot();
 
-      // compute this once so that something consistent is offered to the selector instead of
-      // something changing
       Duration timeoutLeft = Duration.ofSeconds(timeOut)
           .minus(Duration.ofMillis(System.currentTimeMillis() - startTime));
 
@@ -367,8 +395,10 @@ public class ThriftScanner {
         }
 
         @Override
-        public Duration getTimeout() {
-          return timeoutLeft;
+        public <T> Optional<T> waitUntil(Supplier<Optional<T>> condition, Duration maxWaitTime,
+            String description) {
+          return ThriftScanner.waitUntil(condition, maxWaitTime, description, timeoutLeft, context,
+              loc.getExtent().tableId(), log);
         }
       };
 

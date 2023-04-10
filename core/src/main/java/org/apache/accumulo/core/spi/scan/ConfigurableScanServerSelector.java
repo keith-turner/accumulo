@@ -29,14 +29,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import org.apache.accumulo.core.client.TimedOutException;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.data.TabletId;
-import org.apache.accumulo.core.util.UtilWaitThread;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Suppliers;
@@ -336,15 +335,13 @@ public class ConfigurableScanServerSelector implements ScanServerSelector {
 
     long start = System.nanoTime();
 
-    while (orderedScanServers.isEmpty() && !profile.enableTabletServerFallback) {
-      // there are no scan servers and tablet server fallback is disabled so wait...
-      UtilWaitThread.sleep(100);
-      orderedScanServers = orderedScanServersSupplier.get().getOrDefault(profile.group, List.of());
-
-      if (Duration.ofNanos(System.nanoTime() - start).compareTo(params.getTimeout()) > 0) {
-        throw new TimedOutException(
-            "No scan servers became available within the scanner timeout period.");
-      }
+    var finalProfile = profile;
+    if (orderedScanServers.isEmpty() && !profile.enableTabletServerFallback) {
+      // Wait for scan servers in the configured group to be present.
+      orderedScanServers = params.waitUntil(
+          () -> Optional.ofNullable(orderedScanServersSupplier.get().get(finalProfile.group)),
+          Duration.ofMillis(Long.MAX_VALUE), "Waiting for scan servers in group " + profile.group)
+          .orElse(List.of());
     }
 
     if (orderedScanServers.isEmpty()) {
