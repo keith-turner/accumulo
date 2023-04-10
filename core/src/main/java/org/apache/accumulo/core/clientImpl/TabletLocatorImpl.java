@@ -754,7 +754,9 @@ public class TabletLocatorImpl extends TabletLocator {
     if (entry != null) {
       KeyExtent ke = entry.getValue().getExtent();
       if (ke.prevEndRow() == null || ke.prevEndRow().compareTo(row) < 0) {
-        if (hostingNeed == HostingNeed.HOSTED
+        if (hostingNeed == HostingNeed.NONE) {
+          return entry.getValue();
+        } else if (hostingNeed == HostingNeed.HOSTED
             && entry.getValue().getTserverLocation().isPresent()) {
           return entry.getValue();
         }

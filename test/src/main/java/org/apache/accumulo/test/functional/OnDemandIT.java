@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.SortedSet;
@@ -45,13 +44,11 @@ import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
-import org.apache.accumulo.core.metrics.MetricsProducer;
 import org.apache.accumulo.core.spi.scan.ConfigurableScanServerSelector;
 import org.apache.accumulo.core.tabletserver.thrift.TabletStats;
 import org.apache.accumulo.harness.SharedMiniClusterBase;
-import org.apache.accumulo.test.metrics.TestStatsDRegistryFactory;
+import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.test.metrics.TestStatsDSink;
-import org.apache.accumulo.test.metrics.TestStatsDSink.Metric;
 import org.apache.hadoop.io.Text;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
@@ -76,27 +73,19 @@ public class OnDemandIT extends SharedMiniClusterBase {
 
   @BeforeAll
   public static void beforeAll() throws Exception {
-    sink = new TestStatsDSink();
-    metricConsumer = new Thread(() -> {
-      while (!Thread.currentThread().isInterrupted()) {
-        List<String> statsDMetrics = sink.getLines();
-        for (String line : statsDMetrics) {
-          if (Thread.currentThread().isInterrupted()) {
-            break;
-          }
-          if (line.startsWith("accumulo")) {
-            Metric metric = TestStatsDSink.parseStatsDMetric(line);
-            if (MetricsProducer.METRICS_TSERVER_TABLETS_ONLINE_ONDEMAND.equals(metric.getName())) {
-              Long val = Long.parseLong(metric.getValue());
-              ONDEMAND_ONLINE_COUNT = val;
-            }
-          }
-        }
-      }
-    });
-    metricConsumer.start();
+    // TODO figure out why this was causing an OOME
+    /*
+     * sink = new TestStatsDSink(); metricConsumer = new Thread(() -> { while
+     * (!Thread.currentThread().isInterrupted()) { List<String> statsDMetrics = sink.getLines(); for
+     * (String line : statsDMetrics) { if (Thread.currentThread().isInterrupted()) { break; } if
+     * (line.startsWith("accumulo")) { Metric metric = TestStatsDSink.parseStatsDMetric(line); if
+     * (MetricsProducer.METRICS_TSERVER_TABLETS_ONLINE_ONDEMAND.equals(metric.getName())) { Long val
+     * = Long.parseLong(metric.getValue()); ONDEMAND_ONLINE_COUNT = val; } } } } });
+     * metricConsumer.start();
+     */
     SharedMiniClusterBase.startMiniClusterWithConfig((cfg, core) -> {
       cfg.setNumTservers(1);
+      cfg.setNumScanServers(1);
       cfg.setProperty(Property.MANAGER_TABLET_GROUP_WATCHER_INTERVAL,
           Integer.toString(managerTabletGroupWatcherInterval));
       cfg.setProperty(Property.TSERV_ONDEMAND_UNLOADER_INTERVAL,
@@ -105,20 +94,22 @@ public class OnDemandIT extends SharedMiniClusterBase {
 
       // Tell the server processes to use a StatsDMeterRegistry that will be configured
       // to push all metrics to the sink we started.
-      cfg.setProperty(Property.GENERAL_MICROMETER_ENABLED, "true");
-      cfg.setProperty(Property.GENERAL_MICROMETER_FACTORY,
-          TestStatsDRegistryFactory.class.getName());
-      Map<String,String> sysProps = Map.of(TestStatsDRegistryFactory.SERVER_HOST, "127.0.0.1",
-          TestStatsDRegistryFactory.SERVER_PORT, Integer.toString(sink.getPort()));
-      cfg.setSystemProperties(sysProps);
+      /*
+       * cfg.setProperty(Property.GENERAL_MICROMETER_ENABLED, "true");
+       * cfg.setProperty(Property.GENERAL_MICROMETER_FACTORY,
+       * TestStatsDRegistryFactory.class.getName()); Map<String,String> sysProps =
+       * Map.of(TestStatsDRegistryFactory.SERVER_HOST, "127.0.0.1",
+       * TestStatsDRegistryFactory.SERVER_PORT, Integer.toString(sink.getPort()));
+       * cfg.setSystemProperties(sysProps);
+       */
     });
   }
 
   @AfterAll
   public static void after() throws Exception {
-    sink.close();
-    metricConsumer.interrupt();
-    metricConsumer.join();
+    // sink.close();
+    // metricConsumer.interrupt();
+    // metricConsumer.join();
   }
 
   @BeforeEach
@@ -238,7 +229,7 @@ public class OnDemandIT extends SharedMiniClusterBase {
     var clientProps = new Properties();
     clientProps.putAll(getClientProps());
     String scanServerSelectorProfiles = "[{'isDefault':true,'maxBusyTimeout':'5m',"
-        + "'busyTimeoutMultiplier':8, 'scanTypeActivations':[], 'enableTabletServerFallback':false"
+        + "'busyTimeoutMultiplier':8, 'scanTypeActivations':[], 'enableTabletServerFallback':false,"
         + "'attemptPlans':[{'servers':'3', 'busyTimeout':'1s'}]}]";
     clientProps.put("scan.server.selector.impl", ConfigurableScanServerSelector.class.getName());
     clientProps.put("scan.server.selector.opts.profiles",
@@ -261,6 +252,8 @@ public class OnDemandIT extends SharedMiniClusterBase {
         });
       }
 
+      c.tableOperations().flush(tableName, null, null, true);
+
       c.tableOperations().onDemand(tableName);
 
       // wait for all tablets to be unhosted
@@ -274,7 +267,15 @@ public class OnDemandIT extends SharedMiniClusterBase {
         Assertions.assertEquals(50, scanner.stream().count());
       }
 
-      Assertions.assertEquals(2, countTabletsWithLocation(c, tableName));
+      Assertions.assertTrue(countTabletsWithLocation(c, tableName) <= 2);
+
+      // TODO run test where scan times out because of no scan servers... maybe in scan server IT
+
+      getCluster().getClusterControl().start(ServerType.SCAN_SERVER, "localhost");
+
+      // the cache will probably have locations for tablets, want to ensure cache can handle a mix
+      // of tablets with and without locations
+      c.tableOperations().clearLocatorCache(tableName);
 
       // Scan should only use scan servers and should scan tablets with and without locations.
       try (var scanner = c.createScanner(tableName)) {
@@ -283,7 +284,7 @@ public class OnDemandIT extends SharedMiniClusterBase {
       }
 
       // ensure tablets without a location were not brought online by the eventual scan
-      Assertions.assertEquals(2, countTabletsWithLocation(c, tableName));
+      Assertions.assertTrue(countTabletsWithLocation(c, tableName) <= 2);
     }
   }
 

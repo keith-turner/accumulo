@@ -333,15 +333,16 @@ public class ConfigurableScanServerSelector implements ScanServerSelector {
     List<String> orderedScanServers =
         orderedScanServersSupplier.get().getOrDefault(profile.group, List.of());
 
-    long start = System.nanoTime();
-
     var finalProfile = profile;
     if (orderedScanServers.isEmpty() && !profile.enableTabletServerFallback) {
       // Wait for scan servers in the configured group to be present.
-      orderedScanServers = params.waitUntil(
-          () -> Optional.ofNullable(orderedScanServersSupplier.get().get(finalProfile.group)),
-          Duration.ofMillis(Long.MAX_VALUE), "Waiting for scan servers in group " + profile.group)
-          .get();
+      orderedScanServers =
+          params
+              .waitUntil(
+                  () -> Optional
+                      .ofNullable(orderedScanServersSupplier.get().get(finalProfile.group)),
+                  Duration.ofMillis(Long.MAX_VALUE), "scan servers in group : " + profile.group)
+              .get();
       // at this point the list should be non empty unless there is a bug
       Preconditions.checkState(!orderedScanServers.isEmpty());
     }
