@@ -599,7 +599,7 @@ public class TabletLocatorImpl extends TabletLocator {
         client -> client.bringOnDemandTabletsOnline(TraceUtil.traceInfo(), context.rpcCreds(),
             tableId.canonical(), thriftExtents));
 
-    onDemandTabletsOnlinedCount.addAndGet(extentsToBringOnline.size());
+    onDemandTabletsOnlinedCount.addAndGet(thriftExtents.size());
   }
 
   private void lookupTabletLocation(ClientContext context, Text row, boolean retry,

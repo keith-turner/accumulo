@@ -65,7 +65,6 @@ import org.easymock.EasyMock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-//TODO test caching no location
 public class TabletLocatorImplTest {
 
   private static final KeyExtent ROOT_TABLE_EXTENT = RootTable.EXTENT;
@@ -1718,6 +1717,9 @@ public class TabletLocatorImplTest {
 
   @Test
   public void testCachingUnhosted() throws Exception {
+
+    // this test caching tablets without a location
+
     TServers tservers = new TServers();
     TabletLocatorImpl metaCache = createLocators(tservers, "tserver1", "tserver2", "foo");
 

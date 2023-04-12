@@ -496,8 +496,6 @@ public class ThriftScanner {
           lastError = error;
           sleepMillis = pause(sleepMillis, maxSleepTime, scanState.runOnScanServer);
         } else {
-          // TODO does this code need to be called for scan server case when loc is null
-
           // when a tablet splits we do want to continue scanning the low child
           // of the split if we are already passed it
           Range dataRange = loc.getExtent().toDataRange();
