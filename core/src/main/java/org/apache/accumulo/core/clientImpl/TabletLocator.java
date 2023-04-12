@@ -47,6 +47,7 @@ import org.apache.hadoop.io.Text;
 
 import com.google.common.base.Preconditions;
 
+// ELASTICITY_TODO rename to TabletCache
 public abstract class TabletLocator {
 
   /**
@@ -67,7 +68,17 @@ public abstract class TabletLocator {
     HOSTED, NONE
   }
 
-  // TODO document and rename to findTablet
+  // ELASTICITY_TODO rename to findTablet
+  /**
+   * Finds the tablet that contains the given row.
+   *
+   * @param hostingNeed When {@link HostingNeed#HOSTED} is passed will only return a tablet if it
+   *        has location. When {@link HostingNeed#NONE} is passed will return the tablet that
+   *        overlaps the row.
+   *
+   * @return overlapping tablet. If no overlapping tablet exists, returns null. If hosting is
+   *         required and the tablet currently has no location ,returns null.
+   */
   public abstract TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow,
       HostingNeed hostingNeed)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
@@ -76,22 +87,36 @@ public abstract class TabletLocator {
       Map<String,TabletServerMutations<T>> binnedMutations, List<T> failures)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
 
-  // TODO update docs and rename to findTablets
+  // ELASTICITY_TODO rename to findTablets
   /**
+   * <p>
    * This method finds what tablets overlap a given set of ranges, passing each range and its
    * associated tablet to the range consumer. If a range overlaps multiple tablets then it can be
    * passed to the range consumer multiple times.
+   * </p>
+   *
+   * @param hostingNeed When {@link HostingNeed#HOSTED} is passed only tablets that have a location
+   *        are provided to the rangeConsumer, any range that overlaps a tablet without a location
+   *        will be returned as a failure. When {@link HostingNeed#NONE} is passed, ranges that
+   *        overlap tablets with and without a location are provided to the range consumer.
+   * @param ranges For each range will try to find overlapping contiguous tablets that optionally
+   *        have a location.
+   * @param rangeConsumer If all of the tablets that a range overlaps are found, then the range and
+   *        tablets will be passed to this consumer one at time. A range will either be passed to
+   *        this consumer one more mor times OR returned as a failuer, but never both.
+   *
+   * @return The failed ranges that did not have a location (if a location is required) or where
+   *         contiguous tablets could not be found.
    */
   public abstract List<Range> locateTablets(ClientContext context, List<Range> ranges,
       BiConsumer<TabletLocation,Range> rangeConsumer, HostingNeed hostingNeed)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
 
-  // TODO update javdocs
   /**
    * The behavior of this method is similar to
    * {@link #locateTablets(ClientContext, List, BiConsumer, HostingNeed)}, except it bins ranges to
-   * the passed in binnedRanges map instead of passing them to a consumer.
-   *
+   * the passed in binnedRanges map instead of passing them to a consumer. This method only bins to
+   * hosted tablets with a location.
    */
   public List<Range> binRanges(ClientContext context, List<Range> ranges,
       Map<String,Map<KeyExtent,List<Range>>> binnedRanges)
@@ -226,6 +251,7 @@ public abstract class TabletLocator {
     }
   }
 
+  // ELASTICITY_TODO rename to CachedTablet
   public static class TabletLocation {
     private static final Interner<String> interner = new Interner<>();
 

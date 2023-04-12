@@ -695,7 +695,6 @@ public class TabletServerBatchReaderIterator implements Iterator<Entry<Key,Value
       }
     };
 
-    // TODO what happens when TimedOutException is thrown
     var actions = ecsm.selectServers(params);
 
     Map<String,ScanServerAttemptReporter> reporters = new HashMap<>();

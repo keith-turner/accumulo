@@ -60,8 +60,8 @@ import org.apache.hadoop.io.WritableComparator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -101,7 +101,7 @@ public class TabletLocatorImpl extends TabletLocator {
   private final AtomicLong onDemandTabletsOnlinedCount = new AtomicLong(0);
 
   private final Cache<KeyExtent,Long> recentOndemandRequest =
-      CacheBuilder.newBuilder().expireAfterWrite(Duration.ofSeconds(30)).build();
+      Caffeine.newBuilder().expireAfterWrite(Duration.ofSeconds(30)).build();
 
   public interface TabletLocationObtainer {
     /**
@@ -577,20 +577,20 @@ public class TabletLocatorImpl extends TabletLocator {
     // Confirm that table is in an on-demand state. Don't throw an exception
     // if the table is not found, calling code will already handle it.
     try {
+      // ELASTICITY_TODO should use tableId only if possible to avoid race conditions, not
+      // tableId->tableName->tableId
       String tableName = context.getTableName(tableId);
       if (!context.tableOperations().isOnDemand(tableName)) {
         log.trace("bringOnDemandTabletsOnline: table {} is not in ondemand state", tableId);
         return;
       }
     } catch (TableNotFoundException e) {
-      // TODO throw this
       log.trace("bringOnDemandTabletsOnline: table not found: {}", tableId);
       return;
     }
 
     List<TKeyExtent> thriftExtents = new ArrayList<>();
     for (var extent : extentsToBringOnline) {
-      // TODO will this put it if it expired?
       if (recentOndemandRequest.asMap().putIfAbsent(extent, System.currentTimeMillis()) == null) {
         thriftExtents.add(extent.toThrift());
         log.debug("Marking tablet as onDemand: {}", extent);
@@ -855,5 +855,4 @@ public class TabletLocatorImpl extends TabletLocator {
     binnedRanges.computeIfAbsent(ct.getTserverLocation().get(), k -> new HashMap<>())
         .computeIfAbsent(ct.getExtent(), k -> new ArrayList<>()).add(range);
   }
-
 }
