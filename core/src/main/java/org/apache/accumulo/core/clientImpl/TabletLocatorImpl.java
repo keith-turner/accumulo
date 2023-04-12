@@ -534,8 +534,6 @@ public class TabletLocatorImpl extends TabletLocator {
 
     OpTimer timer = null;
 
-    // TODO examine what callers of this method set deleted retry parameter to true.
-
     if (log.isTraceEnabled()) {
       log.trace("tid={} Locating tablet  table={} row={} skipRow={}",
           Thread.currentThread().getId(), tableId, TextUtil.truncate(row), skipRow);

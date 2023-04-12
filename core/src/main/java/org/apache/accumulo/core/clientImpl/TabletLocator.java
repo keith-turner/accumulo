@@ -43,6 +43,7 @@ import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.singletons.SingletonManager;
 import org.apache.accumulo.core.singletons.SingletonService;
 import org.apache.accumulo.core.util.Interner;
+import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.hadoop.io.Text;
 
 import com.google.common.base.Preconditions;
@@ -82,6 +83,17 @@ public abstract class TabletLocator {
   public abstract TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow,
       HostingNeed hostingNeed)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException;
+
+  public TabletLocation locateTabletWithRetry(ClientContext context, Text row, boolean skipRow,
+      HostingNeed hostingNeed)
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+    var tl = locateTablet(context, row, skipRow, hostingNeed);
+    while (tl == null && hostingNeed == HostingNeed.HOSTED) {
+      UtilWaitThread.sleep(100);
+      tl = locateTablet(context, row, skipRow, hostingNeed);
+    }
+    return tl;
+  }
 
   public abstract <T extends Mutation> void binMutations(ClientContext context, List<T> mutations,
       Map<String,TabletServerMutations<T>> binnedMutations, List<T> failures)
