@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.core.clientImpl;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.io.IOException;
@@ -78,7 +80,7 @@ import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
 import org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.OpTimer;
-import org.apache.accumulo.core.util.UtilWaitThread;
+import org.apache.accumulo.core.util.Retry;
 import org.apache.hadoop.io.Text;
 import org.apache.thrift.TApplicationException;
 import org.apache.thrift.TException;
@@ -306,6 +308,11 @@ public class ThriftScanner {
   static <T> Optional<T> waitUntil(Supplier<Optional<T>> condition, Duration maxWaitTime,
       String description, Duration timeoutLeft, ClientContext context, TableId tableId,
       Logger log) {
+
+    Retry retry = Retry.builder().infiniteRetries().retryAfter(100, MILLISECONDS)
+        .incrementBy(100, MILLISECONDS).maxWait(1, SECONDS).backOffFactor(1.5)
+        .logInterval(3, MINUTES).createRetry();
+
     long startTime = System.nanoTime();
     Optional<T> optional = condition.get();
     while (optional.isEmpty()) {
@@ -324,8 +331,12 @@ public class ThriftScanner {
 
       context.requireNotDeleted(tableId);
 
-      // TODO use retry
-      UtilWaitThread.sleep(100);
+      try {
+        retry.waitForNextAttempt(log, String.format(
+            "For tableId %s scan server selector is waiting for '%s'", tableId, description));
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
 
       optional = condition.get();
     }
