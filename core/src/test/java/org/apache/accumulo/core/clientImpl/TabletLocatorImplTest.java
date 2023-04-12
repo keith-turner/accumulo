@@ -661,6 +661,17 @@ public class TabletLocatorImplTest {
     tabletData.put(pk, per);
   }
 
+  static void deleteLocation(TServers tservers, String server, KeyExtent tablet, KeyExtent ke,
+      String instance) {
+    Map<KeyExtent,SortedMap<Key,Value>> tablets =
+        tservers.tservers.computeIfAbsent(server, k -> new HashMap<>());
+    SortedMap<Key,Value> tabletData = tablets.computeIfAbsent(tablet, k -> new TreeMap<>());
+
+    Text mr = ke.toMetaRow();
+    Key lk = new Key(mr, CurrentLocationColumnFamily.NAME, new Text(instance));
+    tabletData.remove(lk);
+  }
+
   static void setLocation(TServers tservers, String server, KeyExtent tablet, KeyExtent ke,
       String location) {
     setLocation(tservers, server, tablet, ke, location, "");
@@ -1782,6 +1793,26 @@ public class TabletLocatorImplTest {
         HostingNeed.NONE);
     assertEquals(List.of(), failures);
     assertEquals(expected, actual);
+
+    // ensure bin mutations works when the cache contains an entry w/o a location
+    deleteLocation(tservers, "tserver2", METADATA_TABLE_EXTENT, ke2, "I4");
+    metaCache.invalidateCache(ke2);
+    locateTabletTest(metaCache, "i", false, ke2, null, HostingNeed.NONE);
+
+    // one mutation should fail because there is no location for ke2
+    List<Mutation> ml = createNewMutationList(createNewMutation("a", "cf1:cq1=v1", "cf1:cq2=v2"),
+        createNewMutation("i", "cf1:cq1=v3", "cf1:cq2=v4"));
+    Map<String,Map<KeyExtent,List<String>>> emb =
+        createServerExtentMap(createServerExtent("a", "L3", ke1));
+    runTest(metaCache, ml, emb, "i");
+
+    // set location for ke2 and both mutations should bin.. the cached entry for ke2 w/o a location
+    // should be jettisoned
+    setLocation(tservers, "tserver2", METADATA_TABLE_EXTENT, ke2, "L4", "I4");
+    emb = createServerExtentMap(createServerExtent("a", "L3", ke1),
+        createServerExtent("i", "L4", ke2));
+    runTest(metaCache, ml, emb);
+
   }
 
 }
