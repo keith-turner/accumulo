@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.accumulo.core.client.ConditionalWriter.Status;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.TServerInstance;
@@ -33,6 +34,8 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.server.util.ManagerMetadataUtil;
 import org.apache.hadoop.fs.Path;
+
+import com.google.common.base.Preconditions;
 
 class MetaDataStateStore implements TabletStateStore {
 
@@ -59,15 +62,32 @@ class MetaDataStateStore implements TabletStateStore {
 
   @Override
   public void setLocations(Collection<Assignment> assignments) throws DistributedStoreException {
-    try (var tabletsMutator = ample.mutateTablets()) {
+    try (var tabletsMutator = ample.conditionallyMutateTablets()) {
       for (Assignment assignment : assignments) {
-        TabletMutator tabletMutator = tabletsMutator.mutateTablet(assignment.tablet);
-        tabletMutator.putLocation(Location.current(assignment.server));
-        ManagerMetadataUtil.updateLastForAssignmentMode(context, ample, tabletMutator,
-            assignment.tablet, assignment.server);
-        tabletMutator.deleteLocation(Location.future(assignment.server));
-        tabletMutator.deleteSuspension();
-        tabletMutator.mutate();
+        tabletsMutator.mutateTablet(assignment.tablet).requireAbsentOperation()
+            .requireLocation(Location.future(assignment.server))
+            .putLocation(Location.current(assignment.server))
+            .deleteLocation(Location.future(assignment.server)).deleteSuspension()
+            .submit(tabletMetadata -> {
+              Preconditions.checkArgument(tabletMetadata.getExtent().equals(assignment.tablet));
+              // see if we are the current location, if so then the unknown mutation actually
+              // succeeded
+              return tabletMetadata.getLocation() != null
+                  && tabletMetadata.getLocation().equals(Location.current(assignment.server));
+            });
+        // tabletMutator.putLocation(Location.current(assignment.server));
+        // ManagerMetadataUtil.updateLastForAssignmentMode(context, ample, tabletMutator,
+        // assignment.tablet, assignment.server);
+        // tabletMutator.deleteLocation(Location.future(assignment.server));
+        // tabletMutator.deleteSuspension();
+        // tabletMutator.mutate();
+      }
+
+      if (tabletsMutator.process().values().stream()
+          .anyMatch(result -> result.getStatus() != Status.ACCEPTED)) {
+        // TODO should this look at why?
+        throw new DistributedStoreException(
+            "failed to set tablet location, conditional mutation failed");
       }
     } catch (RuntimeException ex) {
       throw new DistributedStoreException(ex);
@@ -77,11 +97,26 @@ class MetaDataStateStore implements TabletStateStore {
   @Override
   public void setFutureLocations(Collection<Assignment> assignments)
       throws DistributedStoreException {
-    try (var tabletsMutator = ample.mutateTablets()) {
+    try (var tabletsMutator = ample.conditionallyMutateTablets()) {
       for (Assignment assignment : assignments) {
-        tabletsMutator.mutateTablet(assignment.tablet).deleteSuspension()
-            .putLocation(Location.future(assignment.server)).mutate();
+        tabletsMutator.mutateTablet(assignment.tablet).requireAbsentOperation()
+            .requireAbsentLocation().deleteSuspension()
+            .putLocation(Location.future(assignment.server)).submit(tabletMetadata -> {
+              Preconditions.checkArgument(tabletMetadata.getExtent().equals(assignment.tablet));
+              // see if we are the future location, if so then the unknown mutation actually
+              // succeeded
+              return tabletMetadata.getLocation() != null
+                  && tabletMetadata.getLocation().equals(Location.future(assignment.server));
+            });
       }
+
+      if (tabletsMutator.process().values().stream()
+          .anyMatch(result -> result.getStatus() != Status.ACCEPTED)) {
+        // TODO should this look at why?
+        throw new DistributedStoreException(
+            "failed to set tablet location, conditional mutation failed");
+      }
+
     } catch (RuntimeException ex) {
       throw new DistributedStoreException(ex);
     }
