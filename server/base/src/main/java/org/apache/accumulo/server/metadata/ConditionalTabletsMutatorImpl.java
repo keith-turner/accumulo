@@ -30,7 +30,6 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.ConditionalWriter;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.data.ConditionalMutation;
-import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
@@ -44,7 +43,7 @@ import com.google.common.collect.Maps;
 public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMutator {
 
   private final ServerContext context;
-  private TableId currentTableId = null;
+  private Ample.DataLevel dataLevel = null;
 
   private List<ConditionalMutation> mutations = new ArrayList<>();
 
@@ -61,11 +60,14 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
   @Override
   public Ample.OperationRequirements mutateTablet(KeyExtent extent) {
     Preconditions.checkState(active);
-    if (currentTableId == null) {
-      currentTableId = extent.tableId();
-    } else if (!currentTableId.equals(extent.tableId())) {
+
+    var dataLevel = Ample.DataLevel.of(extent.tableId());
+
+    if (this.dataLevel == null) {
+      this.dataLevel = dataLevel;
+    } else if (!this.dataLevel.equals(dataLevel)) {
       throw new IllegalArgumentException(
-          "Can not mix tables ids " + currentTableId + " " + extent.tableId());
+          "Can not mix data levels " + this.dataLevel + " " + dataLevel);
     }
 
     Preconditions.checkState(extents.putIfAbsent(extent.toMetaRow(), extent) == null,
@@ -100,7 +102,6 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
 
     Map<KeyExtent,TabletMetadata> failedTablets = new HashMap<>();
 
-
     try (var tabletsMeta = context.getAmple().readTablets().forTablets(extents).build()) {
       tabletsMeta
           .forEach(tabletMetadata -> failedTablets.put(tabletMetadata.getExtent(), tabletMetadata));
@@ -112,8 +113,7 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
   @Override
   public Map<KeyExtent,Ample.ConditionalResult> process() {
     Preconditions.checkState(active);
-    if (currentTableId != null) {
-      var dataLevel = Ample.DataLevel.of(currentTableId);
+    if (dataLevel != null) {
       try (ConditionalWriter conditionalWriter = createConditionalWriter(dataLevel)) {
         var results = conditionalWriter.write(mutations.iterator());
 

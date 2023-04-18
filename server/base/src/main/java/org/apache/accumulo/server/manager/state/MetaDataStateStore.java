@@ -19,25 +19,15 @@
 package org.apache.accumulo.server.manager.state;
 
 import java.util.Collection;
-import java.util.List;
-import java.util.Map;
 
-import org.apache.accumulo.core.client.ConditionalWriter.Status;
+import org.apache.accumulo.core.client.ConditionalWriter;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.metadata.MetadataTable;
-import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletLocationState;
 import org.apache.accumulo.core.metadata.schema.Ample;
-import org.apache.accumulo.core.metadata.schema.Ample.TabletMutator;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection;
-import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
-import org.apache.accumulo.core.tabletserver.log.LogEntry;
-import org.apache.accumulo.server.util.ManagerMetadataUtil;
-import org.apache.hadoop.fs.Path;
 
-import com.google.common.base.Preconditions;
-
-class MetaDataStateStore implements TabletStateStore {
+class MetaDataStateStore extends AbstractTabletStateStore implements TabletStateStore {
 
   protected final ClientContext context;
   protected final CurrentState state;
@@ -45,6 +35,7 @@ class MetaDataStateStore implements TabletStateStore {
   private final Ample ample;
 
   protected MetaDataStateStore(ClientContext context, CurrentState state, String targetTableName) {
+    super(context);
     this.context = context;
     this.state = state;
     this.ample = context.getAmple();
@@ -61,124 +52,22 @@ class MetaDataStateStore implements TabletStateStore {
   }
 
   @Override
-  public void setLocations(Collection<Assignment> assignments) throws DistributedStoreException {
-    try (var tabletsMutator = ample.conditionallyMutateTablets()) {
-      for (Assignment assignment : assignments) {
-        tabletsMutator.mutateTablet(assignment.tablet).requireAbsentOperation()
-            .requireLocation(Location.future(assignment.server))
-            .putLocation(Location.current(assignment.server))
-            .deleteLocation(Location.future(assignment.server)).deleteSuspension()
-            .submit(tabletMetadata -> {
-              Preconditions.checkArgument(tabletMetadata.getExtent().equals(assignment.tablet));
-              // see if we are the current location, if so then the unknown mutation actually
-              // succeeded
-              return tabletMetadata.getLocation() != null
-                  && tabletMetadata.getLocation().equals(Location.current(assignment.server));
-            });
-        // tabletMutator.putLocation(Location.current(assignment.server));
-        // ManagerMetadataUtil.updateLastForAssignmentMode(context, ample, tabletMutator,
-        // assignment.tablet, assignment.server);
-        // tabletMutator.deleteLocation(Location.future(assignment.server));
-        // tabletMutator.deleteSuspension();
-        // tabletMutator.mutate();
-      }
-
-      if (tabletsMutator.process().values().stream()
-          .anyMatch(result -> result.getStatus() != Status.ACCEPTED)) {
-        // TODO should this look at why?
-        throw new DistributedStoreException(
-            "failed to set tablet location, conditional mutation failed");
-      }
-    } catch (RuntimeException ex) {
-      throw new DistributedStoreException(ex);
-    }
-  }
-
-  @Override
-  public void setFutureLocations(Collection<Assignment> assignments)
-      throws DistributedStoreException {
-    try (var tabletsMutator = ample.conditionallyMutateTablets()) {
-      for (Assignment assignment : assignments) {
-        tabletsMutator.mutateTablet(assignment.tablet).requireAbsentOperation()
-            .requireAbsentLocation().deleteSuspension()
-            .putLocation(Location.future(assignment.server)).submit(tabletMetadata -> {
-              Preconditions.checkArgument(tabletMetadata.getExtent().equals(assignment.tablet));
-              // see if we are the future location, if so then the unknown mutation actually
-              // succeeded
-              return tabletMetadata.getLocation() != null
-                  && tabletMetadata.getLocation().equals(Location.future(assignment.server));
-            });
-      }
-
-      if (tabletsMutator.process().values().stream()
-          .anyMatch(result -> result.getStatus() != Status.ACCEPTED)) {
-        // TODO should this look at why?
-        throw new DistributedStoreException(
-            "failed to set tablet location, conditional mutation failed");
-      }
-
-    } catch (RuntimeException ex) {
-      throw new DistributedStoreException(ex);
-    }
-  }
-
-  @Override
-  public void unassign(Collection<TabletLocationState> tablets,
-      Map<TServerInstance,List<Path>> logsForDeadServers) throws DistributedStoreException {
-    unassign(tablets, logsForDeadServers, -1);
-  }
-
-  @Override
-  public void suspend(Collection<TabletLocationState> tablets,
-      Map<TServerInstance,List<Path>> logsForDeadServers, long suspensionTimestamp)
-      throws DistributedStoreException {
-    unassign(tablets, logsForDeadServers, suspensionTimestamp);
-  }
-
-  private void unassign(Collection<TabletLocationState> tablets,
-      Map<TServerInstance,List<Path>> logsForDeadServers, long suspensionTimestamp)
-      throws DistributedStoreException {
-    try (var tabletsMutator = ample.mutateTablets()) {
-      for (TabletLocationState tls : tablets) {
-        TabletMutator tabletMutator = tabletsMutator.mutateTablet(tls.extent);
-        if (tls.current != null) {
-          ManagerMetadataUtil.updateLastForAssignmentMode(context, ample, tabletMutator, tls.extent,
-              tls.current.getServerInstance());
-          tabletMutator.deleteLocation(tls.current);
-          if (logsForDeadServers != null) {
-            List<Path> logs = logsForDeadServers.get(tls.current.getServerInstance());
-            if (logs != null) {
-              for (Path log : logs) {
-                LogEntry entry = new LogEntry(tls.extent, 0, log.toString());
-                tabletMutator.putWal(entry);
-              }
-            }
-          }
-          if (suspensionTimestamp >= 0) {
-            tabletMutator.putSuspension(tls.current.getServerInstance(), suspensionTimestamp);
-          }
-        }
-        if (tls.suspend != null && suspensionTimestamp < 0) {
-          tabletMutator.deleteSuspension();
-        }
-        if (tls.hasFuture()) {
-          tabletMutator.deleteLocation(tls.future);
-        }
-        tabletMutator.mutate();
-      }
-    } catch (RuntimeException ex) {
-      throw new DistributedStoreException(ex);
-    }
-  }
-
-  @Override
   public void unsuspend(Collection<TabletLocationState> tablets) throws DistributedStoreException {
-    try (var tabletsMutator = ample.mutateTablets()) {
+    try (var tabletsMutator = ample.conditionallyMutateTablets()) {
       for (TabletLocationState tls : tablets) {
         if (tls.suspend != null) {
           continue;
         }
-        tabletsMutator.mutateTablet(tls.extent).deleteSuspension().mutate();
+
+        // ELASTICITY_TODO pending #3314, add conditional mutation check that tls.suspend exists
+        tabletsMutator.mutateTablet(tls.extent).requireAbsentOperation().deleteSuspension()
+            .submit(tabletMetadata -> tabletMetadata.getSuspend() == null);
+      }
+
+      boolean unacceptedConditions = tabletsMutator.process().values().stream().anyMatch(
+          conditionalResult -> conditionalResult.getStatus() != ConditionalWriter.Status.ACCEPTED);
+      if (unacceptedConditions) {
+        throw new DistributedStoreException("Some mutations failed to satisfy conditions");
       }
     } catch (RuntimeException ex) {
       throw new DistributedStoreException(ex);
@@ -190,4 +79,17 @@ class MetaDataStateStore implements TabletStateStore {
     return "Normal Tablets";
   }
 
+  @Override
+  protected void processSuspension(Ample.ConditionalTabletMutator tabletMutator,
+      TabletLocationState tls, long suspensionTimestamp) {
+    if (tls.current != null) {
+      if (suspensionTimestamp >= 0) {
+        tabletMutator.putSuspension(tls.current.getServerInstance(), suspensionTimestamp);
+      }
+    }
+
+    if (tls.suspend != null && suspensionTimestamp < 0) {
+      tabletMutator.deleteSuspension();
+    }
+  }
 }
