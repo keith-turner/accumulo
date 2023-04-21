@@ -33,6 +33,7 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 
 import org.apache.accumulo.core.client.BatchWriter;
+import org.apache.accumulo.core.client.ConditionalWriter;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.clientImpl.bulk.Bulk;
 import org.apache.accumulo.core.clientImpl.bulk.Bulk.Files;
@@ -50,6 +51,7 @@ import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.master.thrift.BulkImportState;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.TabletFile;
+import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
@@ -134,6 +136,7 @@ class LoadFiles extends ManagerRepo {
     abstract long finish() throws Exception;
   }
 
+  //TODO remove
   private static class OnlineLoader extends Loader {
 
     long timeInMillis;
@@ -260,6 +263,72 @@ class LoadFiles extends ManagerRepo {
 
   }
 
+  //TODO name
+  private static class OndemandLoader extends Loader {
+
+    Ample.ConditionalTabletsMutator conditionalMutator;
+
+
+    @Override
+    void start(Path bulkDir, Manager manager, long tid, boolean setTime) throws Exception {
+      Preconditions.checkArgument(!setTime);
+      super.start(bulkDir, manager, tid, setTime);
+      conditionalMutator = manager.getContext().getAmple().conditionallyMutateTablets();
+    }
+
+    @Override
+    void load(List<TabletMetadata> tablets, Files files) {
+      byte[] fam = TextUtil.getBytes(DataFileColumnFamily.NAME);
+
+      for (TabletMetadata tablet : tablets) {
+        Map<TabletFile, DataFileValue> filesToLoad = new HashMap<>();
+
+        for (final Bulk.FileInfo fileInfo : files) {
+          filesToLoad.put(new TabletFile(new Path(bulkDir, fileInfo.getFileName())), new DataFileValue(fileInfo.getEstFileSize(), fileInfo.getEstNumEntries()));
+        }
+
+        // remove any files that were already loaded
+        filesToLoad.keySet().removeAll(tablet.getLoaded().keySet());
+
+        if(!filesToLoad.isEmpty()) {
+          //TODO require that files to load are absent
+          //TODO lets always call require prev end row
+          var tabletMutator = conditionalMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation();
+
+          filesToLoad.forEach((f,v) -> {
+            tabletMutator.putBulkFile(f,tid);
+            tabletMutator.putFile(f, v);
+          });
+
+          if(tablet.getLocation() != null) {
+            // only set the refresh if the location is still set, otherwise lets delete it
+            tabletMutator.requireLocation(tablet.getLocation());
+            tabletMutator.putRefresh(tid);
+          } else {
+            // ensure tablet does not concurrently load while we are adding files, if it did would need to ask it to refresh
+            tabletMutator.requireAbsentLocation();
+          }
+
+          tabletMutator.submit();
+        }
+      }
+    }
+
+    @Override
+    long finish() {
+      boolean allDone = conditionalMutator.process().values().stream().allMatch(result -> result.getStatus() == ConditionalWriter.Status.ACCEPTED);
+
+      long sleepTime = 0;
+      if (!allDone) {
+        // TODO compute sleep time based on characteristics of number of failures
+        sleepTime = 1000;
+      }
+
+      return sleepTime;
+    }
+  }
+
+  //TODO remove
   private static class OfflineLoader extends Loader {
 
     BatchWriter bw;
@@ -332,8 +401,9 @@ class LoadFiles extends ManagerRepo {
 
     Loader loader;
     if (bulkInfo.tableState == TableState.ONLINE) {
-      loader = new OnlineLoader();
+      loader = new OndemandLoader();
     } else {
+      //TODO
       loader = new OfflineLoader();
     }
 

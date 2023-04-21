@@ -36,6 +36,7 @@ public class CompleteBulkImport extends ManagerRepo {
 
   @Override
   public Repo<Manager> call(long tid, Manager manager) throws Exception {
+    //TODO can remove ZooArbitrator
     ZooArbitrator.stop(manager.getContext(), Constants.BULK_ARBITRATOR_TYPE, tid);
     return new CleanUpBulkImport(info);
   }
