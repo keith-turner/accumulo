@@ -2168,7 +2168,7 @@ public class Tablet extends TabletBase {
     // the tablet just using a cached TabletMetadata object
 
     TabletMetadata tabletMetadata =
-        getContext().getAmple().readTablet(getExtent(), TabletMetadata.ColumnType.FILES);
+        getContext().getAmple().readTablet(getExtent(), ColumnType.FILES, ColumnType.REFRESH_ID);
 
     if (tabletMetadata.getRefreshIds().contains(transactionId)) {
       Map<StoredTabletFile,DataFileValue> metadataFiles = tabletMetadata.getFilesMap();

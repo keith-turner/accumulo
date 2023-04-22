@@ -31,6 +31,7 @@ import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CurrentLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.RefreshIdColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.accumulo.server.ServerContext;
@@ -142,6 +143,28 @@ public class MetadataConstraintsTest {
     assertNotNull(violations);
     assertEquals(1, violations.size());
     assertEquals(Short.valueOf((short) 4), violations.get(0));
+
+  }
+
+  @Test
+  public void testRefreshIds() {
+    Mutation m = new Mutation(new Text("0;foo"));
+    m.put(RefreshIdColumnFamily.STR_NAME, String.format("%016x", 55), "");
+
+    MetadataConstraints mc = new MetadataConstraints();
+
+    List<Short> violations = mc.check(createEnv(), m);
+
+    assertNull(violations);
+
+    m = new Mutation(new Text("0;foo"));
+    m.put(RefreshIdColumnFamily.STR_NAME, "not hex", "");
+
+    violations = mc.check(createEnv(), m);
+
+    assertNotNull(violations);
+    assertEquals(1, violations.size());
+    assertEquals(Short.valueOf((short) 9), violations.get(0));
 
   }
 

@@ -102,7 +102,8 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
 
     Map<KeyExtent,TabletMetadata> failedTablets = new HashMap<>();
 
-    try (var tabletsMeta = context.getAmple().readTablets().forTablets(extents).build()) {
+    try (var tabletsMeta =
+        context.getAmple().readTablets().forTablets(extents).saveKeyValues().build()) {
       tabletsMeta
           .forEach(tabletMetadata -> failedTablets.put(tabletMetadata.getExtent(), tabletMetadata));
     }

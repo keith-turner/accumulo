@@ -569,6 +569,7 @@ public class TabletMetadata {
     te.scans = scansBuilder.build();
     te.logs = logsBuilder.build();
     te.extCompactions = extCompBuilder.build();
+    te.refreshIds = requestIdsBuilder.build();
     if (buildKeyValueMap) {
       te.keyValues = kvBuilder.build();
     }

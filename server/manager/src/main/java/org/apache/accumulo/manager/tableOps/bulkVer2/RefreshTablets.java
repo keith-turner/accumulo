@@ -49,7 +49,7 @@ public class RefreshTablets extends ManagerRepo {
     // TODO check consistency?
     // TODO limit tablets scanned to range of bulk import extents
     var tablets = manager.getContext().getAmple().readTablets().forTable(bulkInfo.tableId)
-        .fetch(ColumnType.LOCATION, ColumnType.PREV_ROW).build();
+        .fetch(ColumnType.LOCATION, ColumnType.PREV_ROW, ColumnType.REFRESH_ID).build();
 
     int refreshRequestSent = 0;
 

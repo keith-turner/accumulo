@@ -39,7 +39,6 @@ import org.apache.accumulo.core.fate.zookeeper.ZooUtil;
 import org.apache.accumulo.core.lock.ServiceLock;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ChoppedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ClonedColumnFamily;
@@ -207,7 +206,8 @@ public class MetadataConstraints implements Constraint {
       }
 
       if (columnUpdate.getValue().length == 0 && !columnFamily.equals(ScanFileColumnFamily.NAME)
-          && !HostingColumnFamily.REQUESTED_COLUMN.equals(columnFamily, columnQualifier)) {
+          && !HostingColumnFamily.REQUESTED_COLUMN.equals(columnFamily, columnQualifier)
+          && !columnFamily.equals(RefreshIdColumnFamily.NAME)) {
         violations = addViolation(violations, 6);
       }
 
@@ -229,8 +229,8 @@ public class MetadataConstraints implements Constraint {
         } catch (IllegalArgumentException e) {
           violations = addViolation(violations, 4);
         }
-      } else if(columnFamily.equals(RefreshIdColumnFamily.NAME)) {
-        try{
+      } else if (columnFamily.equals(RefreshIdColumnFamily.NAME)) {
+        try {
           Long.parseLong(columnQualifier.toString(), 16);
         } catch (NumberFormatException nfe) {
           violations = addViolation(violations, 9);

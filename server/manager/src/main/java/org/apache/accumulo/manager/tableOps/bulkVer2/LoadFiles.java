@@ -112,7 +112,7 @@ class LoadFiles extends ManagerRepo {
   public Repo<Manager> call(final long tid, final Manager manager) {
     // TODO: How are we treating ONDEMAND tables for BulkImport?
     if (bulkInfo.tableState == TableState.ONLINE) {
-      return new CompleteBulkImport(bulkInfo);
+      return new RefreshTablets(bulkInfo);
     } else {
       return new CleanUpBulkImport(bulkInfo);
     }
@@ -318,7 +318,9 @@ class LoadFiles extends ManagerRepo {
 
     @Override
     long finish() {
-      boolean allDone = conditionalMutator.process().values().stream()
+      var results = conditionalMutator.process();
+
+      boolean allDone = results.values().stream()
           .allMatch(result -> result.getStatus() == ConditionalWriter.Status.ACCEPTED);
 
       long sleepTime = 0;

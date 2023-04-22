@@ -100,9 +100,10 @@ public abstract class AbstractTabletStateStore implements TabletStateStore {
 
       if (results.values().stream()
           .anyMatch(result -> result.getStatus() != ConditionalWriter.Status.ACCEPTED)) {
-        var statuses = results.values().stream().map(Ample.ConditionalResult::getStatus).collect(Collectors.toSet());
+        var statuses = results.values().stream().map(Ample.ConditionalResult::getStatus)
+            .collect(Collectors.toSet());
         throw new DistributedStoreException(
-            "failed to set tablet location, conditional mutation failed. "+statuses);
+            "failed to set tablet location, conditional mutation failed. " + statuses);
       }
 
     } catch (RuntimeException ex) {
