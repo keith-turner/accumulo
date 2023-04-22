@@ -1425,6 +1425,20 @@ public class TabletClientHandler implements TabletServerClientService.Iface,
   }
 
   @Override
+  public void refreshTablet(TInfo tinfo, TCredentials credentials, TKeyExtent extent,
+      long transactionId) throws TException {
+    if (!security.canPerformSystemActions(credentials)) {
+      throw new AccumuloSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED).asThriftException();
+    }
+
+    var tablet = server.getOnlineTablets().get(KeyExtent.fromThrift(extent));
+    if (tablet != null) {
+      tablet.refresh(transactionId);
+    }
+  }
+
+  @Override
   public List<String> getActiveLogs(TInfo tinfo, TCredentials credentials) {
     String log = server.logger.getLogFile();
     // Might be null if there no active logger

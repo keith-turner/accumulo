@@ -73,6 +73,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Fu
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.HostingColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.RefreshIdColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ScanFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
@@ -87,6 +88,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.net.HostAndPort;
 
@@ -121,6 +123,7 @@ public class TabletMetadata {
   private boolean onDemandHostingRequested = false;
   private TabletOperation operation;
   private TabletOperationId operationId;
+  private Set<Long> refreshIds;
 
   public enum LocationType {
     CURRENT, FUTURE, LAST
@@ -146,7 +149,8 @@ public class TabletMetadata {
     ECOMP,
     HOSTING_GOAL,
     HOSTING_REQUESTED,
-    OPID
+    OPID,
+    REFRESH_ID
   }
 
   public static class Location {
@@ -414,6 +418,11 @@ public class TabletMetadata {
     return operationId;
   }
 
+  public Set<Long> getRefreshIds() {
+    ensureFetched(ColumnType.REFRESH_ID);
+    return refreshIds;
+  }
+
   @VisibleForTesting
   public static <E extends Entry<Key,Value>> TabletMetadata convertRow(Iterator<E> rowIter,
       EnumSet<ColumnType> fetchedColumns, boolean buildKeyValueMap) {
@@ -430,6 +439,7 @@ public class TabletMetadata {
         ImmutableMap.<ExternalCompactionId,ExternalCompactionMetadata>builder();
     final var loadedFilesBuilder = ImmutableMap.<TabletFile,Long>builder();
     ByteSequence row = null;
+    final var requestIdsBuilder = ImmutableSet.<Long>builder();
 
     while (rowIter.hasNext()) {
       final Entry<Key,Value> kv = rowIter.next();
@@ -541,6 +551,9 @@ public class TabletMetadata {
             default:
               throw new IllegalStateException("Unexpected family " + fam);
           }
+          break;
+        case RefreshIdColumnFamily.STR_NAME:
+          requestIdsBuilder.add(Long.parseLong(qual, 16));
           break;
       }
     }

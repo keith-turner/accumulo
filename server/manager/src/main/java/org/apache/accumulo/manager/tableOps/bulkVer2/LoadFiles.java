@@ -136,7 +136,7 @@ class LoadFiles extends ManagerRepo {
     abstract long finish() throws Exception;
   }
 
-  //TODO remove
+  // TODO remove
   private static class OnlineLoader extends Loader {
 
     long timeInMillis;
@@ -263,11 +263,10 @@ class LoadFiles extends ManagerRepo {
 
   }
 
-  //TODO name
+  // TODO name
   private static class OndemandLoader extends Loader {
 
     Ample.ConditionalTabletsMutator conditionalMutator;
-
 
     @Override
     void start(Path bulkDir, Manager manager, long tid, boolean setTime) throws Exception {
@@ -281,31 +280,34 @@ class LoadFiles extends ManagerRepo {
       byte[] fam = TextUtil.getBytes(DataFileColumnFamily.NAME);
 
       for (TabletMetadata tablet : tablets) {
-        Map<TabletFile, DataFileValue> filesToLoad = new HashMap<>();
+        Map<TabletFile,DataFileValue> filesToLoad = new HashMap<>();
 
         for (final Bulk.FileInfo fileInfo : files) {
-          filesToLoad.put(new TabletFile(new Path(bulkDir, fileInfo.getFileName())), new DataFileValue(fileInfo.getEstFileSize(), fileInfo.getEstNumEntries()));
+          filesToLoad.put(new TabletFile(new Path(bulkDir, fileInfo.getFileName())),
+              new DataFileValue(fileInfo.getEstFileSize(), fileInfo.getEstNumEntries()));
         }
 
         // remove any files that were already loaded
         filesToLoad.keySet().removeAll(tablet.getLoaded().keySet());
 
-        if(!filesToLoad.isEmpty()) {
-          //TODO require that files to load are absent
-          //TODO lets always call require prev end row
-          var tabletMutator = conditionalMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation();
+        if (!filesToLoad.isEmpty()) {
+          // TODO require that files to load are absent
+          // TODO lets always call require prev end row
+          var tabletMutator =
+              conditionalMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation();
 
-          filesToLoad.forEach((f,v) -> {
-            tabletMutator.putBulkFile(f,tid);
+          filesToLoad.forEach((f, v) -> {
+            tabletMutator.putBulkFile(f, tid);
             tabletMutator.putFile(f, v);
           });
 
-          if(tablet.getLocation() != null) {
+          if (tablet.getLocation() != null) {
             // only set the refresh if the location is still set, otherwise lets delete it
             tabletMutator.requireLocation(tablet.getLocation());
-            tabletMutator.putRefresh(tid);
+            tabletMutator.putRefreshId(tid);
           } else {
-            // ensure tablet does not concurrently load while we are adding files, if it did would need to ask it to refresh
+            // ensure tablet does not concurrently load while we are adding files, if it did would
+            // need to ask it to refresh
             tabletMutator.requireAbsentLocation();
           }
 
@@ -316,7 +318,8 @@ class LoadFiles extends ManagerRepo {
 
     @Override
     long finish() {
-      boolean allDone = conditionalMutator.process().values().stream().allMatch(result -> result.getStatus() == ConditionalWriter.Status.ACCEPTED);
+      boolean allDone = conditionalMutator.process().values().stream()
+          .allMatch(result -> result.getStatus() == ConditionalWriter.Status.ACCEPTED);
 
       long sleepTime = 0;
       if (!allDone) {
@@ -328,7 +331,7 @@ class LoadFiles extends ManagerRepo {
     }
   }
 
-  //TODO remove
+  // TODO remove
   private static class OfflineLoader extends Loader {
 
     BatchWriter bw;
@@ -403,7 +406,7 @@ class LoadFiles extends ManagerRepo {
     if (bulkInfo.tableState == TableState.ONLINE) {
       loader = new OndemandLoader();
     } else {
-      //TODO
+      // TODO
       loader = new OfflineLoader();
     }
 

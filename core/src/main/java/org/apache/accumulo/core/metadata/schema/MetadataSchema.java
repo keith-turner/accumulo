@@ -366,6 +366,11 @@ public class MetadataSchema {
       public static final ColumnFQ REQUESTED_COLUMN = new ColumnFQ(NAME, new Text(REQUESTED_QUAL));
     }
 
+    public static class RefreshIdColumnFamily {
+      public static final String STR_NAME = "refresh";
+      public static final Text NAME = new Text(STR_NAME);
+    }
+
   }
 
   /**

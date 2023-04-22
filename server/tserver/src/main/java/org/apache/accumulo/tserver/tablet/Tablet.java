@@ -2159,4 +2159,30 @@ public class Tablet extends TabletBase {
   public boolean isOnDemand() {
     return goal == TabletHostingGoal.ONDEMAND;
   }
+
+  public void refresh(long transactionId) {
+    // TODO keep track of recently completed refresh request and ignore duplicates.. .like the last
+    // 100
+
+    // TODO this entire method is a hack at the moment with race conditions... want to move twoards
+    // the tablet just using a cached TabletMetadata object
+
+    TabletMetadata tabletMetadata =
+        getContext().getAmple().readTablet(getExtent(), TabletMetadata.ColumnType.FILES);
+
+    if (tabletMetadata.getRefreshIds().contains(transactionId)) {
+      Map<StoredTabletFile,DataFileValue> metadataFiles = tabletMetadata.getFilesMap();
+
+      Map<StoredTabletFile,DataFileValue> currentFiles = getDatafileManager().getDatafileSizes();
+
+      metadataFiles.forEach((f, v) -> {
+        if (!currentFiles.containsKey(f)) {
+          getDatafileManager().addFilesHack(f, v);
+
+        }
+      });
+
+      getContext().getAmple().mutateTablet(getExtent()).deleteRefreshId(transactionId).mutate();
+    }
+  }
 }

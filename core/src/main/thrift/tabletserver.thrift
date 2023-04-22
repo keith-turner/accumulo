@@ -281,7 +281,7 @@ service TabletServerClientService {
     1:client.TInfo tinfo
     2:security.TCredentials credentials
     3:data.TKeyExtent extent
-    4:long transactionId
+    4:i64 transactionId
   )
 }
 

@@ -512,4 +512,9 @@ class DatafileManager {
     return metadataUpdateCount.get();
   }
 
+  public void addFilesHack(StoredTabletFile file, DataFileValue dfv) {
+    synchronized (tablet) {
+      datafileSizes.put(file, dfv);
+    }
+  }
 }

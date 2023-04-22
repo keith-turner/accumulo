@@ -349,6 +349,9 @@ public interface Ample {
 
     T deleteOperation();
 
+    T putRefreshId(long tid);
+
+    T deleteRefreshId(long transactionId);
   }
 
   interface TabletMutator extends TabletUpdates<TabletMutator> {

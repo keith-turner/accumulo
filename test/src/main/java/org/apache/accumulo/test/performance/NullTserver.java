@@ -304,6 +304,12 @@ public class NullTserver {
         String externalCompactionId, TKeyExtent extent) throws TException {}
 
     @Override
+    public void refreshTablet(TInfo tinfo, TCredentials credentials, TKeyExtent extent,
+        long transactionId) throws TException {
+
+    }
+
+    @Override
     public void setTabletHostingGoal(TInfo tinfo, TCredentials credentials, String tableId,
         List<TKeyExtent> extents, THostingGoal goal) throws ThriftSecurityException, TException {}
 
