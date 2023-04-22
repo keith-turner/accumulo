@@ -39,6 +39,7 @@ import org.apache.accumulo.core.fate.zookeeper.ZooUtil;
 import org.apache.accumulo.core.lock.ServiceLock;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ChoppedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ClonedColumnFamily;
@@ -49,6 +50,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Fu
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.HostingColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.RefreshIdColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ScanFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
@@ -102,7 +104,8 @@ public class MetadataConstraints implements Constraint {
           FutureLocationColumnFamily.NAME,
           ChoppedColumnFamily.NAME,
           ClonedColumnFamily.NAME,
-          ExternalCompactionColumnFamily.NAME);
+          ExternalCompactionColumnFamily.NAME,
+              RefreshIdColumnFamily.NAME);
   // @formatter:on
 
   private static boolean isValidColumn(ColumnUpdate cu) {
@@ -225,6 +228,12 @@ public class MetadataConstraints implements Constraint {
           TabletHostingGoalUtil.fromValue(new Value(columnUpdate.getValue()));
         } catch (IllegalArgumentException e) {
           violations = addViolation(violations, 4);
+        }
+      } else if(columnFamily.equals(RefreshIdColumnFamily.NAME)) {
+        try{
+          Long.parseLong(columnQualifier.toString(), 16);
+        } catch (NumberFormatException nfe) {
+          violations = addViolation(violations, 9);
         }
       } else if (columnFamily.equals(BulkFileColumnFamily.NAME)) {
         if (!columnUpdate.isDeleted() && !checkedBulk) {
@@ -357,6 +366,8 @@ public class MetadataConstraints implements Constraint {
         return "Lock not held in zookeeper by writer";
       case 8:
         return "Bulk load transaction no longer running";
+      case 9:
+        return "Invalid refresh id";
     }
     return null;
   }

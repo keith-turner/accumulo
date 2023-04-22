@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import com.google.gson.Gson;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.ConditionalWriter;
@@ -34,6 +35,7 @@ import org.apache.accumulo.core.clientImpl.ConditionalWriterImpl;
 import org.apache.accumulo.core.data.ConditionalMutation;
 import org.apache.accumulo.core.dataImpl.thrift.TCMResult;
 import org.apache.accumulo.core.dataImpl.thrift.TConditionalMutation;
+import org.apache.accumulo.core.iteratorsImpl.system.ColumnFamilySkippingIterator;
 import org.apache.accumulo.core.iteratorsImpl.system.SortedMapIterator;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.RootTabletMetadata;
@@ -97,9 +99,10 @@ public class RootConditionalWriter implements ConditionalWriter {
     try {
       context.getZooReaderWriter().mutateExisting(zpath, currVal -> {
         String currJson = new String(currVal, UTF_8);
+
         var rtm = new RootTabletMetadata(currJson);
 
-        var iter = new SortedMapIterator(rtm.toKeyValues());
+        var iter = new ColumnFamilySkippingIterator(new SortedMapIterator(rtm.toKeyValues()));
 
         // This could be called multiple times so clear before calling
         okMutations.clear();
