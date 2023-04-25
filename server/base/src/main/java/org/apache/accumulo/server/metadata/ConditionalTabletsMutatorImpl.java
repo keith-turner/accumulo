@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.ConditionalWriter;
+import org.apache.accumulo.core.client.ConditionalWriter.Status;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.data.ConditionalMutation;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -90,7 +91,7 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
 
     var extents = results.entrySet().stream().filter(e -> {
       try {
-        return e.getValue().getStatus() != ConditionalWriter.Status.ACCEPTED;
+        return e.getValue().getStatus() != Status.ACCEPTED;
       } catch (AccumuloException | AccumuloSecurityException ex) {
         throw new RuntimeException(ex);
       }
@@ -136,7 +137,7 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
 
         return Maps.transformEntries(resultsMap, (extent, result) -> new Ample.ConditionalResult() {
 
-          private ConditionalWriter.Status _getStatus() {
+          private Status _getStatus() {
             try {
               return result.getStatus();
             } catch (AccumuloException | AccumuloSecurityException e) {
@@ -145,14 +146,13 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
           }
 
           @Override
-          public ConditionalWriter.Status getStatus() {
+          public Status getStatus() {
             var status = _getStatus();
-            if (status == ConditionalWriter.Status.UNKNOWN
-                && unknownValidators.containsKey(extent)) {
+            if (status == Status.UNKNOWN && unknownValidators.containsKey(extent)) {
               var tabletMetadata = readMetadata();
               if (tabletMetadata != null
                   && unknownValidators.get(extent).shouldAccept(tabletMetadata)) {
-                return ConditionalWriter.Status.ACCEPTED;
+                return Status.ACCEPTED;
               }
             }
 
@@ -166,7 +166,8 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
 
           @Override
           public TabletMetadata readMetadata() {
-            Preconditions.checkState(_getStatus() != ConditionalWriter.Status.ACCEPTED);
+            Preconditions.checkState(_getStatus() != Status.ACCEPTED,
+                "Can not read metadata for mutations with a status of " + Status.ACCEPTED);
             return failedMetadata.get().get(getExtent());
           }
         });
