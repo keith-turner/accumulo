@@ -86,6 +86,6 @@ public class RefreshTablets extends ManagerRepo {
 
   @Override
   public Repo<Manager> call(long tid, Manager environment) throws Exception {
-    return new CompleteBulkImport(bulkInfo);
+    return new CleanUpBulkImport(bulkInfo);
   }
 }

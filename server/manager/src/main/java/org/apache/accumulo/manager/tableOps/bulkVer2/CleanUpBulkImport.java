@@ -31,7 +31,6 @@ import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.manager.tableOps.ManagerRepo;
 import org.apache.accumulo.manager.tableOps.Utils;
-import org.apache.accumulo.server.zookeeper.TransactionWatcher.ZooArbitrator;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,9 +74,6 @@ public class CleanUpBulkImport extends ManagerRepo {
     }
 
     log.debug("completing bulkDir import transaction " + FateTxId.formatTid(tid));
-    if (info.tableState == TableState.ONLINE) {
-      ZooArbitrator.cleanup(manager.getContext(), Constants.BULK_ARBITRATOR_TYPE, tid);
-    }
     manager.removeBulkImportStatus(info.sourceDir);
     return null;
   }
