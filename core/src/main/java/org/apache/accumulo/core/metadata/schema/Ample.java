@@ -349,7 +349,7 @@ public interface Ample {
 
     T deleteOperation();
 
-    T putRefreshId(long tid);
+    T putRefreshId(long tid, TServerInstance location);
 
     T deleteRefreshId(long transactionId);
   }

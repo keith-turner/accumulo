@@ -25,7 +25,6 @@ import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.fate.Repo;
 import org.apache.accumulo.core.gc.ReferenceFile;
-import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.master.thrift.BulkImportState;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.manager.Manager;
@@ -57,10 +56,10 @@ public class CleanUpBulkImport extends ManagerRepo {
         "/" + bulkDir.getParent().getName() + "/" + bulkDir.getName());
     ample.putGcFileAndDirCandidates(info.tableId,
         Collections.singleton(new ReferenceFile(info.tableId, bulkDir.toString())));
-    if (info.tableState == TableState.ONLINE) {
-      log.debug("removing the metadata table markers for loaded files");
-      ample.removeBulkLoadEntries(info.tableId, tid);
-    }
+
+    log.debug("removing the metadata table markers for loaded files");
+    ample.removeBulkLoadEntries(info.tableId, tid);
+
     Utils.unreserveHdfsDirectory(manager, info.sourceDir, tid);
     Utils.getReadLock(manager, info.tableId, tid).unlock();
     // delete json renames and mapping files

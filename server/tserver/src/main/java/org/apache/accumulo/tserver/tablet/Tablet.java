@@ -2160,6 +2160,7 @@ public class Tablet extends TabletBase {
     return goal == TabletHostingGoal.ONDEMAND;
   }
 
+  // ELASTICITY_TODO properly implement this method
   public void refresh(long transactionId) {
     // TODO keep track of recently completed refresh request and ignore duplicates.. .like the last
     // 100
@@ -2168,9 +2169,11 @@ public class Tablet extends TabletBase {
     // the tablet just using a cached TabletMetadata object
 
     TabletMetadata tabletMetadata =
-        getContext().getAmple().readTablet(getExtent(), ColumnType.FILES, ColumnType.REFRESH_ID);
+        getContext().getAmple().readTablet(getExtent(), ColumnType.FILES, ColumnType.REFRESH);
 
-    if (tabletMetadata.getRefreshIds().contains(transactionId)) {
+    if (tabletMetadata.getRefreshIds().containsKey(transactionId)) {
+      // TODO could check value on map returned from getRefreshIds()
+
       Map<StoredTabletFile,DataFileValue> metadataFiles = tabletMetadata.getFilesMap();
 
       Map<StoredTabletFile,DataFileValue> currentFiles = getDatafileManager().getDatafileSizes();
@@ -2182,6 +2185,7 @@ public class Tablet extends TabletBase {
         }
       });
 
+      // TODO use conditional mutation with tserver location
       getContext().getAmple().mutateTablet(getExtent()).deleteRefreshId(transactionId).mutate();
     }
   }

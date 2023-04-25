@@ -512,6 +512,7 @@ class DatafileManager {
     return metadataUpdateCount.get();
   }
 
+  // ELASTICITY_TODO remove this method
   public void addFilesHack(StoredTabletFile file, DataFileValue dfv) {
     synchronized (tablet) {
       datafileSizes.put(file, dfv);

@@ -172,7 +172,7 @@ public class TabletClientHandler implements TabletServerClientService.Iface,
     log.debug("{} created", TabletClientHandler.class.getName());
   }
 
-  //ELASTICITY_TODO remove this and all the code it calls in Tablet and the thrift methods
+  // ELASTICITY_TODO remove this and all the code it calls in Tablet and the thrift methods
   @Override
   public void loadFiles(TInfo tinfo, TCredentials credentials, long tid, String dir,
       Map<TKeyExtent,Map<String,MapFileInfo>> tabletImports, boolean setTime)

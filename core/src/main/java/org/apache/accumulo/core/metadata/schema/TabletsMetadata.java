@@ -318,7 +318,7 @@ public class TabletsMetadata implements Iterable<TabletMetadata>, AutoCloseable 
           case ECOMP:
             families.add(ExternalCompactionColumnFamily.NAME);
             break;
-          case REFRESH_ID:
+          case REFRESH:
             families.add(RefreshIdColumnFamily.NAME);
             break;
           default:

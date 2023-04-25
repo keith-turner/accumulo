@@ -292,8 +292,9 @@ public abstract class TabletMutatorBase<T extends Ample.TabletUpdates<T>>
   }
 
   @Override
-  public T putRefreshId(long tid) {
-    mutation.put(RefreshIdColumnFamily.STR_NAME, String.format("%016x", tid), "");
+  public T putRefreshId(long tid, TServerInstance location) {
+    mutation.put(RefreshIdColumnFamily.STR_NAME, String.format("%016x", tid),
+        location.getHostPortSession());
     return getThis();
   }
 

@@ -88,7 +88,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.net.HostAndPort;
 
@@ -123,7 +122,7 @@ public class TabletMetadata {
   private boolean onDemandHostingRequested = false;
   private TabletOperation operation;
   private TabletOperationId operationId;
-  private Set<Long> refreshIds;
+  private Map<Long,TServerInstance> refreshIds;
 
   public enum LocationType {
     CURRENT, FUTURE, LAST
@@ -150,7 +149,7 @@ public class TabletMetadata {
     HOSTING_GOAL,
     HOSTING_REQUESTED,
     OPID,
-    REFRESH_ID
+    REFRESH
   }
 
   public static class Location {
@@ -418,8 +417,8 @@ public class TabletMetadata {
     return operationId;
   }
 
-  public Set<Long> getRefreshIds() {
-    ensureFetched(ColumnType.REFRESH_ID);
+  public Map<Long,TServerInstance> getRefreshIds() {
+    ensureFetched(ColumnType.REFRESH);
     return refreshIds;
   }
 
@@ -439,7 +438,7 @@ public class TabletMetadata {
         ImmutableMap.<ExternalCompactionId,ExternalCompactionMetadata>builder();
     final var loadedFilesBuilder = ImmutableMap.<TabletFile,Long>builder();
     ByteSequence row = null;
-    final var requestIdsBuilder = ImmutableSet.<Long>builder();
+    final var requestIdsBuilder = ImmutableMap.<Long,TServerInstance>builder();
 
     while (rowIter.hasNext()) {
       final Entry<Key,Value> kv = rowIter.next();
@@ -552,9 +551,12 @@ public class TabletMetadata {
               throw new IllegalStateException("Unexpected family " + fam);
           }
           break;
-        case RefreshIdColumnFamily.STR_NAME:
-          requestIdsBuilder.add(Long.parseLong(qual, 16));
+        case RefreshIdColumnFamily.STR_NAME: {
+          var id = Long.parseLong(qual, 16);
+          var tsi = new TServerInstance(val);
+          requestIdsBuilder.put(id, tsi);
           break;
+        }
       }
     }
 
