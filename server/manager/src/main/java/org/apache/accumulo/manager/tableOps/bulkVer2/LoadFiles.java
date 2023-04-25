@@ -127,10 +127,9 @@ class LoadFiles extends ManagerRepo {
         filesToLoad.keySet().removeAll(tablet.getLoaded().keySet());
 
         if (!filesToLoad.isEmpty()) {
-          // TODO require that files to load are absent
-          // ELASTICITY_TODO lets always call require prev end row
-          var tabletMutator =
-              conditionalMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation();
+          // ELASTICITY_TODO lets automatically call require prev end row
+          var tabletMutator = conditionalMutator.mutateTablet(tablet.getExtent())
+              .requireAbsentOperation().requirePrevEndRow(tablet.getExtent().prevEndRow());
 
           filesToLoad.forEach((f, v) -> {
             tabletMutator.putBulkFile(f, tid);
@@ -166,9 +165,9 @@ class LoadFiles extends ManagerRepo {
         results.forEach((extent, condResult) -> {
           if (condResult.getStatus() != ConditionalWriter.Status.ACCEPTED) {
             var metadata = condResult.readMetadata();
-            log.debug("Tablet update failed {} {} {} {} {} {}", extent, condResult.getStatus(),
-                metadata.getOperation(), metadata.getOperationId(), metadata.getLocation(),
-                metadata.getLoaded());
+            log.debug("Tablet update failed {} {} {} {} {} {} {}", FateTxId.formatTid(tid), extent,
+                condResult.getStatus(), metadata.getOperation(), metadata.getOperationId(),
+                metadata.getLocation(), metadata.getLoaded());
           }
         });
       }

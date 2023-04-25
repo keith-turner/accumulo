@@ -20,6 +20,7 @@ package org.apache.accumulo.manager.tableOps.bulkVer2;
 
 import java.util.Map;
 
+import org.apache.accumulo.core.client.ConditionalWriter;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.fate.Repo;
@@ -74,7 +75,7 @@ public class RefreshTablets extends ManagerRepo {
             var server = tablet.getLocation().getHostAndPort();
             sendRefreshRequest(tid, manager, tablet, server);
           } else {
-            // the tserver that was hosting the tablet when the refresh column was set is not longer
+            // the tserver that was hosting the tablet when the refresh column was set is no longer
             // hosting, so any new tserver should see the updated data. Can delete the refresh
             // request.
             // ELASTICITY_TODO the code here assumes that a tablet reads its metadata after setting
@@ -87,7 +88,13 @@ public class RefreshTablets extends ManagerRepo {
         }
       }
 
-      tabletsMutator.process();
+      tabletsMutator.process().forEach((extent, condResult) -> {
+        if (condResult.getStatus() != ConditionalWriter.Status.ACCEPTED) {
+          var metadata = condResult.readMetadata();
+          log.debug("Tablet update failed {} {} {} {} {} ", FateTxId.formatTid(tid), extent,
+              condResult.getStatus(), metadata.getOperation(), metadata.getOperationId());
+        }
+      });
     }
 
     if (refreshIdsSeen > 0) {
