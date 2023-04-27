@@ -77,13 +77,25 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
         unknownValidators::put);
   }
 
-  private ConditionalWriter createConditionalWriter(Ample.DataLevel dataLevel)
+  protected ConditionalWriter createConditionalWriter(Ample.DataLevel dataLevel)
       throws TableNotFoundException {
     if (dataLevel == Ample.DataLevel.ROOT) {
       return new RootConditionalWriter(context);
     } else {
       return context.createConditionalWriter(dataLevel.metaTable());
     }
+  }
+
+  protected Map<KeyExtent,TabletMetadata> readTablets(List<KeyExtent> extents) {
+    Map<KeyExtent,TabletMetadata> failedTablets = new HashMap<>();
+
+    try (var tabletsMeta =
+        context.getAmple().readTablets().forTablets(extents).saveKeyValues().build()) {
+      tabletsMeta
+          .forEach(tabletMetadata -> failedTablets.put(tabletMetadata.getExtent(), tabletMetadata));
+    }
+
+    return failedTablets;
   }
 
   private Map<KeyExtent,TabletMetadata>
@@ -101,15 +113,7 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
       return Map.of();
     }
 
-    Map<KeyExtent,TabletMetadata> failedTablets = new HashMap<>();
-
-    try (var tabletsMeta =
-        context.getAmple().readTablets().forTablets(extents).saveKeyValues().build()) {
-      tabletsMeta
-          .forEach(tabletMetadata -> failedTablets.put(tabletMetadata.getExtent(), tabletMetadata));
-    }
-
-    return failedTablets;
+    return readTablets(extents);
   }
 
   @Override
@@ -150,8 +154,7 @@ public class ConditionalTabletsMutatorImpl implements Ample.ConditionalTabletsMu
             var status = _getStatus();
             if (status == Status.UNKNOWN && unknownValidators.containsKey(extent)) {
               var tabletMetadata = readMetadata();
-              if (tabletMetadata != null
-                  && unknownValidators.get(extent).shouldAccept(tabletMetadata)) {
+              if (tabletMetadata != null && unknownValidators.get(extent).test(tabletMetadata)) {
                 return Status.ACCEPTED;
               }
             }
