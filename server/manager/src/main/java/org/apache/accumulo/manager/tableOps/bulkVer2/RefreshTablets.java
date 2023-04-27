@@ -52,8 +52,6 @@ public class RefreshTablets extends ManagerRepo {
   }
 
   public long isReady(long tid, Manager manager) throws Exception {
-    // TODO check consistency?
-
     int refreshIdsSeen = 0;
 
     // ELASTICITY_TODO limit tablets scanned to range of bulk import extents

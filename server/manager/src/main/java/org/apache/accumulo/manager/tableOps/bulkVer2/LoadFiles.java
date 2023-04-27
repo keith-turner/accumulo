@@ -159,7 +159,6 @@ class LoadFiles extends ManagerRepo {
 
       long sleepTime = 0;
       if (!allDone) {
-        // TODO compute sleep time based on characteristics of number of failures
         sleepTime = 1000;
 
         results.forEach((extent, condResult) -> {
