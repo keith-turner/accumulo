@@ -1415,7 +1415,8 @@ public class Tablet extends TabletBase {
    *
    */
   public synchronized boolean needsSplit(Optional<SplitComputations> splitComputations) {
-    if (isClosing() || isClosed()) {
+    // TODO remove this hack that disables splits
+    if (isClosing() || isClosed() || true) {
       return false;
     }
     return findSplitRow(splitComputations) != null;
