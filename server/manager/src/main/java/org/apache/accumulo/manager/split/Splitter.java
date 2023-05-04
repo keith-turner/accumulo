@@ -21,7 +21,6 @@ package org.apache.accumulo.manager.split;
 import java.util.concurrent.*;
 
 import org.apache.accumulo.core.metadata.schema.Ample;
-import org.apache.accumulo.manager.TabletOperations;
 import org.apache.accumulo.server.ServerContext;
 
 import com.google.common.base.Preconditions;

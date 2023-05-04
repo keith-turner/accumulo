@@ -30,7 +30,6 @@ import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.TabletOperationId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.util.UtilWaitThread;
-import org.apache.accumulo.manager.TabletOperations;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.tablets.UniqueNameAllocator;
 import org.apache.accumulo.server.util.FileUtil;

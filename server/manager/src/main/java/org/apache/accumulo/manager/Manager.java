@@ -170,7 +170,7 @@ import io.opentelemetry.context.Scope;
  * The manager will also coordinate log recoveries and reports general status.
  */
 public class Manager extends AbstractServer implements LiveTServerSet.Listener, TableObserver,
-    CurrentState, HighlyAvailableService, TabletOperations {
+    CurrentState, HighlyAvailableService {
 
   static final Logger log = LoggerFactory.getLogger(Manager.class);
 
@@ -570,23 +570,32 @@ public class Manager extends AbstractServer implements LiveTServerSet.Listener, 
   }
 
   // TODO move to top
-  private Set<KeyExtent> unassignmentRequest = Collections.synchronizedSet(new HashSet<>());
+  private Map<KeyExtent,Set<Long>> unassignmentRequest = Collections.synchronizedMap(new HashMap<>());
 
   @Override
-  public AutoCloseable unassign(KeyExtent tablet) {
-    if (!unassignmentRequest.add(tablet)) {
-      throw new RuntimeException("TODO does this need to be handled");
-    }
+  public void requestUnassignment(KeyExtent tablet, long fateTxId) {
+
+    unassignmentRequest.compute(tablet, (k,v)->{
+      Set<Long> txids = v == null ? new HashSet<>() : v;
+      txids.add(fateTxId);
+      return v;
+    });
 
     nextEvent.event("Unassignment requested %s", tablet);
+  }
 
-    return () -> {
-      if (!unassignmentRequest.remove(tablet)) {
-        throw new RuntimeException(
-            "TODO should this exception be thrown, seems like remove should always succeed");
+  Override
+  public void cancelUnassignmentRequest(KeyExtent tablet, long fateTxid) {
+    unassignmentRequest.compute(tablet, (k,v)->{
+      if(v != null) {
+        v.remove(fateTxid);
+        if(v.isEmpty()) {
+          return null;
+        }
       }
-      nextEvent.event("Unassignment request completed %s", tablet);
-    };
+
+      return v;
+    });
   }
 
   enum TabletGoalState {
@@ -678,8 +687,8 @@ public class Manager extends AbstractServer implements LiveTServerSet.Listener, 
 
       // TODO remove
       log.info("unassignmentRequest.contains({}) : {}", extent,
-          unassignmentRequest.contains(extent));
-      if (unassignmentRequest.contains(extent)) {
+          unassignmentRequest.containsKey(extent));
+      if (unassignmentRequest.containsKey(extent)) {
         return TabletGoalState.UNASSIGNED;
       }
 

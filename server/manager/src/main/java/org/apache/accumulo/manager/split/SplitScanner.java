@@ -29,7 +29,6 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
-import org.apache.accumulo.manager.TabletOperations;
 import org.apache.accumulo.server.ServerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,7 +71,7 @@ public class SplitScanner implements Runnable {
       if (tablet.getOperationId() != null || splitting.contains(tablet.getExtent())) {
         // TODO log level
         log.info("ignoring {} {} {}", tablet.getExtent(),
-            tablet.getOperation() + ":" + tablet.getOperationId(),
+            tablet.getOperationId(),
             splitting.contains(tablet.getExtent()));
         continue;
       }
