@@ -28,7 +28,6 @@ import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
-import org.apache.accumulo.manager.split.Splitter;
 import org.apache.accumulo.test.TestIngest;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
@@ -44,7 +43,7 @@ public class OfflineSplitIT extends AccumuloClusterHarness {
 
       String tableName = getUniqueNames(1)[0];
 
-      var newTableConf = new NewTableConfiguration().createOffline()
+      var newTableConf = new NewTableConfiguration()
           .setProperties(Map.of(Property.TABLE_SPLIT_THRESHOLD.getKey(), "2K"));
       c.tableOperations().create(tableName, newTableConf);
 
@@ -60,12 +59,6 @@ public class OfflineSplitIT extends AccumuloClusterHarness {
       TestIngest.ingest(c, getFileSystem(), params);
 
       c.tableOperations().importDirectory(importDir.toString()).to(tableName).load();
-
-      TabletOperations tabletOperations = extent -> {
-        return () -> {};
-      };
-      Splitter splitter = new Splitter(context, Ample.DataLevel.USER, tabletOperations);
-      splitter.start();
 
       while (true) {
         context.getAmple().readTablets().forLevel(Ample.DataLevel.USER).build().stream()

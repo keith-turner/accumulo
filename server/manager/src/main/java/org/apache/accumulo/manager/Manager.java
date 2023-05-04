@@ -169,8 +169,8 @@ import io.opentelemetry.context.Scope;
  * <p>
  * The manager will also coordinate log recoveries and reports general status.
  */
-public class Manager extends AbstractServer implements LiveTServerSet.Listener, TableObserver,
-    CurrentState, HighlyAvailableService {
+public class Manager extends AbstractServer
+    implements LiveTServerSet.Listener, TableObserver, CurrentState, HighlyAvailableService {
 
   static final Logger log = LoggerFactory.getLogger(Manager.class);
 
@@ -246,7 +246,7 @@ public class Manager extends AbstractServer implements LiveTServerSet.Listener, 
    *
    * @return the Fate object, only after the fate components are running and ready
    */
-  Fate<Manager> fate() {
+  public Fate<Manager> fate() {
     try {
       // block up to 30 seconds until it's ready; if it's still not ready, introduce some logging
       if (!fateReadyLatch.await(30, SECONDS)) {
@@ -570,12 +570,13 @@ public class Manager extends AbstractServer implements LiveTServerSet.Listener, 
   }
 
   // TODO move to top
-  private Map<KeyExtent,Set<Long>> unassignmentRequest = Collections.synchronizedMap(new HashMap<>());
+  // TODO what about bugs where a tablet is in here forever because it was never removed
+  private Map<KeyExtent,Set<Long>> unassignmentRequest =
+      Collections.synchronizedMap(new HashMap<>());
 
-  @Override
   public void requestUnassignment(KeyExtent tablet, long fateTxId) {
 
-    unassignmentRequest.compute(tablet, (k,v)->{
+    unassignmentRequest.compute(tablet, (k, v) -> {
       Set<Long> txids = v == null ? new HashSet<>() : v;
       txids.add(fateTxId);
       return v;
@@ -584,18 +585,21 @@ public class Manager extends AbstractServer implements LiveTServerSet.Listener, 
     nextEvent.event("Unassignment requested %s", tablet);
   }
 
-  Override
   public void cancelUnassignmentRequest(KeyExtent tablet, long fateTxid) {
-    unassignmentRequest.compute(tablet, (k,v)->{
-      if(v != null) {
+    unassignmentRequest.compute(tablet, (k, v) -> {
+      if (v != null) {
         v.remove(fateTxid);
-        if(v.isEmpty()) {
+        if (v.isEmpty()) {
           return null;
         }
       }
 
       return v;
     });
+  }
+
+  public boolean isUnassignmentRequested(KeyExtent extent) {
+    return unassignmentRequest.containsKey(extent);
   }
 
   enum TabletGoalState {

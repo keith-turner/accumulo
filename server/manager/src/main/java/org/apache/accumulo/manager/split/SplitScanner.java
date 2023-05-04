@@ -29,6 +29,7 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.server.ServerContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,17 +44,17 @@ public class SplitScanner implements Runnable {
   private final Ample.DataLevel level;
   private final ServerContext context;
 
-  private final Set<KeyExtent> splitting;
-  private final TabletOperations tabletOps;
+  private final Set<KeyExtent> queuedForSplitting;
+  private final Manager manager;
 
   public SplitScanner(ServerContext context, ExecutorService splitExecutor, Ample.DataLevel level,
-      TabletOperations tabletOps) {
+      Manager manager) {
     Preconditions.checkArgument(level != Ample.DataLevel.ROOT);
     this.context = context;
     this.splitExecutor = splitExecutor;
     this.level = level;
-    this.tabletOps = tabletOps;
-    splitting = Collections.synchronizedSet(new HashSet<>());
+    this.manager = manager;
+    queuedForSplitting = Collections.synchronizedSet(new HashSet<>());
   }
 
   @Override
@@ -65,14 +66,13 @@ public class SplitScanner implements Runnable {
     long threshold = Long.MAX_VALUE;
 
     for (TabletMetadata tablet : tablets) {
-      System.out.println("inspecting for split " + tablet.getExtent());
+      log.info("inspecting for split " + tablet.getExtent());
 
-      // TODO eventually need a way to unload loaded tablets
-      if (tablet.getOperationId() != null || splitting.contains(tablet.getExtent())) {
+      if (tablet.getOperationId() != null || queuedForSplitting.contains(tablet.getExtent())
+          || manager.isUnassignmentRequested(tablet.getExtent())) {
         // TODO log level
-        log.info("ignoring {} {} {}", tablet.getExtent(),
-            tablet.getOperationId(),
-            splitting.contains(tablet.getExtent()));
+        log.info("ignoring {} {} {}", tablet.getExtent(), tablet.getOperationId(),
+            queuedForSplitting.contains(tablet.getExtent()));
         continue;
       }
 
@@ -85,12 +85,12 @@ public class SplitScanner implements Runnable {
 
       var tabletSize =
           tablet.getFilesMap().values().stream().mapToLong(DataFileValue::getSize).sum();
-      System.out.println("tabletSize " + tabletSize);
+      log.info("tabletSize " + tabletSize);
       // TODO remove or make trace
       log.info("tablet:{} size:{} threshold:{}", tablet.getExtent(), tabletSize, threshold);
       if (tabletSize > threshold) {
-        if (splitting.add(tablet.getExtent())) {
-          splitExecutor.execute(new SplitTask(context, splitting, tablet, tabletOps));
+        if (queuedForSplitting.add(tablet.getExtent())) {
+          splitExecutor.execute(new SplitTask(context, queuedForSplitting, tablet, manager));
         }
       }
     }

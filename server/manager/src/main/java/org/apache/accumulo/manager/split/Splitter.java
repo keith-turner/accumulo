@@ -21,6 +21,7 @@ package org.apache.accumulo.manager.split;
 import java.util.concurrent.*;
 
 import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.server.ServerContext;
 
 import com.google.common.base.Preconditions;
@@ -33,13 +34,13 @@ public class Splitter {
   private final ExecutorService splitExecutor;
 
   private final ScheduledExecutorService scanExecutor;
-  private final TabletOperations tabletOps;
+  private final Manager manager;
   private ScheduledFuture<?> scanFuture;
 
-  public Splitter(ServerContext context, Ample.DataLevel level, TabletOperations tabletOps) {
+  public Splitter(ServerContext context, Ample.DataLevel level, Manager manager) {
     this.context = context;
     this.level = level;
-    this.tabletOps = tabletOps;
+    this.manager = manager;
     this.splitExecutor = Executors.newFixedThreadPool(5);
     this.scanExecutor = Executors.newScheduledThreadPool(1);
   }
@@ -47,8 +48,9 @@ public class Splitter {
   public synchronized void start() {
     Preconditions.checkState(scanFuture == null);
     Preconditions.checkState(!scanExecutor.isShutdown());
+    // TODO is this the best way to periodically execute this?
     scanFuture = scanExecutor.scheduleWithFixedDelay(
-        new SplitScanner(context, splitExecutor, level, tabletOps), 1, 10, TimeUnit.SECONDS);
+        new SplitScanner(context, splitExecutor, level, manager), 1, 10, TimeUnit.SECONDS);
   }
 
   public synchronized void stop() {
