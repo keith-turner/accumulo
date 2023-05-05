@@ -246,6 +246,8 @@ public class TableOperationsImpl extends TableOperationsHelper {
     args.add(ByteBuffer.wrap(ntc.getTimeType().name().getBytes(UTF_8)));
     // Send info relating to initial table creation i.e, create online or offline
     args.add(ByteBuffer.wrap(ntc.getInitialTableState().name().getBytes(UTF_8)));
+    // send initialHostingGoal information
+    args.add(ByteBuffer.wrap(ntc.getInitialHostingGoal().name().getBytes(UTF_8)));
     // Check for possible initial splits to be added at table creation
     // Always send number of initial splits to be created, even if zero. If greater than zero,
     // add the splits to the argument List which will be used by the FATE operations.
@@ -571,7 +573,7 @@ public class TableOperationsImpl extends TableOperationsHelper {
           continue;
         }
 
-        HostAndPort address = HostAndPort.fromString(tl.getTserverLocation().get());
+        HostAndPort address = HostAndPort.fromString(tl.getTserverLocation().orElseThrow());
 
         try {
           TabletManagementClientService.Client client =
@@ -618,7 +620,7 @@ public class TableOperationsImpl extends TableOperationsHelper {
           tabLocator.invalidateCache(tl.getExtent());
           continue;
         } catch (TException e) {
-          tabLocator.invalidateCache(context, tl.getTserverLocation().get());
+          tabLocator.invalidateCache(context, tl.getTserverLocation().orElseThrow());
           continue;
         }
 
