@@ -19,7 +19,6 @@
 package org.apache.accumulo.manager.tableOps.split;
 
 import java.util.Map;
-import java.util.Objects;
 
 import org.apache.accumulo.core.client.ConditionalWriter;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -37,19 +36,14 @@ import org.apache.hadoop.io.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Preconditions;
-
 public class PreSplit extends ManagerRepo {
   private static final long serialVersionUID = 1L;
   private static final Logger log = LoggerFactory.getLogger(PreSplit.class);
 
-  private final KeyExtent expectedExtent;
-  private final Text split;
+  private final SplitInfo splitInfo;
 
   public PreSplit(KeyExtent expectedExtent, Text split) {
-    this.expectedExtent = Objects.requireNonNull(expectedExtent);
-    this.split = Objects.requireNonNull(split);
-    Preconditions.checkArgument(expectedExtent.contains(split));
+    this.splitInfo = new SplitInfo(expectedExtent, split);
   }
 
   @Override
@@ -58,8 +52,8 @@ public class PreSplit extends ManagerRepo {
     // TODO get tablet lock?
     // TODO check for offline table?
 
-    TabletMetadata tabletMetadata = manager.getContext().getAmple().readTablet(expectedExtent,
-        ColumnType.PREV_ROW, ColumnType.LOCATION, ColumnType.OPID);
+    TabletMetadata tabletMetadata = manager.getContext().getAmple().readTablet(
+        splitInfo.getOriginal(), ColumnType.PREV_ROW, ColumnType.LOCATION, ColumnType.OPID);
 
     if (tabletMetadata == null) {
       // TODO tablet does not exists, how to best handle?
@@ -72,7 +66,7 @@ public class PreSplit extends ManagerRepo {
       // TODO ensure this removed
       log.debug("{} waiting for unassignment {}", FateTxId.formatTid(tid),
           tabletMetadata.getLocation());
-      manager.requestUnassignment(expectedExtent, tid);
+      manager.requestUnassignment(splitInfo.getOriginal(), tid);
       return 1000;
     }
 
@@ -87,21 +81,22 @@ public class PreSplit extends ManagerRepo {
       }
     } else {
       try (var tabletsMutator = manager.getContext().getAmple().conditionallyMutateTablets()) {
-        tabletsMutator.mutateTablet(expectedExtent).requireAbsentOperation().requireAbsentLocation()
-            .requirePrevEndRow(expectedExtent.prevEndRow()).putOperation(opid)
+        tabletsMutator.mutateTablet(splitInfo.getOriginal()).requireAbsentOperation()
+            .requireAbsentLocation().requirePrevEndRow(splitInfo.getOriginal().prevEndRow())
+            .putOperation(opid)
             .submit(tmeta -> tmeta.getOperationId() != null && tmeta.getOperationId().equals(opid));
 
         Map<KeyExtent,Ample.ConditionalResult> results = tabletsMutator.process();
 
-        if (results.get(expectedExtent).getStatus() == ConditionalWriter.Status.ACCEPTED) {
+        if (results.get(splitInfo.getOriginal()).getStatus() == ConditionalWriter.Status.ACCEPTED) {
           // TODO change to trace
-          log.debug("{} reserved {} for split", FateTxId.formatTid(tid), expectedExtent);
+          log.debug("{} reserved {} for split", FateTxId.formatTid(tid), splitInfo.getOriginal());
           return 0;
         } else {
-          tabletMetadata = results.get(expectedExtent).readMetadata();
+          tabletMetadata = results.get(splitInfo.getOriginal()).readMetadata();
 
           log.debug("{} Failed to set operation id. extent:{} location:{} opid:{}",
-              FateTxId.formatTid(tid), expectedExtent, tabletMetadata.getLocation(),
+              FateTxId.formatTid(tid), splitInfo.getOriginal(), tabletMetadata.getLocation(),
               tabletMetadata.getOperationId());
 
           // TODO write IT that spins up 100 threads that all try to add a diff split to the same
@@ -117,18 +112,19 @@ public class PreSplit extends ManagerRepo {
   public Repo<Manager> call(long tid, Manager manager) throws Exception {
     // ELASTICITY_TODO need to make manager ignore tablet with an operation id for assignment
     // purposes
-    manager.cancelUnassignmentRequest(expectedExtent, tid);
+    manager.cancelUnassignmentRequest(splitInfo.getOriginal(), tid);
 
     // Create the dir name here for the next step. If the next step fails it will always have the
     // same dir name each time it runs again making it idempotent.
-    String dirName = UniqueNameAllocator.createTabletDirectoryName(manager.getContext(), split);
+    String dirName =
+        UniqueNameAllocator.createTabletDirectoryName(manager.getContext(), splitInfo.getSplit());
 
-    return new AddNewTablet(expectedExtent, split, dirName);
+    return new AddNewTablet(splitInfo, dirName);
   }
 
   @Override
   public void undo(long tid, Manager manager) throws Exception {
     // TODO is this called if isReady fails?
-    manager.cancelUnassignmentRequest(expectedExtent, tid);
+    manager.cancelUnassignmentRequest(splitInfo.getOriginal(), tid);
   }
 }

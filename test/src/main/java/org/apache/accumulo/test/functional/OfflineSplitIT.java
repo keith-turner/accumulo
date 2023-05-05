@@ -19,11 +19,14 @@
 package org.apache.accumulo.test.functional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
+import org.apache.accumulo.core.client.admin.TabletHostingGoal;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample;
@@ -47,6 +50,8 @@ public class OfflineSplitIT extends AccumuloClusterHarness {
           .setProperties(Map.of(Property.TABLE_SPLIT_THRESHOLD.getKey(), "2K"));
       c.tableOperations().create(tableName, newTableConf);
 
+      c.tableOperations().setTabletHostingGoal(tableName, new Range(), TabletHostingGoal.ALWAYS);
+
       var tid = TableId.of(c.tableOperations().tableIdMap().get(tableName));
       var e1 = new KeyExtent(tid, null, null);
 
@@ -62,7 +67,16 @@ public class OfflineSplitIT extends AccumuloClusterHarness {
 
       while (true) {
         context.getAmple().readTablets().forLevel(Ample.DataLevel.USER).build().stream()
-            .forEach(tm -> System.out.println(tm.getExtent() + " " + tm.getFilesMap()));
+            .forEach(tm -> {
+              var files = tm.getFilesMap().entrySet().stream()
+                  .map(e -> e.getKey().getFileName() + "=" + e.getValue())
+                  .collect(Collectors.toList());
+              var loc = tm.getLocation() == null ? null : tm.getLocation().getHostAndPort();
+              System.out.println(tm.getExtent() + " " + loc + " " + files);
+            });
+
+        System.out.println();
+
         Thread.sleep(10000);
       }
     }

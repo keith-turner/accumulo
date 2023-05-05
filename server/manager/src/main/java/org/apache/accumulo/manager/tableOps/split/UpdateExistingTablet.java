@@ -19,22 +19,19 @@
 package org.apache.accumulo.manager.tableOps.split;
 
 import org.apache.accumulo.core.client.ConditionalWriter;
-import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.fate.Repo;
+import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.TabletOperationId;
 import org.apache.accumulo.core.metadata.schema.TabletOperationType;
 import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.manager.tableOps.ManagerRepo;
-import org.apache.hadoop.io.Text;
 
 public class UpdateExistingTablet extends ManagerRepo {
   private static final long serialVersionUID = 1L;
-  private final KeyExtent expectedExtent;
-  private final Text split;
+  private final SplitInfo splitInfo;
 
-  public UpdateExistingTablet(KeyExtent expectedExtent, Text split) {
-    this.expectedExtent = expectedExtent;
-    this.split = split;
+  public UpdateExistingTablet(SplitInfo splitInfo) {
+    this.splitInfo = splitInfo;
   }
 
   @Override
@@ -42,29 +39,50 @@ public class UpdateExistingTablet extends ManagerRepo {
 
     var opid = TabletOperationId.from(TabletOperationType.SPLITTING, tid);
 
-    try (var tabletsMutator = manager.getContext().getAmple().conditionallyMutateTablets()) {
+    // Its important that if the repos fail and run again that we do not repeatedly half the files
+    // sizes. They way things are currently done across multiple repos that should be avoided.
+    // However, its some to consider for future changes.
 
-      tabletsMutator.mutateTablet(expectedExtent).requireOperation(opid)
-          .requirePrevEndRow(expectedExtent.prevEndRow()).putPrevEndRow(split).submit();
+    var originalTabletMetadata =
+        manager.getContext().getAmple().readTablet(splitInfo.getOriginal());
 
-      var result = tabletsMutator.process().get(expectedExtent);
+    if (originalTabletMetadata == null) {
+      // maybe this is step is running again and the new tablet exists
+      var newTabletMetadata = manager.getContext().getAmple().readTablet(splitInfo.getHigh());
 
-      if (result.getStatus() != ConditionalWriter.Status.ACCEPTED) {
-        // maybe this step is being run again and the update was already made
+      if (newTabletMetadata == null || newTabletMetadata.getOperationId() == null
+          || !newTabletMetadata.getOperationId().equals(opid)) {
+        throw new IllegalStateException("Failed to update existing tablet in split "
+            + splitInfo.getOriginal() + " " + splitInfo.getSplit());
+      }
 
-        // look for the new tablet
-        var newTabletMetadata = manager.getContext().getAmple()
-            .readTablet(new KeyExtent(expectedExtent.tableId(), expectedExtent.endRow(), split));
+    } else {
+      try (var tabletsMutator = manager.getContext().getAmple().conditionallyMutateTablets()) {
 
-        if (newTabletMetadata == null || newTabletMetadata.getOperationId() == null
-            || !newTabletMetadata.getOperationId().equals(opid)) {
-          throw new IllegalStateException(
-              "Failed to update existing tablet in split " + expectedExtent + " " + split);
+        var mutator = tabletsMutator.mutateTablet(splitInfo.getOriginal()).requireOperation(opid)
+            .requirePrevEndRow(splitInfo.getOriginal().prevEndRow());
+
+        mutator.putPrevEndRow(splitInfo.getSplit());
+
+        // update existing tablets file sizes
+        originalTabletMetadata.getFilesMap().forEach((f, v) -> {
+          // TODO use split percentage
+          mutator.putFile(f, new DataFileValue(v.getSize() - (v.getSize() / 2),
+              v.getNumEntries() - (v.getNumEntries() / 2), v.getTime()));
+        });
+
+        mutator.submit();
+
+        var result = tabletsMutator.process().get(splitInfo.getOriginal());
+
+        if (result.getStatus() != ConditionalWriter.Status.ACCEPTED) {
+          // maybe this step is being run again and the update was already made
+          throw new IllegalStateException("Failed to update existing tablet in split "
+              + splitInfo.getOriginal() + " " + splitInfo.getSplit() + " " + result.getStatus());
+
         }
-
       }
     }
-
-    return new DeleteOperationIds(expectedExtent, split);
+    return new DeleteOperationIds(splitInfo);
   }
 }

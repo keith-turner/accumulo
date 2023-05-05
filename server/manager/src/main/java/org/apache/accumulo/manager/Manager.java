@@ -575,27 +575,26 @@ public class Manager extends AbstractServer
       Collections.synchronizedMap(new HashMap<>());
 
   public void requestUnassignment(KeyExtent tablet, long fateTxId) {
-
     unassignmentRequest.compute(tablet, (k, v) -> {
       Set<Long> txids = v == null ? new HashSet<>() : v;
       txids.add(fateTxId);
-      return v;
+      return txids;
     });
 
     nextEvent.event("Unassignment requested %s", tablet);
   }
 
   public void cancelUnassignmentRequest(KeyExtent tablet, long fateTxid) {
-    unassignmentRequest.compute(tablet, (k, v) -> {
-      if (v != null) {
-        v.remove(fateTxid);
-        if (v.isEmpty()) {
-          return null;
-        }
+    unassignmentRequest.computeIfPresent(tablet, (k, v) -> {
+      v.remove(fateTxid);
+      if (v.isEmpty()) {
+        return null;
       }
 
       return v;
     });
+
+    nextEvent.event("Unassignment request canceled %s", tablet);
   }
 
   public boolean isUnassignmentRequested(KeyExtent extent) {

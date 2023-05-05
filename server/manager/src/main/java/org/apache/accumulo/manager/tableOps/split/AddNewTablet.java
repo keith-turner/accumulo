@@ -27,32 +27,29 @@ import org.apache.accumulo.core.metadata.schema.TabletOperationId;
 import org.apache.accumulo.core.metadata.schema.TabletOperationType;
 import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.manager.tableOps.ManagerRepo;
-import org.apache.hadoop.io.Text;
 
 import com.google.common.base.Preconditions;
 
 public class AddNewTablet extends ManagerRepo {
   private static final long serialVersionUID = 1L;
-  private final KeyExtent expectedExtent;
-  private final Text split;
+  private final SplitInfo splitInfo;
   private final String dirName;
 
-  public AddNewTablet(KeyExtent expectedExtent, Text split, String dirName) {
-    this.expectedExtent = expectedExtent;
-    this.split = split;
+  public AddNewTablet(SplitInfo splitInfo, String dirName) {
+    this.splitInfo = splitInfo;
     this.dirName = dirName;
   }
 
   @Override
   public Repo<Manager> call(long tid, Manager manager) throws Exception {
-    TabletMetadata tabletMetadata = manager.getContext().getAmple().readTablet(expectedExtent);
+    TabletMetadata tabletMetadata =
+        manager.getContext().getAmple().readTablet(splitInfo.getOriginal());
 
     var opid = TabletOperationId.from(TabletOperationType.SPLITTING, tid);
     Preconditions
         .checkState(tabletMetadata != null && tabletMetadata.getOperationId().equals(opid));
 
-    KeyExtent newExtent =
-        new KeyExtent(expectedExtent.tableId(), split, expectedExtent.prevEndRow());
+    KeyExtent newExtent = splitInfo.getLow();
 
     try (var tabletsMutator = manager.getContext().getAmple().conditionallyMutateTablets()) {
 
@@ -73,7 +70,7 @@ public class AddNewTablet extends ManagerRepo {
 
       // TODO determine which files go to where
       tabletMetadata.getFilesMap().forEach((f, v) -> {
-        // TODO use floats?
+        // TODO use split percentage
         mutator.putFile(f, new DataFileValue(v.getSize() / 2, v.getNumEntries() / 2, v.getTime()));
       });
 
@@ -82,10 +79,10 @@ public class AddNewTablet extends ManagerRepo {
 
       // not expecting this to fail
       // TODO message with context if it does
-      Preconditions.checkState(tabletsMutator.process().get(expectedExtent).getStatus()
-          == ConditionalWriter.Status.ACCEPTED);
+      Preconditions.checkState(
+          tabletsMutator.process().get(newExtent).getStatus() == ConditionalWriter.Status.ACCEPTED);
     }
 
-    return new UpdateExistingTablet(expectedExtent, split);
+    return new UpdateExistingTablet(splitInfo);
   }
 }
