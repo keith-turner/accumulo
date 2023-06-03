@@ -21,7 +21,6 @@ package org.apache.accumulo.server.compaction.logic;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -60,14 +59,12 @@ public class CompactionJobGenerator {
         .collect(Collectors.toUnmodifiableSet());
   }
 
-  Map<CompactionServiceId,List<CompactionJob>> generateJobs(ServiceEnvironment env,
-      CompactionKind kind, TabletMetadata tablet) {
+  Collection<CompactionJob> generateJobs(ServiceEnvironment env, CompactionKind kind,
+      TabletMetadata tablet) {
 
     CompactionServiceId serviceId = dispatch(env, kind, tablet);
 
-    Collection<CompactionJob> jobs = planCompactions(env, serviceId, kind, tablet);
-
-    return null;
+    return planCompactions(env, serviceId, kind, tablet);
   }
 
   private CompactionServiceId dispatch(ServiceEnvironment env, CompactionKind kind,
