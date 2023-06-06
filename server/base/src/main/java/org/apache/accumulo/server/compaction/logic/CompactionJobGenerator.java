@@ -26,6 +26,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
@@ -46,31 +49,38 @@ import org.apache.accumulo.core.util.compaction.CompactionJobImpl;
 import org.apache.accumulo.core.util.compaction.CompactionPlanImpl;
 import org.apache.accumulo.core.util.compaction.CompactionServicesConfig;
 
+//TODO can this class move to the manager pkg
 public class CompactionJobGenerator {
 
   private final CompactionServicesConfig servicesConfig;
   private final Map<CompactionServiceId,CompactionPlanner> planners = new HashMap<>();
-  private final Map<TableId,CompactionDispatcher> dispatchers = new HashMap<>();
+  private final Cache<TableId,CompactionDispatcher> dispatchers;
   private final Set<CompactionServiceId> serviceIds;
+  private final PluginEnvironment env;
 
-  CompactionJobGenerator(ServiceEnvironment env) {
+  public CompactionJobGenerator(PluginEnvironment env) {
     servicesConfig = new CompactionServicesConfig(env.getConfiguration());
     serviceIds = servicesConfig.getPlanners().keySet().stream().map(CompactionServiceId::of)
         .collect(Collectors.toUnmodifiableSet());
+
+    dispatchers = Caffeine.newBuilder().maximumSize(10).build();
+    this.env = env;
   }
 
-  Collection<CompactionJob> generateJobs(ServiceEnvironment env, CompactionKind kind,
+  public Collection<CompactionJob> generateJobs(
       TabletMetadata tablet) {
 
-    CompactionServiceId serviceId = dispatch(env, kind, tablet);
+    // TODO check if tablet has selected files
 
-    return planCompactions(env, serviceId, kind, tablet);
+    CompactionServiceId serviceId = dispatch(CompactionKind.SYSTEM, tablet);
+
+    return planCompactions(serviceId, CompactionKind.SYSTEM, tablet);
   }
 
-  private CompactionServiceId dispatch(ServiceEnvironment env, CompactionKind kind,
+  private CompactionServiceId dispatch(CompactionKind kind,
       TabletMetadata tablet) {
-    CompactionDispatcher dispatcher =
-        dispatchers.computeIfAbsent(tablet.getTableId(), tableId -> createDispatcher(env, tableId));
+
+    CompactionDispatcher dispatcher = dispatchers.get(tablet.getTableId(), this::createDispatcher);
 
     CompactionDispatcher.DispatchParameters dispatchParams =
         new CompactionDispatcher.DispatchParameters() {
@@ -81,7 +91,7 @@ public class CompactionJobGenerator {
 
           @Override
           public ServiceEnvironment getServiceEnv() {
-            return env;
+            return (ServiceEnvironment) env;
           }
 
           @Override
@@ -99,7 +109,7 @@ public class CompactionJobGenerator {
     return dispatcher.dispatch(dispatchParams).getService();
   }
 
-  private CompactionDispatcher createDispatcher(ServiceEnvironment env, TableId tableId) {
+  private CompactionDispatcher createDispatcher(TableId tableId) {
 
     var conf = env.getConfiguration();
 
@@ -126,7 +136,7 @@ public class CompactionJobGenerator {
 
       @Override
       public ServiceEnvironment getServiceEnv() {
-        return env;
+        return (ServiceEnvironment) env;
       }
     };
 
@@ -142,11 +152,11 @@ public class CompactionJobGenerator {
     return dispatcher;
   }
 
-  private Collection<CompactionJob> planCompactions(ServiceEnvironment env,
+  private Collection<CompactionJob> planCompactions(
       CompactionServiceId serviceId, CompactionKind kind, TabletMetadata tablet) {
 
     CompactionPlanner planner =
-        planners.computeIfAbsent(serviceId, sid -> createPlanner(env, serviceId));
+        planners.computeIfAbsent(serviceId, sid -> createPlanner(serviceId));
 
     // selecting indicator
     // selected files
@@ -187,7 +197,7 @@ public class CompactionJobGenerator {
 
       @Override
       public ServiceEnvironment getServiceEnvironment() {
-        return env;
+        return (ServiceEnvironment) env;
       }
 
       @Override
@@ -237,7 +247,7 @@ public class CompactionJobGenerator {
     return planner.makePlan(params).getJobs();
   }
 
-  private CompactionPlanner createPlanner(ServiceEnvironment env, CompactionServiceId serviceId) {
+  private CompactionPlanner createPlanner(CompactionServiceId serviceId) {
 
     String plannerClassName = servicesConfig.getPlanners().get(serviceId.canonical());
 
@@ -251,7 +261,7 @@ public class CompactionJobGenerator {
     CompactionPlanner.InitParameters initParameters = new CompactionPlanner.InitParameters() {
       @Override
       public ServiceEnvironment getServiceEnvironment() {
-        return env;
+        return (ServiceEnvironment) env;
       }
 
       @Override

@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
 
+import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
@@ -55,7 +56,7 @@ public class CompactionServicesConfig {
     return aconf.getAllPropertiesWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX);
   }
 
-  public CompactionServicesConfig(ServiceEnvironment.Configuration conf) {
+  public CompactionServicesConfig(PluginEnvironment.Configuration conf) {
     // TODO will probably not need rate limit eventually and the 2nd param predicate can go away
     this(conf.getWithPrefix(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey()),
         property -> conf.isSet(property.getKey()));

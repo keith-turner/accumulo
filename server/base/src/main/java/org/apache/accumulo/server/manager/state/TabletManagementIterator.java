@@ -62,6 +62,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Su
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.util.AddressUtil;
+import org.apache.accumulo.server.compaction.logic.CompactionJobGenerator;
 import org.apache.hadoop.io.DataInputBuffer;
 import org.apache.hadoop.io.DataOutputBuffer;
 import org.slf4j.Logger;
@@ -86,6 +87,7 @@ public class TabletManagementIterator extends SkippingIterator {
   private static final String MIGRATIONS_OPTION = "migrations";
   private static final String MANAGER_STATE_OPTION = "managerState";
   private static final String SHUTTING_DOWN_OPTION = "shuttingDown";
+  private CompactionJobGenerator compactionGenerator;
 
   private static void setCurrentServers(final IteratorSetting cfg,
       final Set<TServerInstance> goodServers) {
@@ -329,6 +331,7 @@ public class TabletManagementIterator extends SkippingIterator {
     if (shuttingDown != null) {
       current.removeAll(shuttingDown);
     }
+    compactionGenerator = new CompactionJobGenerator(env.getPluginEnv());
   }
 
   @Override
@@ -418,7 +421,9 @@ public class TabletManagementIterator extends SkippingIterator {
         reasonsToReturnThisTablet.add(ManagementAction.NEEDS_SPLITTING);
       }
 
-      // TODO: Add compaction logic
+      if(!compactionGenerator.generateJobs(tm).isEmpty()){
+        reasonsToReturnThisTablet.add(ManagementAction.NEEDS_COMPACTING);
+      }
     }
 
   }
