@@ -50,9 +50,11 @@ import org.apache.accumulo.core.manager.thrift.ManagerState;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletState;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ChoppedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CurrentLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.FutureLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.HostingColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
@@ -267,6 +269,7 @@ public class TabletManagementIterator extends SkippingIterator {
   }
 
   public static void configureScanner(final ScannerBase scanner, final CurrentState state) {
+    // TODO so many columns are being fetch it may not make sense to fetch columns
     TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
     scanner.fetchColumnFamily(CurrentLocationColumnFamily.NAME);
     scanner.fetchColumnFamily(FutureLocationColumnFamily.NAME);
@@ -276,6 +279,7 @@ public class TabletManagementIterator extends SkippingIterator {
     scanner.fetchColumnFamily(ChoppedColumnFamily.NAME);
     scanner.fetchColumnFamily(HostingColumnFamily.NAME);
     scanner.fetchColumnFamily(DataFileColumnFamily.NAME);
+    scanner.fetchColumnFamily(ExternalCompactionColumnFamily.NAME);
     ServerColumnFamily.OPID_COLUMN.fetch(scanner);
     scanner.addScanIterator(new IteratorSetting(1000, "wholeRows", WholeRowIterator.class));
     IteratorSetting tabletChange =
@@ -421,7 +425,8 @@ public class TabletManagementIterator extends SkippingIterator {
         reasonsToReturnThisTablet.add(ManagementAction.NEEDS_SPLITTING);
       }
 
-      if(!compactionGenerator.generateJobs(tm).isEmpty()){
+      if (!compactionGenerator.generateJobs(tm).isEmpty()) {
+        // TODO if it needs a split, lets not do compaction check
         reasonsToReturnThisTablet.add(ManagementAction.NEEDS_COMPACTING);
       }
     }

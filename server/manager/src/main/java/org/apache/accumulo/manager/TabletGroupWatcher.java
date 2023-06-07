@@ -90,6 +90,8 @@ import org.apache.accumulo.manager.state.MergeStats;
 import org.apache.accumulo.manager.state.TableCounts;
 import org.apache.accumulo.manager.state.TableStats;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.ServiceEnvironmentImpl;
+import org.apache.accumulo.server.compaction.logic.CompactionJobGenerator;
 import org.apache.accumulo.server.conf.TableConfiguration;
 import org.apache.accumulo.server.gc.AllVolumesDirectory;
 import org.apache.accumulo.server.log.WalStateManager;
@@ -237,6 +239,10 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         ManagerState managerState = manager.getManagerState();
         int[] counts = new int[TabletState.values().length];
         stats.begin();
+
+        CompactionJobGenerator compactionGenerator =
+            new CompactionJobGenerator(new ServiceEnvironmentImpl(manager.getContext()));
+
         // Walk through the tablets in our store, and work tablets
         // towards their goal
         iter = store.iterator();
@@ -320,6 +326,12 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
             }
             // ELASITICITY_TODO: remove below
             // sendSplitRequest(mergeStats.getMergeInfo(), state, tm);
+          }
+
+          if (actions.contains(ManagementAction.NEEDS_COMPACTING)) {
+            var jobs = compactionGenerator.generateJobs(tm);
+            LOG.debug("{} may need compacting.", tm.getExtent());
+            manager.getCompactionQueues().add(tm.getExtent(), jobs);
           }
 
           if (actions.contains(ManagementAction.NEEDS_LOCATION_UPDATE)) {

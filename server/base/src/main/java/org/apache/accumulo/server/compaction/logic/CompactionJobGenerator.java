@@ -26,8 +26,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.Property;
@@ -49,6 +47,9 @@ import org.apache.accumulo.core.util.compaction.CompactionJobImpl;
 import org.apache.accumulo.core.util.compaction.CompactionPlanImpl;
 import org.apache.accumulo.core.util.compaction.CompactionServicesConfig;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+
 //TODO can this class move to the manager pkg
 public class CompactionJobGenerator {
 
@@ -67,18 +68,17 @@ public class CompactionJobGenerator {
     this.env = env;
   }
 
-  public Collection<CompactionJob> generateJobs(
-      TabletMetadata tablet) {
+  public Collection<CompactionJob> generateJobs(TabletMetadata tablet) {
 
     // TODO check if tablet has selected files
 
+    // TODO do not want user configured plugins to cause exceptions that prevents tablets from being assigned.  So probably want to catch exceptions and log, but not too spammily.
     CompactionServiceId serviceId = dispatch(CompactionKind.SYSTEM, tablet);
 
     return planCompactions(serviceId, CompactionKind.SYSTEM, tablet);
   }
 
-  private CompactionServiceId dispatch(CompactionKind kind,
-      TabletMetadata tablet) {
+  private CompactionServiceId dispatch(CompactionKind kind, TabletMetadata tablet) {
 
     CompactionDispatcher dispatcher = dispatchers.get(tablet.getTableId(), this::createDispatcher);
 
@@ -152,8 +152,8 @@ public class CompactionJobGenerator {
     return dispatcher;
   }
 
-  private Collection<CompactionJob> planCompactions(
-      CompactionServiceId serviceId, CompactionKind kind, TabletMetadata tablet) {
+  private Collection<CompactionJob> planCompactions(CompactionServiceId serviceId,
+      CompactionKind kind, TabletMetadata tablet) {
 
     CompactionPlanner planner =
         planners.computeIfAbsent(serviceId, sid -> createPlanner(serviceId));
@@ -266,7 +266,7 @@ public class CompactionJobGenerator {
 
       @Override
       public Map<String,String> getOptions() {
-        return servicesConfig.getPlanners();
+        return servicesConfig.getOptions().get(serviceId.canonical());
       }
 
       @Override
@@ -280,7 +280,7 @@ public class CompactionJobGenerator {
           @Override
           public CompactionExecutorId createExecutor(String name, int threads) {
             // TODO need to deprecate
-            throw new UnsupportedOperationException();
+            return CompactionExecutorIdImpl.internalId(serviceId, name);
           }
 
           @Override

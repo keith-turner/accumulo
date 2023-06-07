@@ -122,6 +122,7 @@ import org.apache.accumulo.manager.upgrade.UpgradeCoordinator;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.HighlyAvailableService;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.compaction.queue.CompactionJobQueues;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
@@ -615,6 +616,12 @@ public class Manager extends AbstractServer
 
   public Splitter getSplitter() {
     return splitter;
+  }
+
+  private CompactionJobQueues compactionJobQueues;
+
+  public CompactionJobQueues getCompactionQueues() {
+    return compactionJobQueues;
   }
 
   enum TabletGoalState {
@@ -1232,6 +1239,11 @@ public class Manager extends AbstractServer
       throw new IllegalStateException("Unable to read " + zroot + Constants.ZRECOVERY, e);
     }
 
+    this.splitter = new Splitter(context);
+    this.splitter.start();
+
+    this.compactionJobQueues = new CompactionJobQueues();
+
     watchers.add(new TabletGroupWatcher(this,
         TabletStateStore.getStoreForLevel(DataLevel.USER, context, this), null) {
       @Override
@@ -1331,9 +1343,6 @@ public class Manager extends AbstractServer
     } catch (KeeperException | InterruptedException e) {
       throw new IllegalStateException("Exception updating manager lock", e);
     }
-
-    this.splitter = new Splitter(context);
-    this.splitter.start();
 
     while (!clientService.isServing()) {
       sleepUninterruptibly(100, MILLISECONDS);
