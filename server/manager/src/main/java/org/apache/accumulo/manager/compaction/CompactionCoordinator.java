@@ -58,6 +58,7 @@ import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.rpc.ThriftUtil;
+import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.InputFile;
@@ -66,6 +67,7 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.TabletServerClientService;
+import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
@@ -77,6 +79,8 @@ import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.security.SecurityOperation;
 import org.apache.accumulo.server.tablets.TabletNameGenerator;
 import org.apache.thrift.TException;
+import org.apache.thrift.transport.TTransport;
+import org.apache.thrift.transport.TTransportException;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -265,7 +269,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         // is dead. In this cases the compaction is not actually running.
         RUNNING_CACHE.put(ExternalCompactionId.of(result.getExternalCompactionId()),
             new RunningCompaction(result, compactorAddress, queue));
-        LOG.debug("Returning external job {} to {}", result.externalCompactionId, compactorAddress);
+        LOG.debug("Returning external job {} to {} with {} files", result.externalCompactionId,
+            compactorAddress, ecm.getJobFiles().size());
       } else {
         LOG.debug("Unable to reserve compaction for {} ", metaJob.getTabletMetadata().getExtent());
       }
@@ -282,6 +287,21 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     return result;
 
+  }
+
+  /**
+   * Return the Thrift client for the TServer
+   *
+   * @param tserver tserver instance
+   * @return thrift client
+   * @throws TTransportException thrift error
+   */
+  protected TabletServerClientService.Client getTabletServerConnection(TServerInstance tserver)
+      throws TTransportException {
+    LiveTServerSet.TServerConnection connection = tserverSet.getConnection(tserver);
+    TTransport transport =
+        this.ctx.getTransportPool().getTransport(connection.getAddress(), 0, this.ctx);
+    return ThriftUtil.createClient(ThriftClientTypes.TABLET_SERVER, transport);
   }
 
   private ExternalCompactionMetadata reserveCompaction(CompactionJobQueues.MetaJob metaJob,
@@ -389,10 +409,22 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         extent);
     final var ecid = ExternalCompactionId.of(externalCompactionId);
 
-    // TODO could maybe cache this info...
-    var tabletMeta = ctx.getAmple().readTablet(extent, TabletMetadata.ColumnType.ECOMP);
+    var tabletMeta = ctx.getAmple().readTablet(extent, TabletMetadata.ColumnType.ECOMP,
+        TabletMetadata.ColumnType.LOCATION);
+
+    if (tabletMeta == null) {
+      LOG.debug("Received completion notification for nonexistent tablet {} {}", ecid, extent);
+      return;
+    }
 
     ExternalCompactionMetadata ecm = tabletMeta.getExternalCompactions().get(ecid);
+
+    if (ecm == null) {
+      LOG.debug("Received completion notification for unknown compaction {} {}", ecid, extent);
+      return;
+    }
+
+    // TODO this code does not handle race conditions or faults.
 
     ReferencedTabletFile newDatafile =
         TabletNameGenerator.computeCompactionFileDest(ecm.getCompactTmpName());
@@ -405,30 +437,55 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       throw new RuntimeException(e);
     }
 
+    commitCompaction(stats, extent, ecid, ecm, newDatafile);
+
+    // compactionFinalizer.commitCompaction(ecid, extent, stats.fileSize, stats.entriesWritten);
+
+    refreshTablet(tabletMeta);
+
+    // It's possible that RUNNING might not have an entry for this ecid in the case
+    // of a coordinator restart when the Coordinator can't find the TServer for the
+    // corresponding external compaction.
+    recordCompletion(ecid);
+  }
+
+  private void refreshTablet(TabletMetadata metadata) {
+    var location = metadata.getLocation();
+    if (location != null) {
+      TabletServerClientService.Client client = null;
+      try {
+        client = getTabletServerConnection(location.getServerInstance());
+        client.refreshTablets(TraceUtil.traceInfo(), ctx.rpcCreds(),
+            List.of(metadata.getExtent().toThrift()));
+      } catch (TException e) {
+        // TODO
+        throw new RuntimeException(e);
+      } finally {
+        returnTServerClient(client);
+      }
+    }
+  }
+
+  private void commitCompaction(TCompactionStats stats, KeyExtent extent, ExternalCompactionId ecid,
+      ExternalCompactionMetadata ecm, ReferencedTabletFile newDatafile) {
     try (var tabletsMutator = ctx.getAmple().conditionallyMutateTablets()) {
       var tabletMutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation()
           .requirePrevEndRow(extent.prevEndRow()).requireCompaction(ecid);
+
       ecm.getJobFiles().forEach(tabletMutator::requireFile);
       ecm.getJobFiles().forEach(tabletMutator::deleteFile);
       tabletMutator.deleteExternalCompaction(ecid);
       tabletMutator.putFile(newDatafile,
           new DataFileValue(stats.getFileSize(), stats.getEntriesWritten()));
 
-      // TODO do something in rejection handler
-      tabletMutator.submit(tabletMetadata -> false);
+      tabletMutator
+          .submit(tabletMetadata -> !tabletMetadata.getExternalCompactions().containsKey(ecid));
 
       // TODO check return value
       tabletsMutator.process();
 
       // TODO need to reliably notify tablet, may be able to do this in finalizer
     }
-
-    // compactionFinalizer.commitCompaction(ecid, extent, stats.fileSize, stats.entriesWritten);
-
-    // It's possible that RUNNING might not have an entry for this ecid in the case
-    // of a coordinator restart when the Coordinator can't find the TServer for the
-    // corresponding external compaction.
-    recordCompletion(ecid);
   }
 
   @Override
@@ -501,11 +558,23 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     // grab a snapshot of the ids in the set before reading the metadata table. This is done to
     // avoid removing things that are added while reading the metadata.
-    Set<ExternalCompactionId> idsSnapshot = Set.copyOf(RUNNING_CACHE.keySet());
+    Set<ExternalCompactionId> idsSnapshot = Set.copyOf(RUNNING_CACHE.keySet()); // TODO tracking all
+                                                                                // the external
+                                                                                // compactions
+                                                                                // running in memory
+                                                                                // could cause OOME
+                                                                                // in the case where
+                                                                                // there are a large
+                                                                                // numbber of
+                                                                                // compactions
+                                                                                // runnnig
 
     // grab the ids that are listed as running in the metadata table. It important that this is done
     // after getting the snapshot.
-    Set<ExternalCompactionId> idsInMetadata = readExternalCompactionIds();
+    Set<ExternalCompactionId> idsInMetadata = readExternalCompactionIds(); // TODO avoid reading
+                                                                           // into memory and just
+                                                                           // scan metadata reading
+                                                                           // stuff from
 
     var idsToRemove = Sets.difference(idsSnapshot, idsInMetadata);
 

@@ -18,9 +18,6 @@
  */
 package org.apache.accumulo.manager.compaction;
 
-public class CompactionCoordinatorTest {
-  // TODO this test was tightly coupled to the internals of CompactionCoordinator and with all the
-  // changes to CompactionCoordinator it did not compile. Its contents were deleted to get things
-  // compiling, however need to go and look at the test and determine what to carry forward with
-  // CompactionCoordinator.
+public class CompactionRefresher {
+  // TODO this class should read the refresh entries and notify tservers
 }

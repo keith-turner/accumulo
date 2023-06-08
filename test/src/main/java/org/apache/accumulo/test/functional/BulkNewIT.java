@@ -516,15 +516,15 @@ public class BulkNewIT extends SharedMiniClusterBase {
       FileSystem fs = getCluster().getFileSystem();
       fs.mkdirs(new Path(dir));
 
-      addSplits(c, tableName, "0333");
+      addSplits(c, tableName, "5000");
 
-      for(int i = 0; i < 100; i++) {
-        writeData(dir + "/f"+i+".", aconf, i*100, (i+1)*100-1);
+      for (int i = 0; i < 100; i++) {
+        writeData(dir + "/f" + i + ".", aconf, i * 100, (i + 1) * 100 - 1);
       }
 
       c.tableOperations().importDirectory(dir).to(tableName).load();
 
-     // verifyData(c, tableName, 0, 100*100-1, false);
+      verifyData(c, tableName, 0, 100 * 100 - 1, false);
 
       Thread.sleep(600000);
     }

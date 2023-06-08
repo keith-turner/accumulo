@@ -79,7 +79,12 @@ public class CompactionJobQueues {
   private void add(TabletMetadata tabletMetadata, CompactionExecutorId executorId,
       Collection<CompactionJob> jobs) {
 
-    log.info("Adding job to queue {} {} {}", executorId, tabletMetadata.getExtent(), jobs);
+    // TODO log level
+    if (log.isInfoEnabled()) {
+      log.info("Adding jobs to queue {} {} {}", executorId, tabletMetadata.getExtent(),
+          jobs.stream().map(job -> "#files:" + job.getFiles().size() + ",prio:" + job.getPriority()
+              + ",kind:" + job.getKind()).collect(Collectors.toList()));
+    }
 
     // TODO make max size configurable
     priorityQueues.computeIfAbsent(executorId, eid -> new CompactionJobPriorityQueue(eid, 10000))
