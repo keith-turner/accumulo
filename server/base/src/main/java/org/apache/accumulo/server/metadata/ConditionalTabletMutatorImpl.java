@@ -37,7 +37,6 @@ import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
@@ -139,7 +138,8 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
   @Override
   public Ample.ConditionalTabletMutator requireAbsentCompactions() {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    IteratorSetting is = new IteratorSetting(INITIAL_ITERATOR_PRIO, CompactionsExistsIterator.class);
+    IteratorSetting is =
+        new IteratorSetting(INITIAL_ITERATOR_PRIO, CompactionsExistsIterator.class);
     Condition c = new Condition(ExternalCompactionColumnFamily.STR_NAME, "").setIterators(is);
     mutation.addCondition(c);
     return this;
@@ -150,7 +150,7 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
     IteratorSetting is = new IteratorSetting(INITIAL_ITERATOR_PRIO, PresentIterator.class);
     Condition c = new Condition(ExternalCompactionColumnFamily.STR_NAME, ecid.canonical())
-            .setValue(PresentIterator.VALUE).setIterators(is);
+        .setValue(PresentIterator.VALUE).setIterators(is);
     mutation.addCondition(c);
     return this;
   }

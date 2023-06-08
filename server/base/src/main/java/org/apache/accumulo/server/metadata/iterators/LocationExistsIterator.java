@@ -20,7 +20,6 @@ package org.apache.accumulo.server.metadata.iterators;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.List;
 import java.util.Set;
 
 import org.apache.accumulo.core.data.ArrayByteSequence;

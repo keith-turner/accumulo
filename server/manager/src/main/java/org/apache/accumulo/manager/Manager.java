@@ -1153,13 +1153,16 @@ public class Manager extends AbstractServer
     final ServerContext context = getContext();
     final String zroot = getZooKeeperRoot();
 
+    this.compactionJobQueues = new CompactionJobQueues();
+
     // ACCUMULO-4424 Put up the Thrift servers before getting the lock as a sign of process health
     // when a hot-standby
     //
     // Start the Manager's Fate Service
     fateServiceHandler = new FateServiceHandler(this);
     managerClientHandler = new ManagerClientServiceHandler(this);
-    compactionCoordinator = new CompactionCoordinator(context, tserverSet, security);
+    compactionCoordinator =
+        new CompactionCoordinator(context, tserverSet, security, compactionJobQueues);
     // Start the Manager's Client service
     // Ensure that calls before the manager gets the lock fail
     ManagerClientService.Iface haProxy =
@@ -1251,8 +1254,6 @@ public class Manager extends AbstractServer
 
     this.splitter = new Splitter(context);
     this.splitter.start();
-
-    this.compactionJobQueues = new CompactionJobQueues();
 
     watchers.add(new TabletGroupWatcher(this,
         TabletStateStore.getStoreForLevel(DataLevel.USER, context, this), null) {

@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.server.tablets;
 
+import java.util.function.Consumer;
+
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.file.FileOperations;
@@ -31,63 +33,66 @@ import org.apache.accumulo.server.fs.VolumeChooserEnvironmentImpl;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 
-import java.io.IOException;
-import java.util.function.Consumer;
-
 /**
  * contains code related to generating new file path for a tablet
  */
 public class TabletNameGenerator {
 
-    public static String createTabletDirectoryName(ServerContext context, Text endRow) {
-      if (endRow == null) {
-        return MetadataSchema.TabletsSection.ServerColumnFamily.DEFAULT_TABLET_DIR_NAME;
-      } else {
-        UniqueNameAllocator namer = context.getUniqueNameAllocator();
-        return Constants.GENERATED_TABLET_DIRECTORY_PREFIX + namer.getNextName();
-      }
+  public static String createTabletDirectoryName(ServerContext context, Text endRow) {
+    if (endRow == null) {
+      return MetadataSchema.TabletsSection.ServerColumnFamily.DEFAULT_TABLET_DIR_NAME;
+    } else {
+      UniqueNameAllocator namer = context.getUniqueNameAllocator();
+      return Constants.GENERATED_TABLET_DIRECTORY_PREFIX + namer.getNextName();
     }
+  }
 
+  public static String chooseTabletDir(ServerContext context, KeyExtent extent, String dirName,
+      Consumer<String> dirCreator) {
+    // TODO tablet creates dir if it does not exists
+    VolumeChooserEnvironment chooserEnv =
+        new VolumeChooserEnvironmentImpl(extent.tableId(), extent.endRow(), context);
+    String dirUri = context.getVolumeManager().choose(chooserEnv, context.getBaseUris())
+        + Constants.HDFS_TABLES_DIR + Path.SEPARATOR + extent.tableId() + Path.SEPARATOR + dirName;
+    dirCreator.accept(dirUri);
+    return dirUri;
+  }
 
-    public static String chooseTabletDir(ServerContext context, KeyExtent extent, String dirName, Consumer<String> dirCreator) {
-        //TODO tablet creates dir if it does not exists
-      VolumeChooserEnvironment chooserEnv =
-          new VolumeChooserEnvironmentImpl(extent.tableId(), extent.endRow(), context);
-      String dirUri = context.getVolumeManager().choose(chooserEnv, context.getBaseUris())
-          + Constants.HDFS_TABLES_DIR + Path.SEPARATOR + extent.tableId() + Path.SEPARATOR + dirName;
-      dirCreator.accept(dirUri);
-      return dirUri;
+  public static ReferencedTabletFile getNextDataFilename(FilePrefix prefix, ServerContext context,
+      KeyExtent extent, String dirName, Consumer<String> dirCreator) {
+    String extension =
+        FileOperations.getNewFileExtension(context.getTableConfiguration(extent.tableId()));
+    return new ReferencedTabletFile(
+        new Path(chooseTabletDir(context, extent, dirName, dirCreator) + "/" + prefix.toPrefix()
+            + context.getUniqueNameAllocator().getNextName() + "." + extension));
+  }
+
+  public static ReferencedTabletFile getNextDataFilenameForMajc(boolean propagateDeletes,
+      ServerContext context, KeyExtent extent, String dirName, Consumer<String> dirCreator) {
+    String tmpFileName = getNextDataFilename(
+        !propagateDeletes ? FilePrefix.MAJOR_COMPACTION_ALL_FILES : FilePrefix.MAJOR_COMPACTION,
+        context, extent, dirName, dirCreator).getMetaInsert() + "_tmp";
+    return new ReferencedTabletFile(new Path(tmpFileName));
+  }
+
+  public static ReferencedTabletFile getNextDataFilenameForMajc(boolean propagateDeletes,
+      ServerContext context, TabletMetadata tabletMetadata) {
+    String tmpFileName = getNextDataFilename(
+        !propagateDeletes ? FilePrefix.MAJOR_COMPACTION_ALL_FILES : FilePrefix.MAJOR_COMPACTION,
+        context, tabletMetadata.getExtent(), tabletMetadata.getDirName(), dirName -> {})
+        .getMetaInsert() + "_tmp";
+    return new ReferencedTabletFile(new Path(tmpFileName));
+  }
+
+  public static ReferencedTabletFile computeCompactionFileDest(ReferencedTabletFile tmpFile) {
+    String newFilePath = tmpFile.getMetaInsert();
+    int idx = newFilePath.indexOf("_tmp");
+    if (idx > 0) {
+      newFilePath = newFilePath.substring(0, idx);
+    } else {
+      throw new IllegalArgumentException(
+          "Expected compaction tmp file " + tmpFile.getMetaInsert() + " to have suffix '_tmp'");
     }
-
-    public static ReferencedTabletFile getNextDataFilename(FilePrefix prefix, ServerContext context, KeyExtent extent, String dirName, Consumer<String> dirCreator) {
-        String extension = FileOperations.getNewFileExtension(context.getTableConfiguration(extent.tableId()));
-        return new ReferencedTabletFile(new Path(chooseTabletDir(context, extent, dirName, dirCreator) + "/" + prefix.toPrefix()
-                + context.getUniqueNameAllocator().getNextName() + "." + extension));
-    }
-
-    public static ReferencedTabletFile getNextDataFilenameForMajc(boolean propagateDeletes, ServerContext context, KeyExtent extent, String dirName, Consumer<String> dirCreator) {
-        String tmpFileName = getNextDataFilename(
-                !propagateDeletes ? FilePrefix.MAJOR_COMPACTION_ALL_FILES : FilePrefix.MAJOR_COMPACTION, context, extent, dirName, dirCreator)
-                .getMetaInsert() + "_tmp";
-        return new ReferencedTabletFile(new Path(tmpFileName));
-    }
-
-    public static ReferencedTabletFile getNextDataFilenameForMajc(boolean propagateDeletes, ServerContext context, TabletMetadata tabletMetadata) {
-        String tmpFileName = getNextDataFilename(
-                !propagateDeletes ? FilePrefix.MAJOR_COMPACTION_ALL_FILES : FilePrefix.MAJOR_COMPACTION, context, tabletMetadata.getExtent(), tabletMetadata.getDirName(), dirName->{})
-                .getMetaInsert() + "_tmp";
-        return new ReferencedTabletFile(new Path(tmpFileName));
-    }
-
-    public static ReferencedTabletFile computeCompactionFileDest(ReferencedTabletFile tmpFile) {
-      String newFilePath = tmpFile.getMetaInsert();
-      int idx = newFilePath.indexOf("_tmp");
-      if (idx > 0) {
-        newFilePath = newFilePath.substring(0, idx);
-      } else {
-        throw new IllegalArgumentException(
-            "Expected compaction tmp file " + tmpFile.getMetaInsert() + " to have suffix '_tmp'");
-      }
-      return new ReferencedTabletFile(new Path(newFilePath));
-    }
+    return new ReferencedTabletFile(new Path(newFilePath));
+  }
 }

@@ -65,7 +65,6 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FilePrefix;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.iteratorsImpl.system.SourceSwitchingIterator;
@@ -246,18 +245,21 @@ public class Tablet extends TabletBase {
   }
 
   private String chooseTabletDir() throws IOException {
-    return TabletNameGenerator.chooseTabletDir(context, extent, dirName, dir->checkTabletDir(new Path(dir)));
+    return TabletNameGenerator.chooseTabletDir(context, extent, dirName,
+        dir -> checkTabletDir(new Path(dir)));
   }
 
   ReferencedTabletFile getNextDataFilename(FilePrefix prefix) throws IOException {
-    return TabletNameGenerator.getNextDataFilename(prefix, context, extent, dirName, dir->checkTabletDir(new Path(dir)));
+    return TabletNameGenerator.getNextDataFilename(prefix, context, extent, dirName,
+        dir -> checkTabletDir(new Path(dir)));
   }
 
   ReferencedTabletFile getNextDataFilenameForMajc(boolean propagateDeletes) throws IOException {
-    return TabletNameGenerator.getNextDataFilenameForMajc(propagateDeletes, context, extent, dirName, dir->checkTabletDir(new Path(dir)));
+    return TabletNameGenerator.getNextDataFilenameForMajc(propagateDeletes, context, extent,
+        dirName, dir -> checkTabletDir(new Path(dir)));
   }
 
-  private void checkTabletDir(Path path)  {
+  private void checkTabletDir(Path path) {
     try {
       if (!checkedTabletDirs.contains(path)) {
         FileStatus[] files = null;
@@ -274,7 +276,7 @@ public class Tablet extends TabletBase {
         }
         checkedTabletDirs.add(path);
       }
-    }catch (IOException e){
+    } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
   }

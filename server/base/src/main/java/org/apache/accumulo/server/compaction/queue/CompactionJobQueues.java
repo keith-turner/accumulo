@@ -23,12 +23,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CompactionJobQueues {
+
+  private static final Logger log = LoggerFactory.getLogger(CompactionJobQueues.class);
+
   // TODO move to manager package
   // TODO would need to periodically clean out compaction queues that are no longer used.
   private final Map<CompactionExecutorId,CompactionJobPriorityQueue> priorityQueues =
@@ -39,8 +43,8 @@ public class CompactionJobQueues {
       var executorId = jobs.iterator().next().getExecutor();
       add(tabletMetadata, executorId, jobs);
     } else {
-      jobs.stream().collect(Collectors.groupingBy(CompactionJob::getExecutor))
-          .forEach(((executorId, compactionJobs) -> add(tabletMetadata, executorId, compactionJobs)));
+      jobs.stream().collect(Collectors.groupingBy(CompactionJob::getExecutor)).forEach(
+          ((executorId, compactionJobs) -> add(tabletMetadata, executorId, compactionJobs)));
     }
   }
 
@@ -74,6 +78,9 @@ public class CompactionJobQueues {
 
   private void add(TabletMetadata tabletMetadata, CompactionExecutorId executorId,
       Collection<CompactionJob> jobs) {
+
+    log.info("Adding job to queue {} {} {}", executorId, tabletMetadata.getExtent(), jobs);
+
     // TODO make max size configurable
     priorityQueues.computeIfAbsent(executorId, eid -> new CompactionJobPriorityQueue(eid, 10000))
         .add(tabletMetadata, jobs);

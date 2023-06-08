@@ -72,7 +72,8 @@ public class CompactionJobGenerator {
 
     // TODO check if tablet has selected files
 
-    // TODO do not want user configured plugins to cause exceptions that prevents tablets from being assigned.  So probably want to catch exceptions and log, but not too spammily.
+    // TODO do not want user configured plugins to cause exceptions that prevents tablets from being
+    // assigned. So probably want to catch exceptions and log, but not too spammily.
     CompactionServiceId serviceId = dispatch(CompactionKind.SYSTEM, tablet);
 
     return planCompactions(serviceId, CompactionKind.SYSTEM, tablet);

@@ -81,6 +81,10 @@
       <artifactId>accumulo-start</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.apache.accumulo</groupId>
+      <artifactId>accumulo-tserver</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-lang3</artifactId>
     </dependency>
@@ -124,9 +128,5 @@
       <artifactId>junit-jupiter-api</artifactId>
       <scope>test</scope>
     </dependency>
-      <dependency>
-          <groupId>org.apache.accumulo</groupId>
-          <artifactId>accumulo-tserver</artifactId>
-      </dependency>
   </dependencies>
 </project>

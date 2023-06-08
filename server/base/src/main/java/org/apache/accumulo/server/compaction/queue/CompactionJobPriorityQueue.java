@@ -93,7 +93,7 @@ public class CompactionJobPriorityQueue {
   // behavior is not supported with a PriorityQueue. Second a PriorityQueue does not support
   // efficiently removing entries from anywhere in the queue. Efficient removal is needed for the
   // case where tablets decided to issues different compaction jobs than what is currently queued.
-  private final TreeMap<CjqpKey, CompactionJobQueues.MetaJob> jobQueue;
+  private final TreeMap<CjqpKey,CompactionJobQueues.MetaJob> jobQueue;
   private final int maxSize;
 
   // This map tracks what jobs a tablet currently has in the queue. Its used to efficiently remove
@@ -151,7 +151,8 @@ public class CompactionJobPriorityQueue {
       Collection<CompactionJob> jobs) {
     List<CjqpKey> prevJobs = tabletJobs.get(extent);
     if (prevJobs != null) {
-      // TODO instead of removing everything, attempt to detect if old and new jobs are the same.. be careful with metadata
+      // TODO instead of removing everything, attempt to detect if old and new jobs are the same..
+      // be careful with metadata
       prevJobs.forEach(jobQueue::remove);
       tabletJobs.remove(extent);
     }

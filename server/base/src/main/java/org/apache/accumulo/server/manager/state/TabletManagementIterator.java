@@ -50,7 +50,6 @@ import org.apache.accumulo.core.manager.thrift.ManagerState;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletState;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ChoppedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CurrentLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
@@ -271,6 +270,7 @@ public class TabletManagementIterator extends SkippingIterator {
   public static void configureScanner(final ScannerBase scanner, final CurrentState state) {
     // TODO so many columns are being fetch it may not make sense to fetch columns
     TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
+    ServerColumnFamily.DIRECTORY_COLUMN.fetch(scanner);
     scanner.fetchColumnFamily(CurrentLocationColumnFamily.NAME);
     scanner.fetchColumnFamily(FutureLocationColumnFamily.NAME);
     scanner.fetchColumnFamily(LastLocationColumnFamily.NAME);
