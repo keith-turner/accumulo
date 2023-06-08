@@ -27,7 +27,6 @@ import java.util.Set;
 
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
-import org.apache.accumulo.manager.compaction.QueueSummaries.PrioTserver;
 import org.junit.jupiter.api.Test;
 
 public class QueueSummariesTest {

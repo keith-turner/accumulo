@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 
@@ -33,17 +34,37 @@ public class CompactionJobQueues {
   private final Map<CompactionExecutorId,CompactionJobPriorityQueue> priorityQueues =
       new ConcurrentHashMap<>();
 
-  public void add(KeyExtent extent, Collection<CompactionJob> jobs) {
+  public void add(TabletMetadata tabletMetadata, Collection<CompactionJob> jobs) {
     if (jobs.size() == 1) {
       var executorId = jobs.iterator().next().getExecutor();
-      add(extent, executorId, jobs);
+      add(tabletMetadata, executorId, jobs);
     } else {
       jobs.stream().collect(Collectors.groupingBy(CompactionJob::getExecutor))
-          .forEach(((executorId, compactionJobs) -> add(extent, executorId, compactionJobs)));
+          .forEach(((executorId, compactionJobs) -> add(tabletMetadata, executorId, compactionJobs)));
     }
   }
 
-  public CompactionJob poll(CompactionExecutorId executorId) {
+  public static class MetaJob {
+    private final CompactionJob job;
+
+    // the metadata from which the compaction job was derived
+    private final TabletMetadata tabletMetadata;
+
+    public MetaJob(CompactionJob job, TabletMetadata tabletMetadata) {
+      this.job = job;
+      this.tabletMetadata = tabletMetadata;
+    }
+
+    public CompactionJob getJob() {
+      return job;
+    }
+
+    public TabletMetadata getTabletMetadata() {
+      return tabletMetadata;
+    }
+  }
+
+  public MetaJob poll(CompactionExecutorId executorId) {
     var prioQ = priorityQueues.get(executorId);
     if (prioQ == null) {
       return null;
@@ -51,11 +72,11 @@ public class CompactionJobQueues {
     return prioQ.poll();
   }
 
-  private void add(KeyExtent extent, CompactionExecutorId executorId,
+  private void add(TabletMetadata tabletMetadata, CompactionExecutorId executorId,
       Collection<CompactionJob> jobs) {
     // TODO make max size configurable
     priorityQueues.computeIfAbsent(executorId, eid -> new CompactionJobPriorityQueue(eid, 10000))
-        .add(extent, jobs);
+        .add(tabletMetadata, jobs);
   }
 
 }

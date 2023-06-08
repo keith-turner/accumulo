@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.manager.compaction;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -32,6 +33,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.google.common.base.Preconditions;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.TableNotFoundException;
@@ -51,27 +53,41 @@ import org.apache.accumulo.core.data.NamespaceId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
+import org.apache.accumulo.core.iteratorsImpl.system.SystemIteratorUtil;
+import org.apache.accumulo.core.metadata.CompactableFileImpl;
+import org.apache.accumulo.core.metadata.ReferencedTabletFile;
+import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
+import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
+import org.apache.accumulo.core.spi.compaction.CompactionJob;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
+import org.apache.accumulo.core.tabletserver.thrift.InputFile;
+import org.apache.accumulo.core.tabletserver.thrift.IteratorConfig;
+import org.apache.accumulo.core.tabletserver.thrift.TCompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.TabletServerClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.UtilWaitThread;
+import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.compaction.RunningCompaction;
 import org.apache.accumulo.core.util.threads.ThreadPools;
-import org.apache.accumulo.manager.compaction.QueueSummaries.PrioTserver;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.compaction.queue.CompactionJobQueues;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
 import org.apache.accumulo.server.security.SecurityOperation;
+import org.apache.accumulo.server.tablets.TabletNameGenerator;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
@@ -90,7 +106,6 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   private static final Logger LOG = LoggerFactory.getLogger(CompactionCoordinator.class);
   private static final long FIFTEEN_MINUTES = TimeUnit.MINUTES.toMillis(15);
 
-  protected static final QueueSummaries QUEUE_SUMMARIES = new QueueSummaries();
 
   /*
    * Map of compactionId to RunningCompactions. This is an informational cache of what external
@@ -106,27 +121,27 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       Caffeine.newBuilder().maximumSize(200).expireAfterWrite(10, TimeUnit.MINUTES).build();
 
   /* Map of queue name to last time compactor called to get a compaction job */
+  // TODO need to clean out queues that are no longer configured..
   private static final Map<String,Long> TIME_COMPACTOR_LAST_CHECKED = new ConcurrentHashMap<>();
 
   private final ServerContext ctx;
   private final LiveTServerSet tserverSet;
   private final SecurityOperation security;
+  private final CompactionJobQueues jobQueues;
   private CompactionFinalizer compactionFinalizer;
 
   // Exposed for tests
   protected volatile Boolean shutdown = false;
 
   private final ScheduledThreadPoolExecutor schedExecutor;
-  private final ExecutorService summariesExecutor;
 
   public CompactionCoordinator(ServerContext ctx, LiveTServerSet tservers,
-      SecurityOperation security) {
+                               SecurityOperation security, CompactionJobQueues jobQueues) {
     this.ctx = ctx;
     this.tserverSet = tservers;
     this.schedExecutor = this.ctx.getScheduledExecutor();
-    summariesExecutor = ThreadPools.getServerThreadPools().createFixedThreadPool(10,
-        "Compaction Summary Gatherer", false);
     this.security = security;
+    this.jobQueues = jobQueues;
     createCompactionFinalizer(schedExecutor);
     startCompactionCleaner(schedExecutor);
     startRunningCleaner(schedExecutor);
@@ -180,11 +195,10 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     while (!shutdown) {
       long start = System.currentTimeMillis();
 
-      updateSummaries();
-
       long now = System.currentTimeMillis();
       TIME_COMPACTOR_LAST_CHECKED.forEach((k, v) -> {
         if ((now - v) > getMissingCompactorWarningTime()) {
+          // TODO may want to consider of the queue has any jobs queued
           LOG.warn("No compactors have checked in with coordinator for queue {} in {}ms", k,
               getMissingCompactorWarningTime());
         }
@@ -193,67 +207,13 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       long checkInterval = getTServerCheckInterval();
       long duration = (System.currentTimeMillis() - start);
       if (checkInterval - duration > 0) {
+        //TODO this log message is wrong
         LOG.debug("Waiting {}ms for next tserver check", (checkInterval - duration));
         UtilWaitThread.sleep(checkInterval - duration);
       }
     }
 
-    summariesExecutor.shutdownNow();
     LOG.info("Shutting down");
-  }
-
-  private void updateSummaries() {
-
-    final ArrayList<Future<?>> tasks = new ArrayList<>();
-    Set<String> queuesSeen = new ConcurrentSkipListSet<>();
-
-    tserverSet.getCurrentServers().forEach(tsi -> {
-      tasks.add(summariesExecutor.submit(() -> updateSummaries(tsi, queuesSeen)));
-    });
-
-    // Wait for all tasks to complete
-    while (!tasks.isEmpty()) {
-      Iterator<Future<?>> iter = tasks.iterator();
-      while (iter.hasNext()) {
-        Future<?> f = iter.next();
-        if (f.isDone()) {
-          iter.remove();
-        }
-      }
-      Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
-    }
-
-    // remove any queues that were seen in the past, but were not seen in the latest gathering of
-    // summaries
-    TIME_COMPACTOR_LAST_CHECKED.keySet().retainAll(queuesSeen);
-
-    // add any queues that were never seen before
-    queuesSeen.forEach(q -> {
-      TIME_COMPACTOR_LAST_CHECKED.computeIfAbsent(q, k -> System.currentTimeMillis());
-    });
-  }
-
-  private void updateSummaries(TServerInstance tsi, Set<String> queuesSeen) {
-    try {
-      TabletServerClientService.Client client = null;
-      try {
-        LOG.debug("Contacting tablet server {} to get external compaction summaries",
-            tsi.getHostPort());
-        client = getTabletServerConnection(tsi);
-        List<TCompactionQueueSummary> summaries =
-            client.getCompactionQueueInfo(TraceUtil.traceInfo(), this.ctx.rpcCreds());
-        QUEUE_SUMMARIES.update(tsi, summaries);
-        summaries.forEach(summary -> {
-          queuesSeen.add(summary.getQueue());
-        });
-      } finally {
-        returnTServerClient(client);
-      }
-    } catch (TException e) {
-      LOG.warn("Error getting external compaction summaries from tablet server: {}",
-          tsi.getHostAndPort(), e);
-      QUEUE_SUMMARIES.remove(Set.of(tsi));
-    }
   }
 
   protected void startDeadCompactionDetector() {
@@ -280,10 +240,6 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   public void updateTServerSet(LiveTServerSet current, Set<TServerInstance> deleted,
       Set<TServerInstance> added) {
 
-    // run() will iterate over the current and added tservers and add them to the internal
-    // data structures. For tservers that are deleted, we need to remove them from QUEUES
-    // and INDEX
-    QUEUE_SUMMARIES.remove(deleted);
   }
 
   /**
@@ -310,42 +266,24 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     TExternalCompactionJob result = null;
 
-    PrioTserver prioTserver = QUEUE_SUMMARIES.getNextTserver(queue);
+    // TODO does this queue name line up with whats in the jobQueue
+    CompactionJobQueues.MetaJob metaJob = jobQueues.poll(CompactionExecutorIdImpl.externalId(queueName));
 
-    while (prioTserver != null) {
-      TServerInstance tserver = prioTserver.tserver;
+    if(metaJob != null) {
+      ExternalCompactionMetadata ecm = reserveCompaction(metaJob, compactorAddress, externalCompactionId);
 
-      LOG.trace("Getting compaction for queue {} from tserver {}", queue, tserver.getHostAndPort());
-      // Get a compaction from the tserver
-      TabletServerClientService.Client client = null;
-      try {
-        client = getTabletServerConnection(tserver);
-        TExternalCompactionJob job = client.reserveCompactionJob(TraceUtil.traceInfo(),
-            this.ctx.rpcCreds(), queue, prioTserver.prio, compactorAddress, externalCompactionId);
-        if (null == job.getExternalCompactionId()) {
-          LOG.trace("No compactions found for queue {} on tserver {}, trying next tserver", queue,
-              tserver.getHostAndPort());
-
-          QUEUE_SUMMARIES.removeSummary(tserver, queue, prioTserver.prio);
-          prioTserver = QUEUE_SUMMARIES.getNextTserver(queue);
-          continue;
-        }
-        // It is possible that by the time this added that the tablet has already canceled the
-        // compaction or the compactor that made this request is dead. In these cases the compaction
-        // is not actually running.
-        RUNNING_CACHE.put(ExternalCompactionId.of(job.getExternalCompactionId()),
-            new RunningCompaction(job, compactorAddress, queue));
-        LOG.debug("Returning external job {} to {}", job.externalCompactionId, compactorAddress);
-        result = job;
-        break;
-      } catch (TException e) {
-        LOG.warn("Error from tserver {} while trying to reserve compaction, trying next tserver",
-            getTServerAddressString(tserver.getHostAndPort()), e);
-        QUEUE_SUMMARIES.removeSummary(tserver, queue, prioTserver.prio);
-        prioTserver = QUEUE_SUMMARIES.getNextTserver(queue);
-      } finally {
-        returnTServerClient(client);
+      if(ecm != null) {
+        result = createThriftJob(externalCompactionId, ecm, metaJob);
+        // It is possible that by the time this added that the the compactor that made this request is dead. In this cases the compaction is not actually running.
+        RUNNING_CACHE.put(ExternalCompactionId.of(result.getExternalCompactionId()),
+                new RunningCompaction(result, compactorAddress, queue));
+        LOG.debug("Returning external job {} to {}", result.externalCompactionId, compactorAddress);
+      } else {
+        LOG.debug("Unable to reserve compaction for {} ", metaJob.getTabletMetadata().getExtent());
       }
+      // create TExternalCompactionJob if above is successful and return it
+    } else {
+      LOG.debug("No jobs found in queue {} ", queue);
     }
 
     if (result == null) {
@@ -358,20 +296,72 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
   }
 
-  /**
-   * Return the Thrift client for the TServer
-   *
-   * @param tserver tserver instance
-   * @return thrift client
-   * @throws TTransportException thrift error
-   */
-  protected TabletServerClientService.Client getTabletServerConnection(TServerInstance tserver)
-      throws TTransportException {
-    TServerConnection connection = tserverSet.getConnection(tserver);
-    TTransport transport =
-        this.ctx.getTransportPool().getTransport(connection.getAddress(), 0, this.ctx);
-    return ThriftUtil.createClient(ThriftClientTypes.TABLET_SERVER, transport);
+  private ExternalCompactionMetadata reserveCompaction(CompactionJobQueues.MetaJob metaJob, String compactorAddress, String externalCompactionId) {
+
+    // only handle system ATM
+    Preconditions.checkArgument(metaJob.getJob().getKind() == CompactionKind.SYSTEM);
+
+    var jobFiles = metaJob.getJob().getFiles().stream().map(CompactableFileImpl::toStoredTabletFile).collect(Collectors.toSet());
+
+    // TODO can probably remove this when selected files are stored in metadata
+    Set<StoredTabletFile> nextFiles = Set.of();
+
+    // TODO maybe structure code to where this can be unit tested
+    boolean compactingAll = metaJob.getTabletMetadata().getFiles().equals(jobFiles);
+
+    boolean propDels = !compactingAll;
+
+    ReferencedTabletFile newFile = TabletNameGenerator.getNextDataFilenameForMajc(propDels, ctx, metaJob.getTabletMetadata());
+
+    // TODO
+    boolean initiallSelAll = false;
+
+    Long compactionId = null;
+
+    ExternalCompactionMetadata ecm = new ExternalCompactionMetadata(jobFiles, nextFiles, newFile, compactorAddress, metaJob.getJob().getKind(), metaJob.getJob().getPriority(), metaJob.getJob().getExecutor(), propDels, initiallSelAll, compactionId);
+
+
+    try(var tabletsMutator = ctx.getAmple().conditionallyMutateTablets()) {
+      var extent = metaJob.getTabletMetadata().getExtent();
+
+      // TODO need a more complex conditional check that allows multiple concurrenct compactions... need to check that this new compaction has disjoint files with any existing compactions
+      var tabletMutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation().requireAbsentCompactions().requirePrevEndRow(extent.prevEndRow());
+      jobFiles.forEach(tabletMutator::requireFile);
+
+      var ecid = ExternalCompactionId.of(externalCompactionId);
+      tabletMutator.putExternalCompaction(ecid, ecm);
+
+      tabletMutator.submit(tabletMetadata -> tabletMetadata.getExternalCompactions().containsKey(ecid));
+
+      if(tabletsMutator.process().get(extent).getStatus() == Ample.ConditionalResult.Status.ACCEPTED) {
+        return ecm;
+      } else {
+        // TODO could log tablet metadata and compaction job in this case, maybe at trace
+        return null;
+      }
+    }
+
   }
+
+  TExternalCompactionJob createThriftJob(String externalCompactionId, ExternalCompactionMetadata ecm, CompactionJobQueues.MetaJob metaJob) {
+    // TODO delete class ExternalCompactionJob
+    // TODO review all thrift stuff related to compactions, need to eventually delete stuff
+    // TODO need to get the files time below
+
+    // TODO get iterator config.. is this only needed for user compactions that pass iters?
+    IteratorConfig iteratorSettings = SystemIteratorUtil.toIteratorConfig(List.of());
+
+    var files = ecm.getJobFiles().stream().map(storedTabletFile -> {
+      var dfv = metaJob.getTabletMetadata().getFilesMap().get(storedTabletFile);
+      return new InputFile(storedTabletFile.getNormalizedPathStr(), dfv.getSize(), dfv.getNumEntries(),
+              dfv.getTime());
+    }).collect(Collectors.toList());
+
+    // TODO will need to compute this
+    Map<String, String> overrides = Map.of();
+
+    return new TExternalCompactionJob(externalCompactionId, metaJob.getTabletMetadata().getExtent().toThrift(), files, iteratorSettings, ecm.getCompactTmpName().getNormalizedPathStr(), ecm.getPropagateDeletes(), TCompactionKind.valueOf(ecm.getKind().name()), ecm.getCompactionId(), overrides);
+  };
 
   /**
    * Compactor calls compactionCompleted passing in the CompactionStats
@@ -397,7 +387,42 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     LOG.info("Compaction completed, id: {}, stats: {}, extent: {}", externalCompactionId, stats,
         extent);
     final var ecid = ExternalCompactionId.of(externalCompactionId);
-    compactionFinalizer.commitCompaction(ecid, extent, stats.fileSize, stats.entriesWritten);
+
+    // TODO could maybe cache this info...
+    var tabletMeta = ctx.getAmple().readTablet(extent, TabletMetadata.ColumnType.ECOMP);
+
+    ExternalCompactionMetadata ecm = tabletMeta.getExternalCompactions().get(ecid);
+
+    ReferencedTabletFile newDatafile = TabletNameGenerator.computeCompactionFileDest(ecm.getCompactTmpName());
+
+    try {
+      // TODO Check return value
+      ctx.getVolumeManager().rename(ecm.getCompactTmpName().getPath(), newDatafile.getPath());
+    } catch (IOException e) {
+      // TODO log instead of throw exception
+      throw new RuntimeException(e);
+    }
+
+    try(var tabletsMutator = ctx.getAmple().conditionallyMutateTablets()){
+      var tabletMutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation().requirePrevEndRow(extent.prevEndRow()).requireCompaction(ecid);
+      ecm.getJobFiles().forEach(tabletMutator::requireFile);
+      ecm.getJobFiles().forEach(tabletMutator::deleteFile);
+      tabletMutator.deleteExternalCompaction(ecid);
+      tabletMutator.putFile(newDatafile, new DataFileValue(stats.getFileSize(), stats.getEntriesWritten()));
+
+      // TODO do something in rejection handler
+      tabletMutator.submit(tabletMetadata -> false);
+
+      // TODO check return value
+      tabletsMutator.process();
+      
+      // TODO need to reliably notify tablet, may be able to do this in finalizer
+    }
+
+
+
+    //compactionFinalizer.commitCompaction(ecid, extent, stats.fileSize, stats.entriesWritten);
+
     // It's possible that RUNNING might not have an entry for this ecid in the case
     // of a coordinator restart when the Coordinator can't find the TServer for the
     // corresponding external compaction.
@@ -415,6 +440,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     LOG.info("Compaction failed, id: {}", externalCompactionId);
     final var ecid = ExternalCompactionId.of(externalCompactionId);
     compactionFailed(Map.of(ecid, KeyExtent.fromThrift(extent)));
+
+    // TODO need to open an issue about making the GC clean up tmp files.  The tablet currently cleans up tmp files on tablet load.  With tablets never loading possibly but still compacting dying compactors may still leave tmp files behind.
   }
 
   void compactionFailed(Map<ExternalCompactionId,KeyExtent> compactions) {

@@ -124,5 +124,9 @@
       <artifactId>junit-jupiter-api</artifactId>
       <scope>test</scope>
     </dependency>
+      <dependency>
+          <groupId>org.apache.accumulo</groupId>
+          <artifactId>accumulo-tserver</artifactId>
+      </dependency>
   </dependencies>
 </project>

@@ -26,9 +26,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.TreeSet;
+import java.util.TreeMap;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
 import org.apache.accumulo.core.util.compaction.CompactionJobImpl;
@@ -51,26 +52,20 @@ public class CompactionJobPriorityQueue {
 
   private final CompactionExecutorId executorId;
 
-  private class Entry implements Comparable<Entry> {
+  private class CjqpKey implements Comparable<CjqpKey> {
     private final CompactionJob job;
 
     // this exists to make every entry unique even if the job is the same, this is done because a
     // treeset is used as a queue
     private final long seq;
 
-    // extent is intentionally not part of comparisonm hashCode, or equals. The extent is used to
-    // find this object in the tabletJobs map.
-    private final KeyExtent extent;
-
-    Entry(CompactionJob job, KeyExtent extent) {
+    CjqpKey(CompactionJob job) {
       this.job = job;
       this.seq = nextSeq++;
-      this.extent = extent;
     }
 
     @Override
-    public int compareTo(Entry oe) {
-
+    public int compareTo(CjqpKey oe) {
       int cmp = CompactionJobPrioritizer.JOB_COMPARATOR.compare(this.job, oe.job);
       if (cmp == 0) {
         cmp = Long.compare(seq, oe.seq);
@@ -89,95 +84,96 @@ public class CompactionJobPriorityQueue {
         return true;
       if (o == null || getClass() != o.getClass())
         return false;
-      Entry entry = (Entry) o;
-      return seq == entry.seq && job.equals(entry.job);
+      CjqpKey cjqpKey = (CjqpKey) o;
+      return seq == cjqpKey.seq && job.equals(cjqpKey.job);
     }
   }
 
-  // There are two reasons for using a TreeSet instead of a PriorityQueue. First the maximum size
+  // There are two reasons for using a TreeMap instead of a PriorityQueue. First the maximum size
   // behavior is not supported with a PriorityQueue. Second a PriorityQueue does not support
   // efficiently removing entries from anywhere in the queue. Efficient removal is needed for the
   // case where tablets decided to issues different compaction jobs than what is currently queued.
-  private final TreeSet<Entry> jobQueue;
+  private final TreeMap<CjqpKey, CompactionJobQueues.MetaJob> jobQueue;
   private final int maxSize;
 
   // This map tracks what jobs a tablet currently has in the queue. Its used to efficiently remove
   // jobs in the queue when new jobs are queued for a tablet.
-  private final Map<KeyExtent,List<Entry>> tabletJobs;
+  private final Map<KeyExtent,List<CjqpKey>> tabletJobs;
 
   private long nextSeq;
 
   public CompactionJobPriorityQueue(CompactionExecutorId executorId, int maxSize) {
-    this.jobQueue = new TreeSet<>();
+    this.jobQueue = new TreeMap<>();
     this.maxSize = maxSize;
     this.tabletJobs = new HashMap<>();
     this.executorId = executorId;
   }
 
-  public synchronized void add(KeyExtent extent, Collection<CompactionJob> jobs) {
+  public synchronized void add(TabletMetadata tabletMetadata, Collection<CompactionJob> jobs) {
     // this is important for reasoning about set operations
     Preconditions.checkArgument(jobs.stream().allMatch(job -> job instanceof CompactionJobImpl));
     Preconditions
         .checkArgument(jobs.stream().allMatch(job -> job.getExecutor().equals(executorId)));
 
-    jobs = reconcileWithPrevSubmissions(extent, jobs);
+    jobs = reconcileWithPrevSubmissions(tabletMetadata.getExtent(), jobs);
 
-    List<Entry> newEntries = new ArrayList<>(jobs.size());
+    List<CjqpKey> newEntries = new ArrayList<>(jobs.size());
 
     for (CompactionJob job : jobs) {
-      Entry entry = addJobToQueue(extent, job);
-      if (entry != null) {
-        newEntries.add(entry);
+      CjqpKey cjqpKey = addJobToQueue(tabletMetadata, job);
+      if (cjqpKey != null) {
+        newEntries.add(cjqpKey);
       }
     }
 
     if (!newEntries.isEmpty()) {
-      checkState(tabletJobs.put(extent, newEntries) == null);
+      checkState(tabletJobs.put(tabletMetadata.getExtent(), newEntries) == null);
     }
 
   }
 
-  public synchronized CompactionJob poll() {
-    Entry first = jobQueue.pollFirst();
+  public synchronized CompactionJobQueues.MetaJob poll() {
+    var first = jobQueue.pollFirstEntry();
 
     if (first != null) {
-      List<Entry> jobs = tabletJobs.get(first.extent);
-      checkState(jobs.remove(first));
+      var extent = first.getValue().getTabletMetadata().getExtent();
+      List<CjqpKey> jobs = tabletJobs.get(extent);
+      checkState(jobs.remove(first.getKey()));
       if (jobs.isEmpty()) {
-        tabletJobs.remove(first.extent);
+        tabletJobs.remove(extent);
       }
     }
 
-    return first == null ? null : first.job;
+    return first == null ? null : first.getValue();
   }
 
   private Collection<CompactionJob> reconcileWithPrevSubmissions(KeyExtent extent,
       Collection<CompactionJob> jobs) {
-    List<Entry> prevJobs = tabletJobs.get(extent);
+    List<CjqpKey> prevJobs = tabletJobs.get(extent);
     if (prevJobs != null) {
-      // TODO instead of removing everything, attempt to detect if old and new jobs are the same
+      // TODO instead of removing everything, attempt to detect if old and new jobs are the same.. be careful with metadata
       prevJobs.forEach(jobQueue::remove);
       tabletJobs.remove(extent);
     }
     return jobs;
   }
 
-  private Entry addJobToQueue(KeyExtent extent, CompactionJob job) {
+  private CjqpKey addJobToQueue(TabletMetadata tabletMetadata, CompactionJob job) {
     if (jobQueue.size() >= maxSize) {
-      var lastEntry = jobQueue.last();
+      var lastEntry = jobQueue.lastKey();
       if (job.getPriority() <= lastEntry.job.getPriority()) {
         // the queue is full and this job has a lower or same priority than the lowest job in the
         // queue, so do not add it
         return null;
       } else {
         // the new job has a higher priority than the lowest job in the queue, so remove the lowest
-        jobQueue.pollLast();
+        jobQueue.pollLastEntry();
       }
 
     }
 
-    var entry = new Entry(job, extent);
-    jobQueue.add(entry);
-    return entry;
+    var key = new CjqpKey(job);
+    jobQueue.put(key, new CompactionJobQueues.MetaJob(job, tabletMetadata));
+    return key;
   }
 }
