@@ -509,7 +509,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
   @Test
   public void testManyFiles() throws Exception {
 
-    getCluster().getClusterControl().startCompactors(Compactor.class, 1, "ECQ1");
+    getCluster().getClusterControl().startCompactors(Compactor.class, 1, "user-small");
 
     try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
       String dir = getDir("/testBulkFile-");

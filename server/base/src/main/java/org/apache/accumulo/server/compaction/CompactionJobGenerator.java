@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.server.compaction.logic;
+package org.apache.accumulo.server.compaction;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -50,7 +50,6 @@ import org.apache.accumulo.core.util.compaction.CompactionServicesConfig;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
-//TODO can this class move to the manager pkg
 public class CompactionJobGenerator {
 
   private final CompactionServicesConfig servicesConfig;

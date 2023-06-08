@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.manager.compaction;
+package org.apache.accumulo.manager.compaction.coordinator;
 
 import java.io.IOException;
 import java.util.List;
@@ -73,8 +73,8 @@ import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.compaction.RunningCompaction;
 import org.apache.accumulo.core.util.threads.ThreadPools;
+import org.apache.accumulo.manager.compaction.queue.CompactionJobQueues;
 import org.apache.accumulo.server.ServerContext;
-import org.apache.accumulo.server.compaction.queue.CompactionJobQueues;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.security.SecurityOperation;
 import org.apache.accumulo.server.tablets.TabletNameGenerator;
@@ -117,8 +117,6 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   private final LiveTServerSet tserverSet;
   private final SecurityOperation security;
   private final CompactionJobQueues jobQueues;
-  private CompactionFinalizer compactionFinalizer;
-
   // Exposed for tests
   protected volatile Boolean shutdown = false;
 
@@ -131,17 +129,12 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     this.schedExecutor = this.ctx.getScheduledExecutor();
     this.security = security;
     this.jobQueues = jobQueues;
-    createCompactionFinalizer(schedExecutor);
     startCompactionCleaner(schedExecutor);
     startRunningCleaner(schedExecutor);
   }
 
   public void shutdown() {
     shutdown = true;
-  }
-
-  protected void createCompactionFinalizer(ScheduledThreadPoolExecutor schedExecutor) {
-    this.compactionFinalizer = new CompactionFinalizer(this.ctx, schedExecutor);
   }
 
   protected void startCompactionCleaner(ScheduledThreadPoolExecutor schedExecutor) {
@@ -506,7 +499,28 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   }
 
   void compactionFailed(Map<ExternalCompactionId,KeyExtent> compactions) {
-    compactionFinalizer.failCompactions(compactions);
+
+    try (var tabletsMutator = ctx.getAmple().conditionallyMutateTablets()) {
+      compactions.forEach((ecid, extent) -> {
+        tabletsMutator.mutateTablet(extent).requireAbsentOperation().requireCompaction(ecid)
+            .requirePrevEndRow(extent.prevEndRow()).deleteExternalCompaction(ecid)
+            .submit(tabletMetadata -> !tabletMetadata.getExternalCompactions().containsKey(ecid));
+      });
+
+      tabletsMutator.process().forEach((extent, result) -> {
+        if (result.getStatus() != Ample.ConditionalResult.Status.ACCEPTED) {
+          // this should try again later when the dead compaction detector runs, lets log it in case
+          // its a persistent problem
+          if (LOG.isDebugEnabled()) {
+            var ecid =
+                compactions.entrySet().stream().filter(entry -> entry.getValue().equals(extent))
+                    .findFirst().map(Map.Entry::getKey).orElse(null);
+            LOG.debug("Unable to remove failed compaction {} {}", extent, ecid);
+          }
+        }
+      });
+    }
+
     compactions.forEach((k, v) -> recordCompletion(k));
   }
 

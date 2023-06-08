@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.manager.compaction;
+package org.apache.accumulo.manager.compaction.coordinator;
 
 import java.util.Collection;
 import java.util.HashMap;

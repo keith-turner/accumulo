@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.accumulo.server.compaction.queue;
+package org.apache.accumulo.manager.compaction.queue;
 
 import java.util.Collection;
 import java.util.Map;
