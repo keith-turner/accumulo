@@ -48,7 +48,7 @@ public class CompactionJobQueues {
     }
   }
 
-  public static class MetaJob {
+    public static class MetaJob {
     private final CompactionJob job;
 
     // the metadata from which the compaction job was derived

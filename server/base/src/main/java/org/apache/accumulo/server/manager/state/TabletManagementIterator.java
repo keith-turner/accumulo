@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -62,6 +64,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Se
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.util.AddressUtil;
 import org.apache.accumulo.server.compaction.CompactionJobGenerator;
 import org.apache.hadoop.io.DataInputBuffer;
@@ -425,11 +428,28 @@ public class TabletManagementIterator extends SkippingIterator {
         reasonsToReturnThisTablet.add(ManagementAction.NEEDS_SPLITTING);
       }
 
-      if (!compactionGenerator.generateJobs(tm).isEmpty()) {
+      // important to call this since reasonsToReturnThisTablet is passed to it
+      if (!compactionGenerator.generateJobs(tm, determineCompactionKinds(reasonsToReturnThisTablet)).isEmpty()) {
         // TODO if it needs a split, lets not do compaction check
         reasonsToReturnThisTablet.add(ManagementAction.NEEDS_COMPACTING);
       }
     }
 
+  }
+
+  private static final Set<CompactionKind> ALL_COMPACTION_KINDS = Collections.unmodifiableSet(EnumSet.allOf(CompactionKind.class));
+  private static final Set<CompactionKind> SPLIT_COMPACTION_KINDS;
+
+  static {
+    var tmp = EnumSet.allOf(CompactionKind.class);
+    tmp.remove(CompactionKind.SYSTEM);
+    SPLIT_COMPACTION_KINDS = Collections.unmodifiableSet(tmp);
+  }
+  public static Set<CompactionKind> determineCompactionKinds(Set<ManagementAction> reasonsToReturnThisTablet) {
+    if(reasonsToReturnThisTablet.contains(ManagementAction.NEEDS_SPLITTING)) {
+      return SPLIT_COMPACTION_KINDS;
+    } else {
+      return ALL_COMPACTION_KINDS;
+    }
   }
 }

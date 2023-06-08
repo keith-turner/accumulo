@@ -102,12 +102,14 @@ import org.apache.accumulo.server.manager.state.ClosableIterator;
 import org.apache.accumulo.server.manager.state.DistributedStoreException;
 import org.apache.accumulo.server.manager.state.MergeInfo;
 import org.apache.accumulo.server.manager.state.MergeState;
+import org.apache.accumulo.server.manager.state.TabletManagementIterator;
 import org.apache.accumulo.server.manager.state.TabletStateStore;
 import org.apache.accumulo.server.manager.state.UnassignedTablet;
 import org.apache.accumulo.server.tablets.TabletTime;
 import org.apache.accumulo.server.util.MetadataTableUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.yarn.webapp.hamlet2.Hamlet;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -329,10 +331,12 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
           }
 
           if (actions.contains(ManagementAction.NEEDS_COMPACTING)) {
-            var jobs = compactionGenerator.generateJobs(tm);
+            var jobs = compactionGenerator.generateJobs(tm, TabletManagementIterator.determineCompactionKinds(actions));
             LOG.debug("{} may need compacting.", tm.getExtent());
             manager.getCompactionQueues().add(tm, jobs);
           }
+
+          // ELASITICITY_TODO the case where a planner generates compactions at time T1 for tablet and later at time T2 generates nothing for the same tablet is not being handled.  At time T1 something could have been queued.  However at time T2 we will not clear those entries from the queue because we see nothing here for that case.
 
           if (actions.contains(ManagementAction.NEEDS_LOCATION_UPDATE)) {
             if (goal == TabletGoalState.HOSTED) {

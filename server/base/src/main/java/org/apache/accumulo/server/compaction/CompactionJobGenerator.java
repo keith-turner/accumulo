@@ -67,15 +67,19 @@ public class CompactionJobGenerator {
     this.env = env;
   }
 
-  public Collection<CompactionJob> generateJobs(TabletMetadata tablet) {
+  public Collection<CompactionJob> generateJobs(TabletMetadata tablet, Set<CompactionKind> kinds) {
 
-    // TODO check if tablet has selected files
+    // ELASTICITY_TODO do not want user configured plugins to cause exceptions that prevents tablets from being
+    // assigned. So probably want to catch exceptions and log, but not too spammily OR some how report something
+    // back to the manager so it can log.
 
-    // TODO do not want user configured plugins to cause exceptions that prevents tablets from being
-    // assigned. So probably want to catch exceptions and log, but not too spammily.
-    CompactionServiceId serviceId = dispatch(CompactionKind.SYSTEM, tablet);
+    if(kinds.contains(CompactionKind.SYSTEM)) {
+      CompactionServiceId serviceId = dispatch(CompactionKind.SYSTEM, tablet);
 
-    return planCompactions(serviceId, CompactionKind.SYSTEM, tablet);
+      return planCompactions(serviceId, CompactionKind.SYSTEM, tablet);
+    } else {
+      return Set.of();
+    }
   }
 
   private CompactionServiceId dispatch(CompactionKind kind, TabletMetadata tablet) {
@@ -101,7 +105,7 @@ public class CompactionJobGenerator {
 
           @Override
           public Map<String,String> getExecutionHints() {
-            // TODO do for user compactions
+            // ELASTICITY_TODO do for user compactions
             return Map.of();
           }
         };
@@ -234,7 +238,7 @@ public class CompactionJobGenerator {
 
       @Override
       public Map<String,String> getExecutionHints() {
-        // TODO implement for user compactions
+        //ELASTICITY_TODO implement for user compactions
         return Map.of();
       }
 
@@ -279,7 +283,7 @@ public class CompactionJobGenerator {
         return new ExecutorManager() {
           @Override
           public CompactionExecutorId createExecutor(String name, int threads) {
-            // TODO need to deprecate
+            // ELASTICITY_TODO need to deprecate
             return CompactionExecutorIdImpl.internalId(serviceId, name);
           }
 

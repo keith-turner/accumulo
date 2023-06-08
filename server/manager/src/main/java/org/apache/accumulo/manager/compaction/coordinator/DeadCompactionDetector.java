@@ -105,20 +105,9 @@ public class DeadCompactionDetector {
       }
     });
 
-    // Determine which compactions are currently committing and remove those
-    context.getAmple().getExternalCompactionFinalStates()
-        .map(ecfs -> ecfs.getExternalCompactionId()).forEach(ecid -> {
-          if (tabletCompactions.remove(ecid) != null) {
-            log.debug("Removed compaction {} that is committing", ecid);
-          }
-          if (this.deadCompactions.remove(ecid) != null) {
-            log.debug("Removed {} from the dead compaction map, it's committing", ecid);
-          }
-        });
-
     tabletCompactions.forEach((ecid, extent) -> {
       log.info("Possible dead compaction detected {} {}", ecid, extent);
-      this.deadCompactions.merge(ecid, 1L, Long::sum);
+      this. deadCompactions.merge(ecid, 1L, Long::sum);
     });
 
     // Everything left in tabletCompactions is no longer running anywhere and should be failed.

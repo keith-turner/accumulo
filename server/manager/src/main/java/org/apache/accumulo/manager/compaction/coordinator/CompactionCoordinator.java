@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
@@ -110,7 +111,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       Caffeine.newBuilder().maximumSize(200).expireAfterWrite(10, TimeUnit.MINUTES).build();
 
   /* Map of queue name to last time compactor called to get a compaction job */
-  // TODO need to clean out queues that are no longer configured..
+  // ELASTICITY_TODO need to clean out queues that are no longer configured..
   private static final Map<String,Long> TIME_COMPACTOR_LAST_CHECKED = new ConcurrentHashMap<>();
 
   private final ServerContext ctx;
@@ -173,6 +174,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     startDeadCompactionDetector();
 
+    //ELASTICITY_TODO the main function of the following loop was getting queue summaries from tservers.  Its no longer doing that.  May be best to remove the loop and make the remaining task a scheduled one.
+
     LOG.info("Starting loop to check tservers for compaction summaries");
     while (!shutdown) {
       long start = System.currentTimeMillis();
@@ -180,7 +183,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       long now = System.currentTimeMillis();
       TIME_COMPACTOR_LAST_CHECKED.forEach((k, v) -> {
         if ((now - v) > getMissingCompactorWarningTime()) {
-          // TODO may want to consider of the queue has any jobs queued
+          // ELASTICITY_TODO may want to consider of the queue has any jobs queued OR if the queue still exist in configuration
           LOG.warn("No compactors have checked in with coordinator for queue {} in {}ms", k,
               getMissingCompactorWarningTime());
         }
@@ -189,8 +192,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       long checkInterval = getTServerCheckInterval();
       long duration = (System.currentTimeMillis() - start);
       if (checkInterval - duration > 0) {
-        // TODO this log message is wrong
-        LOG.debug("Waiting {}ms for next tserver check", (checkInterval - duration));
+        LOG.debug("Waiting {}ms for next queue check", (checkInterval - duration));
         UtilWaitThread.sleep(checkInterval - duration);
       }
     }
@@ -248,7 +250,6 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     TExternalCompactionJob result = null;
 
-    // TODO does this queue name line up with whats in the jobQueue
     CompactionJobQueues.MetaJob metaJob =
         jobQueues.poll(CompactionExecutorIdImpl.externalId(queueName));
 
@@ -306,18 +307,20 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     var jobFiles = metaJob.getJob().getFiles().stream().map(CompactableFileImpl::toStoredTabletFile)
         .collect(Collectors.toSet());
 
-    // TODO can probably remove this when selected files are stored in metadata
+    // ELASTICITY_TODO can probably remove this when selected files are stored in metadata
     Set<StoredTabletFile> nextFiles = Set.of();
 
-    // TODO maybe structure code to where this can be unit tested
+    // ELASTICITY_TODO maybe structure code to where this can be unit tested
     boolean compactingAll = metaJob.getTabletMetadata().getFiles().equals(jobFiles);
 
     boolean propDels = !compactingAll;
 
+    //ELASTICITY_TODO need to create dir if it does not exists.. look at tablet code, it has cache, but its unbounded in size which is ok for a single tablet... in the manager we need a cache of dirs that were created that is bounded in size
+    Consumer<String> directorCreator = dirName->{};
     ReferencedTabletFile newFile =
-        TabletNameGenerator.getNextDataFilenameForMajc(propDels, ctx, metaJob.getTabletMetadata());
+        TabletNameGenerator.getNextDataFilenameForMajc(propDels, ctx, metaJob.getTabletMetadata(), directorCreator);
 
-    // TODO
+    // ELASTICITY_TODO this determine what to set this for user compactions, may be able to remove it
     boolean initiallSelAll = false;
 
     Long compactionId = null;
@@ -329,7 +332,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     try (var tabletsMutator = ctx.getAmple().conditionallyMutateTablets()) {
       var extent = metaJob.getTabletMetadata().getExtent();
 
-      // TODO need a more complex conditional check that allows multiple concurrenct compactions...
+      // ELASTICITY_TODO need a more complex conditional check that allows multiple concurrenct compactions...
       // need to check that this new compaction has disjoint files with any existing compactions
       var tabletMutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation()
           .requireAbsentCompactions().requirePrevEndRow(extent.prevEndRow());
@@ -345,7 +348,6 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
           == Ample.ConditionalResult.Status.ACCEPTED) {
         return ecm;
       } else {
-        // TODO could log tablet metadata and compaction job in this case, maybe at trace
         return null;
       }
     }
@@ -354,11 +356,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
   TExternalCompactionJob createThriftJob(String externalCompactionId,
       ExternalCompactionMetadata ecm, CompactionJobQueues.MetaJob metaJob) {
-    // TODO delete class ExternalCompactionJob
-    // TODO review all thrift stuff related to compactions, need to eventually delete stuff
-    // TODO need to get the files time below
 
-    // TODO get iterator config.. is this only needed for user compactions that pass iters?
+    // ELASTICITY_TODO get iterator config.. is this only needed for user compactions that pass iters?
     IteratorConfig iteratorSettings = SystemIteratorUtil.toIteratorConfig(List.of());
 
     var files = ecm.getJobFiles().stream().map(storedTabletFile -> {
@@ -367,7 +366,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
           dfv.getNumEntries(), dfv.getTime());
     }).collect(Collectors.toList());
 
-    // TODO will need to compute this
+    // ELASTICITY_TODO will need to compute this
     Map<String,String> overrides = Map.of();
 
     return new TExternalCompactionJob(externalCompactionId,
@@ -417,17 +416,18 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       return;
     }
 
-    // TODO this code does not handle race conditions or faults.
-
+    // ELASTICITY_TODO this code does not handle race conditions or faults.  Need to ensure refresh happens in the case of manager process death between commit and refresh.
     ReferencedTabletFile newDatafile =
         TabletNameGenerator.computeCompactionFileDest(ecm.getCompactTmpName());
 
     try {
-      // TODO Check return value
-      ctx.getVolumeManager().rename(ecm.getCompactTmpName().getPath(), newDatafile.getPath());
+      if(!ctx.getVolumeManager().rename(ecm.getCompactTmpName().getPath(), newDatafile.getPath())){
+        throw new IOException("rename returned false");
+      }
     } catch (IOException e) {
-      // TODO log instead of throw exception
-      throw new RuntimeException(e);
+      LOG.warn("Can not commit complete compaction {} because unable to rename {} to {} ", ecid, ecm.getCompactTmpName(), newDatafile, e);
+      compactionFailed(Map.of(ecid, extent));
+      return;
     }
 
     commitCompaction(stats, extent, ecid, ecm, newDatafile);
@@ -451,7 +451,6 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         client.refreshTablets(TraceUtil.traceInfo(), ctx.rpcCreds(),
             List.of(metadata.getExtent().toThrift()));
       } catch (TException e) {
-        // TODO
         throw new RuntimeException(e);
       } finally {
         returnTServerClient(client);
@@ -474,10 +473,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       tabletMutator
           .submit(tabletMetadata -> !tabletMetadata.getExternalCompactions().containsKey(ecid));
 
-      // TODO check return value
+      // ELASTICITY_TODO check return value
       tabletsMutator.process();
-
-      // TODO need to reliably notify tablet, may be able to do this in finalizer
     }
   }
 
@@ -493,7 +490,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     final var ecid = ExternalCompactionId.of(externalCompactionId);
     compactionFailed(Map.of(ecid, KeyExtent.fromThrift(extent)));
 
-    // TODO need to open an issue about making the GC clean up tmp files. The tablet currently
+    // ELASTICITIY_TODO need to open an issue about making the GC clean up tmp files. The tablet currently
     // cleans up tmp files on tablet load. With tablets never loading possibly but still compacting
     // dying compactors may still leave tmp files behind.
   }
@@ -572,28 +569,16 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     // grab a snapshot of the ids in the set before reading the metadata table. This is done to
     // avoid removing things that are added while reading the metadata.
-    Set<ExternalCompactionId> idsSnapshot = Set.copyOf(RUNNING_CACHE.keySet()); // TODO tracking all
-                                                                                // the external
-                                                                                // compactions
-                                                                                // running in memory
-                                                                                // could cause OOME
-                                                                                // in the case where
-                                                                                // there are a large
-                                                                                // numbber of
-                                                                                // compactions
-                                                                                // runnnig
+    Set<ExternalCompactionId> idsSnapshot = Set.copyOf(RUNNING_CACHE.keySet());
 
     // grab the ids that are listed as running in the metadata table. It important that this is done
     // after getting the snapshot.
-    Set<ExternalCompactionId> idsInMetadata = readExternalCompactionIds(); // TODO avoid reading
-                                                                           // into memory and just
-                                                                           // scan metadata reading
-                                                                           // stuff from
+    Set<ExternalCompactionId> idsInMetadata = readExternalCompactionIds();
 
     var idsToRemove = Sets.difference(idsSnapshot, idsInMetadata);
 
     // remove ids that are in the running set but not in the metadata table
-    idsToRemove.forEach(ecid -> recordCompletion(ecid));
+    idsToRemove.forEach(this::recordCompletion);
 
     if (idsToRemove.size() > 0) {
       LOG.debug("Removed stale entries from RUNNING_CACHE : {}", idsToRemove);

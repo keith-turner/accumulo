@@ -49,7 +49,6 @@ public class TabletNameGenerator {
 
   public static String chooseTabletDir(ServerContext context, KeyExtent extent, String dirName,
       Consumer<String> dirCreator) {
-    // TODO tablet creates dir if it does not exists
     VolumeChooserEnvironment chooserEnv =
         new VolumeChooserEnvironmentImpl(extent.tableId(), extent.endRow(), context);
     String dirUri = context.getVolumeManager().choose(chooserEnv, context.getBaseUris())
@@ -76,7 +75,7 @@ public class TabletNameGenerator {
   }
 
   public static ReferencedTabletFile getNextDataFilenameForMajc(boolean propagateDeletes,
-      ServerContext context, TabletMetadata tabletMetadata) {
+      ServerContext context, TabletMetadata tabletMetadata, Consumer<String> dirCreator) {
     String tmpFileName = getNextDataFilename(
         !propagateDeletes ? FilePrefix.MAJOR_COMPACTION_ALL_FILES : FilePrefix.MAJOR_COMPACTION,
         context, tabletMetadata.getExtent(), tabletMetadata.getDirName(), dirName -> {})
