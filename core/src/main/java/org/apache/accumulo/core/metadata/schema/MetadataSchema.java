@@ -374,6 +374,22 @@ public class MetadataSchema {
       public static final String REQUESTED_QUAL = "requested";
       public static final ColumnFQ REQUESTED_COLUMN = new ColumnFQ(NAME, new Text(REQUESTED_QUAL));
     }
+
+    /**
+     * Column family used to records files selected for user initiated compaction.
+     */
+    public static class SelectedColumnFamily {
+      public static final String STR_NAME = "selected";
+      public static final Text NAME = new Text(STR_NAME);
+    }
+
+    /**
+     * Column family used to record the fate txid for completed user compactions
+     */
+    public static class CompactedColumnFamily {
+      public static final String STR_NAME = "compacted";
+      public static final Text NAME = new Text(STR_NAME);
+    }
   }
 
   /**

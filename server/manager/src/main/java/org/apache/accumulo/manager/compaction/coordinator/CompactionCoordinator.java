@@ -343,6 +343,10 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       // need to check that this new compaction has disjoint files with any existing compactions
       var tabletMutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation()
           .requireAbsentCompactions().requirePrevEndRow(extent.prevEndRow());
+
+      // TODO for system compcations must require the file to not be selected... for user
+      // compactions must require the file to be selected
+
       jobFiles.forEach(tabletMutator::requireFile);
 
       var ecid = ExternalCompactionId.of(externalCompactionId);

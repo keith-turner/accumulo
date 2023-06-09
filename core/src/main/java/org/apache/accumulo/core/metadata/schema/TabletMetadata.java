@@ -51,6 +51,7 @@ import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.fate.zookeeper.ZooCache;
 import org.apache.accumulo.core.lock.ServiceLock;
 import org.apache.accumulo.core.lock.ServiceLockData;
@@ -71,6 +72,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Ho
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ScanFileColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
@@ -83,6 +85,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.net.HostAndPort;
 
@@ -100,6 +103,7 @@ public class TabletMetadata {
   private Map<StoredTabletFile,DataFileValue> files;
   private List<StoredTabletFile> scans;
   private Map<StoredTabletFile,Long> loadedFiles;
+  private Map<StoredTabletFile,Long> selectedFiles;
   protected EnumSet<ColumnType> fetchedCols;
   protected KeyExtent extent;
   protected Location last;
@@ -118,6 +122,7 @@ public class TabletMetadata {
   protected boolean onDemandHostingRequested = false;
   private TabletOperationId operationId;
   protected boolean futureAndCurrentLocationSet = false;
+  private Set<Long> compacted;
 
   public enum LocationType {
     CURRENT, FUTURE, LAST
@@ -143,7 +148,8 @@ public class TabletMetadata {
     ECOMP,
     HOSTING_GOAL,
     HOSTING_REQUESTED,
-    OPID
+    OPID,
+    SELECTED
   }
 
   public static class Location {
@@ -323,6 +329,11 @@ public class TabletMetadata {
     return files;
   }
 
+  public Map<StoredTabletFile,Long> getSelectedFiles() {
+    ensureFetched(ColumnType.SELECTED);
+    return selectedFiles;
+  }
+
   public Collection<LogEntry> getLogs() {
     ensureFetched(ColumnType.LOGS);
     return logs;
@@ -382,6 +393,10 @@ public class TabletMetadata {
     return onDemandHostingRequested;
   }
 
+  public Set<Long> getCompacted() {
+    return compacted;
+  }
+
   @Override
   public String toString() {
     return "TabletMetadata [tableId=" + tableId + ", prevEndRow=" + prevEndRow + ", sawPrevEndRow="
@@ -392,8 +407,9 @@ public class TabletMetadata {
         + ", time=" + time + ", cloned=" + cloned + ", flush=" + flush + ", logs=" + logs
         + ", compact=" + compact + ", splitRatio=" + splitRatio + ", extCompactions="
         + extCompactions + ", chopped=" + chopped + ", goal=" + goal + ", onDemandHostingRequested="
-        + onDemandHostingRequested + ", operationId=" + operationId
-        + ", futureAndCurrentLocationSet=" + futureAndCurrentLocationSet + "]";
+        + onDemandHostingRequested + ", operationId=" + operationId + ",selectedFiles="
+        + selectedFiles + ", futureAndCurrentLocationSet=" + futureAndCurrentLocationSet
+        + ",compacted=" + compacted + "]";
   }
 
   public SortedMap<Key,Value> getKeyValues() {
@@ -459,7 +475,8 @@ public class TabletMetadata {
         ImmutableMap.<ExternalCompactionId,ExternalCompactionMetadata>builder();
     final var loadedFilesBuilder = ImmutableMap.<StoredTabletFile,Long>builder();
     ByteSequence row = null;
-    final var requestIdsBuilder = ImmutableMap.<Long,TServerInstance>builder();
+    final var selectedFilesBuilder = ImmutableMap.<StoredTabletFile,Long>builder();
+    final var compactedBuilder = ImmutableSet.<Long>builder();
 
     while (rowIter.hasNext()) {
       final Entry<Key,Value> kv = rowIter.next();
@@ -566,6 +583,12 @@ public class TabletMetadata {
               throw new IllegalStateException("Unexpected family " + fam);
           }
           break;
+        case SelectedColumnFamily.STR_NAME:
+          selectedFilesBuilder.put(new StoredTabletFile(qual), FateTxId.fromString(val));
+          break;
+        case MetadataSchema.TabletsSection.CompactedColumnFamily.STR_NAME:
+          compactedBuilder.add(FateTxId.fromString(qual));
+          break;
       }
     }
 
@@ -580,6 +603,8 @@ public class TabletMetadata {
     te.scans = scansBuilder.build();
     te.logs = logsBuilder.build();
     te.extCompactions = extCompBuilder.build();
+    te.selectedFiles = selectedFilesBuilder.build();
+    te.compacted = compactedBuilder.build();
     if (buildKeyValueMap) {
       te.keyValues = kvBuilder.build();
     }

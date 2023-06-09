@@ -35,6 +35,7 @@ import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ChoppedColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CompactedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CurrentLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
@@ -43,6 +44,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Ho
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ScanFileColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
@@ -227,6 +229,21 @@ public abstract class TabletMutatorBase<T extends Ample.TabletUpdates<T>>
   }
 
   @Override
+  public T putSelectedFile(StoredTabletFile bulkref, long tid) {
+    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
+    mutation.put(SelectedColumnFamily.NAME, bulkref.getMetaUpdateDeleteText(),
+        new Value(FateTxId.formatTid(tid)));
+    return getThis();
+  }
+
+  @Override
+  public T deleteSelectedFile(StoredTabletFile bulkref) {
+    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
+    mutation.putDelete(SelectedColumnFamily.NAME, bulkref.getMetaUpdateDeleteText());
+    return getThis();
+  }
+
+  @Override
   public T putChopped() {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
     ChoppedColumnFamily.CHOPPED_COLUMN.put(mutation, new Value("chopped"));
@@ -294,6 +311,18 @@ public abstract class TabletMutatorBase<T extends Ample.TabletUpdates<T>>
   @Override
   public T deleteHostingRequested() {
     HostingColumnFamily.REQUESTED_COLUMN.putDelete(mutation);
+    return getThis();
+  }
+
+  @Override
+  public T putCompacted(long tid) {
+    mutation.put(CompactedColumnFamily.STR_NAME, FateTxId.formatTid(tid), "");
+    return getThis();
+  }
+
+  @Override
+  public T deleteCompacted(long tid) {
+    mutation.putDelete(CompactedColumnFamily.STR_NAME, FateTxId.formatTid(tid));
     return getThis();
   }
 
