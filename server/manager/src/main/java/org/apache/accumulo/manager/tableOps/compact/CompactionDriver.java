@@ -150,8 +150,7 @@ class CompactionDriver extends ManagerRepo {
               FateTxId.formatTid(tid), tablet.getExtent());
           // this tablet has no files try to mark it as done
           // TODO this could lower the existing compaction id
-          tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation()
-              .requirePrevEndRow(tablet.getPrevEndRow()).requireAbsentFiles()
+          tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation().requireSame(tablet, PREV_ROW, FILES, COMPACT_ID)
               .putCompactionId(compactId)
               .submit(tabletMetadata -> tabletMetadata.getCompacted().contains(tid));
         } else if (tablet.getSelectedFiles().isEmpty()
@@ -163,16 +162,10 @@ class CompactionDriver extends ManagerRepo {
 
           // TODO need to call files selector if configured
 
-          var mutator = tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation()
-              .requirePrevEndRow(tablet.getPrevEndRow());
-          tablet.getFiles().forEach(mutator::requireFile);
+          var mutator = tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation().requireSame(tablet, PREV_ROW, FILES, SELECTED, ECOMP); // TODO compact id?
           // TODO require absent selected files
 
-          mutator.requireAbsentSelectedFiles();
-          mutator.requireAbsentCompactions();
-
           tablet.getFiles().forEach(file -> {
-            mutator.requireFile(file);
             mutator.putSelectedFile(file, tid);
           });
 

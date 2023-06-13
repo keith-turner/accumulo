@@ -436,15 +436,6 @@ public interface Ample {
      */
     ConditionalTabletMutator requireFile(StoredTabletFile path);
 
-    /**
-     * Require the tablet has no files.
-     */
-    ConditionalTabletMutator requireAbsentFiles();
-
-    /**
-     * Require the tablet has no selected files.
-     */
-    ConditionalTabletMutator requireAbsentSelectedFiles();
 
     /**
      * Require that a tablet does not have the specfied bulk load marker.
@@ -461,15 +452,16 @@ public interface Ample {
      */
     ConditionalTabletMutator requireHostingGoal(TabletHostingGoal tabletHostingGoal);
 
-    /**
-     * Requires the tablet to have no external compactions.
-     */
-    ConditionalTabletMutator requireAbsentCompactions();
 
     /**
      * Requires the specified external compaction to exists
      */
     ConditionalTabletMutator requireCompaction(ExternalCompactionId ecid);
+
+    /**
+     * For the specified columns, requires the tablets metadata to be the same at the time of update as what is in the passed in tabletMetadata object.
+     */
+    ConditionalTabletMutator requireSame(TabletMetadata tabletMetadata, ColumnType type, ColumnType ... otherTypes);
 
     /**
      * <p>

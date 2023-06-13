@@ -42,6 +42,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Da
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletOperationId;
 import org.apache.accumulo.server.ServerContext;
@@ -208,6 +209,33 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
     return this;
   }
 
+  private void requireSameSingle(TabletMetadata tabletMetadata, ColumnType type) {
+    switch (type) {
+      case PREV_ROW:
+          requirePrevEndRow(tabletMetadata.getPrevEndRow());
+          break;
+      case FILES:
+        if(tabletMetadata.getFiles().isEmpty()) {
+          IteratorSetting is = new IteratorSetting(INITIAL_ITERATOR_PRIO, FilesExistsIterator.class);
+          Condition c = new Condition(DataFileColumnFamily.STR_NAME, "").setIterators(is);
+          mutation.addCondition(c);
+        } else {
+          tabletMetadata.getFiles().forEach(this::requireFile);
+        }
+        break;
+    }
+  }
+
+  @Override
+  public Ample.ConditionalTabletMutator requireSame(TabletMetadata tabletMetadata, ColumnType type, ColumnType... otherTypes) {
+    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
+    requireSameSingle(tabletMetadata, type);
+    for (var ct:otherTypes) {
+      requireSameSingle(tabletMetadata, ct);
+    }
+    return this;
+  }
+
   @Override
   public void submit(Ample.RejectionHandler rejectionCheck) {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
@@ -216,4 +244,6 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
     mutationConsumer.accept(mutation);
     rejectionHandlerConsumer.accept(extent, rejectionCheck);
   }
+
+
 }
