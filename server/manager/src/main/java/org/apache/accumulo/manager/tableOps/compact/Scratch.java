@@ -18,46 +18,6 @@
  */
 package org.apache.accumulo.manager.tableOps.compact;
 
-import org.apache.accumulo.core.metadata.schema.Ample;
-import org.apache.accumulo.core.metadata.schema.TabletMetadata;
-
 public class Scratch {
-  public void scratch(Ample ample, long tid) {
-    try (var tablets = ample.readTablets().forTable(null).build();
-        var tabletsMutator = ample.conditionallyMutateTablets()) {
-      boolean allCompacted = true;
-
-      for (TabletMetadata tablet : tablets) {
-
-        // TODO need to handle the case where tablet has no files
-
-        boolean alreadyCompacted = tablet.getCompacted().contains(tid);
-
-        allCompacted &= alreadyCompacted;
-
-        if (!alreadyCompacted && tablet.getSelectedFiles().isEmpty()
-            && tablet.getExternalCompactions().isEmpty()) {
-          // need to select files for the tablet
-          // TODO need to require no selected files
-          var mutator = tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation()
-              .requirePrevEndRow(tablet.getPrevEndRow()).requireAbsentCompactions();
-          tablet.getFiles().forEach(file -> mutator.putSelectedFile(file, tid));
-
-          mutator.submit(tm -> tm.getSelectedFiles().keySet().equals(tablet.getFiles())
-              && tm.getSelectedFiles().values().stream().allMatch(sfid -> sfid == tid));
-
-        }
-
-        // TODO if there are external compactions need write a marker that prevents future external
-        // compactions from starting
-
-        // TODO in the case where the tablet has no files, may want to write the compacted marker
-      }
-
-      tabletsMutator.process();
-
-    }
-
-  }
 
 }

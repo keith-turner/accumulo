@@ -437,6 +437,16 @@ public interface Ample {
     ConditionalTabletMutator requireFile(StoredTabletFile path);
 
     /**
+     * Require the tablet has no files.
+     */
+    ConditionalTabletMutator requireAbsentFiles();
+
+    /**
+     * Require the tablet has no selected files.
+     */
+    ConditionalTabletMutator requireAbsentSelectedFiles();
+
+    /**
      * Require that a tablet does not have the specfied bulk load marker.
      */
     ConditionalTabletMutator requireAbsentBulkFile(ReferencedTabletFile bulkref);

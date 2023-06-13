@@ -21,6 +21,7 @@ package org.apache.accumulo.server.compaction;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -77,8 +78,10 @@ public class CompactionJobGenerator {
 
     if (kinds.contains(CompactionKind.SYSTEM)) {
       CompactionServiceId serviceId = dispatch(CompactionKind.SYSTEM, tablet);
-
       return planCompactions(serviceId, CompactionKind.SYSTEM, tablet);
+    } else if (kinds.contains(CompactionKind.USER) && !tablet.getSelectedFiles().isEmpty()) {
+      CompactionServiceId serviceId = dispatch(CompactionKind.USER, tablet);
+      return planCompactions(serviceId, CompactionKind.USER, tablet);
     } else {
       return Set.of();
     }
@@ -185,14 +188,29 @@ public class CompactionJobGenerator {
         candidates = allFiles;
       } else {
         var tmpFiles = new HashMap<>(tablet.getFilesMap());
+        // remove any files that are in active compactions
         tablet.getExternalCompactions().values().stream().flatMap(ecm -> ecm.getJobFiles().stream())
             .forEach(tmpFiles::remove);
+        // remove any files that are selected
+        tmpFiles.keySet().removeAll(tablet.getSelectedFiles().keySet());
         candidates = tmpFiles.entrySet().stream()
             .map(entry -> new CompactableFileImpl(entry.getKey(), entry.getValue()))
             .collect(Collectors.toUnmodifiableSet());
       }
+    } else if (kind == CompactionKind.USER) {
+      var selectedFiles = new HashSet<>(tablet.getSelectedFiles().keySet());
+      tablet.getExternalCompactions().values().stream().flatMap(ecm -> ecm.getJobFiles().stream())
+          .forEach(selectedFiles::remove);
+      candidates = selectedFiles.stream()
+          .map(file -> new CompactableFileImpl(file, tablet.getFilesMap().get(file)))
+          .collect(Collectors.toUnmodifiableSet());
     } else {
       throw new UnsupportedOperationException();
+    }
+
+    if (candidates.isEmpty()) {
+      // there are not candidate files for compaction, so no reason to call the planner
+      return Set.of();
     }
 
     CompactionPlanner.PlanningParameters params = new CompactionPlanner.PlanningParameters() {
@@ -235,7 +253,7 @@ public class CompactionJobGenerator {
           CompactionJob job = new CompactionJobImpl(ecMeta.getPriority(),
               ecMeta.getCompactionExecutorId(), files, ecMeta.getKind(), Optional.empty());
           return job;
-        }).collect(Collectors.toList());
+        }).collect(Collectors.toUnmodifiableList());
       }
 
       @Override

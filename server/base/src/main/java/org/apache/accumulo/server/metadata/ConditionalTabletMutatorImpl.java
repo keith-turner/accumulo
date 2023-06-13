@@ -40,13 +40,16 @@ import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletOperationId;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.metadata.iterators.CompactionsExistsIterator;
+import org.apache.accumulo.server.metadata.iterators.FilesExistsIterator;
 import org.apache.accumulo.server.metadata.iterators.LocationExistsIterator;
 import org.apache.accumulo.server.metadata.iterators.PresentIterator;
+import org.apache.accumulo.server.metadata.iterators.SelectedFilesExistsIterator;
 import org.apache.accumulo.server.metadata.iterators.TabletExistsIterator;
 import org.apache.hadoop.io.Text;
 
@@ -112,6 +115,27 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
   public Ample.ConditionalTabletMutator requireAbsentBulkFile(ReferencedTabletFile bulkref) {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
     Condition c = new Condition(BulkFileColumnFamily.NAME, bulkref.getMetaInsertText());
+    mutation.addCondition(c);
+    return this;
+  }
+
+  // TODO ensure test in IT
+
+  @Override
+  public Ample.ConditionalTabletMutator requireAbsentFiles() {
+    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
+    IteratorSetting is = new IteratorSetting(INITIAL_ITERATOR_PRIO, FilesExistsIterator.class);
+    Condition c = new Condition(DataFileColumnFamily.STR_NAME, "").setIterators(is);
+    mutation.addCondition(c);
+    return this;
+  }
+
+  @Override
+  public Ample.ConditionalTabletMutator requireAbsentSelectedFiles() {
+    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
+    IteratorSetting is =
+        new IteratorSetting(INITIAL_ITERATOR_PRIO, SelectedFilesExistsIterator.class);
+    Condition c = new Condition(SelectedColumnFamily.STR_NAME, "").setIterators(is);
     mutation.addCondition(c);
     return this;
   }
