@@ -21,6 +21,7 @@ package org.apache.accumulo.manager.compaction.coordinator;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.COMPACT_ID;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.ECOMP;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.FILES;
+import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOCATION;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.PREV_ROW;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.SELECTED;
 
@@ -65,7 +66,6 @@ import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
-import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
@@ -477,8 +477,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         extent);
     final var ecid = ExternalCompactionId.of(externalCompactionId);
 
-    var tabletMeta = ctx.getAmple().readTablet(extent, ColumnType.ECOMP, ColumnType.LOCATION,
-        ColumnType.SELECTED);
+    var tabletMeta = ctx.getAmple().readTablet(extent, ECOMP, LOCATION, SELECTED, FILES);
 
     if (tabletMeta == null) {
       LOG.debug("Received completion notification for nonexistent tablet {} {}", ecid, extent);
@@ -693,8 +692,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   }
 
   protected Set<ExternalCompactionId> readExternalCompactionIds() {
-    return this.ctx.getAmple().readTablets().forLevel(Ample.DataLevel.USER).fetch(ColumnType.ECOMP)
-        .build().stream().flatMap(tm -> tm.getExternalCompactions().keySet().stream())
+    return this.ctx.getAmple().readTablets().forLevel(Ample.DataLevel.USER).fetch(ECOMP).build()
+        .stream().flatMap(tm -> tm.getExternalCompactions().keySet().stream())
         .collect(Collectors.toSet());
   }
 

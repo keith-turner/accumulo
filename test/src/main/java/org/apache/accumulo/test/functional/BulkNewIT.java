@@ -50,6 +50,7 @@ import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.TimeType;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
@@ -523,6 +524,10 @@ public class BulkNewIT extends SharedMiniClusterBase {
       }
 
       c.tableOperations().importDirectory(dir).to(tableName).load();
+
+      verifyData(c, tableName, 0, 100 * 100 - 1, false);
+
+      c.tableOperations().compact(tableName, new CompactionConfig().setWait(true));
 
       verifyData(c, tableName, 0, 100 * 100 - 1, false);
     }

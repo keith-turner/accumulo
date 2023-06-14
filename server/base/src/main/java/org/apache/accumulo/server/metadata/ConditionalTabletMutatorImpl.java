@@ -35,8 +35,6 @@ import org.apache.accumulo.core.clientImpl.TabletHostingGoalUtil;
 import org.apache.accumulo.core.data.Condition;
 import org.apache.accumulo.core.data.ConditionalMutation;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.metadata.ReferencedTabletFile;
-import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
@@ -99,24 +97,6 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
         || location.getType() == TabletMetadata.LocationType.CURRENT);
     Condition c = new Condition(getLocationFamily(location.getType()), location.getSession())
         .setValue(location.getHostPort());
-    mutation.addCondition(c);
-    return this;
-  }
-
-  @Override
-  public Ample.ConditionalTabletMutator requireFile(StoredTabletFile path) {
-    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    IteratorSetting is = new IteratorSetting(INITIAL_ITERATOR_PRIO, PresentIterator.class);
-    Condition c = new Condition(DataFileColumnFamily.NAME, path.getMetaUpdateDeleteText())
-        .setValue(PresentIterator.VALUE).setIterators(is);
-    mutation.addCondition(c);
-    return this;
-  }
-
-  @Override
-  public Ample.ConditionalTabletMutator requireAbsentBulkFile(ReferencedTabletFile bulkref) {
-    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    Condition c = new Condition(BulkFileColumnFamily.NAME, bulkref.getMetaInsertText());
     mutation.addCondition(c);
     return this;
   }
@@ -235,7 +215,6 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
     }
   }
 
-  // TODO needs testing in IT
   @Override
   public Ample.ConditionalTabletMutator requireSame(TabletMetadata tabletMetadata, ColumnType type,
       ColumnType... otherTypes) {

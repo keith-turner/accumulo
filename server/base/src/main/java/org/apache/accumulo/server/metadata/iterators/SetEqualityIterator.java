@@ -149,7 +149,7 @@ public class SetEqualityIterator implements SortedKeyValueIterator<Key,Value> {
    * If two sets are equals and they are encoded with this method then the resulting byte arrays
    * should be equal.
    */
-  private static <T> byte[] encode(Collection<T> set, Function<T,byte[]> encoder) {
+  private static <T> byte[] encode(Set<T> set, Function<T,byte[]> encoder) {
     try {
       ByteArrayOutputStream baos = new ByteArrayOutputStream();
       DataOutputStream dos = new DataOutputStream(baos);
@@ -181,7 +181,7 @@ public class SetEqualityIterator implements SortedKeyValueIterator<Key,Value> {
     Preconditions.checkArgument(set instanceof Set);
     IteratorSetting is = new IteratorSetting(ConditionalTabletMutatorImpl.INITIAL_ITERATOR_PRIO,
         SetEqualityIterator.class);
-    return new Condition(family, EMPTY).setValue(encode(set, encoder)).setIterators(is);
+    return new Condition(family, EMPTY).setValue(encode((Set<T>) set, encoder)).setIterators(is);
   }
 
 }

@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.server.compaction;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -74,14 +75,29 @@ public class CompactionJobGenerator {
     // report something
     // back to the manager so it can log.
 
+    Collection<CompactionJob> systemJobs = Set.of();
+
     if (kinds.contains(CompactionKind.SYSTEM)) {
       CompactionServiceId serviceId = dispatch(CompactionKind.SYSTEM, tablet);
-      return planCompactions(serviceId, CompactionKind.SYSTEM, tablet);
-    } else if (kinds.contains(CompactionKind.USER) && !tablet.getSelectedFiles().isEmpty()) {
+      systemJobs = planCompactions(serviceId, CompactionKind.SYSTEM, tablet);
+    }
+
+    Collection<CompactionJob> userJobs = Set.of();
+
+    if (kinds.contains(CompactionKind.USER) && !tablet.getSelectedFiles().isEmpty()) {
       CompactionServiceId serviceId = dispatch(CompactionKind.USER, tablet);
-      return planCompactions(serviceId, CompactionKind.USER, tablet);
+      userJobs = planCompactions(serviceId, CompactionKind.USER, tablet);
+    }
+
+    if (userJobs.isEmpty()) {
+      return systemJobs;
+    } else if (systemJobs.isEmpty()) {
+      return userJobs;
     } else {
-      return Set.of();
+      var all = new ArrayList<CompactionJob>(systemJobs.size() + userJobs.size());
+      all.addAll(systemJobs);
+      all.addAll(userJobs);
+      return all;
     }
   }
 

@@ -175,10 +175,15 @@ class CompactionDriver extends ManagerRepo {
               && tabletMetadata.getSelectedFiles().values().stream()
                   .allMatch(sftid -> sftid == tid));
 
+        } else if (tablet.getSelectedFiles().values().stream().anyMatch(stid -> stid == tid)) {
+          long numSelected =
+              tablet.getSelectedFiles().values().stream().filter(stid -> stid == tid).count();
+          log.debug(
+              "{} tablet {} already has {} selected files for this compaction, waiting for them be processed",
+              FateTxId.formatTid(tid), tablet.getExtent(), numSelected);
         } else {
-          // unable to select files at this time OR maybe we already selected and now have to wait
-          // for compacted marker
-          // TODO add selecting marker that prevents compactions
+          // TODO if there are compactions preventing selection of files, then add selecting marker
+          // that prevents new compactions from starting
         }
       }
 

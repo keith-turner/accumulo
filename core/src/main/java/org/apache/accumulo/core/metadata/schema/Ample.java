@@ -432,16 +432,6 @@ public interface Ample {
     ConditionalTabletMutator requireLocation(Location location);
 
     /**
-     * Require that a tablet currently has the specified file.
-     */
-    ConditionalTabletMutator requireFile(StoredTabletFile path);
-
-    /**
-     * Require that a tablet does not have the specfied bulk load marker.
-     */
-    ConditionalTabletMutator requireAbsentBulkFile(ReferencedTabletFile bulkref);
-
-    /**
      * Require that a tablet has the specified previous end row.
      */
     ConditionalTabletMutator requirePrevEndRow(Text per);

@@ -22,6 +22,7 @@ import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOADED;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOCATION;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.PREV_ROW;
+import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.SELECTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -57,6 +58,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
+
+  // ELASTICITY_TODO ensure that all conditional updates are tested
 
   private TableId tid;
   private KeyExtent e1;
@@ -289,10 +292,99 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
       assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
       assertEquals(Set.of(stf6), context.getAmple().readTablet(e1).getFiles());
-
-      // test a subset of files relative to the tablet
-
     }
+  }
+
+  @Test
+  public void testSelectedFiles() throws Exception {
+    var context = cluster.getServerContext();
+
+    var stf1 =
+        new StoredTabletFile("hdfs://localhost:8020/accumulo/tables/2a/default_tablet/F0000070.rf");
+    var stf2 =
+        new StoredTabletFile("hdfs://localhost:8020/accumulo/tables/2a/default_tablet/F0000071.rf");
+    var stf3 =
+        new StoredTabletFile("hdfs://localhost:8020/accumulo/tables/2a/default_tablet/F0000072.rf");
+    var stf4 =
+        new StoredTabletFile("hdfs://localhost:8020/accumulo/tables/2a/default_tablet/C0000073.rf");
+    var dfv = new DataFileValue(100, 100);
+
+    System.out.println(context.getAmple().readTablet(e1).getLocation());
+
+    // simulate a compaction where the tablet location is not set
+    var ctmi = new ConditionalTabletsMutatorImpl(context);
+    var tm1 = TabletMetadataImposter.builder(e1).build(FILES, SELECTED);
+    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm1, PREV_ROW, FILES)
+        .putFile(stf1, dfv).putFile(stf2, dfv).putFile(stf3, dfv).submit(tm -> false);
+    var results = ctmi.process();
+    assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+
+    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+
+    ctmi = new ConditionalTabletsMutatorImpl(context);
+    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm1, PREV_ROW, FILES, SELECTED)
+        .putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).putSelectedFile(stf3, 3)
+        .submit(tm -> false);
+    results = ctmi.process();
+    assertEquals(Status.REJECTED, results.get(e1).getStatus());
+
+    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+    assertEquals(Set.of(), context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+
+    var tm2 = TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv)
+        .putFile(stf3, dfv).build(SELECTED);
+    ctmi = new ConditionalTabletsMutatorImpl(context);
+    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm2, PREV_ROW, FILES, SELECTED)
+        .putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).putSelectedFile(stf3, 3)
+        .submit(tm -> false);
+    results = ctmi.process();
+    assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+
+    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+    assertEquals(Set.of(stf1, stf2, stf3),
+        context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+
+    // compare a subset of selelected should fail
+    var tm3 = TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv)
+        .putFile(stf3, dfv).putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).build();
+    ctmi = new ConditionalTabletsMutatorImpl(context);
+    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm3, PREV_ROW, FILES, SELECTED)
+        .deleteSelectedFile(stf1).deleteSelectedFile(stf2).deleteSelectedFile(stf3)
+        .submit(tm -> false);
+    results = ctmi.process();
+    assertEquals(Status.REJECTED, results.get(e1).getStatus());
+
+    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+    assertEquals(Set.of(stf1, stf2, stf3),
+        context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+
+    // compare a superset of selected, should fail
+    var tm4 = TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv)
+        .putFile(stf3, dfv).putSelectedFile(stf1, 1).putSelectedFile(stf2, 2)
+        .putSelectedFile(stf3, 3).putSelectedFile(stf4, 4).build();
+    ctmi = new ConditionalTabletsMutatorImpl(context);
+    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm4, PREV_ROW, FILES, SELECTED)
+        .deleteSelectedFile(stf1).deleteSelectedFile(stf2).deleteSelectedFile(stf3)
+        .submit(tm -> false);
+    results = ctmi.process();
+    assertEquals(Status.REJECTED, results.get(e1).getStatus());
+
+    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+    assertEquals(Set.of(stf1, stf2, stf3),
+        context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+
+    var tm5 =
+        TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv).putFile(stf3, dfv)
+            .putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).putSelectedFile(stf3, 3).build();
+    ctmi = new ConditionalTabletsMutatorImpl(context);
+    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm5, PREV_ROW, FILES, SELECTED)
+        .deleteSelectedFile(stf1).deleteSelectedFile(stf2).deleteSelectedFile(stf3)
+        .submit(tm -> false);
+    results = ctmi.process();
+    assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
+
+    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+    assertEquals(Set.of(), context.getAmple().readTablet(e1).getSelectedFiles().keySet());
   }
 
   @Test
