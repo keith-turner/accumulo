@@ -194,21 +194,22 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
       }
         break;
       case FILES: {
+        // TODO compare values
         Condition c = SetEqualityIterator.createCondition(tabletMetadata.getFiles(),
             stf -> TextUtil.getBytes(stf.getMetaUpdateDeleteText()), DataFileColumnFamily.NAME);
         mutation.addCondition(c);
       }
         break;
       case SELECTED: {
+        // TODO compare values
         Condition c =
             SetEqualityIterator.createCondition(tabletMetadata.getSelectedFiles().keySet(),
                 stf -> TextUtil.getBytes(stf.getMetaUpdateDeleteText()), SelectedColumnFamily.NAME);
         mutation.addCondition(c);
       }
         break;
-      case ECOMP:
-
-      {
+      case ECOMP: {
+        // TODO compare values
         Condition c =
             SetEqualityIterator.createCondition(tabletMetadata.getExternalCompactions().keySet(),
                 ecid -> ecid.canonical().getBytes(UTF_8), ExternalCompactionColumnFamily.NAME);
