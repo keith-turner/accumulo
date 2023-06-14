@@ -19,6 +19,7 @@
 
 package org.apache.accumulo.server.metadata;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.HostingColumnFamily.GOAL_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.COMPACT_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.OPID_COLUMN;
@@ -34,7 +35,6 @@ import org.apache.accumulo.core.clientImpl.TabletHostingGoalUtil;
 import org.apache.accumulo.core.data.Condition;
 import org.apache.accumulo.core.data.ConditionalMutation;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample;
@@ -47,12 +47,11 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletOperationId;
+import org.apache.accumulo.core.util.TextUtil;
 import org.apache.accumulo.server.ServerContext;
-import org.apache.accumulo.server.metadata.iterators.CompactionsExistsIterator;
-import org.apache.accumulo.server.metadata.iterators.FilesExistsIterator;
 import org.apache.accumulo.server.metadata.iterators.LocationExistsIterator;
 import org.apache.accumulo.server.metadata.iterators.PresentIterator;
-import org.apache.accumulo.server.metadata.iterators.SelectedFilesExistsIterator;
+import org.apache.accumulo.server.metadata.iterators.SetEqualityIterator;
 import org.apache.accumulo.server.metadata.iterators.TabletExistsIterator;
 import org.apache.hadoop.io.Text;
 
@@ -61,7 +60,7 @@ import com.google.common.base.Preconditions;
 public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.ConditionalTabletMutator>
     implements Ample.ConditionalTabletMutator, Ample.OperationRequirements {
 
-  private static final int INITIAL_ITERATOR_PRIO = 1000000;
+  public static final int INITIAL_ITERATOR_PRIO = 1000000;
 
   private final ConditionalMutation mutation;
   private final Consumer<ConditionalMutation> mutationConsumer;
@@ -194,41 +193,41 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
         mutation.addCondition(c);
       }
         break;
-      case FILES:
-        if (tabletMetadata.getFiles().isEmpty()) {
-          IteratorSetting is =
-              new IteratorSetting(INITIAL_ITERATOR_PRIO, FilesExistsIterator.class);
-          Condition c = new Condition(DataFileColumnFamily.STR_NAME, "").setIterators(is);
-          mutation.addCondition(c);
-        } else {
-          // TODO could compare the data file value
-          tabletMetadata.getFiles().forEach(this::requireFile);
-        }
+      case FILES: {
+        Condition c = SetEqualityIterator.createCondition(tabletMetadata.getFiles(),
+            stf -> TextUtil.getBytes(stf.getMetaUpdateDeleteText()), DataFileColumnFamily.NAME);
+        mutation.addCondition(c);
+      }
         break;
-      case SELECTED:
-        if (tabletMetadata.getSelectedFiles().isEmpty()) {
-          IteratorSetting is =
-              new IteratorSetting(INITIAL_ITERATOR_PRIO, SelectedFilesExistsIterator.class);
-          Condition c = new Condition(SelectedColumnFamily.STR_NAME, "").setIterators(is);
-          mutation.addCondition(c);
-        } else {
-          tabletMetadata.getSelectedFiles().forEach((file, fateTxid) -> {
-            Condition c = new Condition(SelectedColumnFamily.NAME, file.getMetaUpdateDeleteText())
-                .setValue(FateTxId.formatTid(fateTxid));
-            mutation.addCondition(c);
-          });
-        }
+      case SELECTED: {
+        Condition c =
+            SetEqualityIterator.createCondition(tabletMetadata.getSelectedFiles().keySet(),
+                stf -> TextUtil.getBytes(stf.getMetaUpdateDeleteText()), SelectedColumnFamily.NAME);
+        mutation.addCondition(c);
+      }
         break;
       case ECOMP:
-        if (tabletMetadata.getExternalCompactions().isEmpty()) {
-          IteratorSetting is =
-              new IteratorSetting(INITIAL_ITERATOR_PRIO, CompactionsExistsIterator.class);
-          Condition c = new Condition(ExternalCompactionColumnFamily.STR_NAME, "").setIterators(is);
-          mutation.addCondition(c);
+
+      {
+        Condition c =
+            SetEqualityIterator.createCondition(tabletMetadata.getExternalCompactions().keySet(),
+                ecid -> ecid.canonical().getBytes(UTF_8), ExternalCompactionColumnFamily.NAME);
+        mutation.addCondition(c);
+      }
+        break;
+      case LOCATION:
+        if (tabletMetadata.getLocation() == null) {
+          requireAbsentLocation();
         } else {
-          // TODO could check the value
-          tabletMetadata.getExternalCompactions().keySet().forEach(this::requireCompaction);
+          requireLocation(tabletMetadata.getLocation());
         }
+        break;
+      case LOADED: {
+        Condition c = SetEqualityIterator.createCondition(tabletMetadata.getLoaded().keySet(),
+            stf -> TextUtil.getBytes(stf.getMetaUpdateDeleteText()), BulkFileColumnFamily.NAME);
+        mutation.addCondition(c);
+      }
+
         break;
       default:
         throw new UnsupportedOperationException("Column type " + type + " is not supported.");
