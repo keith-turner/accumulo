@@ -229,9 +229,9 @@ public abstract class TabletMutatorBase<T extends Ample.TabletUpdates<T>>
   }
 
   @Override
-  public T putSelectedFile(StoredTabletFile bulkref, long tid) {
+  public T putSelectedFile(StoredTabletFile file, long tid) {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    mutation.put(SelectedColumnFamily.NAME, bulkref.getMetaUpdateDeleteText(),
+    mutation.put(SelectedColumnFamily.NAME, file.getMetaUpdateDeleteText(),
         new Value(FateTxId.formatTid(tid)));
     return getThis();
   }

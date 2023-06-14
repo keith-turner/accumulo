@@ -20,6 +20,7 @@
 package org.apache.accumulo.server.metadata;
 
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.HostingColumnFamily.GOAL_COLUMN;
+import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.COMPACT_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.OPID_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily.encodePrevEndRow;
@@ -33,6 +34,7 @@ import org.apache.accumulo.core.clientImpl.TabletHostingGoalUtil;
 import org.apache.accumulo.core.data.Condition;
 import org.apache.accumulo.core.data.ConditionalMutation;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample;
@@ -120,27 +122,6 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
     return this;
   }
 
-  // TODO ensure test in IT
-
-  @Override
-  public Ample.ConditionalTabletMutator requireAbsentFiles() {
-    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    IteratorSetting is = new IteratorSetting(INITIAL_ITERATOR_PRIO, FilesExistsIterator.class);
-    Condition c = new Condition(DataFileColumnFamily.STR_NAME, "").setIterators(is);
-    mutation.addCondition(c);
-    return this;
-  }
-
-  @Override
-  public Ample.ConditionalTabletMutator requireAbsentSelectedFiles() {
-    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    IteratorSetting is =
-        new IteratorSetting(INITIAL_ITERATOR_PRIO, SelectedFilesExistsIterator.class);
-    Condition c = new Condition(SelectedColumnFamily.STR_NAME, "").setIterators(is);
-    mutation.addCondition(c);
-    return this;
-  }
-
   @Override
   public Ample.ConditionalTabletMutator requirePrevEndRow(Text per) {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
@@ -156,16 +137,6 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
     Condition c = new Condition(GOAL_COLUMN.getColumnFamily(), GOAL_COLUMN.getColumnQualifier())
         .setValue(TabletHostingGoalUtil.toValue(goal).get());
-    mutation.addCondition(c);
-    return this;
-  }
-
-  @Override
-  public Ample.ConditionalTabletMutator requireAbsentCompactions() {
-    Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    IteratorSetting is =
-        new IteratorSetting(INITIAL_ITERATOR_PRIO, CompactionsExistsIterator.class);
-    Condition c = new Condition(ExternalCompactionColumnFamily.STR_NAME, "").setIterators(is);
     mutation.addCondition(c);
     return this;
   }
@@ -212,25 +183,65 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
   private void requireSameSingle(TabletMetadata tabletMetadata, ColumnType type) {
     switch (type) {
       case PREV_ROW:
-          requirePrevEndRow(tabletMetadata.getPrevEndRow());
-          break;
+        requirePrevEndRow(tabletMetadata.getPrevEndRow());
+        break;
+      case COMPACT_ID: {
+        Condition c =
+            new Condition(COMPACT_COLUMN.getColumnFamily(), COMPACT_COLUMN.getColumnQualifier());
+        if (tabletMetadata.getCompactId().isPresent()) {
+          c = c.setValue(Long.toString(tabletMetadata.getCompactId().getAsLong()));
+        }
+        mutation.addCondition(c);
+      }
+        break;
       case FILES:
-        if(tabletMetadata.getFiles().isEmpty()) {
-          IteratorSetting is = new IteratorSetting(INITIAL_ITERATOR_PRIO, FilesExistsIterator.class);
+        if (tabletMetadata.getFiles().isEmpty()) {
+          IteratorSetting is =
+              new IteratorSetting(INITIAL_ITERATOR_PRIO, FilesExistsIterator.class);
           Condition c = new Condition(DataFileColumnFamily.STR_NAME, "").setIterators(is);
           mutation.addCondition(c);
         } else {
+          // TODO could compare the data file value
           tabletMetadata.getFiles().forEach(this::requireFile);
         }
         break;
+      case SELECTED:
+        if (tabletMetadata.getSelectedFiles().isEmpty()) {
+          IteratorSetting is =
+              new IteratorSetting(INITIAL_ITERATOR_PRIO, SelectedFilesExistsIterator.class);
+          Condition c = new Condition(SelectedColumnFamily.STR_NAME, "").setIterators(is);
+          mutation.addCondition(c);
+        } else {
+          tabletMetadata.getSelectedFiles().forEach((file, fateTxid) -> {
+            Condition c = new Condition(SelectedColumnFamily.NAME, file.getMetaUpdateDeleteText())
+                .setValue(FateTxId.formatTid(fateTxid));
+            mutation.addCondition(c);
+          });
+        }
+        break;
+      case ECOMP:
+        if (tabletMetadata.getExternalCompactions().isEmpty()) {
+          IteratorSetting is =
+              new IteratorSetting(INITIAL_ITERATOR_PRIO, CompactionsExistsIterator.class);
+          Condition c = new Condition(ExternalCompactionColumnFamily.STR_NAME, "").setIterators(is);
+          mutation.addCondition(c);
+        } else {
+          // TODO could check the value
+          tabletMetadata.getExternalCompactions().keySet().forEach(this::requireCompaction);
+        }
+        break;
+      default:
+        throw new UnsupportedOperationException("Column type " + type + " is not supported.");
     }
   }
 
+  // TODO needs testing in IT
   @Override
-  public Ample.ConditionalTabletMutator requireSame(TabletMetadata tabletMetadata, ColumnType type, ColumnType... otherTypes) {
+  public Ample.ConditionalTabletMutator requireSame(TabletMetadata tabletMetadata, ColumnType type,
+      ColumnType... otherTypes) {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
     requireSameSingle(tabletMetadata, type);
-    for (var ct:otherTypes) {
+    for (var ct : otherTypes) {
       requireSameSingle(tabletMetadata, ct);
     }
     return this;
@@ -244,6 +255,5 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
     mutationConsumer.accept(mutation);
     rejectionHandlerConsumer.accept(extent, rejectionCheck);
   }
-
 
 }
