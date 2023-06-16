@@ -198,7 +198,7 @@ public class CompactionJobGenerator {
     Set<CompactableFile> candidates;
 
     if (kind == CompactionKind.SYSTEM) {
-      if (tablet.getExternalCompactions().isEmpty()) {
+      if (tablet.getExternalCompactions().isEmpty() && tablet.getSelectedFiles() == null) {
         candidates = allFiles;
       } else {
         var tmpFiles = new HashMap<>(tablet.getFilesMap());

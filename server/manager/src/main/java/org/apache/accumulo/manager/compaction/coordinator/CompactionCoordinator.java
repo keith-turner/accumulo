@@ -595,6 +595,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
             LOG.debug("All selected files compcated for {} setting compaction ID to {}",
                 tablet.getExtent(), compactionId);
 
+            tabletMutator.deleteSelectedFiles();
+
             if (tablet.getCompactId().orElse(-1) < compactionId) {
               tabletMutator.putCompactionId(compactionId);
             }

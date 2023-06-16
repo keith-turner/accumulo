@@ -58,6 +58,7 @@ public class SelectedFiles {
         files.stream().map(StoredTabletFile::getMetaUpdateDelete).sorted().collect(toList());
     jData.txid = FateTxId.formatTid(fateTxId);
     jData.selAll = initiallySelectedAll;
+    // TODO need the produced json to always be the same when the input data is the same, how can this be guaranteed??
     metadataValue = GSON.toJson(jData);
   }
 
@@ -66,9 +67,6 @@ public class SelectedFiles {
     this.files = files;
     this.initiallySelectedAll = initiallySelectedAll;
     this.fateTxId = fateTxId;
-
-    // keep the exact value stored in the metadata table, this is important for comparisons done by
-    // conditional updates
     this.metadataValue = metaVal;
   }
 
