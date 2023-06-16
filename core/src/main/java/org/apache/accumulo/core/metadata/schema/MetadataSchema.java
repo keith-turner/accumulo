@@ -260,6 +260,9 @@ public class MetadataSchema {
        */
       public static final String OPID_QUAL = "opid";
       public static final ColumnFQ OPID_COLUMN = new ColumnFQ(NAME, new Text(OPID_QUAL));
+
+      public static final String SELECTED_QUAL = "selected";
+      public static final ColumnFQ SELECTED_COLUMN = new ColumnFQ(NAME, new Text(SELECTED_QUAL));
     }
 
     /**
@@ -373,14 +376,6 @@ public class MetadataSchema {
       public static final ColumnFQ GOAL_COLUMN = new ColumnFQ(NAME, new Text(GOAL_QUAL));
       public static final String REQUESTED_QUAL = "requested";
       public static final ColumnFQ REQUESTED_COLUMN = new ColumnFQ(NAME, new Text(REQUESTED_QUAL));
-    }
-
-    /**
-     * Column family used to records files selected for user initiated compaction.
-     */
-    public static class SelectedColumnFamily {
-      public static final String STR_NAME = "selected";
-      public static final Text NAME = new Text(STR_NAME);
     }
 
     /**

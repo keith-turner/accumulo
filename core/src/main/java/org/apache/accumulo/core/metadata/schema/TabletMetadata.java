@@ -24,6 +24,7 @@ import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSec
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.DIRECTORY_QUAL;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.FLUSH_QUAL;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.OPID_QUAL;
+import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.SELECTED_QUAL;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.TIME_QUAL;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily.OLD_PREV_ROW_QUAL;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily.PREV_ROW_QUAL;
@@ -72,7 +73,6 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Ho
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ScanFileColumnFamily;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
@@ -103,7 +103,7 @@ public class TabletMetadata {
   private Map<StoredTabletFile,DataFileValue> files;
   private List<StoredTabletFile> scans;
   private Map<StoredTabletFile,Long> loadedFiles;
-  private Map<StoredTabletFile,Long> selectedFiles;
+  private SelectedFiles selectedFiles;
   protected EnumSet<ColumnType> fetchedCols;
   protected KeyExtent extent;
   protected Location last;
@@ -319,7 +319,7 @@ public class TabletMetadata {
     return suspend;
   }
 
-  public Collection<StoredTabletFile> getFiles() {
+  public Set<StoredTabletFile> getFiles() {
     ensureFetched(ColumnType.FILES);
     return files.keySet();
   }
@@ -329,7 +329,7 @@ public class TabletMetadata {
     return files;
   }
 
-  public Map<StoredTabletFile,Long> getSelectedFiles() {
+  public SelectedFiles getSelectedFiles() {
     ensureFetched(ColumnType.SELECTED);
     return selectedFiles;
   }
@@ -475,7 +475,6 @@ public class TabletMetadata {
         ImmutableMap.<ExternalCompactionId,ExternalCompactionMetadata>builder();
     final var loadedFilesBuilder = ImmutableMap.<StoredTabletFile,Long>builder();
     ByteSequence row = null;
-    final var selectedFilesBuilder = ImmutableMap.<StoredTabletFile,Long>builder();
     final var compactedBuilder = ImmutableSet.<Long>builder();
 
     while (rowIter.hasNext()) {
@@ -534,6 +533,9 @@ public class TabletMetadata {
             case OPID_QUAL:
               te.operationId = TabletOperationId.from(val);
               break;
+            case SELECTED_QUAL:
+              te.selectedFiles = SelectedFiles.from(val);
+              break;
           }
           break;
         case DataFileColumnFamily.STR_NAME:
@@ -583,9 +585,6 @@ public class TabletMetadata {
               throw new IllegalStateException("Unexpected family " + fam);
           }
           break;
-        case SelectedColumnFamily.STR_NAME:
-          selectedFilesBuilder.put(new StoredTabletFile(qual), FateTxId.fromString(val));
-          break;
         case MetadataSchema.TabletsSection.CompactedColumnFamily.STR_NAME:
           compactedBuilder.add(FateTxId.fromString(qual));
           break;
@@ -603,7 +602,6 @@ public class TabletMetadata {
     te.scans = scansBuilder.build();
     te.logs = logsBuilder.build();
     te.extCompactions = extCompBuilder.build();
-    te.selectedFiles = selectedFilesBuilder.build();
     te.compacted = compactedBuilder.build();
     if (buildKeyValueMap) {
       te.keyValues = kvBuilder.build();

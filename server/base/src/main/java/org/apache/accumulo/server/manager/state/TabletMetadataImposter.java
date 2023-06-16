@@ -59,6 +59,7 @@ import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.MetadataTime;
+import org.apache.accumulo.core.metadata.schema.SelectedFiles;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletOperationId;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
@@ -288,14 +289,14 @@ public class TabletMetadataImposter extends TabletMetadata {
     }
 
     @Override
-    public Builder putSelectedFile(StoredTabletFile file, long tid) {
+    public Builder putSelectedFiles(SelectedFiles selectedFiles) {
       fetched.add(SELECTED);
-      internalBuilder.putSelectedFile(file, tid);
+      internalBuilder.putSelectedFiles(selectedFiles);
       return this;
     }
 
     @Override
-    public Builder deleteSelectedFile(StoredTabletFile file) {
+    public Builder deleteSelectedFiles() {
       throw new UnsupportedOperationException();
     }
 

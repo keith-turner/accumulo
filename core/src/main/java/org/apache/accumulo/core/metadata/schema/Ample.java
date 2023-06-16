@@ -360,13 +360,13 @@ public interface Ample {
 
     T deleteOperation();
 
-    T putSelectedFile(StoredTabletFile file, long tid);
-
-    T deleteSelectedFile(StoredTabletFile file);
-
     T putCompacted(long tid);
 
     T deleteCompacted(long tid);
+
+    T putSelectedFiles(SelectedFiles selectedFiles);
+
+    T deleteSelectedFiles();
   }
 
   interface TabletMutator extends TabletUpdates<TabletMutator> {

@@ -60,7 +60,6 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Fu
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.HostingColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
@@ -275,6 +274,7 @@ public class TabletManagementIterator extends SkippingIterator {
     // TODO so many columns are being fetch it may not make sense to fetch columns
     TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
     ServerColumnFamily.DIRECTORY_COLUMN.fetch(scanner);
+    ServerColumnFamily.SELECTED_COLUMN.fetch(scanner);
     scanner.fetchColumnFamily(CurrentLocationColumnFamily.NAME);
     scanner.fetchColumnFamily(FutureLocationColumnFamily.NAME);
     scanner.fetchColumnFamily(LastLocationColumnFamily.NAME);
@@ -284,7 +284,6 @@ public class TabletManagementIterator extends SkippingIterator {
     scanner.fetchColumnFamily(HostingColumnFamily.NAME);
     scanner.fetchColumnFamily(DataFileColumnFamily.NAME);
     scanner.fetchColumnFamily(ExternalCompactionColumnFamily.NAME);
-    scanner.fetchColumnFamily(SelectedColumnFamily.NAME);
     ServerColumnFamily.OPID_COLUMN.fetch(scanner);
     scanner.addScanIterator(new IteratorSetting(1000, "wholeRows", WholeRowIterator.class));
     IteratorSetting tabletChange =

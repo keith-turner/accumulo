@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
@@ -44,6 +45,7 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.Ample.ConditionalResult.Status;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
+import org.apache.accumulo.core.metadata.schema.SelectedFiles;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
 import org.apache.accumulo.core.metadata.schema.TabletOperationId;
@@ -323,68 +325,61 @@ public class AmpleConditionalWriterIT extends AccumuloClusterHarness {
 
     ctmi = new ConditionalTabletsMutatorImpl(context);
     ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm1, PREV_ROW, FILES, SELECTED)
-        .putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).putSelectedFile(stf3, 3)
+        .putSelectedFiles(new SelectedFiles(Set.of(stf1, stf2, stf3), true, 2L))
         .submit(tm -> false);
     results = ctmi.process();
     assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
     assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
-    assertEquals(Set.of(), context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+    assertNull(context.getAmple().readTablet(e1).getSelectedFiles());
 
     var tm2 = TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv)
         .putFile(stf3, dfv).build(SELECTED);
     ctmi = new ConditionalTabletsMutatorImpl(context);
     ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm2, PREV_ROW, FILES, SELECTED)
-        .putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).putSelectedFile(stf3, 3)
+        .putSelectedFiles(new SelectedFiles(Set.of(stf1, stf2, stf3), true, 2L))
         .submit(tm -> false);
     results = ctmi.process();
     assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
     assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
     assertEquals(Set.of(stf1, stf2, stf3),
-        context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+        context.getAmple().readTablet(e1).getSelectedFiles().getFiles());
 
-    // compare a subset of selelected should fail
-    var tm3 = TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv)
-        .putFile(stf3, dfv).putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).build();
-    ctmi = new ConditionalTabletsMutatorImpl(context);
-    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm3, PREV_ROW, FILES, SELECTED)
-        .deleteSelectedFile(stf1).deleteSelectedFile(stf2).deleteSelectedFile(stf3)
-        .submit(tm -> false);
-    results = ctmi.process();
-    assertEquals(Status.REJECTED, results.get(e1).getStatus());
+    // a list of selected files objects that are not the same as the current tablet and expected to
+    // fail
+    var expectedToFail = new ArrayList<SelectedFiles>();
 
-    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
-    assertEquals(Set.of(stf1, stf2, stf3),
-        context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+    expectedToFail.add(new SelectedFiles(Set.of(stf1, stf2), true, 2L));
+    expectedToFail.add(new SelectedFiles(Set.of(stf1, stf2, stf3, stf4), true, 2L));
+    expectedToFail.add(new SelectedFiles(Set.of(stf1, stf2, stf3), false, 2L));
+    expectedToFail.add(new SelectedFiles(Set.of(stf1, stf2, stf3), true, 3L));
 
-    // compare a superset of selected, should fail
-    var tm4 = TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv)
-        .putFile(stf3, dfv).putSelectedFile(stf1, 1).putSelectedFile(stf2, 2)
-        .putSelectedFile(stf3, 3).putSelectedFile(stf4, 4).build();
-    ctmi = new ConditionalTabletsMutatorImpl(context);
-    ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm4, PREV_ROW, FILES, SELECTED)
-        .deleteSelectedFile(stf1).deleteSelectedFile(stf2).deleteSelectedFile(stf3)
-        .submit(tm -> false);
-    results = ctmi.process();
-    assertEquals(Status.REJECTED, results.get(e1).getStatus());
+    for (var selectedFiles : expectedToFail) {
+      var tm3 = TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv)
+          .putFile(stf3, dfv).putSelectedFiles(selectedFiles).build();
+      ctmi = new ConditionalTabletsMutatorImpl(context);
+      ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm3, PREV_ROW, FILES, SELECTED)
+          .deleteSelectedFiles().submit(tm -> false);
+      results = ctmi.process();
+      assertEquals(Status.REJECTED, results.get(e1).getStatus());
 
-    assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
-    assertEquals(Set.of(stf1, stf2, stf3),
-        context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+      assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
+      assertEquals(Set.of(stf1, stf2, stf3),
+          context.getAmple().readTablet(e1).getSelectedFiles().getFiles());
+    }
 
     var tm5 =
         TabletMetadataImposter.builder(e1).putFile(stf1, dfv).putFile(stf2, dfv).putFile(stf3, dfv)
-            .putSelectedFile(stf1, 1).putSelectedFile(stf2, 2).putSelectedFile(stf3, 3).build();
+            .putSelectedFiles(new SelectedFiles(Set.of(stf1, stf2, stf3), true, 2L)).build();
     ctmi = new ConditionalTabletsMutatorImpl(context);
     ctmi.mutateTablet(e1).requireAbsentOperation().requireSame(tm5, PREV_ROW, FILES, SELECTED)
-        .deleteSelectedFile(stf1).deleteSelectedFile(stf2).deleteSelectedFile(stf3)
-        .submit(tm -> false);
+        .deleteSelectedFiles().submit(tm -> false);
     results = ctmi.process();
     assertEquals(Status.ACCEPTED, results.get(e1).getStatus());
 
     assertEquals(Set.of(stf1, stf2, stf3), context.getAmple().readTablet(e1).getFiles());
-    assertEquals(Set.of(), context.getAmple().readTablet(e1).getSelectedFiles().keySet());
+    assertNull(context.getAmple().readTablet(e1).getSelectedFiles());
   }
 
   @Test

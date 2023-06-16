@@ -27,6 +27,7 @@ import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -65,6 +66,7 @@ import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
+import org.apache.accumulo.core.metadata.schema.SelectedFiles;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
@@ -341,13 +343,17 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     switch (job.getKind()) {
       case SYSTEM:
-        if (!Collections.disjoint(jobFiles, tablet.getSelectedFiles().keySet())) {
+        if (tablet.getSelectedFiles() != null
+            && !Collections.disjoint(jobFiles, tablet.getSelectedFiles().getFiles())) {
           return false;
         }
         break;
       case USER:
       case SELECTOR:
-        if (!tablet.getSelectedFiles().keySet().containsAll(jobFiles)) {
+        if (tablet.getSelectedFiles() == null
+            || !tablet.getSelectedFiles().getFiles().containsAll(jobFiles)) {
+          // TODO need to check the fatetxid of the job
+          // TODO need to recompute propDels
           return false;
         }
         break;
@@ -358,41 +364,59 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     return true;
   }
 
-  private ExternalCompactionMetadata reserveCompaction(CompactionJobQueues.MetaJob metaJob,
-      String compactorAddress, String externalCompactionId) {
+  private ExternalCompactionMetadata createExternalCompactionMetadata(CompactionJob job,
+      Set<StoredTabletFile> jobFiles, TabletMetadata tablet, String compactorAddress) {
+    boolean propDels;
 
-    // only handle system ATM
-    Preconditions.checkArgument(metaJob.getJob().getKind() == CompactionKind.SYSTEM
-        || metaJob.getJob().getKind() == CompactionKind.USER);
-
-    var jobFiles = metaJob.getJob().getFiles().stream().map(CompactableFileImpl::toStoredTabletFile)
-        .collect(Collectors.toSet());
-
-    // ELASTICITY_TODO can probably remove this when selected files are stored in metadata
-    Set<StoredTabletFile> nextFiles = Set.of();
-
-    boolean compactingAll = metaJob.getTabletMetadata().getFiles().equals(jobFiles);
-
-    boolean propDels = !compactingAll;
+    switch (job.getKind()) {
+      case SYSTEM: {
+        boolean compactingAll = tablet.getFiles().equals(jobFiles);
+        propDels = !compactingAll;
+      }
+        break;
+      case SELECTOR:
+      case USER: {
+        boolean compactingAll = tablet.getSelectedFiles().initiallySelectedAll()
+            && tablet.getSelectedFiles().getFiles().equals(jobFiles);
+        propDels = !compactingAll;
+      }
+        break;
+      default:
+        throw new IllegalArgumentException();
+    }
 
     // ELASTICITY_TODO need to create dir if it does not exists.. look at tablet code, it has cache,
     // but its unbounded in size which is ok for a single tablet... in the manager we need a cache
     // of dirs that were created that is bounded in size
     Consumer<String> directorCreator = dirName -> {};
-    ReferencedTabletFile newFile = TabletNameGenerator.getNextDataFilenameForMajc(propDels, ctx,
-        metaJob.getTabletMetadata(), directorCreator);
+    ReferencedTabletFile newFile =
+        TabletNameGenerator.getNextDataFilenameForMajc(propDels, ctx, tablet, directorCreator);
+
+    Long compactionId = null; // TODO what should this be set to??
+
+    // ELASTICITY_TODO can probably remove this when selected files are stored in metadata
+    Set<StoredTabletFile> nextFiles = Set.of();
 
     // ELASTICITY_TODO this determine what to set this for user compactions, may be able to remove
     // it
-    boolean initiallSelAll = false;
+    boolean initiallSelAll = true; // TODO remove this from ECM
 
-    Long compactionId = null;
+    return new ExternalCompactionMetadata(jobFiles, nextFiles, newFile, compactorAddress,
+        job.getKind(), job.getPriority(), job.getExecutor(), propDels, initiallSelAll,
+        compactionId);
 
-    ExternalCompactionMetadata ecm = new ExternalCompactionMetadata(jobFiles, nextFiles, newFile,
-        compactorAddress, metaJob.getJob().getKind(), metaJob.getJob().getPriority(),
-        metaJob.getJob().getExecutor(), propDels, initiallSelAll, compactionId);
+  }
+
+  private ExternalCompactionMetadata reserveCompaction(CompactionJobQueues.MetaJob metaJob,
+      String compactorAddress, String externalCompactionId) {
+
+    Preconditions.checkArgument(metaJob.getJob().getKind() == CompactionKind.SYSTEM
+        || metaJob.getJob().getKind() == CompactionKind.USER);
 
     var tabletMetadata = metaJob.getTabletMetadata();
+
+    var jobFiles = metaJob.getJob().getFiles().stream().map(CompactableFileImpl::toStoredTabletFile)
+        .collect(Collectors.toSet());
 
     int retryCount = 0;
 
@@ -403,6 +427,9 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         if (!canReserveCompaction(tabletMetadata, metaJob.getJob(), jobFiles)) {
           return null;
         }
+
+        var ecm = createExternalCompactionMetadata(metaJob.getJob(), jobFiles, tabletMetadata,
+            compactorAddress);
 
         // any data that is read from the tablet to make a decision about if it can compact or not
         // must be included in the requireSame call
@@ -477,7 +504,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         extent);
     final var ecid = ExternalCompactionId.of(externalCompactionId);
 
-    var tabletMeta = ctx.getAmple().readTablet(extent, ECOMP, LOCATION, SELECTED, FILES);
+    var tabletMeta =
+        ctx.getAmple().readTablet(extent, ECOMP, LOCATION, SELECTED, FILES, COMPACT_ID);
 
     if (tabletMeta == null) {
       LOG.debug("Received completion notification for nonexistent tablet {} {}", ecid, extent);
@@ -551,7 +579,13 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       if (ecm.getKind() == CompactionKind.USER) {
         tabletMutator.requireSame(tablet, SELECTED, COMPACT_ID);
 
-        if (tablet.getSelectedFiles().equals(ecm.getJobFiles())) {
+        Preconditions.checkState(
+            tablet.getSelectedFiles() != null
+                && tablet.getSelectedFiles().getFiles().containsAll(ecm.getJobFiles()),
+            "Compaction contained files not in the selected set %s %s %s %s", tablet.getExtent(),
+            ecid, tablet.getSelectedFiles().getFiles(), ecm.getJobFiles());
+
+        if (tablet.getSelectedFiles().getFiles().equals(ecm.getJobFiles())) {
           // all files selected for the user compactions are finished, so the tablet is finish and
           // its compaction id needs to be updated.
           try {
@@ -573,25 +607,22 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
           // selected set
           // TODO need a test for user compaction that takes multiple compactions on a single tablet
           // to test this case
-          var fateTxid = tablet.getSelectedFiles().values().iterator().next();
-          // TODO what type to use for file in putSelectedFile this is a case where its not a
-          // StoredTabletFile
 
           // TODO set to trace
           LOG.debug(
               "Not all selected files for {} are done, adding new selected file {} from compaction",
               tablet.getExtent(), newDatafile.getPath().getName());
           // TODO compactions do not always create an output file
-          tabletMutator.putSelectedFile(newDatafile.insert(), fateTxid);
+
+          Set<StoredTabletFile> newSelectedFileSet =
+              new HashSet<>(tablet.getSelectedFiles().getFiles());
+          newSelectedFileSet.removeAll(ecm.getJobFiles());
+          newSelectedFileSet.add(newDatafile.insert());
+
+          tabletMutator.putSelectedFiles(new SelectedFiles(newSelectedFileSet,
+              tablet.getSelectedFiles().initiallySelectedAll(),
+              tablet.getSelectedFiles().getFateTxId()));
         }
-
-        Preconditions.checkState(tablet.getSelectedFiles().keySet().containsAll(ecm.getJobFiles()),
-            "Compaction contained files not in the selected set %s %s %s %s", tablet.getExtent(),
-            ecid, tablet.getSelectedFiles(), ecm.getJobFiles());
-
-        // TODO check that job files are a subset of the selected files
-        // TODO require selected files? or maybe requiring the external compaction is good?
-        ecm.getJobFiles().forEach(tabletMutator::deleteSelectedFile);
       }
 
       Preconditions.checkState(tablet.getFiles().containsAll(ecm.getJobFiles()),

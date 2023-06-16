@@ -23,9 +23,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.HostingColumnFamily.GOAL_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.COMPACT_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.OPID_COLUMN;
+import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.SELECTED_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily.PREV_ROW_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily.encodePrevEndRow;
 
+import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -40,7 +42,6 @@ import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
@@ -181,15 +182,18 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
       }
         break;
       case SELECTED: {
-        // TODO compare values
         Condition c =
-            SetEqualityIterator.createCondition(tabletMetadata.getSelectedFiles().keySet(),
-                stf -> TextUtil.getBytes(stf.getMetaUpdateDeleteText()), SelectedColumnFamily.NAME);
+            new Condition(SELECTED_COLUMN.getColumnFamily(), SELECTED_COLUMN.getColumnQualifier());
+        if (tabletMetadata.getSelectedFiles() != null) {
+          c = c.setValue(
+              Objects.requireNonNull(tabletMetadata.getSelectedFiles().getMetadataValue()));
+        }
         mutation.addCondition(c);
       }
         break;
       case ECOMP: {
-        // TODO compare values
+        // TODO compare values? that could be tricky, json may not serialize same data
+        // deterministically
         Condition c =
             SetEqualityIterator.createCondition(tabletMetadata.getExternalCompactions().keySet(),
                 ecid -> ecid.canonical().getBytes(UTF_8), ExternalCompactionColumnFamily.NAME);

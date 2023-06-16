@@ -38,6 +38,7 @@ import org.apache.accumulo.core.fate.Repo;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.Ample.ConditionalResult.Status;
+import org.apache.accumulo.core.metadata.schema.SelectedFiles;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.manager.tableOps.ManagerRepo;
@@ -153,8 +154,7 @@ class CompactionDriver extends ManagerRepo {
           tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation()
               .requireSame(tablet, PREV_ROW, FILES, COMPACT_ID).putCompactionId(compactId)
               .submit(tabletMetadata -> tabletMetadata.getCompacted().contains(tid));
-        } else if (tablet.getSelectedFiles().isEmpty()
-            && tablet.getExternalCompactions().isEmpty()) {
+        } else if (tablet.getSelectedFiles() == null && tablet.getExternalCompactions().isEmpty()) {
           // there are no selected files
 
           log.debug("{} selecting {} files compaction for {}", FateTxId.formatTid(tid),
@@ -164,23 +164,22 @@ class CompactionDriver extends ManagerRepo {
 
           var mutator = tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation()
               .requireSame(tablet, PREV_ROW, FILES, SELECTED, ECOMP); // TODO compact id?
-          // TODO require absent selected files
 
-          tablet.getFiles().forEach(file -> {
-            mutator.putSelectedFile(file, tid);
-          });
+          // TODO call selector
+          var selectedFiles = new SelectedFiles(tablet.getFiles(), true, tid);
 
-          mutator.submit(tabletMetadata -> tabletMetadata.getSelectedFiles().keySet()
-              .equals(tabletMetadata.getFiles())
-              && tabletMetadata.getSelectedFiles().values().stream()
-                  .allMatch(sftid -> sftid == tid));
+          mutator.putSelectedFiles(new SelectedFiles(tablet.getFiles(), true, tid));
 
-        } else if (tablet.getSelectedFiles().values().stream().anyMatch(stid -> stid == tid)) {
-          long numSelected =
-              tablet.getSelectedFiles().values().stream().filter(stid -> stid == tid).count();
+          mutator
+              .submit(tabletMetadata -> tabletMetadata.getSelectedFiles() != null && tabletMetadata
+                  .getSelectedFiles().getMetadataValue().equals(selectedFiles.getMetadataValue()));
+
+        } else if (tablet.getSelectedFiles() != null
+            && tablet.getSelectedFiles().getFateTxId() == tid) { // TODO look at selectedInfo
           log.debug(
               "{} tablet {} already has {} selected files for this compaction, waiting for them be processed",
-              FateTxId.formatTid(tid), tablet.getExtent(), numSelected);
+              FateTxId.formatTid(tid), tablet.getExtent(),
+              tablet.getSelectedFiles().getFiles().size());
         } else {
           // TODO if there are compactions preventing selection of files, then add selecting marker
           // that prevents new compactions from starting

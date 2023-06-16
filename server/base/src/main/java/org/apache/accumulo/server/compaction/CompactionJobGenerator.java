@@ -84,7 +84,7 @@ public class CompactionJobGenerator {
 
     Collection<CompactionJob> userJobs = Set.of();
 
-    if (kinds.contains(CompactionKind.USER) && !tablet.getSelectedFiles().isEmpty()) {
+    if (kinds.contains(CompactionKind.USER) && tablet.getSelectedFiles() != null) {
       CompactionServiceId serviceId = dispatch(CompactionKind.USER, tablet);
       userJobs = planCompactions(serviceId, CompactionKind.USER, tablet);
     }
@@ -206,13 +206,15 @@ public class CompactionJobGenerator {
         tablet.getExternalCompactions().values().stream().flatMap(ecm -> ecm.getJobFiles().stream())
             .forEach(tmpFiles::remove);
         // remove any files that are selected
-        tmpFiles.keySet().removeAll(tablet.getSelectedFiles().keySet());
+        if (tablet.getSelectedFiles() != null) {
+          tmpFiles.keySet().removeAll(tablet.getSelectedFiles().getFiles());
+        }
         candidates = tmpFiles.entrySet().stream()
             .map(entry -> new CompactableFileImpl(entry.getKey(), entry.getValue()))
             .collect(Collectors.toUnmodifiableSet());
       }
     } else if (kind == CompactionKind.USER) {
-      var selectedFiles = new HashSet<>(tablet.getSelectedFiles().keySet());
+      var selectedFiles = new HashSet<>(tablet.getSelectedFiles().getFiles());
       tablet.getExternalCompactions().values().stream().flatMap(ecm -> ecm.getJobFiles().stream())
           .forEach(selectedFiles::remove);
       candidates = selectedFiles.stream()

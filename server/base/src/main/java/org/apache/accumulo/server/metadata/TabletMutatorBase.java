@@ -44,11 +44,11 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Ho
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LastLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ScanFileColumnFamily;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SelectedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.SuspendLocationColumn;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataTime;
+import org.apache.accumulo.core.metadata.schema.SelectedFiles;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
 import org.apache.accumulo.core.metadata.schema.TabletOperationId;
@@ -229,17 +229,19 @@ public abstract class TabletMutatorBase<T extends Ample.TabletUpdates<T>>
   }
 
   @Override
-  public T putSelectedFile(StoredTabletFile file, long tid) {
+  public T putSelectedFiles(SelectedFiles selectedFiles) {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    mutation.put(SelectedColumnFamily.NAME, file.getMetaUpdateDeleteText(),
-        new Value(FateTxId.formatTid(tid)));
+    mutation.put(ServerColumnFamily.SELECTED_COLUMN.getColumnFamily(),
+        ServerColumnFamily.SELECTED_COLUMN.getColumnQualifier(),
+        new Value(selectedFiles.getMetadataValue()));
     return getThis();
   }
 
   @Override
-  public T deleteSelectedFile(StoredTabletFile bulkref) {
+  public T deleteSelectedFiles() {
     Preconditions.checkState(updatesEnabled, "Cannot make updates after calling mutate.");
-    mutation.putDelete(SelectedColumnFamily.NAME, bulkref.getMetaUpdateDeleteText());
+    mutation.putDelete(ServerColumnFamily.SELECTED_COLUMN.getColumnFamily(),
+        ServerColumnFamily.SELECTED_COLUMN.getColumnQualifier());
     return getThis();
   }
 
