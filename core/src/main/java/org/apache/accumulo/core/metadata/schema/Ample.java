@@ -324,7 +324,7 @@ public interface Ample {
 
     T deleteLocation(Location location);
 
-    T putZooLock(ServiceLock zooLock);
+    T putZooLock(String zookeeperRoot, ServiceLock zooLock);
 
     T putDirName(String dirName);
 

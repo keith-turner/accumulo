@@ -124,7 +124,8 @@ public class CompactionJobGenerator {
 
           @Override
           public Map<String,String> getExecutionHints() {
-            // ELASTICITY_TODO do for user compactions
+            // ELASTICITY_TODO do for user compactions. Best to do this after per user compaction
+            // config storage is changed in ZK so that it can be cached.
             return Map.of();
           }
         };

@@ -124,6 +124,10 @@ public class TabletMetadata {
   protected boolean futureAndCurrentLocationSet = false;
   private Set<Long> compacted;
 
+  public static TabletMetadataBuilder builder(KeyExtent extent) {
+    return new TabletMetadataBuilder(extent);
+  }
+
   public enum LocationType {
     CURRENT, FUTURE, LAST
   }

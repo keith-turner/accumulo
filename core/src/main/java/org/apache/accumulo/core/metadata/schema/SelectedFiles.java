@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 
+import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 
 public class SelectedFiles {
@@ -48,6 +49,7 @@ public class SelectedFiles {
   }
 
   public SelectedFiles(Set<StoredTabletFile> files, boolean initiallySelectedAll, long fateTxId) {
+    Preconditions.checkArgument(files != null && !files.isEmpty());
     this.files = files;
     this.initiallySelectedAll = initiallySelectedAll;
     this.fateTxId = fateTxId;
@@ -65,6 +67,7 @@ public class SelectedFiles {
 
   private SelectedFiles(Set<StoredTabletFile> files, boolean initiallySelectedAll, long fateTxId,
       String metaVal) {
+    Preconditions.checkArgument(files != null && !files.isEmpty());
     this.files = files;
     this.initiallySelectedAll = initiallySelectedAll;
     this.fateTxId = fateTxId;
