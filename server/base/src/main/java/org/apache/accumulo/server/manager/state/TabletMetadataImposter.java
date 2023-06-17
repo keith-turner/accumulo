@@ -39,7 +39,7 @@ import org.apache.accumulo.core.tabletserver.log.LogEntry;
 
 public class TabletMetadataImposter extends TabletMetadata {
 
-  // TODO replace existing usage of this with builder
+  // ELASTICITY_TODO replace existing usage of this with builder
   public TabletMetadataImposter(KeyExtent extent, Location future, Location current, Location last,
       SuspendingTServer suspend, List<LogEntry> walogs, boolean chopped, TabletHostingGoal goal,
       boolean onDemandHostingRequested) {
