@@ -40,7 +40,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.accumulo.compactor.Compactor;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -233,9 +232,6 @@ public class CompactionIT extends AccumuloClusterHarness {
 
   @Test
   public void testCompactionWithTableIterator() throws Exception {
-    // TODO remove
-    getCluster().getClusterControl().startCompactors(Compactor.class, 1, "user-small");
-
     String table1 = this.getUniqueNames(1)[0];
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
       client.tableOperations().create(table1);
@@ -343,9 +339,6 @@ public class CompactionIT extends AccumuloClusterHarness {
 
   @Test
   public void testPartialCompaction() throws Exception {
-
-    // TODO remove
-    getCluster().getClusterControl().startCompactors(Compactor.class, 1, "user-small");
     String tableName = getUniqueNames(1)[0];
     try (final AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
 

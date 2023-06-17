@@ -50,7 +50,7 @@ import org.apache.accumulo.manager.tableOps.ManagerRepo;
 import org.apache.accumulo.manager.tableOps.Utils;
 import org.apache.accumulo.manager.tableOps.delete.PreDeleteTable;
 import org.apache.accumulo.server.compaction.CompactionConfigStorage;
-import org.apache.accumulo.server.compaction.CompactionFileSelector;
+import org.apache.accumulo.server.compaction.CompactionPluginUtils;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,7 +185,7 @@ class CompactionDriver extends ManagerRepo {
             throw new RuntimeException(e);
           }
 
-          var filesToCompact = CompactionFileSelector.selectFiles(manager.getContext(),
+          var filesToCompact = CompactionPluginUtils.selectFiles(manager.getContext(),
               tablet.getExtent(), comactionConfig.getSecond(), tablet.getFilesMap());
 
           // TODO expensive logging

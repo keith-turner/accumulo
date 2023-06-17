@@ -20,7 +20,6 @@ package org.apache.accumulo.server.compaction;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -103,7 +102,8 @@ public class CompactionJobGenerator {
 
   private CompactionServiceId dispatch(CompactionKind kind, TabletMetadata tablet) {
 
-    CompactionDispatcher dispatcher = dispatchers.get(tablet.getTableId(), this::createDispatcher);
+    CompactionDispatcher dispatcher = dispatchers.get(tablet.getTableId(),
+        tableId -> CompactionPluginUtils.createDispatcher((ServiceEnvironment) env, tableId));
 
     CompactionDispatcher.DispatchParameters dispatchParams =
         new CompactionDispatcher.DispatchParameters() {
@@ -132,54 +132,11 @@ public class CompactionJobGenerator {
     return dispatcher.dispatch(dispatchParams).getService();
   }
 
-  private CompactionDispatcher createDispatcher(TableId tableId) {
-
-    var conf = env.getConfiguration();
-
-    var className = conf.get(Property.TABLE_COMPACTION_DISPATCHER.getKey());
-
-    Map<String,String> opts = new HashMap<>();
-
-    conf.getWithPrefix(Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey()).forEach((k, v) -> {
-      opts.put(k.substring(Property.TABLE_COMPACTION_DISPATCHER.getKey().length()), v);
-    });
-
-    var finalOpts = Collections.unmodifiableMap(opts);
-
-    CompactionDispatcher.InitParameters initParameters = new CompactionDispatcher.InitParameters() {
-      @Override
-      public Map<String,String> getOptions() {
-        return finalOpts;
-      }
-
-      @Override
-      public TableId getTableId() {
-        return tableId;
-      }
-
-      @Override
-      public ServiceEnvironment getServiceEnv() {
-        return (ServiceEnvironment) env;
-      }
-    };
-
-    CompactionDispatcher dispatcher = null;
-    try {
-      dispatcher = env.instantiate(className, CompactionDispatcher.class);
-    } catch (ReflectiveOperationException e) {
-      throw new RuntimeException(e);
-    }
-
-    dispatcher.init(initParameters);
-
-    return dispatcher;
-  }
-
   private Collection<CompactionJob> planCompactions(CompactionServiceId serviceId,
       CompactionKind kind, TabletMetadata tablet) {
 
     CompactionPlanner planner =
-        planners.computeIfAbsent(serviceId, sid -> createPlanner(serviceId));
+        planners.computeIfAbsent(serviceId, sid -> createPlanner(tablet.getTableId(), serviceId));
 
     // selecting indicator
     // selected files
@@ -287,13 +244,13 @@ public class CompactionJobGenerator {
     return planner.makePlan(params).getJobs();
   }
 
-  private CompactionPlanner createPlanner(CompactionServiceId serviceId) {
+  private CompactionPlanner createPlanner(TableId tableId, CompactionServiceId serviceId) {
 
     String plannerClassName = servicesConfig.getPlanners().get(serviceId.canonical());
 
     CompactionPlanner planner = null;
     try {
-      planner = env.instantiate(plannerClassName, CompactionPlanner.class);
+      planner = env.instantiate(tableId, plannerClassName, CompactionPlanner.class);
     } catch (ReflectiveOperationException e) {
       throw new RuntimeException(e);
     }

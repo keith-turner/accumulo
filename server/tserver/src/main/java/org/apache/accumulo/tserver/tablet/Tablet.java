@@ -68,7 +68,6 @@ import org.apache.accumulo.core.iteratorsImpl.system.SourceSwitchingIterator;
 import org.apache.accumulo.core.logging.TabletLogger;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.manager.thrift.BulkImportState;
-import org.apache.accumulo.core.metadata.AbstractTabletFile;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
@@ -2116,6 +2115,9 @@ public class Tablet extends TabletBase {
       return;
     }
 
+    // ELASTICITY_TODO instead of reading the tablet metadata in this method, could just invalidate
+    // it forcing next scan to read it.
+
     // ELASTICITY_TODO this entire method is a hack at the moment with race conditions. Want to
     // move towards the tablet just using a cached TabletMetadata object and have a central orderly
     // thread safe way to update it within the tablet in response to external refresh request and
@@ -2124,14 +2126,6 @@ public class Tablet extends TabletBase {
     // as a hack instead of trying to make it work correctly with the current tablet code.
     TabletMetadata tabletMetadata =
         getContext().getAmple().readTablet(getExtent(), ColumnType.FILES);
-
-    // TODO expensive logging
-    log.debug("Refreshing metadata for : {} files:{}", getExtent(),
-        tabletMetadata.getFiles().stream().map(AbstractTabletFile::getFileName).collect(toList()));
-
-    Map<StoredTabletFile,DataFileValue> metadataFiles = tabletMetadata.getFilesMap();
-
-    Map<StoredTabletFile,DataFileValue> currentFiles = getDatafileManager().getDatafileSizes();
 
     // TODO this could have race conditions with minor compactions. Intentionally
     // not being handled ATM.

@@ -92,6 +92,7 @@ import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.manager.compaction.queue.CompactionJobQueues;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.compaction.CompactionConfigStorage;
+import org.apache.accumulo.server.compaction.CompactionPluginUtils;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.security.SecurityOperation;
 import org.apache.accumulo.server.tablets.TabletNameGenerator;
@@ -465,10 +466,9 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   TExternalCompactionJob createThriftJob(String externalCompactionId,
       ExternalCompactionMetadata ecm, CompactionJobQueues.MetaJob metaJob) {
 
-    // ELASTICITY_TODO get iterator config.. is this only needed for user compactions that pass
-    // iters?
-
     List<IteratorSetting> iters = List.of();
+
+    Map<String,String> overrides = null;
 
     if (metaJob.getJob().getKind() == CompactionKind.USER) {
       try {
@@ -476,12 +476,16 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
             CompactionConfigStorage.getCompactionID(ctx, metaJob.getTabletMetadata().getExtent());
         if (cconf != null) {
           iters = cconf.getSecond().getIterators();
+
+          overrides = CompactionPluginUtils.computeOverrides(cconf.getSecond(), ctx,
+              metaJob.getTabletMetadata().getExtent(), metaJob.getJob().getFiles());
         }
       } catch (KeeperException.NoNodeException e) {
         // TODO
         throw new RuntimeException(e);
       }
     }
+
     IteratorConfig iteratorSettings = SystemIteratorUtil.toIteratorConfig(iters);
 
     var files = ecm.getJobFiles().stream().map(storedTabletFile -> {
@@ -490,11 +494,9 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
           dfv.getNumEntries(), dfv.getTime());
     }).collect(Collectors.toList());
 
-    // TODO remove or improve
-    LOG.debug("iterators {}", iteratorSettings);
-
-    // ELASTICITY_TODO will need to compute this
-    Map<String,String> overrides = Map.of();
+    if (overrides == null) {
+      overrides = Map.of();
+    }
 
     return new TExternalCompactionJob(externalCompactionId,
         metaJob.getTabletMetadata().getExtent().toThrift(), files, iteratorSettings,

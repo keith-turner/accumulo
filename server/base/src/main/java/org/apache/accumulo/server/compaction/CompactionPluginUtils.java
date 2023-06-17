@@ -19,6 +19,8 @@
 package org.apache.accumulo.server.compaction;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -30,6 +32,7 @@ import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.PluginConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
+import org.apache.accumulo.core.client.admin.compaction.CompactionConfigurer;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.client.summary.SummarizerConfiguration;
@@ -37,6 +40,7 @@ import org.apache.accumulo.core.client.summary.Summary;
 import org.apache.accumulo.core.clientImpl.UserCompactionUtils;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.TabletId;
@@ -48,6 +52,7 @@ import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
+import org.apache.accumulo.core.spi.compaction.CompactionDispatcher;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServiceEnvironmentImpl;
 import org.slf4j.Logger;
@@ -55,10 +60,11 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Collections2;
 
-public class CompactionFileSelector {
+public class CompactionPluginUtils {
 
-  private static final Logger log = LoggerFactory.getLogger(CompactionFileSelector.class);
+  private static final Logger log = LoggerFactory.getLogger(CompactionPluginUtils.class);
 
+  // TODO use common code
   private static <T> T newInstance(AccumuloConfiguration tableConfig, String className,
       Class<T> baseClass) {
     String context = ClassLoaderUtil.tableContext(tableConfig);
@@ -146,4 +152,112 @@ public class CompactionFileSelector {
         .collect(Collectors.toSet());
   }
 
+  public static Map<String,String> computeOverrides(CompactionConfig compactionConfig,
+      ServerContext context, KeyExtent extent, Set<CompactableFile> files) {
+
+    if (!UserCompactionUtils.isDefault(compactionConfig.getConfigurer())) {
+      return CompactionPluginUtils.computeOverrides(context, extent, files,
+          compactionConfig.getConfigurer());
+    }
+
+    return null;
+
+  }
+
+  public static Map<String,String> computeOverrides(ServerContext context, KeyExtent extent,
+      Set<CompactableFile> files, PluginConfig cfg) {
+
+    CompactionConfigurer configurer = newInstance(context.getTableConfiguration(extent.tableId()),
+        cfg.getClassName(), CompactionConfigurer.class);
+
+    final ServiceEnvironment senv = new ServiceEnvironmentImpl(context);
+
+    configurer.init(new CompactionConfigurer.InitParameters() {
+      @Override
+      public Map<String,String> getOptions() {
+        return cfg.getOptions();
+      }
+
+      @Override
+      public PluginEnvironment getEnvironment() {
+        return senv;
+      }
+
+      @Override
+      public TableId getTableId() {
+        return extent.tableId();
+      }
+    });
+
+    var overrides = configurer.override(new CompactionConfigurer.InputParameters() {
+      @Override
+      public Collection<CompactableFile> getInputFiles() {
+        return files;
+      }
+
+      @Override
+      public PluginEnvironment getEnvironment() {
+        return senv;
+      }
+
+      @Override
+      public TableId getTableId() {
+        return extent.tableId();
+      }
+
+      @Override
+      public TabletId getTabletId() {
+        return new TabletIdImpl(extent);
+      }
+    });
+
+    if (overrides.getOverrides().isEmpty()) {
+      return null;
+    }
+
+    return overrides.getOverrides();
+  }
+
+  static CompactionDispatcher createDispatcher(ServiceEnvironment env, TableId tableId) {
+
+    var conf = env.getConfiguration();
+
+    var className = conf.get(Property.TABLE_COMPACTION_DISPATCHER.getKey());
+
+    Map<String,String> opts = new HashMap<>();
+
+    conf.getWithPrefix(Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey()).forEach((k, v) -> {
+      opts.put(k.substring(Property.TABLE_COMPACTION_DISPATCHER.getKey().length()), v);
+    });
+
+    var finalOpts = Collections.unmodifiableMap(opts);
+
+    CompactionDispatcher.InitParameters initParameters = new CompactionDispatcher.InitParameters() {
+      @Override
+      public Map<String,String> getOptions() {
+        return finalOpts;
+      }
+
+      @Override
+      public TableId getTableId() {
+        return tableId;
+      }
+
+      @Override
+      public ServiceEnvironment getServiceEnv() {
+        return env;
+      }
+    };
+
+    CompactionDispatcher dispatcher = null;
+    try {
+      dispatcher = env.instantiate(tableId, className, CompactionDispatcher.class);
+    } catch (ReflectiveOperationException e) {
+      throw new RuntimeException(e);
+    }
+
+    dispatcher.init(initParameters);
+
+    return dispatcher;
+  }
 }
