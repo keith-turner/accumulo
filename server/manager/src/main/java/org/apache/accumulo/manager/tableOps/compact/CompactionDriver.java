@@ -25,7 +25,10 @@ import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.PREV_ROW;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.SELECTED;
 
+import java.util.stream.Collectors;
+
 import org.apache.accumulo.core.Constants;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.clientImpl.AcceptableThriftTableOperationException;
 import org.apache.accumulo.core.clientImpl.TableOperationsImpl;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperation;
@@ -36,14 +39,19 @@ import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.fate.Repo;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
+import org.apache.accumulo.core.metadata.AbstractTabletFile;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.Ample.ConditionalResult.Status;
 import org.apache.accumulo.core.metadata.schema.SelectedFiles;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
+import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.manager.tableOps.ManagerRepo;
 import org.apache.accumulo.manager.tableOps.Utils;
 import org.apache.accumulo.manager.tableOps.delete.PreDeleteTable;
+import org.apache.accumulo.server.compaction.CompactionConfigStorage;
+import org.apache.accumulo.server.compaction.CompactionFileSelector;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,6 +132,8 @@ class CompactionDriver extends ManagerRepo {
 
     var ample = manager.getContext().getAmple();
 
+    // TODO use existing compaction logging
+
     try (
         var tablets = ample.readTablets().forTable(tableId).overlapping(startRow, endRow)
             .fetch(PREV_ROW, COMPACT_ID, FILES, SELECTED, ECOMP, OPID).build();
@@ -160,22 +170,44 @@ class CompactionDriver extends ManagerRepo {
           log.debug("{} selecting {} files compaction for {}", FateTxId.formatTid(tid),
               tablet.getFiles().size(), tablet.getExtent());
 
-          // TODO need to call files selector if configured
-
           var mutator = tabletsMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation()
               .requireSame(tablet, PREV_ROW, FILES, SELECTED, ECOMP); // TODO compact id?
 
-          // TODO call selector
-          var selectedFiles = new SelectedFiles(tablet.getFiles(), true, tid);
+          // TODO this is inefficient, going to zookeeper for each tablet... Having per fate
+          // transaction config lends itself to caching very well because the config related to the
+          // fate txid is fixed and is not changing
+          // TODO could store the config as part of the fate operation
+          Pair<Long,CompactionConfig> comactionConfig = null;
+          try {
+            comactionConfig =
+                CompactionConfigStorage.getCompactionID(manager.getContext(), tablet.getExtent());
+          } catch (KeeperException.NoNodeException e) {
+            throw new RuntimeException(e);
+          }
 
-          mutator.putSelectedFiles(new SelectedFiles(tablet.getFiles(), true, tid));
+          var filesToCompact = CompactionFileSelector.selectFiles(manager.getContext(),
+              tablet.getExtent(), comactionConfig.getSecond(), tablet.getFilesMap());
+
+          // TODO expensive logging
+          log.debug("{} selected {} of {} files for {}", FateTxId.formatTid(tid),
+              filesToCompact.stream().map(AbstractTabletFile::getFileName)
+                  .collect(Collectors.toList()),
+              tablet.getFiles().stream().map(AbstractTabletFile::getFileName)
+                  .collect(Collectors.toList()),
+              tablet.getExtent());
+
+          // TODO call selector
+          var selectedFiles =
+              new SelectedFiles(filesToCompact, tablet.getFiles().equals(filesToCompact), tid);
+
+          mutator.putSelectedFiles(selectedFiles);
 
           mutator
               .submit(tabletMetadata -> tabletMetadata.getSelectedFiles() != null && tabletMetadata
                   .getSelectedFiles().getMetadataValue().equals(selectedFiles.getMetadataValue()));
 
         } else if (tablet.getSelectedFiles() != null
-            && tablet.getSelectedFiles().getFateTxId() == tid) { // TODO look at selectedInfo
+            && tablet.getSelectedFiles().getFateTxId() == tid) {
           log.debug(
               "{} tablet {} already has {} selected files for this compaction, waiting for them be processed",
               FateTxId.formatTid(tid), tablet.getExtent(),

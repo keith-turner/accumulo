@@ -40,7 +40,9 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
+import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.TableNotFoundException;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.clientImpl.thrift.SecurityErrorCode;
 import org.apache.accumulo.core.clientImpl.thrift.TInfo;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperation;
@@ -58,6 +60,7 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.core.iteratorsImpl.system.SystemIteratorUtil;
+import org.apache.accumulo.core.metadata.AbstractTabletFile;
 import org.apache.accumulo.core.metadata.CompactableFileImpl;
 import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
@@ -80,6 +83,7 @@ import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.tabletserver.thrift.TabletServerClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
+import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
@@ -269,6 +273,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         jobQueues.poll(CompactionExecutorIdImpl.externalId(queueName));
 
     while (metaJob != null) {
+      // TODO this method may reread the metadata, but the old metadata is still in metajob... could
+      // cause bugs.
       ExternalCompactionMetadata ecm =
           reserveCompaction(metaJob, compactorAddress, externalCompactionId);
 
@@ -461,13 +467,31 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
     // ELASTICITY_TODO get iterator config.. is this only needed for user compactions that pass
     // iters?
-    IteratorConfig iteratorSettings = SystemIteratorUtil.toIteratorConfig(List.of());
+
+    List<IteratorSetting> iters = List.of();
+
+    if (metaJob.getJob().getKind() == CompactionKind.USER) {
+      try {
+        Pair<Long,CompactionConfig> cconf =
+            CompactionConfigStorage.getCompactionID(ctx, metaJob.getTabletMetadata().getExtent());
+        if (cconf != null) {
+          iters = cconf.getSecond().getIterators();
+        }
+      } catch (KeeperException.NoNodeException e) {
+        // TODO
+        throw new RuntimeException(e);
+      }
+    }
+    IteratorConfig iteratorSettings = SystemIteratorUtil.toIteratorConfig(iters);
 
     var files = ecm.getJobFiles().stream().map(storedTabletFile -> {
       var dfv = metaJob.getTabletMetadata().getFilesMap().get(storedTabletFile);
       return new InputFile(storedTabletFile.getNormalizedPathStr(), dfv.getSize(),
           dfv.getNumEntries(), dfv.getTime());
     }).collect(Collectors.toList());
+
+    // TODO remove or improve
+    LOG.debug("iterators {}", iteratorSettings);
 
     // ELASTICITY_TODO will need to compute this
     Map<String,String> overrides = Map.of();
@@ -640,6 +664,11 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
       tabletMutator
           .submit(tabletMetadata -> !tabletMetadata.getExternalCompactions().containsKey(ecid));
+
+      // TODO expensive logging
+      LOG.debug("Compaction completed {} added {} removed {}", tablet.getExtent(),
+          newDatafile.getFileName(), ecm.getJobFiles().stream().map(AbstractTabletFile::getFileName)
+              .collect(Collectors.toList()));
 
       // ELASTICITY_TODO check return value and retry, could fail because of race conditions
       tabletsMutator.process();

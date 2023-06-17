@@ -68,6 +68,7 @@ import org.apache.accumulo.core.iteratorsImpl.system.SourceSwitchingIterator;
 import org.apache.accumulo.core.logging.TabletLogger;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.manager.thrift.BulkImportState;
+import org.apache.accumulo.core.metadata.AbstractTabletFile;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
@@ -2115,8 +2116,6 @@ public class Tablet extends TabletBase {
       return;
     }
 
-    log.debug("Refreshing metadata for : {}", getExtent());
-
     // ELASTICITY_TODO this entire method is a hack at the moment with race conditions. Want to
     // move towards the tablet just using a cached TabletMetadata object and have a central orderly
     // thread safe way to update it within the tablet in response to external refresh request and
@@ -2126,16 +2125,16 @@ public class Tablet extends TabletBase {
     TabletMetadata tabletMetadata =
         getContext().getAmple().readTablet(getExtent(), ColumnType.FILES);
 
+    // TODO expensive logging
+    log.debug("Refreshing metadata for : {} files:{}", getExtent(),
+        tabletMetadata.getFiles().stream().map(AbstractTabletFile::getFileName).collect(toList()));
+
     Map<StoredTabletFile,DataFileValue> metadataFiles = tabletMetadata.getFilesMap();
 
     Map<StoredTabletFile,DataFileValue> currentFiles = getDatafileManager().getDatafileSizes();
 
-    // TODO this is racy, it could add files that were just deleted by a compaction. Intentionally
+    // TODO this could have race conditions with minor compactions. Intentionally
     // not being handled ATM.
-    metadataFiles.forEach((f, v) -> {
-      if (!currentFiles.containsKey(f)) {
-        getDatafileManager().addFilesHack(f, v);
-      }
-    });
+    getDatafileManager().setFilesHack(tabletMetadata.getFilesMap());
   }
 }

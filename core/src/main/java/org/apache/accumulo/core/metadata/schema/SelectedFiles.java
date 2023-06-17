@@ -58,7 +58,8 @@ public class SelectedFiles {
         files.stream().map(StoredTabletFile::getMetaUpdateDelete).sorted().collect(toList());
     jData.txid = FateTxId.formatTid(fateTxId);
     jData.selAll = initiallySelectedAll;
-    // TODO need the produced json to always be the same when the input data is the same, how can this be guaranteed??
+    // TODO need the produced json to always be the same when the input data is the same, how can
+    // this be guaranteed??
     metadataValue = GSON.toJson(jData);
   }
 

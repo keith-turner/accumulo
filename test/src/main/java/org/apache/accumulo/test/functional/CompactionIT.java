@@ -40,6 +40,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.apache.accumulo.compactor.Compactor;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -232,6 +233,9 @@ public class CompactionIT extends AccumuloClusterHarness {
 
   @Test
   public void testCompactionWithTableIterator() throws Exception {
+    // TODO remove
+    getCluster().getClusterControl().startCompactors(Compactor.class, 1, "user-small");
+
     String table1 = this.getUniqueNames(1)[0];
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
       client.tableOperations().create(table1);
@@ -339,6 +343,9 @@ public class CompactionIT extends AccumuloClusterHarness {
 
   @Test
   public void testPartialCompaction() throws Exception {
+
+    // TODO remove
+    getCluster().getClusterControl().startCompactors(Compactor.class, 1, "user-small");
     String tableName = getUniqueNames(1)[0];
     try (final AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
 
@@ -352,7 +359,7 @@ public class CompactionIT extends AccumuloClusterHarness {
           bw.addMutation(m);
         }
       }
-      client.tableOperations().flush(tableName);
+      client.tableOperations().flush(tableName, null, null, true);
       IteratorSetting iterSetting = new IteratorSetting(100, TestFilter.class);
       // make sure iterator options make it to compactor process
       iterSetting.addOption("modulus", 17 + "");
@@ -369,7 +376,9 @@ public class CompactionIT extends AccumuloClusterHarness {
         }
       }
       // this should create an F file
-      client.tableOperations().flush(tableName);
+      client.tableOperations().flush(tableName, null, null, true);
+
+      // TODO compactions flush tablets, needs to evaluate this behavior
 
       // run a compaction that only compacts F files
       iterSetting = new IteratorSetting(100, TestFilter.class);
@@ -378,6 +387,8 @@ public class CompactionIT extends AccumuloClusterHarness {
       config = new CompactionConfig().setIterators(List.of(iterSetting)).setWait(true)
           .setSelector(new PluginConfig(FSelector.class.getName()));
       client.tableOperations().compact(tableName, config);
+
+      LoggerFactory.getLogger(CompactionIT.class).info("scanning");
 
       try (Scanner scanner = client.createScanner(tableName)) {
         int count = 0;

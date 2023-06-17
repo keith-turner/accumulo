@@ -510,6 +510,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
   @Test
   public void testManyFiles() throws Exception {
 
+    // TODO remove
     getCluster().getClusterControl().startCompactors(Compactor.class, 1, "user-small");
 
     try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
