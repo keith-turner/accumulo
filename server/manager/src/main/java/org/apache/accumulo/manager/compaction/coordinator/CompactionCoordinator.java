@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
@@ -550,20 +551,36 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     ReferencedTabletFile newDatafile =
         TabletNameGenerator.computeCompactionFileDest(ecm.getCompactTmpName());
 
-    try {
-      // TODO compactions do not always produce output.. need to handle this case
-      if (!ctx.getVolumeManager().rename(ecm.getCompactTmpName().getPath(),
-          newDatafile.getPath())) {
-        throw new IOException("rename returned false");
+    Optional<ReferencedTabletFile> optionalNewFile;
+
+    if (stats.getEntriesWritten() == 0) {
+      // the copmaction produced no output so do not need to rename or add a file to the metadata
+      // table, only delete the input files.
+      try {
+        ctx.getVolumeManager().delete(ecm.getCompactTmpName().getPath());
+      } catch (IOException e) {
+        // TODO
+        throw new RuntimeException(e);
       }
-    } catch (IOException e) {
-      LOG.warn("Can not commit complete compaction {} because unable to rename {} to {} ", ecid,
-          ecm.getCompactTmpName(), newDatafile, e);
-      compactionFailed(Map.of(ecid, extent));
-      return;
+      optionalNewFile = Optional.empty();
+    } else {
+      try {
+        // ELASTICITIY_TODO compactions do not always produce output.. need to handle this case.
+        if (!ctx.getVolumeManager().rename(ecm.getCompactTmpName().getPath(),
+            newDatafile.getPath())) {
+          throw new IOException("rename returned false");
+        }
+      } catch (IOException e) {
+        LOG.warn("Can not commit complete compaction {} because unable to rename {} to {} ", ecid,
+            ecm.getCompactTmpName(), newDatafile, e);
+        compactionFailed(Map.of(ecid, extent));
+        return;
+      }
+
+      optionalNewFile = Optional.of(newDatafile);
     }
 
-    commitCompaction(stats, ecid, tabletMeta, newDatafile);
+    commitCompaction(stats, ecid, tabletMeta, optionalNewFile);
 
     // compactionFinalizer.commitCompaction(ecid, extent, stats.fileSize, stats.entriesWritten);
 
@@ -593,7 +610,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   }
 
   private void commitCompaction(TCompactionStats stats, ExternalCompactionId ecid,
-      TabletMetadata tablet, ReferencedTabletFile newDatafile) {
+      TabletMetadata tablet, Optional<ReferencedTabletFile> newDatafile) {
 
     KeyExtent extent = tablet.getExtent();
     ExternalCompactionMetadata ecm = tablet.getExternalCompactions().get(ecid);
@@ -636,16 +653,23 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
           // TODO need a test for user compaction that takes multiple compactions on a single tablet
           // to test this case
 
-          // TODO set to trace
-          LOG.debug(
-              "Not all selected files for {} are done, adding new selected file {} from compaction",
-              tablet.getExtent(), newDatafile.getPath().getName());
           // TODO compactions do not always create an output file
 
           Set<StoredTabletFile> newSelectedFileSet =
               new HashSet<>(tablet.getSelectedFiles().getFiles());
           newSelectedFileSet.removeAll(ecm.getJobFiles());
-          newSelectedFileSet.add(newDatafile.insert());
+
+          if (newDatafile.isPresent()) {
+            LOG.debug(
+                "Not all selected files for {} are done, compaction produced no output do not adding to selected set from compaction",
+                tablet.getExtent());
+            newSelectedFileSet.add(newDatafile.orElseThrow().insert());
+          } else {
+            // TODO set to trace
+            LOG.debug(
+                "Not all selected files for {} are done, adding new selected file {} from compaction",
+                tablet.getExtent(), newDatafile.orElseThrow().getPath().getName());
+          }
 
           tabletMutator.putSelectedFiles(new SelectedFiles(newSelectedFileSet,
               tablet.getSelectedFiles().initiallySelectedAll(),
@@ -660,16 +684,17 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       ecm.getJobFiles().forEach(tabletMutator::deleteFile);
       tabletMutator.deleteExternalCompaction(ecid);
 
-      // TODO handle compaction w/ no output
-      tabletMutator.putFile(newDatafile,
-          new DataFileValue(stats.getFileSize(), stats.getEntriesWritten()));
+      if (newDatafile.isPresent()) {
+        tabletMutator.putFile(newDatafile.orElseThrow(),
+            new DataFileValue(stats.getFileSize(), stats.getEntriesWritten()));
+      }
 
       tabletMutator
           .submit(tabletMetadata -> !tabletMetadata.getExternalCompactions().containsKey(ecid));
 
       // TODO expensive logging
-      LOG.debug("Compaction completed {} added {} removed {}", tablet.getExtent(),
-          newDatafile.getFileName(), ecm.getJobFiles().stream().map(AbstractTabletFile::getFileName)
+      LOG.debug("Compaction completed {} added {} removed {}", tablet.getExtent(), newDatafile,
+          ecm.getJobFiles().stream().map(AbstractTabletFile::getFileName)
               .collect(Collectors.toList()));
 
       // ELASTICITY_TODO check return value and retry, could fail because of race conditions

@@ -64,7 +64,6 @@ public class CompactionPluginUtils {
 
   private static final Logger log = LoggerFactory.getLogger(CompactionPluginUtils.class);
 
-  // TODO use common code
   private static <T> T newInstance(AccumuloConfiguration tableConfig, String className,
       Class<T> baseClass) {
     String context = ClassLoaderUtil.tableContext(tableConfig);
