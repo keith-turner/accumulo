@@ -594,7 +594,7 @@ public interface Ample {
     throw new UnsupportedOperationException();
   }
 
-  interface TabletRefreshOperations {
+  interface Refreshes {
     static class RefreshEntry {
       private final ExternalCompactionId ecid;
 
@@ -621,13 +621,17 @@ public interface Ample {
     }
 
     void add(Collection<RefreshEntry> entries);
+
     void delete(Collection<RefreshEntry> entries);
+
     Stream<RefreshEntry> list();
   }
 
-  default TabletRefreshOperations refreshes(DataLevel dataLevel) {
+  /**
+   * Refresh entries in the metadata table are used to track hosted tablets that need to have their
+   * metadata refreshed after a compaction.
+   */
+  default Refreshes refreshes(DataLevel dataLevel) {
     throw new UnsupportedOperationException();
   }
-
-
 }

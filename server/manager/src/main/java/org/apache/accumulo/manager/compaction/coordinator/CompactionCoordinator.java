@@ -31,9 +31,10 @@ import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.SELECTED;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -43,14 +44,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import com.google.common.collect.Iterators;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.IteratorSetting;
@@ -79,7 +78,7 @@ import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.Ample;
-import org.apache.accumulo.core.metadata.schema.Ample.TabletRefreshOperations.RefreshEntry;
+import org.apache.accumulo.core.metadata.schema.Ample.Refreshes.RefreshEntry;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
@@ -122,6 +121,7 @@ import org.slf4j.LoggerFactory;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Iterators;
 import com.google.common.collect.Sets;
 import com.google.common.net.HostAndPort;
 
@@ -141,9 +141,11 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       new ConcurrentHashMap<>();
 
   /*
-   * When the manager starts up any refreshes that were in progress when the last manager process died must be completed before new refresh entries are written.  This map of countdown latches helps achieve that goal.
+   * When the manager starts up any refreshes that were in progress when the last manager process
+   * died must be completed before new refresh entries are written. This map of countdown latches
+   * helps achieve that goal.
    */
-  private final Map<Ample.DataLevel, CountDownLatch> refreshLatches;
+  private final Map<Ample.DataLevel,CountDownLatch> refreshLatches;
 
   private static final Cache<ExternalCompactionId,RunningCompaction> COMPLETED =
       Caffeine.newBuilder().maximumSize(200).expireAfterWrite(10, TimeUnit.MINUTES).build();
@@ -169,7 +171,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     this.security = security;
     this.jobQueues = jobQueues;
 
-    var refreshLatches  = new EnumMap<Ample.DataLevel, CountDownLatch>(Ample.DataLevel.class);
+    var refreshLatches = new EnumMap<Ample.DataLevel,CountDownLatch>(Ample.DataLevel.class);
     refreshLatches.put(Ample.DataLevel.ROOT, new CountDownLatch(1));
     refreshLatches.put(Ample.DataLevel.METADATA, new CountDownLatch(1));
     refreshLatches.put(Ample.DataLevel.USER, new CountDownLatch(1));
@@ -195,31 +197,50 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   }
 
   private void processRefreshes(Ample.DataLevel dataLevel) {
-    refreshLatches.get(dataLevel).countDown();
-
     ctx.getAmple().refreshes(dataLevel).list();
 
     // process batches of refresh entries to avoid reading all into memory at once
-    Iterators.partition(ctx.getAmple().refreshes(dataLevel).list().iterator(), 10000).forEachRemaining(refreshEntries -> {
-      var extents = refreshEntries.stream().map(RefreshEntry::getExtent).collect(Collectors.toList());
-      var tabletsMeta = new HashMap<KeyExtent, TabletMetadata>();
-      ctx.getAmple().readTablets().forTablets(extents, Optional.empty()).fetch(PREV_ROW,LOCATION, SCANS).build().stream().forEach(tm->tabletsMeta.put(tm.getExtent(), tm));
+    Iterators.partition(ctx.getAmple().refreshes(dataLevel).list().iterator(), 10000)
+        .forEachRemaining(refreshEntries -> {
+          LOG.info("Processing {} tablet refreshes for {}", refreshEntries.size(), dataLevel);
 
-      var tserverRefreshes = new HashMap<TServerInstance, TabletMetadata>();
+          var extents =
+              refreshEntries.stream().map(RefreshEntry::getExtent).collect(Collectors.toList());
+          var tabletsMeta = new HashMap<KeyExtent,TabletMetadata>();
+          ctx.getAmple().readTablets().forTablets(extents, Optional.empty())
+              .fetch(PREV_ROW, LOCATION, SCANS).build().stream()
+              .forEach(tm -> tabletsMeta.put(tm.getExtent(), tm));
 
-      refreshEntries.forEach(refreshEntry -> {
+          var tserverRefreshes = new HashMap<TServerInstance,List<TTabletRefresh>>();
 
-      });
+          refreshEntries.forEach(refreshEntry -> {
+            var tm = tabletsMeta.get(refreshEntry.getExtent());
 
+            // only need to refresh if the tablet is still on the same tserver instance
+            if (tm != null && tm.getLocation() != null
+                && tm.getLocation().getServerInstance().equals(refreshEntry.getTserver())) {
+              var ttr = createThriftRefresh(tm.getExtent(), tm.getScans());
+              tserverRefreshes.computeIfAbsent(refreshEntry.getTserver(), k -> new ArrayList<>())
+                  .add(ttr);
+            }
+          });
 
-      ctx.getAmple().refreshes(dataLevel).delete(refreshEntries);
-    });
+          // TODO what about exceptions with refresh RPC
+          tserverRefreshes.forEach(this::refreshTablets);
 
-    refreshTablet();
+          ctx.getAmple().refreshes(dataLevel).delete(refreshEntries);
+        });
+
+    // allow new refreshes to be written now that all preexisting ones are processed
+    refreshLatches.get(dataLevel).countDown();
   }
 
   @Override
   public void run() {
+
+    processRefreshes(Ample.DataLevel.ROOT);
+    processRefreshes(Ample.DataLevel.METADATA);
+    processRefreshes(Ample.DataLevel.USER);
 
     startCompactionCleaner(schedExecutor);
     startRunningCleaner(schedExecutor);
@@ -558,12 +579,20 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   }
 
   class RefreshWriter {
-    private TabletMetadata.Location writtenLocation;
 
-    RefreshWriter(KeyExtent extent) {
+    private final ExternalCompactionId ecid;
+    private final KeyExtent extent;
+
+    private RefreshEntry writtenEntry;
+
+    RefreshWriter(ExternalCompactionId ecid, KeyExtent extent) {
+      this.ecid = ecid;
+      this.extent = extent;
+
       var dataLevel = Ample.DataLevel.of(extent.tableId());
       try {
-        // Wait for any refresh entries from the previous manager process to be processed before writing new ones.
+        // Wait for any refresh entries from the previous manager process to be processed before
+        // writing new ones.
         refreshLatches.get(dataLevel).await();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
@@ -573,25 +602,27 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     public void writeRefresh(TabletMetadata.Location location) {
       Objects.requireNonNull(location);
 
-      if (writtenLocation != null) {
-        if (location.getHostPort().equals(writtenLocation.getHostPort())) {
+      if (writtenEntry != null) {
+        if (location.getServerInstance().equals(writtenEntry.getTserver())) {
           // the location was already written so nothing to do
           return;
         } else {
-          // the tablet must have moved during the commit process, lets delete the previously
-          // written refresh entry
-          // TODO delete refresh
+          deleteRefresh();
         }
       }
 
-      // TODO write refresh
-      writtenLocation = location;
+      var entry = new RefreshEntry(ecid, extent, location.getServerInstance());
 
+      ctx.getAmple().refreshes(Ample.DataLevel.of(extent.tableId())).add(List.of(entry));
+
+      writtenEntry = entry;
     }
 
     public void deleteRefresh() {
-      if (writtenLocation != null) {
-        // TODO delete written refresh entry
+      if (writtenEntry != null) {
+        ctx.getAmple().refreshes(Ample.DataLevel.of(extent.tableId()))
+            .delete(List.of(writtenEntry));
+        writtenEntry = null;
       }
     }
   }
@@ -645,7 +676,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       return;
     }
 
-    RefreshWriter refreshWriter = new RefreshWriter(extent);
+    RefreshWriter refreshWriter = new RefreshWriter(ecid, extent);
 
     try {
       tabletMeta = commitCompaction(stats, ecid, tabletMeta, optionalNewFile, refreshWriter);
@@ -686,24 +717,33 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     }
   }
 
-  private void refreshTablet(TabletMetadata metadata, Set<StoredTabletFile> scanfiles) {
+  private TTabletRefresh createThriftRefresh(KeyExtent extent,
+      Collection<StoredTabletFile> scanfiles) {
+    return new TTabletRefresh(extent.toThrift(),
+        scanfiles.stream().map(StoredTabletFile::getMetaUpdateDelete).collect(Collectors.toList()));
+  }
+
+  private void refreshTablet(TabletMetadata metadata, Collection<StoredTabletFile> scanfiles) {
     var location = metadata.getLocation();
     if (location != null) {
-      TabletServerClientService.Client client = null;
-      try {
-        client = getTabletServerConnection(location.getServerInstance());
-        TTabletRefresh tTabletRefresh =
-            new TTabletRefresh(metadata.getExtent().toThrift(), scanfiles.stream()
-                .map(StoredTabletFile::getMetaUpdateDelete).collect(Collectors.toList()));
-
-        // TODO check return value
-        client.refreshTablets(TraceUtil.traceInfo(), ctx.rpcCreds(), List.of(tTabletRefresh));
-      } catch (TException e) {
-        throw new RuntimeException(e);
-      } finally {
-        returnTServerClient(client);
-      }
+      TTabletRefresh tTabletRefresh = createThriftRefresh(metadata.getExtent(), scanfiles);
+      refreshTablets(location.getServerInstance(), List.of(tTabletRefresh));
     }
+  }
+
+  private void refreshTablets(TServerInstance location, List<TTabletRefresh> refreshes) {
+
+    TabletServerClientService.Client client = null;
+    try {
+      client = getTabletServerConnection(location);
+      // TODO check return value
+      client.refreshTablets(TraceUtil.traceInfo(), ctx.rpcCreds(), refreshes);
+    } catch (TException e) {
+      throw new RuntimeException(e);
+    } finally {
+      returnTServerClient(client);
+    }
+
   }
 
   private long getCompactionId(KeyExtent extent) {
