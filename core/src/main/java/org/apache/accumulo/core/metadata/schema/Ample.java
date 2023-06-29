@@ -593,4 +593,41 @@ public interface Ample {
   default void removeBulkLoadInProgressFlag(String path) {
     throw new UnsupportedOperationException();
   }
+
+  interface TabletRefreshOperations {
+    static class RefreshEntry {
+      private final ExternalCompactionId ecid;
+
+      private final KeyExtent extent;
+      private final TServerInstance tserver;
+
+      public RefreshEntry(ExternalCompactionId ecid, KeyExtent extent, TServerInstance tserver) {
+        this.ecid = ecid;
+        this.extent = extent;
+        this.tserver = tserver;
+      }
+
+      public ExternalCompactionId getEcid() {
+        return ecid;
+      }
+
+      public KeyExtent getExtent() {
+        return extent;
+      }
+
+      public TServerInstance getTserver() {
+        return tserver;
+      }
+    }
+
+    void add(Collection<RefreshEntry> entries);
+    void delete(Collection<RefreshEntry> entries);
+    Stream<RefreshEntry> list();
+  }
+
+  default TabletRefreshOperations refreshes(DataLevel dataLevel) {
+    throw new UnsupportedOperationException();
+  }
+
+
 }

@@ -27,10 +27,14 @@ import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOCATION;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.OPID;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.PREV_ROW;
+import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.SCANS;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.SELECTED;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,12 +42,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import com.google.common.collect.Iterators;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.IteratorSetting;
@@ -72,6 +79,7 @@ import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.core.metadata.schema.Ample.TabletRefreshOperations.RefreshEntry;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionMetadata;
@@ -132,6 +140,11 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   protected static final Map<ExternalCompactionId,RunningCompaction> RUNNING_CACHE =
       new ConcurrentHashMap<>();
 
+  /*
+   * When the manager starts up any refreshes that were in progress when the last manager process died must be completed before new refresh entries are written.  This map of countdown latches helps achieve that goal.
+   */
+  private final Map<Ample.DataLevel, CountDownLatch> refreshLatches;
+
   private static final Cache<ExternalCompactionId,RunningCompaction> COMPLETED =
       Caffeine.newBuilder().maximumSize(200).expireAfterWrite(10, TimeUnit.MINUTES).build();
 
@@ -155,8 +168,14 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     this.schedExecutor = this.ctx.getScheduledExecutor();
     this.security = security;
     this.jobQueues = jobQueues;
-    startCompactionCleaner(schedExecutor);
-    startRunningCleaner(schedExecutor);
+
+    var refreshLatches  = new EnumMap<Ample.DataLevel, CountDownLatch>(Ample.DataLevel.class);
+    refreshLatches.put(Ample.DataLevel.ROOT, new CountDownLatch(1));
+    refreshLatches.put(Ample.DataLevel.METADATA, new CountDownLatch(1));
+    refreshLatches.put(Ample.DataLevel.USER, new CountDownLatch(1));
+    this.refreshLatches = Collections.unmodifiableMap(refreshLatches);
+
+    // At this point the manager does not have its lock so no actions should be taken yet
   }
 
   public void shutdown() {
@@ -175,8 +194,35 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     ThreadPools.watchNonCriticalScheduledTask(future);
   }
 
+  private void processRefreshes(Ample.DataLevel dataLevel) {
+    refreshLatches.get(dataLevel).countDown();
+
+    ctx.getAmple().refreshes(dataLevel).list();
+
+    // process batches of refresh entries to avoid reading all into memory at once
+    Iterators.partition(ctx.getAmple().refreshes(dataLevel).list().iterator(), 10000).forEachRemaining(refreshEntries -> {
+      var extents = refreshEntries.stream().map(RefreshEntry::getExtent).collect(Collectors.toList());
+      var tabletsMeta = new HashMap<KeyExtent, TabletMetadata>();
+      ctx.getAmple().readTablets().forTablets(extents, Optional.empty()).fetch(PREV_ROW,LOCATION, SCANS).build().stream().forEach(tm->tabletsMeta.put(tm.getExtent(), tm));
+
+      var tserverRefreshes = new HashMap<TServerInstance, TabletMetadata>();
+
+      refreshEntries.forEach(refreshEntry -> {
+
+      });
+
+
+      ctx.getAmple().refreshes(dataLevel).delete(refreshEntries);
+    });
+
+    refreshTablet();
+  }
+
   @Override
   public void run() {
+
+    startCompactionCleaner(schedExecutor);
+    startRunningCleaner(schedExecutor);
 
     // On a re-start of the coordinator it's possible that external compactions are in-progress.
     // Attempt to get the running compactions on the compactors and then resolve which tserver
@@ -511,8 +557,18 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         ecm.getCompactionId() == null ? 0 : ecm.getCompactionId(), overrides);
   }
 
-  static class RefreshWriter {
+  class RefreshWriter {
     private TabletMetadata.Location writtenLocation;
+
+    RefreshWriter(KeyExtent extent) {
+      var dataLevel = Ample.DataLevel.of(extent.tableId());
+      try {
+        // Wait for any refresh entries from the previous manager process to be processed before writing new ones.
+        refreshLatches.get(dataLevel).await();
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }
 
     public void writeRefresh(TabletMetadata.Location location) {
       Objects.requireNonNull(location);
@@ -589,7 +645,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       return;
     }
 
-    RefreshWriter refreshWriter = new RefreshWriter();
+    RefreshWriter refreshWriter = new RefreshWriter(extent);
 
     try {
       tabletMeta = commitCompaction(stats, ecid, tabletMeta, optionalNewFile, refreshWriter);
