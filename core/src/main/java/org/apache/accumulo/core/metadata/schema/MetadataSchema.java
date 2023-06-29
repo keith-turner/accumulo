@@ -494,7 +494,7 @@ public class MetadataSchema {
 
   public static class RefreshSection {
     private static final Section section =
-        new Section(RESERVED_PREFIX + "refresh", true, RESERVED_PREFIX + "ecomq", false);
+        new Section(RESERVED_PREFIX + "refresh", true, RESERVED_PREFIX + "refresi", false);
 
     public static Range getRange() {
       return section.getRange();

@@ -660,5 +660,4 @@ public class CompactionIT extends AccumuloClusterHarness {
     }
     client.tableOperations().flush(tablename, null, null, true);
   }
-
 }

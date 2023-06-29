@@ -20,6 +20,7 @@ package org.apache.accumulo.server.metadata;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.core.metadata.RootTable.ZROOT_TABLET_GC_CANDIDATES;
+import static org.apache.accumulo.core.util.LazySingletons.GSON;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -45,9 +46,8 @@ import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
-import org.apache.accumulo.core.metadata.schema.MetadataSchema;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema.RefreshSection;
 import org.apache.accumulo.core.security.Authorizations;
-import org.apache.accumulo.core.util.LazySingletons;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.hadoop.io.Text;
 import org.apache.zookeeper.KeeperException;
@@ -63,6 +63,10 @@ public class RefreshesImpl implements Ample.Refreshes {
   private final Ample.DataLevel dataLevel;
   private final ServerContext context;
 
+  public static String getInitialJson() {
+    return toJson(Map.of());
+  }
+
   // This class is used to serialize and deserialize root tablet metadata using GSon. Any changes to
   // this class must consider persisted data.
   private static class Data {
@@ -76,13 +80,13 @@ public class RefreshesImpl implements Ample.Refreshes {
     }
   }
 
-  private String toJson(Map<String,String> entries) {
+  private static String toJson(Map<String,String> entries) {
     var data = new Data(1, entries);
-    return LazySingletons.GSON.get().toJson(data, Data.class);
+    return GSON.get().toJson(data, Data.class);
   }
 
   private Map<String,String> fromJson(String json) {
-    Data data = LazySingletons.GSON.get().fromJson(json, Data.class);
+    Data data = GSON.get().fromJson(json, Data.class);
     Preconditions.checkArgument(data.version == 1);
     return data.entries;
   }
@@ -95,8 +99,7 @@ public class RefreshesImpl implements Ample.Refreshes {
   private void mutateRootRefreshes(Consumer<Map<String,String>> mutator) {
     String zpath = context.getZooKeeperRoot() + ZROOT_TABLET_GC_CANDIDATES;
     try {
-      // TODO calling create seems unnecessary and is possibly racy and inefficient
-      context.getZooReaderWriter().mutateOrCreate(zpath, new byte[0], currVal -> {
+      context.getZooReaderWriter().mutateExisting(zpath, currVal -> {
         String currJson = new String(currVal, UTF_8);
         Map<String,String> entries = fromJson(currJson);
         log.debug("Root refreshes before change : {}", currJson);
@@ -115,7 +118,7 @@ public class RefreshesImpl implements Ample.Refreshes {
   }
 
   private Text createRow(RefreshEntry entry) {
-    return new Text(MetadataSchema.RefreshSection.getRowPrefix() + entry.getEcid().canonical());
+    return new Text(RefreshSection.getRowPrefix() + entry.getEcid().canonical());
   }
 
   private Mutation createAddMutation(RefreshEntry entry) {
@@ -143,7 +146,7 @@ public class RefreshesImpl implements Ample.Refreshes {
 
   private RefreshEntry decode(Map.Entry<Key,Value> entry) {
     String row = entry.getKey().getRowData().toString();
-    Preconditions.checkArgument(row.startsWith(MetadataSchema.RefreshSection.getRowPrefix()));
+    Preconditions.checkArgument(row.startsWith(RefreshSection.getRowPrefix()));
     Preconditions.checkArgument(entry.getKey().getColumnFamilyData().length() == 0);
     Preconditions.checkArgument(entry.getKey().getColumnQualifierData().length() == 0);
 
@@ -153,9 +156,8 @@ public class RefreshesImpl implements Ample.Refreshes {
       var extent = KeyExtent.readFrom(dis);
       var tserver = new TServerInstance(dis.readUTF());
       return new RefreshEntry(
-          ExternalCompactionId
-              .of(row.substring(MetadataSchema.RefreshSection.getRowPrefix().length())),
-          extent, tserver);
+          ExternalCompactionId.of(row.substring(RefreshSection.getRowPrefix().length())), extent,
+          tserver);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -202,7 +204,6 @@ public class RefreshesImpl implements Ample.Refreshes {
         throw new IllegalStateException(e);
       }
     }
-
   }
 
   @Override
@@ -220,7 +221,7 @@ public class RefreshesImpl implements Ample.Refreshes {
         throw new IllegalStateException(e);
       }
     } else {
-      Range range = MetadataSchema.RefreshSection.getRange();
+      Range range = RefreshSection.getRange();
 
       Scanner scanner;
       try {

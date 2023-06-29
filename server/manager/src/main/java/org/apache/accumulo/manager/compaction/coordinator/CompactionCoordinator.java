@@ -615,6 +615,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
 
       ctx.getAmple().refreshes(Ample.DataLevel.of(extent.tableId())).add(List.of(entry));
 
+      LOG.debug("wrote refresh entry for {}", ecid);
+
       writtenEntry = entry;
     }
 
@@ -622,6 +624,7 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       if (writtenEntry != null) {
         ctx.getAmple().refreshes(Ample.DataLevel.of(extent.tableId()))
             .delete(List.of(writtenEntry));
+        LOG.debug("deleted refresh entry for {}", ecid);
         writtenEntry = null;
       }
     }
@@ -685,8 +688,15 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       compactionFailed(Map.of(ecid, extent));
     }
 
-    // ELASTICITY_TODO, how will user compactions handle refresh
-    refreshTablet(tabletMeta, ecm.getJobFiles());
+    if (ecm.getKind() != CompactionKind.USER) {
+      // User compactions will be refreshed as part of the fate operation. The user compaction fate
+      // operation will see the compaction was committed above, however if it were to rely on this
+      // code to do the refresh it would not be able to know when it was actually done. Therefore,
+      // user compactions will refresh as part of the fate operation so that it's known to be done
+      // before the fate operation returns. Since the fate operation will do it, there is no need to
+      // do it here for user compactions.
+      refreshTablet(tabletMeta, ecm.getJobFiles());
+    }
 
     // if a refresh entry was written, it can be removed after the tablet was refreshed
     refreshWriter.deleteRefresh();
@@ -813,9 +823,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     while (canCommitCompaction(ecid, tablet)) {
       ExternalCompactionMetadata ecm = tablet.getExternalCompactions().get(ecid);
 
-      // TODO SELECTOR?
       if (tablet.getLocation() != null
-          && tablet.getExternalCompactions().get(ecid).getKind() == CompactionKind.SYSTEM) {
+          && tablet.getExternalCompactions().get(ecid).getKind() != CompactionKind.USER) {
         // Write the refresh entry before attempting to update tablet metadata, this ensures that
         // refresh will happen even if this process dies. In the case where this process does not
         // die refresh will happen after commit. User compactions will make refresh calls in their
