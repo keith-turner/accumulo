@@ -43,6 +43,7 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
+import org.apache.accumulo.core.tabletserver.thrift.TTabletRefresh;
 import org.apache.accumulo.core.tabletserver.thrift.TabletServerClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.Retry;
@@ -179,9 +180,9 @@ public class RefreshTablets extends ManagerRepo {
       client = ThriftUtil.getClient(ThriftClientTypes.TABLET_SERVER, location.getHostAndPort(),
           manager.getContext(), timeInMillis);
 
-      var unrefreshed =
-          client.refreshTablets(TraceUtil.traceInfo(), manager.getContext().rpcCreds(),
-              extents.stream().map(KeyExtent::toThrift).collect(toList()));
+      var unrefreshed = client.refreshTablets(TraceUtil.traceInfo(),
+          manager.getContext().rpcCreds(), extents.stream()
+              .map(extent -> new TTabletRefresh(extent.toThrift(), List.of())).collect(toList()));
 
       log.trace("{} refresh request to {} returned {} unrefreshed extents", FateTxId.formatTid(tid),
           location, unrefreshed.size());

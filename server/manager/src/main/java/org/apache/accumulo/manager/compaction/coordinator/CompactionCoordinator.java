@@ -34,6 +34,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -86,6 +87,7 @@ import org.apache.accumulo.core.tabletserver.thrift.IteratorConfig;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
+import org.apache.accumulo.core.tabletserver.thrift.TTabletRefresh;
 import org.apache.accumulo.core.tabletserver.thrift.TabletServerClientService;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.Pair;
@@ -509,6 +511,35 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         ecm.getCompactionId() == null ? 0 : ecm.getCompactionId(), overrides);
   }
 
+  static class RefreshWriter {
+    private TabletMetadata.Location writtenLocation;
+
+    public void writeRefresh(TabletMetadata.Location location) {
+      Objects.requireNonNull(location);
+
+      if (writtenLocation != null) {
+        if (location.getHostPort().equals(writtenLocation.getHostPort())) {
+          // the location was already written so nothing to do
+          return;
+        } else {
+          // the tablet must have moved during the commit process, lets delete the previously
+          // written refresh entry
+          // TODO delete refresh
+        }
+      }
+
+      // TODO write refresh
+      writtenLocation = location;
+
+    }
+
+    public void deleteRefresh() {
+      if (writtenLocation != null) {
+        // TODO delete written refresh entry
+      }
+    }
+  }
+
   /**
    * Compactor calls compactionCompleted passing in the CompactionStats
    *
@@ -558,15 +589,20 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       return;
     }
 
+    RefreshWriter refreshWriter = new RefreshWriter();
+
     try {
-      tabletMeta = commitCompaction(stats, ecid, tabletMeta, optionalNewFile);
+      tabletMeta = commitCompaction(stats, ecid, tabletMeta, optionalNewFile, refreshWriter);
     } catch (RuntimeException e) {
       LOG.warn("Failed to commit complete compaction {} {}", ecid, extent, e);
       compactionFailed(Map.of(ecid, extent));
     }
 
     // ELASTICITY_TODO, how will user compactions handle refresh
-    refreshTablet(tabletMeta);
+    refreshTablet(tabletMeta, ecm.getJobFiles());
+
+    // if a refresh entry was written, it can be removed after the tablet was refreshed
+    refreshWriter.deleteRefresh();
 
     // It's possible that RUNNING might not have an entry for this ecid in the case
     // of a coordinator restart when the Coordinator can't find the TServer for the
@@ -594,14 +630,18 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     }
   }
 
-  private void refreshTablet(TabletMetadata metadata) {
+  private void refreshTablet(TabletMetadata metadata, Set<StoredTabletFile> scanfiles) {
     var location = metadata.getLocation();
     if (location != null) {
       TabletServerClientService.Client client = null;
       try {
         client = getTabletServerConnection(location.getServerInstance());
-        client.refreshTablets(TraceUtil.traceInfo(), ctx.rpcCreds(),
-            List.of(metadata.getExtent().toThrift()));
+        TTabletRefresh tTabletRefresh =
+            new TTabletRefresh(metadata.getExtent().toThrift(), scanfiles.stream()
+                .map(StoredTabletFile::getMetaUpdateDelete).collect(Collectors.toList()));
+
+        // TODO check return value
+        client.refreshTablets(TraceUtil.traceInfo(), ctx.rpcCreds(), List.of(tTabletRefresh));
       } catch (TException e) {
         throw new RuntimeException(e);
       } finally {
@@ -665,7 +705,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   }
 
   private TabletMetadata commitCompaction(TCompactionStats stats, ExternalCompactionId ecid,
-      TabletMetadata tablet, Optional<ReferencedTabletFile> newDatafile) {
+      TabletMetadata tablet, Optional<ReferencedTabletFile> newDatafile,
+      RefreshWriter refreshWriter) {
 
     KeyExtent extent = tablet.getExtent();
 
@@ -676,9 +717,19 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     while (canCommitCompaction(ecid, tablet)) {
       ExternalCompactionMetadata ecm = tablet.getExternalCompactions().get(ecid);
 
+      // TODO SELECTOR?
+      if (tablet.getLocation() != null
+          && tablet.getExternalCompactions().get(ecid).getKind() == CompactionKind.SYSTEM) {
+        // Write the refresh entry before attempting to update tablet metadata, this ensures that
+        // refresh will happen even if this process dies. In the case where this process does not
+        // die refresh will happen after commit. User compactions will make refresh calls in their
+        // fate operation, so it does not need to be done here.
+        refreshWriter.writeRefresh(tablet.getLocation());
+      }
+
       try (var tabletsMutator = ctx.getAmple().conditionallyMutateTablets()) {
         var tabletMutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation()
-            .requireCompaction(ecid).requireSame(tablet, PREV_ROW, FILES);
+            .requireCompaction(ecid).requireSame(tablet, PREV_ROW, FILES, LOCATION);
 
         if (ecm.getKind() == CompactionKind.USER || ecm.getKind() == CompactionKind.SELECTOR) {
           tabletMutator.requireSame(tablet, SELECTED, COMPACT_ID);
@@ -764,6 +815,11 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
       }
     }
 
+    if (tablet.getLocation() != null) {
+      // add scan entries to prevent GC in case the hosted tablet is currently using the files for
+      // scan
+      ecm.getJobFiles().forEach(tabletMutator::putScan);
+    }
     ecm.getJobFiles().forEach(tabletMutator::deleteFile);
     tabletMutator.deleteExternalCompaction(ecid);
 
