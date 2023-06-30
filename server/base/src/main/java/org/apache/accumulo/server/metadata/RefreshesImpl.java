@@ -20,6 +20,7 @@ package org.apache.accumulo.server.metadata;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.core.metadata.RootTable.ZROOT_TABLET_GC_CANDIDATES;
+import static org.apache.accumulo.core.metadata.RootTable.ZROOT_TABLET_REFRESHES;
 import static org.apache.accumulo.core.util.LazySingletons.GSON;
 
 import java.io.ByteArrayInputStream;
@@ -30,6 +31,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -81,13 +83,14 @@ public class RefreshesImpl implements Ample.Refreshes {
   }
 
   private static String toJson(Map<String,String> entries) {
-    var data = new Data(1, entries);
+    var data = new Data(1, Objects.requireNonNull(entries));
     return GSON.get().toJson(data, Data.class);
   }
 
   private Map<String,String> fromJson(String json) {
     Data data = GSON.get().fromJson(json, Data.class);
     Preconditions.checkArgument(data.version == 1);
+    Objects.requireNonNull(data.entries);
     return data.entries;
   }
 
@@ -97,12 +100,12 @@ public class RefreshesImpl implements Ample.Refreshes {
   }
 
   private void mutateRootRefreshes(Consumer<Map<String,String>> mutator) {
-    String zpath = context.getZooKeeperRoot() + ZROOT_TABLET_GC_CANDIDATES;
+    String zpath = context.getZooKeeperRoot() + ZROOT_TABLET_REFRESHES;
     try {
       context.getZooReaderWriter().mutateExisting(zpath, currVal -> {
         String currJson = new String(currVal, UTF_8);
-        Map<String,String> entries = fromJson(currJson);
         log.debug("Root refreshes before change : {}", currJson);
+        Map<String,String> entries = fromJson(currJson);
         mutator.accept(entries);
         String newJson = toJson(entries);
         log.debug("Root refreshes after change  : {}", newJson);
@@ -165,14 +168,13 @@ public class RefreshesImpl implements Ample.Refreshes {
 
   @Override
   public void add(Collection<RefreshEntry> entries) {
+    Objects.requireNonNull(entries);
     if (dataLevel == Ample.DataLevel.ROOT) {
       // expect all of these to be the root tablet, verifying because its not stored
       Preconditions
           .checkArgument(entries.stream().allMatch(e -> e.getExtent().equals(RootTable.EXTENT)));
-      Consumer<Map<String,String>> mutator = map -> {
-        entries.forEach(refreshEntry -> map.put(refreshEntry.getEcid().canonical(),
-            refreshEntry.getTserver().getHostPortSession()));
-      };
+      Consumer<Map<String,String>> mutator = map -> entries.forEach(refreshEntry -> map.put(refreshEntry.getEcid().canonical(),
+          refreshEntry.getTserver().getHostPortSession()));
       mutateRootRefreshes(mutator);
     } else {
       try (BatchWriter writer = context.createBatchWriter(dataLevel.metaTable())) {
@@ -187,13 +189,12 @@ public class RefreshesImpl implements Ample.Refreshes {
 
   @Override
   public void delete(Collection<RefreshEntry> entries) {
+    Objects.requireNonNull(entries);
     if (dataLevel == Ample.DataLevel.ROOT) {
       // expect all of these to be the root tablet, verifying because its not stored
       Preconditions
           .checkArgument(entries.stream().allMatch(e -> e.getExtent().equals(RootTable.EXTENT)));
-      Consumer<Map<String,String>> mutator = map -> {
-        entries.forEach(refreshEntry -> map.remove(refreshEntry.getEcid().canonical()));
-      };
+      Consumer<Map<String,String>> mutator = map -> entries.forEach(refreshEntry -> map.remove(refreshEntry.getEcid().canonical()));
       mutateRootRefreshes(mutator);
     } else {
       try (BatchWriter writer = context.createBatchWriter(dataLevel.metaTable())) {

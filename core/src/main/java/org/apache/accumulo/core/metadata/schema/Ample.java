@@ -21,6 +21,7 @@ package org.apache.accumulo.core.metadata.schema;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -602,9 +603,9 @@ public interface Ample {
       private final TServerInstance tserver;
 
       public RefreshEntry(ExternalCompactionId ecid, KeyExtent extent, TServerInstance tserver) {
-        this.ecid = ecid;
-        this.extent = extent;
-        this.tserver = tserver;
+        this.ecid = Objects.requireNonNull(ecid);
+        this.extent = Objects.requireNonNull(extent);
+        this.tserver = Objects.requireNonNull(tserver);
       }
 
       public ExternalCompactionId getEcid() {
@@ -629,7 +630,8 @@ public interface Ample {
 
   /**
    * Refresh entries in the metadata table are used to track hosted tablets that need to have their
-   * metadata refreshed after a compaction.
+   * metadata refreshed after a compaction. These entries ensure the refresh happens even in the
+   * case of process death.
    */
   default Refreshes refreshes(DataLevel dataLevel) {
     throw new UnsupportedOperationException();

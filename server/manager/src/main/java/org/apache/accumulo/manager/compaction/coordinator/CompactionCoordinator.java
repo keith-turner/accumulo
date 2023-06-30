@@ -634,7 +634,50 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   }
 
   /**
-   * Compactor calls compactionCompleted passing in the CompactionStats
+   * Compactors calls this method when they have finished a compaction. This method does the
+   * following.
+   *
+   * <ol>
+   * <li>Reads the tablets metadata and determines if the compaction can commit. Its possible that
+   * things changed while the compaction was running and it can no longer commit.</li>
+   * <li>If the compaction can commit then a ~refresh entry may be written to the metadata table.
+   * This is done before attempting to commit to cover the case of process failure after commit. If
+   * the manager dies after commit then when it restarts it will see the ~refresh entry and refresh
+   * that tablet. The ~refresh entry is only written when its a system compaction on a tablet with a
+   * location.</li>
+   * <li>Commit the compaction using a conditional mutation. If the tablets files or location
+   * changed since reading the tablets metadata, then conditional mutation will fail. When this
+   * happens it will reread the metadata and go back to step 1 conceptually. When committing a
+   * compaction the compacted files are removed and scan entries are added to the tablet in case the
+   * files are in use, this prevents GC from deleting the files between updating tablet metadata and
+   * refreshing the tablet. The scan entries are only added when a tablet has a location.</li>
+   * <li>After successful commit a refresh request is sent to the tablet if it has a location. This
+   * will cause the tablet to start using the newly compacted files for future scans. Also the
+   * tablet can delete the scan entries if there are no active scans using them.</li>
+   * <li>If a ~refresh entry was written, delete it since the refresh was successful.</li>
+   * </ol>
+   *
+   * <p>
+   * User compactions will be refreshed as part of the fate operation. The user compaction fate
+   * operation will see the compaction was committed after this code updates the tablet metadata,
+   * however if it were to rely on this code to do the refresh it would not be able to know when the
+   * refresh was actually done. Therefore, user compactions will refresh as part of the fate
+   * operation so that it's known to be done before the fate operation returns. Since the fate
+   * operation will do it, there is no need to do it here for user compactions.
+   * </p>
+   *
+   * <p>
+   * The ~refresh entries serve a similar purpose to FATE operations, it ensures that code executes
+   * even when a process dies. FATE was intentionally not used for compaction commit because FATE
+   * stores its data in zookeeper. The refresh entry is stored in the metadata table, which is much
+   * more scalable than zookeeper. The number of system compactions of small files could be large
+   * and this would be a large number of writes to zookeeper. Zookeeper scales somewhat with reads,
+   * but not with writes.
+   * </p>
+   *
+   * <p>
+   * Issue #3559 was opened to explore the possibility of making compaction commit a fate operation which would remove the need for the ~refresh section.
+   * </p>
    *
    * @param tinfo trace info
    * @param credentials tcredentials object
@@ -692,12 +735,6 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     }
 
     if (ecm.getKind() != CompactionKind.USER) {
-      // User compactions will be refreshed as part of the fate operation. The user compaction fate
-      // operation will see the compaction was committed above, however if it were to rely on this
-      // code to do the refresh it would not be able to know when it was actually done. Therefore,
-      // user compactions will refresh as part of the fate operation so that it's known to be done
-      // before the fate operation returns. Since the fate operation will do it, there is no need to
-      // do it here for user compactions.
       refreshTablet(tabletMeta, ecm.getJobFiles());
     }
 
