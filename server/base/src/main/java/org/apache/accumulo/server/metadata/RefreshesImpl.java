@@ -19,7 +19,6 @@
 package org.apache.accumulo.server.metadata;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.apache.accumulo.core.metadata.RootTable.ZROOT_TABLET_GC_CANDIDATES;
 import static org.apache.accumulo.core.metadata.RootTable.ZROOT_TABLET_REFRESHES;
 import static org.apache.accumulo.core.util.LazySingletons.GSON;
 
@@ -173,8 +172,8 @@ public class RefreshesImpl implements Ample.Refreshes {
       // expect all of these to be the root tablet, verifying because its not stored
       Preconditions
           .checkArgument(entries.stream().allMatch(e -> e.getExtent().equals(RootTable.EXTENT)));
-      Consumer<Map<String,String>> mutator = map -> entries.forEach(refreshEntry -> map.put(refreshEntry.getEcid().canonical(),
-          refreshEntry.getTserver().getHostPortSession()));
+      Consumer<Map<String,String>> mutator = map -> entries.forEach(refreshEntry -> map
+          .put(refreshEntry.getEcid().canonical(), refreshEntry.getTserver().getHostPortSession()));
       mutateRootRefreshes(mutator);
     } else {
       try (BatchWriter writer = context.createBatchWriter(dataLevel.metaTable())) {
@@ -194,7 +193,8 @@ public class RefreshesImpl implements Ample.Refreshes {
       // expect all of these to be the root tablet, verifying because its not stored
       Preconditions
           .checkArgument(entries.stream().allMatch(e -> e.getExtent().equals(RootTable.EXTENT)));
-      Consumer<Map<String,String>> mutator = map -> entries.forEach(refreshEntry -> map.remove(refreshEntry.getEcid().canonical()));
+      Consumer<Map<String,String>> mutator =
+          map -> entries.forEach(refreshEntry -> map.remove(refreshEntry.getEcid().canonical()));
       mutateRootRefreshes(mutator);
     } else {
       try (BatchWriter writer = context.createBatchWriter(dataLevel.metaTable())) {

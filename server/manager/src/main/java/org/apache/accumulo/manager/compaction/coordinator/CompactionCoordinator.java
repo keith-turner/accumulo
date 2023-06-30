@@ -676,7 +676,8 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
    * </p>
    *
    * <p>
-   * Issue #3559 was opened to explore the possibility of making compaction commit a fate operation which would remove the need for the ~refresh section.
+   * Issue #3559 was opened to explore the possibility of making compaction commit a fate operation
+   * which would remove the need for the ~refresh section.
    * </p>
    *
    * @param tinfo trace info
