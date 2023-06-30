@@ -105,6 +105,7 @@ import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.compaction.RunningCompaction;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.manager.compaction.queue.CompactionJobQueues;
+import org.apache.accumulo.manager.tableOps.bulkVer2.TabletRefresher;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.compaction.CompactionConfigStorage;
 import org.apache.accumulo.server.compaction.CompactionPluginUtils;
@@ -219,7 +220,9 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
             // only need to refresh if the tablet is still on the same tserver instance
             if (tm != null && tm.getLocation() != null
                 && tm.getLocation().getServerInstance().equals(refreshEntry.getTserver())) {
-              var ttr = createThriftRefresh(tm.getExtent(), tm.getScans());
+              KeyExtent extent = tm.getExtent();
+              Collection<StoredTabletFile> scanfiles = tm.getScans();
+              var ttr = TabletRefresher.createThriftRefresh(extent, scanfiles);
               tserverRefreshes.computeIfAbsent(refreshEntry.getTserver(), k -> new ArrayList<>())
                   .add(ttr);
             }
@@ -727,16 +730,11 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
     }
   }
 
-  private TTabletRefresh createThriftRefresh(KeyExtent extent,
-      Collection<StoredTabletFile> scanfiles) {
-    return new TTabletRefresh(extent.toThrift(),
-        scanfiles.stream().map(StoredTabletFile::getMetaUpdateDelete).collect(Collectors.toList()));
-  }
-
   private void refreshTablet(TabletMetadata metadata, Collection<StoredTabletFile> scanfiles) {
     var location = metadata.getLocation();
     if (location != null) {
-      TTabletRefresh tTabletRefresh = createThriftRefresh(metadata.getExtent(), scanfiles);
+      KeyExtent extent = metadata.getExtent();
+      TTabletRefresh tTabletRefresh = TabletRefresher.createThriftRefresh(extent, scanfiles);
       refreshTablets(location.getServerInstance(), List.of(tTabletRefresh));
     }
   }
