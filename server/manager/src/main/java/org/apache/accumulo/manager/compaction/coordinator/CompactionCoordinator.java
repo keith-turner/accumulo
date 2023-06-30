@@ -52,7 +52,6 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.clientImpl.thrift.SecurityErrorCode;
@@ -543,36 +542,19 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
   TExternalCompactionJob createThriftJob(String externalCompactionId,
       ExternalCompactionMetadata ecm, CompactionJobQueues.MetaJob metaJob) {
 
-    List<IteratorSetting> iters = List.of();
+    Optional<CompactionConfig> compactionConfig = getCompactionConfig(metaJob);
 
-    Map<String,String> overrides = null;
+    Map<String,String> overrides = CompactionPluginUtils.computeOverrides(compactionConfig, ctx,
+        metaJob.getTabletMetadata().getExtent(), metaJob.getJob().getFiles());
 
-    if (metaJob.getJob().getKind() == CompactionKind.USER) {
-      try {
-        Pair<Long,CompactionConfig> cconf =
-            CompactionConfigStorage.getCompactionID(ctx, metaJob.getTabletMetadata().getExtent());
-        if (cconf != null) {
-          iters = cconf.getSecond().getIterators();
-
-          overrides = CompactionPluginUtils.computeOverrides(cconf.getSecond(), ctx,
-              metaJob.getTabletMetadata().getExtent(), metaJob.getJob().getFiles());
-        }
-      } catch (KeeperException.NoNodeException e) {
-        throw new RuntimeException(e);
-      }
-    }
-
-    IteratorConfig iteratorSettings = SystemIteratorUtil.toIteratorConfig(iters);
+    IteratorConfig iteratorSettings = SystemIteratorUtil
+        .toIteratorConfig(compactionConfig.map(CompactionConfig::getIterators).orElse(List.of()));
 
     var files = ecm.getJobFiles().stream().map(storedTabletFile -> {
       var dfv = metaJob.getTabletMetadata().getFilesMap().get(storedTabletFile);
       return new InputFile(storedTabletFile.getNormalizedPathStr(), dfv.getSize(),
           dfv.getNumEntries(), dfv.getTime());
     }).collect(Collectors.toList());
-
-    if (overrides == null) {
-      overrides = Map.of();
-    }
 
     return new TExternalCompactionJob(externalCompactionId,
         metaJob.getTabletMetadata().getExtent().toThrift(), files, iteratorSettings,
@@ -631,6 +613,24 @@ public class CompactionCoordinator implements CompactionCoordinatorService.Iface
         writtenEntry = null;
       }
     }
+  }
+
+  private Optional<CompactionConfig> getCompactionConfig(CompactionJobQueues.MetaJob metaJob) {
+    Optional<CompactionConfig> compactionConfig = Optional.empty();
+
+    if (metaJob.getJob().getKind() == CompactionKind.USER
+        || metaJob.getJob().getKind() == CompactionKind.SELECTOR) {
+      try {
+        Pair<Long,CompactionConfig> cconf =
+            CompactionConfigStorage.getCompactionID(ctx, metaJob.getTabletMetadata().getExtent());
+        if (cconf != null) {
+          compactionConfig = Optional.of(cconf.getSecond());
+        }
+      } catch (KeeperException.NoNodeException e) {
+        throw new RuntimeException(e);
+      }
+    }
+    return compactionConfig;
   }
 
   /**
