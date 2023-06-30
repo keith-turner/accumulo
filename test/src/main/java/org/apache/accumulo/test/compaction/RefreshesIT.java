@@ -87,6 +87,7 @@ public class RefreshesIT extends ConfigurableMacBase {
     var extent1 = new KeyExtent(TableId.of("1"), null, null);
     var extent2 = new KeyExtent(TableId.of("2"), new Text("m"), new Text("c"));
 
+    // the root level only expects the root tablet extent
     assertThrows(IllegalArgumentException.class,
         () -> testRefreshes(Ample.DataLevel.ROOT, extent1, extent2));
     testRefreshes(Ample.DataLevel.ROOT, RootTable.EXTENT, RootTable.EXTENT);
