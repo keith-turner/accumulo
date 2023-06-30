@@ -669,7 +669,8 @@ public class CompactionIT extends AccumuloClusterHarness {
 
       client.tableOperations().flush(tableName, null, null, true);
 
-      // there should be no system copmactions yet and no data should be filtered
+      // there should be no system copmactions yet and no data should be filtered, so should see all
+      // data that was written
       try (Scanner scanner = client.createScanner(tableName)) {
         assertEquals(MAX_DATA, scanner.stream().count());
       }
@@ -681,6 +682,7 @@ public class CompactionIT extends AccumuloClusterHarness {
       var tableId = TableId.of(client.tableOperations().tableIdMap().get(tableName));
       var extent = new KeyExtent(tableId, null, null);
 
+      // wait for the compactions to filter data and refresh that tablets files
       Wait.waitFor(() -> {
         var tabletMeta = ((ClientContext) client).getAmple().readTablet(extent);
         var files = tabletMeta.getFiles();
