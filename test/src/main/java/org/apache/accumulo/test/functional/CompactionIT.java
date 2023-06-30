@@ -39,6 +39,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
@@ -54,11 +55,14 @@ import org.apache.accumulo.core.client.admin.PluginConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.client.admin.compaction.CompactionSelector;
 import org.apache.accumulo.core.client.admin.compaction.CompressionConfigurer;
+import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.clientImpl.TableOperationsImpl;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.iterators.DevNull;
 import org.apache.accumulo.core.iterators.Filter;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
@@ -66,6 +70,7 @@ import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.iterators.user.GrepIterator;
 import org.apache.accumulo.core.metadata.MetadataTable;
+import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.accumulo.core.security.Authorizations;
@@ -75,6 +80,7 @@ import org.apache.accumulo.test.VerifyIngest;
 import org.apache.accumulo.test.VerifyIngest.VerifyParams;
 import org.apache.accumulo.test.compaction.CompactionExecutorIT;
 import org.apache.accumulo.test.compaction.ExternalCompaction_1_IT.FSelector;
+import org.apache.accumulo.test.util.Wait;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -619,6 +625,80 @@ public class CompactionIT extends AccumuloClusterHarness {
           fail("Expected compaction to fail because another concurrent compaction set iterators");
         }
       } catch (AccumuloException e) {}
+    }
+  }
+
+  @Test
+  public void testSystemCompactionsRefresh() throws Exception {
+    // This test ensures that after a system compaction occurs that a tablet will refresh its files.
+
+    String tableName = getUniqueNames(1)[0];
+    try (final AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+
+      // configure tablet compaction iterator that filters out data not divisible by 7 and cause
+      // table to compact to one file
+
+      var ntc = new NewTableConfiguration();
+      IteratorSetting iterSetting = new IteratorSetting(100, TestFilter.class);
+      iterSetting.addOption("modulus", 7 + "");
+      ntc.attachIterator(iterSetting, EnumSet.of(IteratorScope.majc));
+      ntc.setProperties(Map.of(Property.TABLE_MAJC_RATIO.getKey(), "20"));
+
+      client.tableOperations().create(tableName, ntc);
+
+      Set<Integer> expectedData = new HashSet<>();
+
+      // Insert MAX_DATA rows
+      try (BatchWriter bw = client.createBatchWriter(tableName)) {
+        for (int i = 0; i < MAX_DATA; i++) {
+          Mutation m = new Mutation(String.format("r:%04d", i));
+          m.put("", "", "" + i);
+          bw.addMutation(m);
+
+          if (i % 75 == 0) {
+            // create many files as this will cause a system compaction
+            bw.flush();
+            client.tableOperations().flush(tableName, null, null, true);
+          }
+
+          if (i % 7 == 0) {
+            expectedData.add(i);
+          }
+        }
+      }
+
+      client.tableOperations().flush(tableName, null, null, true);
+
+      // there should be no system copmactions yet and no data should be filtered
+      try (Scanner scanner = client.createScanner(tableName)) {
+        assertEquals(MAX_DATA, scanner.stream().count());
+      }
+
+      // set the compaction ratio 1 which should cause system compactions to filter data and refresh
+      // the tablets files
+      client.tableOperations().setProperty(tableName, Property.TABLE_MAJC_RATIO.getKey(), "1");
+
+      var tableId = TableId.of(client.tableOperations().tableIdMap().get(tableName));
+      var extent = new KeyExtent(tableId, null, null);
+
+      Wait.waitFor(() -> {
+        var tabletMeta = ((ClientContext) client).getAmple().readTablet(extent);
+        var files = tabletMeta.getFiles();
+        log.debug("Current files {}",
+            files.stream().map(StoredTabletFile::getFileName).collect(Collectors.toList()));
+
+        if (files.size() == 1) {
+          // Once only one file exists the tablet may still have not gotten the refresh message
+          // because its sent after the metadata update. After the tablet is down to one file should
+          // eventually see the tablet refresh its files.
+          try (Scanner scanner = client.createScanner(tableName)) {
+            var acutalData = scanner.stream().map(e -> Integer.parseInt(e.getValue().toString()))
+                .collect(Collectors.toSet());
+            return acutalData.equals(expectedData);
+          }
+        }
+        return false;
+      });
     }
   }
 
