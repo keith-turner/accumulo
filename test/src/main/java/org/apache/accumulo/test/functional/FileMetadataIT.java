@@ -43,6 +43,7 @@ import org.apache.accumulo.core.metadata.StoredTabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample.TabletMutator;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.TablePermission;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
@@ -56,6 +57,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Text;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+
+import com.google.common.collect.MoreCollectors;
 
 @Tag(MINI_CLUSTER_ONLY)
 public class FileMetadataIT extends AccumuloClusterHarness {
@@ -289,22 +292,22 @@ public class FileMetadataIT extends AccumuloClusterHarness {
 
       StoredTabletFile file;
 
-      try (Scanner mdScanner =
-          accumuloClient.createScanner(MetadataTable.NAME, Authorizations.EMPTY)) {
-        mdScanner.fetchColumnFamily(DataFileColumnFamily.NAME);
-        mdScanner.setRange(new KeyExtent(tableId, null, null).toMetaRange());
-
+      try (
+          var tabletsMetadata = ctx.getAmple().readTablets().forTable(tableId)
+              .fetch(ColumnType.FILES, ColumnType.PREV_ROW).build();
+          var tabletsMutator = ctx.getAmple().mutateTablets()) {
         // Read each of the 10 files referenced by the table, should be 1 per tablet
-        for (Entry<Key,Value> entry : mdScanner) {
-          file = new StoredTabletFile(entry.getKey().getColumnQualifier().toString());
+        for (var tabletMetadata : tabletsMetadata) {
+          var fileEntry = tabletMetadata.getFilesMap().entrySet().stream()
+              .collect(MoreCollectors.onlyElement());
+          file = fileEntry.getKey();
+          DataFileValue value = fileEntry.getValue();
 
-          final KeyExtent ke = KeyExtent.fromMetaRow(entry.getKey().getRow());
+          final KeyExtent ke = tabletMetadata.getExtent();
           final int endRow = Integer.parseInt(ke.endRow().toString().replace("row_", ""));
 
-          DataFileValue value = new DataFileValue(entry.getValue().toString());
-
           // Create a mutation to delete the existing file metadata entry with infinite range
-          TabletMutator mutator = ctx.getAmple().mutateTablet(ke);
+          TabletMutator mutator = tabletsMutator.mutateTablet(ke);
           mutator.deleteFile(file);
 
           mutator.putFile(
