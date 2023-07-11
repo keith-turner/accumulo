@@ -38,11 +38,14 @@ import org.apache.accumulo.core.spi.common.ServiceEnvironment.Configuration;
 public class ConfigurationImpl implements Configuration {
 
   private final AccumuloConfiguration acfg;
-  private Map<String,String> customProps;
-  private Map<String,String> tableCustomProps;
+  private final AccumuloConfiguration.Deriver<Map<String, String>> tableCusomerDeriver;
+  private final AccumuloConfiguration.Deriver<Map<String, String>> customDeriver;
+
 
   public ConfigurationImpl(AccumuloConfiguration acfg) {
     this.acfg = acfg;
+    this.customDeriver = acfg.newDeriver(aconf-> buildCustom(aconf, Property.GENERAL_ARBITRARY_PROP_PREFIX));
+    this.tableCusomerDeriver = acfg.newDeriver(aconf-> buildCustom(aconf, Property.TABLE_ARBITRARY_PROP_PREFIX));
   }
 
   @Override
@@ -83,11 +86,7 @@ public class ConfigurationImpl implements Configuration {
 
   @Override
   public Map<String,String> getCustom() {
-    if (customProps == null) {
-      customProps = buildCustom(Property.GENERAL_ARBITRARY_PROP_PREFIX);
-    }
-
-    return customProps;
+    return customDeriver.derive();
   }
 
   @Override
@@ -97,11 +96,7 @@ public class ConfigurationImpl implements Configuration {
 
   @Override
   public Map<String,String> getTableCustom() {
-    if (tableCustomProps == null) {
-      tableCustomProps = buildCustom(Property.TABLE_ARBITRARY_PROP_PREFIX);
-    }
-
-    return tableCustomProps;
+   return tableCusomerDeriver.derive();
   }
 
   @Override
@@ -109,8 +104,8 @@ public class ConfigurationImpl implements Configuration {
     return getTableCustom().get(keySuffix);
   }
 
-  private Map<String,String> buildCustom(Property customPrefix) {
-    return acfg.getAllPropertiesWithPrefix(customPrefix).entrySet().stream().collect(
+  private static Map<String,String> buildCustom(AccumuloConfiguration conf, Property customPrefix) {
+    return conf.getAllPropertiesWithPrefix(customPrefix).entrySet().stream().collect(
         Collectors.toUnmodifiableMap(e -> e.getKey().substring(customPrefix.getKey().length()),
             Entry::getValue));
   }
