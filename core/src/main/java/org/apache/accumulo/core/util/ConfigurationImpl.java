@@ -38,14 +38,14 @@ import org.apache.accumulo.core.spi.common.ServiceEnvironment.Configuration;
 public class ConfigurationImpl implements Configuration {
 
   private final AccumuloConfiguration acfg;
-  private final AccumuloConfiguration.Deriver<Map<String, String>> tableCusomerDeriver;
+  private final AccumuloConfiguration.Deriver<Map<String, String>> tableCustomDeriver;
   private final AccumuloConfiguration.Deriver<Map<String, String>> customDeriver;
 
 
   public ConfigurationImpl(AccumuloConfiguration acfg) {
     this.acfg = acfg;
     this.customDeriver = acfg.newDeriver(aconf-> buildCustom(aconf, Property.GENERAL_ARBITRARY_PROP_PREFIX));
-    this.tableCusomerDeriver = acfg.newDeriver(aconf-> buildCustom(aconf, Property.TABLE_ARBITRARY_PROP_PREFIX));
+    this.tableCustomDeriver = acfg.newDeriver(aconf-> buildCustom(aconf, Property.TABLE_ARBITRARY_PROP_PREFIX));
   }
 
   @Override
@@ -96,7 +96,7 @@ public class ConfigurationImpl implements Configuration {
 
   @Override
   public Map<String,String> getTableCustom() {
-   return tableCusomerDeriver.derive();
+   return tableCustomDeriver.derive();
   }
 
   @Override
