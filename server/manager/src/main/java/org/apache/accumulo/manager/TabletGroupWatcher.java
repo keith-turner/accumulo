@@ -23,7 +23,6 @@ import static java.lang.Math.min;
 import static java.util.Objects.requireNonNull;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,7 +31,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
@@ -41,9 +39,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -107,7 +103,6 @@ import org.apache.accumulo.server.log.WalStateManager;
 import org.apache.accumulo.server.log.WalStateManager.WalMarkerException;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
 import org.apache.accumulo.server.manager.state.Assignment;
-import org.apache.accumulo.server.manager.state.ClosableIterable;
 import org.apache.accumulo.server.manager.state.ClosableIterator;
 import org.apache.accumulo.server.manager.state.DistributedStoreException;
 import org.apache.accumulo.server.manager.state.MergeInfo;
@@ -123,12 +118,8 @@ import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterators;
-
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
@@ -156,12 +147,16 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
   private SortedSet<TServerInstance> lastScanServers = Collections.emptySortedSet();
   private final EventHandler eventHandler;
 
+  // TODO is this thread safe?
+  private WalStateManager walStateManager;
+
   TabletGroupWatcher(Manager manager, TabletStateStore store, TabletGroupWatcher dependentWatcher) {
     super("Watching " + store.name());
     this.manager = manager;
     this.store = store;
     this.dependentWatcher = dependentWatcher;
-    this.eventHandler = new EventHandler(manager::stillManager, store::iterator);
+    this.walStateManager = new WalStateManager(manager.getContext());
+    this.eventHandler = new EventHandler(manager::stillManager);
     manager.getEventCoordinator().addListener(store.getLevel(), eventHandler);
   }
 
@@ -215,7 +210,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     }
   }
 
-  static class EventHandler implements EventCoordinator.Listener {
+  class EventHandler implements EventCoordinator.Listener {
 
     // Setting this to true to start with because its not know what happended before this object was
     // created, so just start off with full scan.
@@ -223,11 +218,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
     private final BlockingQueue<Range> rangesToProcess;
 
-    private final BlockingQueue<TabletManagement> processedRanges;
-
     private final BooleanSupplier keepRunningSupplier;
-
-    private final Function<List<Range>,ClosableIterator<TabletManagement>> store;
 
     class RangeProccessor implements Runnable {
       @Override
@@ -245,17 +236,17 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
             rangesToProcess.drainTo(ranges);
 
-            try (var iter = store.apply(ranges)) {
-              while (iter.hasNext()) {
-                if (processedRanges.offer(iter.next())) {
-                  rangesProcessed();
-                } else {
-                  setNeedsFullScan();
-                }
-                processed.incrementAndGet();
+            try (var iter = store.iterator(ranges)) {
+              var currentTservers = getCurrentTservers();
+              if (currentTservers.isEmpty()) {
+                setNeedsFullScan();
+              } else {
+                manageTablets(walStateManager, iter, currentTservers, false);
               }
-            } catch (IOException e) {
-              throw new UncheckedIOException(e);
+            } catch (Exception e) {
+              LOG.warn("Failed to process {} ranges", ranges.size(), e);
+              // TODO set needs full scan?
+              // TODO log?
             }
           }
         } catch (InterruptedException e) {
@@ -264,14 +255,10 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       }
     }
 
-    EventHandler(BooleanSupplier keepRunningSupplier,
-        Function<List<Range>,ClosableIterator<TabletManagement>> store) {
+    EventHandler(BooleanSupplier keepRunningSupplier) {
       rangesToProcess = new ArrayBlockingQueue<>(3000);
-      // some ranges may expand to multiple tablets so make this queue larger
-      processedRanges = new ArrayBlockingQueue<>(12000);
 
       this.keepRunningSupplier = keepRunningSupplier;
-      this.store = store;
 
       // TODO how to create thread?? use utils and name it
       new Thread(new RangeProccessor()).start();
@@ -286,23 +273,6 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       needsFullScan = false;
     }
 
-    @SuppressFBWarnings(value = "NN_NAKED_NOTIFY",
-        justification = "wakes thread waiting for data that was just enqueued")
-    private synchronized void rangesProcessed() {
-      notifyAll();
-    }
-
-    private AtomicLong queued = new AtomicLong(0);
-    private AtomicLong processed = new AtomicLong(0);
-
-    @VisibleForTesting
-    boolean isAllDataProcessed() {
-      // This method does not consider exceptions in the background processing thread and there is
-      // only suitable for testing. Would need to be made more robust if used for non testing
-      // purposed.
-      return queued.get() == processed.get();
-    }
-
     @Override
     public void process(EventCoordinator.Event event) {
 
@@ -315,8 +285,6 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         case TABLE_RANGE:
           if (!rangesToProcess.offer(event.getExtent().toMetaRange())) {
             setNeedsFullScan();
-          } else {
-            queued.incrementAndGet();
           }
           break;
         default:
@@ -324,8 +292,8 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       }
     }
 
-    synchronized void waitForEvents(long millis) {
-      if (!needsFullScan && processedRanges.isEmpty()) {
+    synchronized void waitForFullScan(long millis) {
+      if (!needsFullScan) {
         try {
           wait(millis);
         } catch (InterruptedException e) {
@@ -333,180 +301,263 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         }
       }
     }
-
-    synchronized boolean needsFullScan() {
-      return needsFullScan;
-    }
-
-    ClosableIterator<TabletManagement> eventIterator() {
-      // This iterator assumes its the only thing consuming from the queue. If its not the only
-      // thing consuming from the queue then there is race condition between next() and hasNext().
-      // To avoid this race condition would require buffering, however buffering is undesirable
-      // because not all data is always read from this iterator. Buffering was intentionally avoided
-      // and its expected that only one instance of this iterator will exists at a time.
-      return new ClosableIterator<>() {
-        public boolean hasNext() {
-          return !processedRanges.isEmpty();
-        }
-
-        public TabletManagement next() {
-          var next = processedRanges.poll();
-          if (next == null) {
-            throw new NoSuchElementException();
-          }
-          return next;
-        }
-
-        public void close() throws IOException {
-          // nothing to do
-        }
-      };
-    }
   }
 
-  static class TabletManagmentIterator implements ClosableIterator<TabletManagement> {
+  private static class TableMgmtStats {
+    int[] counts = new int[TabletState.values().length];
+    private int totalUnloaded;
+  }
 
-    private final Iterator<TabletManagement> eventIterator;
-    private final ClosableIterator<TabletManagement> fullScanIterator;
+  // TODO review the thread safety of this method
+  private TableMgmtStats manageTablets(WalStateManager wals, Iterator<TabletManagement> iter,
+      SortedMap<TServerInstance,TabletServerStatus> currentTServers, boolean updateStats)
+      throws BadLocationStateException, TException, DistributedStoreException, WalMarkerException,
+      IOException {
 
-    private int eventsConsumed = 0;
+    TableMgmtStats tableMgmtStats = new TableMgmtStats();
 
-    private final int maxConsecutiveEvents;
-
-    TabletManagmentIterator(ClosableIterator<TabletManagement> fullScanIterator,
-        Iterator<TabletManagement> eventIterator, int maxConsecutiveEvents) {
-      this.eventIterator = eventIterator;
-      this.fullScanIterator = fullScanIterator;
-      this.maxConsecutiveEvents = maxConsecutiveEvents;
+    Map<TableId,MergeStats> mergeStatsCache = new HashMap<>();
+    Map<TableId,MergeStats> currentMerges = new HashMap<>();
+    for (MergeInfo merge : manager.merges()) {
+      if (merge.getExtent() != null) {
+        currentMerges.put(merge.getExtent().tableId(), new MergeStats(merge));
+      }
     }
 
-    @Override
-    public boolean hasNext() {
-      // Not checking eventIterator here on purpose because once the full scan iterator is done do
-      // not want to continue as this could prevent another full scan from starting if needed. Once
-      // the full scan is finished, if there are still events to process then a new scan will be
-      // started.
-      return fullScanIterator.hasNext();
-    }
+    final Map<String,Set<TServerInstance>> currentTServerGrouping =
+        manager.tserverSet.getCurrentServersGroups();
 
-    @Override
-    public TabletManagement next() {
-      // the purpose of the events consumed counter is to prevent starvation of the fullScanIterator
-      if (eventIterator.hasNext() && eventsConsumed < maxConsecutiveEvents) {
-        eventsConsumed++;
-        return eventIterator.next();
+    TabletLists tLists = new TabletLists(manager, currentTServers, currentTServerGrouping);
+
+    CompactionJobGenerator compactionGenerator = new CompactionJobGenerator(
+        new ServiceEnvironmentImpl(manager.getContext()), manager.getCompactionHints());
+
+    final Map<TabletServerId,String> resourceGroups = new HashMap<>();
+    manager.tServerResourceGroups().forEach((group, tservers) -> {
+      tservers.stream().map(TabletServerIdImpl::new)
+          .forEach(tabletServerId -> resourceGroups.put(tabletServerId, group));
+    });
+
+    while (iter.hasNext()) {
+      final TabletManagement mti = iter.next();
+      if (mti == null) {
+        throw new IllegalStateException("State store returned a null ManagerTabletInfo object");
       }
 
-      eventsConsumed = 0;
-      return fullScanIterator.next();
-    }
+      final Set<ManagementAction> actions = mti.getActions();
+      final TabletMetadata tm = mti.getTabletMetadata();
 
-    @Override
-    public void close() throws IOException {
-      fullScanIterator.close();
-    }
-  }
+      if (tm.isFutureAndCurrentLocationSet()) {
+        throw new BadLocationStateException(
+            tm.getExtent() + " is both assigned and hosted, which should never happen: " + this,
+            tm.getExtent().toMetaRow());
+      }
+      if (tm.isOperationIdAndCurrentLocationSet()) {
+        throw new BadLocationStateException(
+            tm.getExtent()
+                + " has both operation id and current location, which should never happen: " + this,
+            tm.getExtent().toMetaRow());
+      }
 
-  static class IteratorManager {
+      final TableId tableId = tm.getTableId();
+      // ignore entries for tables that do not exist in zookeeper
+      if (manager.getTableManager().getTableState(tableId) == null) {
+        continue;
+      }
 
-    private final DataLevel level;
-    long timeLastFullScanCompleted = 0;
-    boolean isFullScanActive;
+      // Don't overwhelm the tablet servers with work
+      // TODO open issue about better rate limiting... not just rate limiting need to protect
+      // against buffering too much in memory
+      /*
+       * if (tLists.unassigned.size() + unloaded > Manager.MAX_TSERVER_WORK_CHUNK *
+       * currentTServers.size()) { flushChanges(tLists, wals); tLists.reset(); unloaded = 0;
+       * eventHandler.waitForEvents(waitTimeBetweenScans); }
+       */
+      final TableConfiguration tableConf = manager.getContext().getTableConfiguration(tableId);
 
-    private final EventHandler eventHandler;
-    private final ClosableIterable<TabletManagement> store;
+      final MergeStats mergeStats = mergeStatsCache.computeIfAbsent(tableId, k -> {
+        var mStats = currentMerges.get(k);
+        return mStats != null ? mStats : new MergeStats(new MergeInfo());
+      });
+      TabletGoalState goal = manager.getGoalState(tm, mergeStats.getMergeInfo());
+      TabletState state =
+          TabletState.compute(tm, currentTServers.keySet(), manager.tabletBalancer, resourceGroups);
 
-    ClosableIterator<TabletManagement> iterator = null;
-
-    IteratorManager(EventHandler eventHandler, ClosableIterable<TabletManagement> store,
-        DataLevel level) {
-      this.eventHandler = eventHandler;
-      this.store = store;
-      this.level = level;
-    }
-
-    private boolean isFullScanNeeded(long waitTimeBetweenScans) {
-      return getCurrentTime() - timeLastFullScanCompleted > waitTimeBetweenScans;
-    }
-
-    Iterator<TabletManagement> beginScan(long waitTimeBetweenScans) {
-      Preconditions.checkState(iterator == null);
-
-      boolean timeElapsed = isFullScanNeeded(waitTimeBetweenScans);
-
-      if (timeElapsed || eventHandler.needsFullScan()) {
-        LOG.debug("Starting full scan of {} because timeElapsed:{} fullScanEvent:{}", level,
-            timeElapsed, eventHandler.needsFullScan());
-
-        isFullScanActive = true;
-        // Clear this before starting the full scan because its important to know if its set
-        // during the scan.
-        eventHandler.clearNeedsFullScan();
-
-        // create an iterator over all tablets that will also process new events that arrive
-        // during the scan of everything
-        iterator = new TabletManagmentIterator(store.iterator(), eventHandler.eventIterator(), 2);
+      final Location location = tm.getLocation();
+      Location current = null;
+      Location future = null;
+      if (tm.hasCurrent()) {
+        current = tm.getLocation();
       } else {
-        LOG.debug("Starting partial scan of {}", level);
-        // A full scan is not needed so just iterate over the events.
-        var eventIterator = eventHandler.eventIterator();
+        future = tm.getLocation();
+      }
+      TabletLogger.missassigned(tm.getExtent(), goal.toString(), state.toString(),
+          future != null ? future.getServerInstance() : null,
+          current != null ? current.getServerInstance() : null, tm.getLogs().size());
 
-        iterator = new ClosableIterator<TabletManagement>() {
-          @Override
-          public void close() throws IOException {
-            eventIterator.close();
-          }
+      if (updateStats) {
+        stats.update(tableId, state);
+      }
+      mergeStats.update(tm.getExtent(), state, tm.hasChopped(), !tm.getLogs().isEmpty());
+      sendChopRequest(mergeStats.getMergeInfo(), state, tm);
 
-          @Override
-          public boolean hasNext() {
-            // Only scan just events as long as a full table scan is not needed. If a full table
-            // scan is needed then stop the event only scan so the full scan can start.
-            return eventIterator.hasNext() && !eventHandler.needsFullScan()
-                && !isFullScanNeeded(waitTimeBetweenScans);
-          }
-
-          @Override
-          public TabletManagement next() {
-            return eventIterator.next();
-          }
-        };
-
-        isFullScanActive = false;
+      // Always follow through with assignments
+      if (state == TabletState.ASSIGNED) {
+        goal = TabletGoalState.HOSTED;
+      } else if (state == TabletState.NEEDS_REASSIGNMENT) {
+        goal = TabletGoalState.UNASSIGNED;
+      }
+      if (Manager.log.isTraceEnabled()) {
+        Manager.log.trace(
+            "[{}] Shutting down all Tservers: {}, dependentCount: {} Extent: {}, state: {}, goal: {}",
+            store.name(), manager.serversToShutdown.equals(currentTServers.keySet()),
+            dependentWatcher == null ? "null" : dependentWatcher.assignedOrHosted(), tm.getExtent(),
+            state, goal);
       }
 
-      return iterator;
-    }
-
-    void endScan() throws IOException {
-      if (isFullScanActive) {
-        timeLastFullScanCompleted = getCurrentTime();
-        isFullScanActive = false;
+      // if we are shutting down all the tabletservers, we have to do it in order
+      if ((goal == TabletGoalState.SUSPENDED && state == TabletState.HOSTED)
+          && manager.serversToShutdown.equals(currentTServers.keySet())) {
+        if (dependentWatcher != null) {
+          // If the dependentWatcher is for the user tables, check to see
+          // that user tables exist.
+          DataLevel dependentLevel = dependentWatcher.store.getLevel();
+          boolean userTablesExist = true;
+          switch (dependentLevel) {
+            case USER:
+              Set<TableId> onlineTables = manager.onlineTables();
+              onlineTables.remove(RootTable.ID);
+              onlineTables.remove(MetadataTable.ID);
+              userTablesExist = !onlineTables.isEmpty();
+              break;
+            case METADATA:
+            case ROOT:
+            default:
+              break;
+          }
+          // If the stats object in the dependentWatcher is empty, then it
+          // currently does not have data about what is hosted or not. In
+          // that case host these tablets until the dependent watcher can
+          // gather some data.
+          final Map<TableId,TableCounts> stats = dependentWatcher.getStats();
+          if (dependentLevel == DataLevel.USER) {
+            if (userTablesExist
+                && (stats == null || stats.isEmpty() || assignedOrHosted(stats) > 0)) {
+              goal = TabletGoalState.HOSTED;
+            }
+          } else if (stats == null || stats.isEmpty() || assignedOrHosted(stats) > 0) {
+            goal = TabletGoalState.HOSTED;
+          }
+        }
       }
 
-      iterator.close();
-      iterator = null;
-    }
+      if (actions.contains(ManagementAction.NEEDS_SPLITTING)) {
+        LOG.debug("{} may need splitting.", tm.getExtent());
+        if (manager.getSplitter().isSplittable(tm)) {
+          if (manager.getSplitter().addSplitStarting(tm.getExtent())) {
+            LOG.debug("submitting tablet {} for split", tm.getExtent());
+            manager.getSplitter().executeSplit(new SplitTask(manager.getContext(), tm, manager));
+          }
+        } else {
+          LOG.debug("{} is not splittable.", tm.getExtent());
+        }
+        // ELASITICITY_TODO: See #3605. Merge is non-functional. Left this commented out code to
+        // show where merge used to make a call to split a tablet.
+        // sendSplitRequest(mergeStats.getMergeInfo(), state, tm);
+      }
 
-    void cleanup() throws IOException {
-      isFullScanActive = false;
-      if (iterator != null) {
-        iterator.close();
-        iterator = null;
+      if (actions.contains(ManagementAction.NEEDS_COMPACTING)) {
+        var jobs = compactionGenerator.generateJobs(tm,
+            TabletManagementIterator.determineCompactionKinds(actions));
+        LOG.debug("{} may need compacting adding {} jobs", tm.getExtent(), jobs.size());
+        manager.getCompactionQueues().add(tm, jobs);
+      }
+
+      // ELASITICITY_TODO the case where a planner generates compactions at time T1 for tablet
+      // and later at time T2 generates nothing for the same tablet is not being handled. At
+      // time T1 something could have been queued. However at time T2 we will not clear those
+      // entries from the queue because we see nothing here for that case. After a full
+      // metadata scan could remove any tablets that were not updated during the scan.
+
+      if (actions.contains(ManagementAction.NEEDS_LOCATION_UPDATE)) {
+        if (goal == TabletGoalState.HOSTED) {
+          if ((state != TabletState.HOSTED && !tm.getLogs().isEmpty())
+              && manager.recoveryManager.recoverLogs(tm.getExtent(), tm.getLogs())) {
+            continue;
+          }
+          switch (state) {
+            case HOSTED:
+              if (location.getServerInstance().equals(manager.migrations.get(tm.getExtent()))) {
+                manager.migrations.remove(tm.getExtent());
+              }
+              break;
+            case ASSIGNED_TO_DEAD_SERVER:
+              hostDeadTablet(tLists, tm, location, wals);
+              break;
+            case SUSPENDED:
+              hostSuspendedTablet(tLists, tm, location, tableConf);
+              break;
+            case UNASSIGNED:
+              hostUnassignedTablet(tLists, tm.getExtent(),
+                  new UnassignedTablet(location, tm.getLast()));
+              break;
+            case ASSIGNED:
+              // Send another reminder
+              tLists.assigned.add(new Assignment(tm.getExtent(),
+                  future != null ? future.getServerInstance() : null, tm.getLast()));
+              break;
+            default:
+              break;
+          }
+        } else {
+          switch (state) {
+            case SUSPENDED:
+              // Request a move to UNASSIGNED, so as to allow balancing to continue.
+              tLists.suspendedToGoneServers.add(tm);
+              cancelOfflineTableMigrations(tm.getExtent());
+              break;
+            case UNASSIGNED:
+              cancelOfflineTableMigrations(tm.getExtent());
+              break;
+            case ASSIGNED_TO_DEAD_SERVER:
+              unassignDeadTablet(tLists, tm, wals);
+              break;
+            case NEEDS_REASSIGNMENT:
+            case HOSTED:
+              TServerConnection client =
+                  manager.tserverSet.getConnection(location.getServerInstance());
+              if (client != null) {
+                client.unloadTablet(manager.managerLock, tm.getExtent(), goal.howUnload(),
+                    manager.getSteadyTime());
+                tableMgmtStats.totalUnloaded++;
+              } else {
+                Manager.log.warn("Could not connect to server {}", location);
+              }
+              break;
+            case ASSIGNED:
+              break;
+          }
+        }
+        tableMgmtStats.counts[state.ordinal()]++;
       }
     }
 
-    long getCurrentTime() {
-      return System.currentTimeMillis();
+    flushChanges(tLists, wals);
+    return tableMgmtStats;
+  }
+
+  private SortedMap<TServerInstance,TabletServerStatus> getCurrentTservers() {
+    // Get the current status for the current list of tservers
+    final SortedMap<TServerInstance,TabletServerStatus> currentTServers = new TreeMap<>();
+    for (TServerInstance entry : manager.tserverSet.getCurrentServers()) {
+      currentTServers.put(entry, manager.tserverStatus.get(entry));
     }
+    return currentTServers;
   }
 
   @Override
   public void run() {
     int[] oldCounts = new int[TabletState.values().length];
-
-    WalStateManager wals = new WalStateManager(manager.getContext());
-
-    IteratorManager iterMgr = new IteratorManager(eventHandler, store, store.getLevel());
 
     while (manager.stillManager()) {
       // slow things down a little, otherwise we spam the logs when there are many wake-up events
@@ -517,260 +568,28 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       final long waitTimeBetweenScans = manager.getConfiguration()
           .getTimeInMillis(Property.MANAGER_TABLET_GROUP_WATCHER_INTERVAL);
 
-      int totalUnloaded = 0;
-      int unloaded = 0;
+      var currentTServers = getCurrentTservers();
 
+      ClosableIterator<TabletManagement> iter = null;
       try {
-        Map<TableId,MergeStats> mergeStatsCache = new HashMap<>();
-        Map<TableId,MergeStats> currentMerges = new HashMap<>();
-        for (MergeInfo merge : manager.merges()) {
-          if (merge.getExtent() != null) {
-            currentMerges.put(merge.getExtent().tableId(), new MergeStats(merge));
-          }
-        }
-
-        // Get the current status for the current list of tservers
-        final SortedMap<TServerInstance,TabletServerStatus> currentTServers = new TreeMap<>();
-        for (TServerInstance entry : manager.tserverSet.getCurrentServers()) {
-          currentTServers.put(entry, manager.tserverStatus.get(entry));
-        }
-
         if (currentTServers.isEmpty()) {
-          eventHandler.waitForEvents(waitTimeBetweenScans);
+          eventHandler.waitForFullScan(waitTimeBetweenScans);
           synchronized (this) {
             lastScanServers = Collections.emptySortedSet();
           }
           continue;
         }
 
-        final Map<String,Set<TServerInstance>> currentTServerGrouping =
-            manager.tserverSet.getCurrentServersGroups();
-
-        TabletLists tLists = new TabletLists(manager, currentTServers, currentTServerGrouping);
-
-        ManagerState managerState = manager.getManagerState();
-        int[] counts = new int[TabletState.values().length];
         stats.begin();
 
-        CompactionJobGenerator compactionGenerator = new CompactionJobGenerator(
-            new ServiceEnvironmentImpl(manager.getContext()), manager.getCompactionHints());
+        ManagerState managerState = manager.getManagerState();
 
-        final Map<TabletServerId,String> resourceGroups = new HashMap<>();
-        manager.tServerResourceGroups().forEach((group, tservers) -> {
-          tservers.stream().map(TabletServerIdImpl::new)
-              .forEach(tabletServerId -> resourceGroups.put(tabletServerId, group));
-        });
+        // Clear the need for a full scan before starting a full scan inorder to detect events that
+        // happen during the full scan.
+        eventHandler.clearNeedsFullScan();
 
-        Iterator<TabletManagement> iter = iterMgr.beginScan(waitTimeBetweenScans);
-
-        while (iter.hasNext()) {
-          final TabletManagement mti = iter.next();
-          if (mti == null) {
-            throw new IllegalStateException("State store returned a null ManagerTabletInfo object");
-          }
-
-          final Set<ManagementAction> actions = mti.getActions();
-          final TabletMetadata tm = mti.getTabletMetadata();
-
-          if (tm.isFutureAndCurrentLocationSet()) {
-            throw new BadLocationStateException(
-                tm.getExtent() + " is both assigned and hosted, which should never happen: " + this,
-                tm.getExtent().toMetaRow());
-          }
-          if (tm.isOperationIdAndCurrentLocationSet()) {
-            throw new BadLocationStateException(tm.getExtent()
-                + " has both operation id and current location, which should never happen: " + this,
-                tm.getExtent().toMetaRow());
-          }
-
-          final TableId tableId = tm.getTableId();
-          // ignore entries for tables that do not exist in zookeeper
-          if (manager.getTableManager().getTableState(tableId) == null) {
-            continue;
-          }
-
-          // Don't overwhelm the tablet servers with work
-          if (tLists.unassigned.size() + unloaded
-              > Manager.MAX_TSERVER_WORK_CHUNK * currentTServers.size()) {
-            flushChanges(tLists, wals);
-            tLists.reset();
-            unloaded = 0;
-            eventHandler.waitForEvents(waitTimeBetweenScans);
-          }
-          final TableConfiguration tableConf = manager.getContext().getTableConfiguration(tableId);
-
-          final MergeStats mergeStats = mergeStatsCache.computeIfAbsent(tableId, k -> {
-            var mStats = currentMerges.get(k);
-            return mStats != null ? mStats : new MergeStats(new MergeInfo());
-          });
-          TabletGoalState goal = manager.getGoalState(tm, mergeStats.getMergeInfo());
-          TabletState state = TabletState.compute(tm, currentTServers.keySet(),
-              manager.tabletBalancer, resourceGroups);
-
-          final Location location = tm.getLocation();
-          Location current = null;
-          Location future = null;
-          if (tm.hasCurrent()) {
-            current = tm.getLocation();
-          } else {
-            future = tm.getLocation();
-          }
-          TabletLogger.missassigned(tm.getExtent(), goal.toString(), state.toString(),
-              future != null ? future.getServerInstance() : null,
-              current != null ? current.getServerInstance() : null, tm.getLogs().size());
-
-          stats.update(tableId, state);
-          mergeStats.update(tm.getExtent(), state, tm.hasChopped(), !tm.getLogs().isEmpty());
-          sendChopRequest(mergeStats.getMergeInfo(), state, tm);
-
-          // Always follow through with assignments
-          if (state == TabletState.ASSIGNED) {
-            goal = TabletGoalState.HOSTED;
-          } else if (state == TabletState.NEEDS_REASSIGNMENT) {
-            goal = TabletGoalState.UNASSIGNED;
-          }
-          if (Manager.log.isTraceEnabled()) {
-            Manager.log.trace(
-                "[{}] Shutting down all Tservers: {}, dependentCount: {} Extent: {}, state: {}, goal: {}",
-                store.name(), manager.serversToShutdown.equals(currentTServers.keySet()),
-                dependentWatcher == null ? "null" : dependentWatcher.assignedOrHosted(),
-                tm.getExtent(), state, goal);
-          }
-
-          // if we are shutting down all the tabletservers, we have to do it in order
-          if ((goal == TabletGoalState.SUSPENDED && state == TabletState.HOSTED)
-              && manager.serversToShutdown.equals(currentTServers.keySet())) {
-            if (dependentWatcher != null) {
-              // If the dependentWatcher is for the user tables, check to see
-              // that user tables exist.
-              DataLevel dependentLevel = dependentWatcher.store.getLevel();
-              boolean userTablesExist = true;
-              switch (dependentLevel) {
-                case USER:
-                  Set<TableId> onlineTables = manager.onlineTables();
-                  onlineTables.remove(RootTable.ID);
-                  onlineTables.remove(MetadataTable.ID);
-                  userTablesExist = !onlineTables.isEmpty();
-                  break;
-                case METADATA:
-                case ROOT:
-                default:
-                  break;
-              }
-              // If the stats object in the dependentWatcher is empty, then it
-              // currently does not have data about what is hosted or not. In
-              // that case host these tablets until the dependent watcher can
-              // gather some data.
-              final Map<TableId,TableCounts> stats = dependentWatcher.getStats();
-              if (dependentLevel == DataLevel.USER) {
-                if (userTablesExist
-                    && (stats == null || stats.isEmpty() || assignedOrHosted(stats) > 0)) {
-                  goal = TabletGoalState.HOSTED;
-                }
-              } else if (stats == null || stats.isEmpty() || assignedOrHosted(stats) > 0) {
-                goal = TabletGoalState.HOSTED;
-              }
-            }
-          }
-
-          if (actions.contains(ManagementAction.NEEDS_SPLITTING)) {
-            LOG.debug("{} may need splitting.", tm.getExtent());
-            if (manager.getSplitter().isSplittable(tm)) {
-              if (manager.getSplitter().addSplitStarting(tm.getExtent())) {
-                LOG.debug("submitting tablet {} for split", tm.getExtent());
-                manager.getSplitter()
-                    .executeSplit(new SplitTask(manager.getContext(), tm, manager));
-              }
-            } else {
-              LOG.debug("{} is not splittable.", tm.getExtent());
-            }
-            // ELASITICITY_TODO: See #3605. Merge is non-functional. Left this commented out code to
-            // show where merge used to make a call to split a tablet.
-            // sendSplitRequest(mergeStats.getMergeInfo(), state, tm);
-          }
-
-          if (actions.contains(ManagementAction.NEEDS_COMPACTING)) {
-            var jobs = compactionGenerator.generateJobs(tm,
-                TabletManagementIterator.determineCompactionKinds(actions));
-            LOG.debug("{} may need compacting adding {} jobs", tm.getExtent(), jobs.size());
-            manager.getCompactionQueues().add(tm, jobs);
-          }
-
-          // ELASITICITY_TODO the case where a planner generates compactions at time T1 for tablet
-          // and later at time T2 generates nothing for the same tablet is not being handled. At
-          // time T1 something could have been queued. However at time T2 we will not clear those
-          // entries from the queue because we see nothing here for that case. After a full
-          // metadata scan could remove any tablets that were not updated during the scan.
-
-          if (actions.contains(ManagementAction.NEEDS_LOCATION_UPDATE)) {
-            if (goal == TabletGoalState.HOSTED) {
-              if ((state != TabletState.HOSTED && !tm.getLogs().isEmpty())
-                  && manager.recoveryManager.recoverLogs(tm.getExtent(), tm.getLogs())) {
-                continue;
-              }
-              switch (state) {
-                case HOSTED:
-                  if (location.getServerInstance().equals(manager.migrations.get(tm.getExtent()))) {
-                    manager.migrations.remove(tm.getExtent());
-                  }
-                  break;
-                case ASSIGNED_TO_DEAD_SERVER:
-                  hostDeadTablet(tLists, tm, location, wals);
-                  break;
-                case SUSPENDED:
-                  hostSuspendedTablet(tLists, tm, location, tableConf);
-                  break;
-                case UNASSIGNED:
-                  hostUnassignedTablet(tLists, tm.getExtent(),
-                      new UnassignedTablet(location, tm.getLast()));
-                  break;
-                case ASSIGNED:
-                  // Send another reminder
-                  tLists.assigned.add(new Assignment(tm.getExtent(),
-                      future != null ? future.getServerInstance() : null, tm.getLast()));
-                  break;
-                default:
-                  break;
-              }
-            } else {
-              switch (state) {
-                case SUSPENDED:
-                  // Request a move to UNASSIGNED, so as to allow balancing to continue.
-                  tLists.suspendedToGoneServers.add(tm);
-                  cancelOfflineTableMigrations(tm.getExtent());
-                  break;
-                case UNASSIGNED:
-                  cancelOfflineTableMigrations(tm.getExtent());
-                  break;
-                case ASSIGNED_TO_DEAD_SERVER:
-                  unassignDeadTablet(tLists, tm, wals);
-                  break;
-                case NEEDS_REASSIGNMENT:
-                case HOSTED:
-                  TServerConnection client =
-                      manager.tserverSet.getConnection(location.getServerInstance());
-                  if (client != null) {
-                    client.unloadTablet(manager.managerLock, tm.getExtent(), goal.howUnload(),
-                        manager.getSteadyTime());
-                    unloaded++;
-                    totalUnloaded++;
-                  } else {
-                    Manager.log.warn("Could not connect to server {}", location);
-                  }
-                  break;
-                case ASSIGNED:
-                  break;
-              }
-            }
-            counts[state.ordinal()]++;
-          }
-        }
-
-        iterMgr.endScan();
-
-        // ELASTICITY_TODO: Add handling for other actions
-
-        flushChanges(tLists, wals);
+        iter = store.iterator();
+        var tabletMgmtStats = manageTablets(walStateManager, iter, currentTServers, true);
 
         // provide stats after flushing changes to avoid race conditions w/ delete table
         stats.end(managerState);
@@ -779,20 +598,21 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         // Report changes
         for (TabletState state : TabletState.values()) {
           int i = state.ordinal();
-          if (counts[i] > 0 && counts[i] != oldCounts[i]) {
+          if (tabletMgmtStats.counts[i] > 0 && tabletMgmtStats.counts[i] != oldCounts[i]) {
             manager.nextEvent.event(store.getLevel(), "[%s]: %d tablets are %s", store.name(),
-                counts[i], state.name());
+                tabletMgmtStats.counts[i], state.name());
           }
         }
         Manager.log.debug(String.format("[%s]: scan time %.2f seconds", store.name(),
             stats.getScanTime() / 1000.));
-        oldCounts = counts;
-        if (totalUnloaded > 0) {
+        oldCounts = tabletMgmtStats.counts;
+        if (tabletMgmtStats.totalUnloaded > 0) {
           manager.nextEvent.event(store.getLevel(), "[%s]: %d tablets unloaded", store.name(),
-              totalUnloaded);
+              tabletMgmtStats.totalUnloaded);
         }
 
-        updateMergeState(mergeStatsCache);
+        // TODO
+        // updateMergeState(mergeStatsCache);
 
         synchronized (this) {
           lastScanServers = ImmutableSortedSet.copyOf(currentTServers.keySet());
@@ -800,7 +620,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         if (manager.tserverSet.getCurrentServers().equals(currentTServers.keySet())) {
           Manager.log.debug(String.format("[%s] sleeping for %.2f seconds", store.name(),
               waitTimeBetweenScans / 1000.));
-          eventHandler.waitForEvents(waitTimeBetweenScans);
+          eventHandler.waitForFullScan(waitTimeBetweenScans);
         } else {
           // Create an event at the store level, this will force the next scan to be a full scan
           manager.nextEvent.event(store.getLevel(), "Set of tablet servers changed");
@@ -813,10 +633,12 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
           sleepUninterruptibly(Manager.WAIT_BETWEEN_ERRORS, TimeUnit.MILLISECONDS);
         }
       } finally {
-        try {
-          iterMgr.cleanup();
-        } catch (IOException ex) {
-          Manager.log.warn("Error closing TabletLocationState iterator: " + ex, ex);
+        if (iter != null) {
+          try {
+            iter.close();
+          } catch (IOException ex) {
+            Manager.log.warn("Error closing TabletLocationState iterator: " + ex, ex);
+          }
         }
       }
     }
