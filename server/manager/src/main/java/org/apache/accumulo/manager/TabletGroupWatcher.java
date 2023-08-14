@@ -241,7 +241,9 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
               if (currentTservers.isEmpty()) {
                 setNeedsFullScan();
               } else {
+                LOG.debug("Processing {} ranges", ranges.size());
                 manageTablets(walStateManager, iter, currentTservers, false);
+                LOG.debug("Finished processing {} ranges", ranges.size());
               }
             } catch (Exception e) {
               LOG.warn("Failed to process {} ranges", ranges.size(), e);
