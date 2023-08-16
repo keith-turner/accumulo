@@ -64,6 +64,7 @@ import org.apache.accumulo.core.manager.balancer.TabletServerIdImpl;
 import org.apache.accumulo.core.manager.state.TabletManagement;
 import org.apache.accumulo.core.manager.state.TabletManagement.ManagementAction;
 import org.apache.accumulo.core.manager.state.tables.TableState;
+import org.apache.accumulo.core.manager.thrift.ManagerGoalState;
 import org.apache.accumulo.core.manager.thrift.ManagerState;
 import org.apache.accumulo.core.manager.thrift.TabletServerStatus;
 import org.apache.accumulo.core.metadata.MetadataTable;
@@ -236,19 +237,25 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
             rangesToProcess.drainTo(ranges);
 
+            if (manager.getManagerGoalState() == ManagerGoalState.CLEAN_STOP) {
+              // only do full scans when trying to shutdown
+              setNeedsFullScan();
+              continue;
+            }
+
+            var currentTservers = getCurrentTservers();
+            if (currentTservers.isEmpty()) {
+              setNeedsFullScan();
+              continue;
+            }
+
             try (var iter = store.iterator(ranges)) {
-              var currentTservers = getCurrentTservers();
-              if (currentTservers.isEmpty()) {
-                setNeedsFullScan();
-              } else {
-                LOG.debug("Processing {} ranges", ranges.size());
-                manageTablets(walStateManager, iter, currentTservers, false);
-                LOG.debug("Finished processing {} ranges", ranges.size());
-              }
+              LOG.debug("Processing {} ranges for {}", ranges.size(), store.name());
+              manageTablets(walStateManager, iter, currentTservers, false);
+              LOG.debug("Finished processing {} ranges for {}", ranges.size(), store.name());
             } catch (Exception e) {
-              LOG.warn("Failed to process {} ranges", ranges.size(), e);
-              // TODO set needs full scan?
-              // TODO log?
+              Manager.log.error("Error processing {} ranges for store {} ", ranges.size(),
+                  store.name(), e);
             }
           }
         } catch (InterruptedException e) {
@@ -312,7 +319,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
   // TODO review the thread safety of this method
   private TableMgmtStats manageTablets(WalStateManager wals, Iterator<TabletManagement> iter,
-      SortedMap<TServerInstance,TabletServerStatus> currentTServers, boolean updateStats)
+      SortedMap<TServerInstance,TabletServerStatus> currentTServers, boolean isFullScan)
       throws BadLocationStateException, TException, DistributedStoreException, WalMarkerException,
       IOException {
 
@@ -397,7 +404,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
           future != null ? future.getServerInstance() : null,
           current != null ? current.getServerInstance() : null, tm.getLogs().size());
 
-      if (updateStats) {
+      if (isFullScan) {
         stats.update(tableId, state);
       }
       mergeStats.update(tm.getExtent(), state, tm.hasChopped(), !tm.getLogs().isEmpty());
@@ -418,7 +425,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       }
 
       // if we are shutting down all the tabletservers, we have to do it in order
-      if ((goal == TabletGoalState.SUSPENDED && state == TabletState.HOSTED)
+      if (isFullScan && (goal == TabletGoalState.SUSPENDED && state == TabletState.HOSTED)
           && manager.serversToShutdown.equals(currentTServers.keySet())) {
         if (dependentWatcher != null) {
           // If the dependentWatcher is for the user tables, check to see
@@ -630,6 +637,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       } catch (Exception ex) {
         Manager.log.error("Error processing table state for store " + store.name(), ex);
         if (ex.getCause() != null && ex.getCause() instanceof BadLocationStateException) {
+          // ELASTICITY_TODO review this function
           repairMetadata(((BadLocationStateException) ex.getCause()).getEncodedEndRow());
         } else {
           sleepUninterruptibly(Manager.WAIT_BETWEEN_ERRORS, TimeUnit.MILLISECONDS);
