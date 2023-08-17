@@ -319,7 +319,6 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     private int totalUnloaded;
   }
 
-  // TODO review the thread safety of this method
   private TableMgmtStats manageTablets(WalStateManager wals, Iterator<TabletManagement> iter,
       SortedMap<TServerInstance,TabletServerStatus> currentTServers, boolean isFullScan)
       throws BadLocationStateException, TException, DistributedStoreException, WalMarkerException,
