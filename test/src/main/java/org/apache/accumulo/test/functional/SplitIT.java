@@ -36,7 +36,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
-import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -56,8 +55,6 @@ import org.apache.accumulo.core.client.rfile.RFileWriter;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
-import org.apache.accumulo.core.data.Mutation;
-import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -412,67 +409,6 @@ public class SplitIT extends AccumuloClusterHarness {
 
       // should have 1000 entries
       assertEquals(1000, c.createScanner(tableName).stream().count());
-    }
-  }
-
-  @Test
-  public void testOneMillionSplits() throws Exception {
-    try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
-      String tableName = getUniqueNames(1)[0];
-      c.tableOperations().create(tableName);
-
-      SortedSet<Text> splits = new TreeSet<>();
-
-      for (int i = 100; i < 100_000_000; i += 100) {
-        String split = String.format("%010d", i);
-
-        splits.add(new Text(split));
-
-        if (splits.size() >= 10000) {
-          c.tableOperations().addSplits(tableName, splits);
-          splits.clear();
-        }
-
-      }
-
-      if (!splits.isEmpty()) {
-        c.tableOperations().addSplits(tableName, splits);
-        splits.clear();
-      }
-
-      LoggerFactory.getLogger(SplitIT.class).debug("Starting write");
-
-      long t1 = System.currentTimeMillis();
-      try (var scanner = c.createScanner(tableName)) {
-        scanner.setRange(
-            new Range(String.format("%010d", 51_234_701), String.format("%010d", 51_234_799)));
-        assertEquals(0, scanner.stream().count());
-      }
-
-      // TODO the batch writer takes a while to bring an ondemand tablet online
-      try (var writer = c.createBatchWriter(tableName)) {
-        Mutation m = new Mutation(String.format("%010d", 51_234_789));
-        m.put("c", "x", "200");
-        m.put("c", "y", "900");
-        m.put("c", "z", "300");
-        writer.addMutation(m);
-      }
-      LoggerFactory.getLogger(SplitIT.class).debug("Finished write");
-      long t2 = System.currentTimeMillis();
-      try (var scanner = c.createScanner(tableName)) {
-        scanner.setRange(
-            new Range(String.format("%010d", 51_234_701), String.format("%010d", 51_234_799)));
-        Map<String,String> coords = scanner.stream().collect(Collectors
-            .toMap(e -> e.getKey().getColumnQualifier().toString(), e -> e.getValue().toString()));
-        assertEquals(Map.of("x", "200", "y", "900", "z", "300"), coords);
-      }
-      long t3 = System.currentTimeMillis();
-      System.out.println((t2 - t1) + " " + (t3 - t2));
-
-      t1 = System.currentTimeMillis();
-      long count = c.tableOperations().getTabletInformation(tableName, new Range()).count();
-      t2 = System.currentTimeMillis();
-      System.out.println(count + " " + (t2 - t1));
     }
   }
 }

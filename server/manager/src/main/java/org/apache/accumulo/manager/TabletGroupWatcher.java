@@ -250,9 +250,11 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
             }
 
             try (var iter = store.iterator(ranges)) {
-              LOG.debug("Processing {} ranges for {}", ranges.size(), store.name());
+              long t1 = System.currentTimeMillis();
               manageTablets(walStateManager, iter, currentTservers, false);
-              LOG.debug("Finished processing {} ranges for {}", ranges.size(), store.name());
+              long t2 = System.currentTimeMillis();
+              Manager.log.debug(String.format("[%s]: partial scan time %.2f seconds for %,d ranges",
+                  store.name(), (t2 - t1) / 1000., ranges.size()));
             } catch (Exception e) {
               Manager.log.error("Error processing {} ranges for store {} ", ranges.size(),
                   store.name(), e);
@@ -612,7 +614,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
                 tabletMgmtStats.counts[i], state.name());
           }
         }
-        Manager.log.debug(String.format("[%s]: scan time %.2f seconds", store.name(),
+        Manager.log.debug(String.format("[%s]: full scan time %.2f seconds", store.name(),
             stats.getScanTime() / 1000.));
         oldCounts = tabletMgmtStats.counts;
         if (tabletMgmtStats.totalUnloaded > 0) {
