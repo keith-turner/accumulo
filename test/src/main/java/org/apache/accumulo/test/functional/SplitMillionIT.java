@@ -20,11 +20,12 @@ package org.apache.accumulo.test.functional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
@@ -63,10 +64,14 @@ public class SplitMillionIT extends AccumuloClusterHarness {
         addSplits(c, tableName, splits, log);
       }
 
+      var rows = IntStream
+          .concat(new Random().ints(98, 0, 100_000_000).flatMap(i -> IntStream.of(i, i + 1)),
+              IntStream.of(0, 1, 99_999_998, 99_999_999))
+          .toArray();
+
       // read and write to a few of the 1 million tablets. The following should touch the first,
       // last, and a few middle tablets.
-      for (var rowInt : List.of(0, 1, 10_101_010, 27_272_727, 51_234_789, 89_777_777, 89_777_788,
-          99_999_998, 99_999_999)) {
+      for (var rowInt : rows) {
 
         var row = String.format("%010d", rowInt);
 
@@ -97,7 +102,7 @@ public class SplitMillionIT extends AccumuloClusterHarness {
         }
 
         long t4 = System.currentTimeMillis();
-        log.info("Row: {} scan1: {}ms write: {}ms scan2: {}ms\n", row, t2 - t1, t3 - t2, t4 - t3);
+        log.info("Row: {} scan1: {}ms write: {}ms scan2: {}ms", row, t2 - t1, t3 - t2, t4 - t3);
       }
 
       long t1 = System.currentTimeMillis();

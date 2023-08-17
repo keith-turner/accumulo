@@ -39,6 +39,8 @@ import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 
 import org.apache.accumulo.core.client.AccumuloClient;
@@ -89,6 +91,7 @@ import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.spi.balancer.data.TabletServerId;
 import org.apache.accumulo.core.util.TextUtil;
+import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.core.util.threads.Threads.AccumuloDaemonThread;
 import org.apache.accumulo.manager.Manager.TabletGoalState;
 import org.apache.accumulo.manager.split.SplitTask;
@@ -148,7 +151,6 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
   private SortedSet<TServerInstance> lastScanServers = Collections.emptySortedSet();
   private final EventHandler eventHandler;
 
-  // TODO is this thread safe?
   private WalStateManager walStateManager;
 
   TabletGroupWatcher(Manager manager, TabletStateStore store, TabletGroupWatcher dependentWatcher) {
@@ -251,7 +253,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
             try (var iter = store.iterator(ranges)) {
               long t1 = System.currentTimeMillis();
-              manageTablets(walStateManager, iter, currentTservers, false);
+              manageTablets(iter, currentTservers, false);
               long t2 = System.currentTimeMillis();
               Manager.log.debug(String.format("[%s]: partial scan time %.2f seconds for %,d ranges",
                   store.name(), (t2 - t1) / 1000., ranges.size()));
@@ -271,8 +273,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
       this.keepRunningSupplier = keepRunningSupplier;
 
-      // TODO how to create thread?? use utils and name it
-      new Thread(new RangeProccessor()).start();
+      Threads.createThread("TGW event range processor", new RangeProccessor()).start();
     }
 
     private synchronized void setNeedsFullScan() {
@@ -319,12 +320,13 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     private int totalUnloaded;
   }
 
-  private TableMgmtStats manageTablets(WalStateManager wals, Iterator<TabletManagement> iter,
+  private TableMgmtStats manageTablets(Iterator<TabletManagement> iter,
       SortedMap<TServerInstance,TabletServerStatus> currentTServers, boolean isFullScan)
       throws BadLocationStateException, TException, DistributedStoreException, WalMarkerException,
       IOException {
 
     TableMgmtStats tableMgmtStats = new TableMgmtStats();
+    int unloaded = 0;
 
     Map<TableId,MergeStats> mergeStatsCache = new HashMap<>();
     Map<TableId,MergeStats> currentMerges = new HashMap<>();
@@ -376,13 +378,13 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       }
 
       // Don't overwhelm the tablet servers with work
-      // TODO open issue about better rate limiting... not just rate limiting need to protect
-      // against buffering too much in memory
-      /*
-       * if (tLists.unassigned.size() + unloaded > Manager.MAX_TSERVER_WORK_CHUNK *
-       * currentTServers.size()) { flushChanges(tLists, wals); tLists.reset(); unloaded = 0;
-       * eventHandler.waitForEvents(waitTimeBetweenScans); }
-       */
+      if (tLists.unassigned.size() + unloaded
+          > Manager.MAX_TSERVER_WORK_CHUNK * currentTServers.size()) {
+        flushChanges(tLists);
+        tLists.reset();
+        unloaded = 0;
+      }
+
       final TableConfiguration tableConf = manager.getContext().getTableConfiguration(tableId);
 
       final MergeStats mergeStats = mergeStatsCache.computeIfAbsent(tableId, k -> {
@@ -417,6 +419,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       } else if (state == TabletState.NEEDS_REASSIGNMENT) {
         goal = TabletGoalState.UNASSIGNED;
       }
+
       if (Manager.log.isTraceEnabled()) {
         Manager.log.trace(
             "[{}] Shutting down all Tservers: {}, dependentCount: {} Extent: {}, state: {}, goal: {}",
@@ -502,7 +505,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
               }
               break;
             case ASSIGNED_TO_DEAD_SERVER:
-              hostDeadTablet(tLists, tm, location, wals);
+              hostDeadTablet(tLists, tm, location);
               break;
             case SUSPENDED:
               hostSuspendedTablet(tLists, tm, location, tableConf);
@@ -530,7 +533,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
               cancelOfflineTableMigrations(tm.getExtent());
               break;
             case ASSIGNED_TO_DEAD_SERVER:
-              unassignDeadTablet(tLists, tm, wals);
+              unassignDeadTablet(tLists, tm);
               break;
             case NEEDS_REASSIGNMENT:
             case HOSTED:
@@ -540,6 +543,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
                 client.unloadTablet(manager.managerLock, tm.getExtent(), goal.howUnload(),
                     manager.getSteadyTime());
                 tableMgmtStats.totalUnloaded++;
+                unloaded++;
               } else {
                 Manager.log.warn("Could not connect to server {}", location);
               }
@@ -552,7 +556,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       }
     }
 
-    flushChanges(tLists, wals);
+    flushChanges(tLists);
     return tableMgmtStats;
   }
 
@@ -599,7 +603,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         eventHandler.clearNeedsFullScan();
 
         iter = store.iterator();
-        var tabletMgmtStats = manageTablets(walStateManager, iter, currentTServers, true);
+        var tabletMgmtStats = manageTablets(iter, currentTServers, true);
 
         // provide stats after flushing changes to avoid race conditions w/ delete table
         stats.end(managerState);
@@ -655,12 +659,11 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     }
   }
 
-  private void unassignDeadTablet(TabletLists tLists, TabletMetadata tm, WalStateManager wals)
-      throws WalMarkerException {
+  private void unassignDeadTablet(TabletLists tLists, TabletMetadata tm) throws WalMarkerException {
     tLists.assignedToDeadServers.add(tm);
     if (!tLists.logsForDeadServers.containsKey(tm.getLocation().getServerInstance())) {
       tLists.logsForDeadServers.put(tm.getLocation().getServerInstance(),
-          wals.getWalsInUse(tm.getLocation().getServerInstance()));
+          walStateManager.getWalsInUse(tm.getLocation().getServerInstance()));
     }
   }
 
@@ -709,15 +712,15 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     }
   }
 
-  private void hostDeadTablet(TabletLists tLists, TabletMetadata tm, Location location,
-      WalStateManager wals) throws WalMarkerException {
+  private void hostDeadTablet(TabletLists tLists, TabletMetadata tm, Location location)
+      throws WalMarkerException {
     tLists.assignedToDeadServers.add(tm);
     if (location.getServerInstance().equals(manager.migrations.get(tm.getExtent()))) {
       manager.migrations.remove(tm.getExtent());
     }
     TServerInstance tserver = tm.getLocation().getServerInstance();
     if (!tLists.logsForDeadServers.containsKey(tserver)) {
-      tLists.logsForDeadServers.put(tserver, wals.getWalsInUse(tserver));
+      tLists.logsForDeadServers.put(tserver, walStateManager.getWalsInUse(tserver));
     }
   }
 
@@ -1169,7 +1172,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     }
   }
 
-  private void handleDeadTablets(TabletLists tLists, WalStateManager wals)
+  private void handleDeadTablets(TabletLists tLists)
       throws WalMarkerException, DistributedStoreException {
     var deadTablets = tLists.assignedToDeadServers;
     var deadLogs = tLists.logsForDeadServers;
@@ -1184,7 +1187,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       } else {
         store.unassign(deadTablets, deadLogs);
       }
-      markDeadServerLogsAsClosed(wals, deadLogs);
+      markDeadServerLogsAsClosed(walStateManager, deadLogs);
       manager.nextEvent.event(store.getLevel(),
           "Marked %d tablets as suspended because they don't have current servers",
           deadTablets.size());
@@ -1230,13 +1233,25 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     }
   }
 
-  private void flushChanges(TabletLists tLists, WalStateManager wals)
+  private final Lock flushLock = new ReentrantLock();
+
+  private void flushChanges(TabletLists tLists)
       throws DistributedStoreException, TException, WalMarkerException {
     var unassigned = Collections.unmodifiableMap(tLists.unassigned);
 
-    handleDeadTablets(tLists, wals);
+    flushLock.lock();
+    try {
+      // This method was originally only ever called by one thread. The code was modified so that
+      // two threads could possibly call this flush method concurrently. It is not clear the
+      // following methods are thread safe so a lock is acquired out of caution. Balancer plugins
+      // may not expect multiple threads to call them concurrently, Accumulo has not done this in
+      // the past. The log recovery code needs to be evaluated for thread safety.
+      handleDeadTablets(tLists);
 
-    getAssignmentsFromBalancer(tLists, unassigned);
+      getAssignmentsFromBalancer(tLists, unassigned);
+    } finally {
+      flushLock.unlock();
+    }
 
     if (!tLists.assignments.isEmpty()) {
       Manager.log.info(String.format("Assigning %d tablets", tLists.assignments.size()));

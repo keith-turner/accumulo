@@ -57,7 +57,6 @@ import org.apache.accumulo.manager.tableOps.delete.PreDeleteTable;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.compaction.CompactionConfigStorage;
 import org.apache.accumulo.server.compaction.CompactionPluginUtils;
-import org.apache.hadoop.io.Text;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,6 +147,9 @@ class CompactionDriver extends ManagerRepo {
 
       int selected = 0;
 
+      KeyExtent minSelected = null;
+      KeyExtent maxSelected = null;
+
       CompactionConfig config = CompactionConfigStorage.getConfig(manager.getContext(), tid);
 
       for (TabletMetadata tablet : tablets) {
@@ -213,6 +215,14 @@ class CompactionDriver extends ManagerRepo {
                 && tabletMetadata.getSelectedFiles().getMetadataValue()
                     .equals(selectedFiles.getMetadataValue()));
 
+            if (minSelected == null || tablet.getExtent().compareTo(minSelected) < 0) {
+              minSelected = tablet.getExtent();
+            }
+
+            if (maxSelected == null || tablet.getExtent().compareTo(maxSelected) > 0) {
+              maxSelected = tablet.getExtent();
+            }
+
             selected++;
           }
 
@@ -241,10 +251,8 @@ class CompactionDriver extends ManagerRepo {
               result.getExtent()));
 
       if (selected > 0) {
-        // ELASTICITY_TODO pass tablets is there are a few, otherwise pass more narrow range
         manager.getEventCoordinator().event(
-            new KeyExtent(tableId, endRow == null ? null : new Text(endRow),
-                startRow == null ? null : new Text(startRow)),
+            new KeyExtent(tableId, minSelected.prevEndRow(), maxSelected.endRow()),
             "%s selected files for compaction for %d tablets", FateTxId.formatTid(tid), selected);
       }
 
