@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -40,7 +42,6 @@ import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.data.constraints.Constraint;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class WriteAfterCloseIT extends AccumuloClusterHarness {
@@ -52,6 +53,8 @@ public class WriteAfterCloseIT extends AccumuloClusterHarness {
 
   public static class SleepyConstraint implements Constraint {
 
+    private static final SecureRandom rand = new SecureRandom();
+
     @Override
     public String getViolationDescription(short violationCode) {
       return "No such violation";
@@ -60,13 +63,12 @@ public class WriteAfterCloseIT extends AccumuloClusterHarness {
     @Override
     public List<Short> check(Environment env, Mutation mutation) {
 
-      if(mutation.getUpdates().stream().anyMatch(ColumnUpdate::isDeleted)){
+      if (mutation.getUpdates().stream().anyMatch(ColumnUpdate::isDeleted)) {
         // only want to randomly sleep for inserts, not deletes
         return null;
       }
 
       // the purpose of this constraint is to just randomly hold up inserts on the server side
-      SecureRandom rand = new SecureRandom();
       if (rand.nextBoolean()) {
         UtilWaitThread.sleep(4000);
       }
@@ -108,7 +110,7 @@ public class WriteAfterCloseIT extends AccumuloClusterHarness {
       }
 
       try (Scanner scanner = c.createScanner(table)) {
-        Assertions.assertEquals(0, scanner.stream().count());
+        assertEquals(0, scanner.stream().count());
       }
     } finally {
       executor.shutdownNow();
@@ -116,9 +118,9 @@ public class WriteAfterCloseIT extends AccumuloClusterHarness {
   }
 
   private static Callable<Void> createWriteTask(int row, AccumuloClient c, String table) {
-    Callable<Void> task = () -> {
+    return () -> {
 
-        try (BatchWriter writer = c.createBatchWriter(table)) {
+      try (BatchWriter writer = c.createBatchWriter(table)) {
         Mutation m = new Mutation("r" + row);
         m.put("f1", "q1", new Value("v1"));
         writer.addMutation(m);
@@ -135,6 +137,5 @@ public class WriteAfterCloseIT extends AccumuloClusterHarness {
       }
       return null;
     };
-    return task;
   }
 }

@@ -901,8 +901,8 @@ public class TabletServerBatchWriter implements AutoCloseable {
             span.end();
           }
         } catch (IOException e) {
-          if (log.isTraceEnabled()) {
-            log.trace("failed to send mutations to {} : {}", location, e.getMessage());
+          if (log.isDebugEnabled()) {
+            log.debug("failed to send mutations to {} : {}", location, e.getMessage());
           }
 
           HashSet<TableId> tables = new HashSet<>();
