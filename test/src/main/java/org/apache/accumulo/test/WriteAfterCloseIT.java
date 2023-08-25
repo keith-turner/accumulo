@@ -34,6 +34,7 @@ import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.data.ColumnUpdate;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.data.constraints.Constraint;
@@ -44,7 +45,6 @@ import org.junit.jupiter.api.Test;
 
 public class WriteAfterCloseIT extends AccumuloClusterHarness {
 
-  // TODO may needs its own IT because of higher timeout
   @Override
   protected Duration defaultTimeout() {
     return Duration.ofSeconds(300);
@@ -59,7 +59,13 @@ public class WriteAfterCloseIT extends AccumuloClusterHarness {
 
     @Override
     public List<Short> check(Environment env, Mutation mutation) {
-      // the purpose of this constraint is to just randomly hold up writes on the server side
+
+      if(mutation.getUpdates().stream().anyMatch(ColumnUpdate::isDeleted)){
+        // only want to randomly sleep for inserts, not deletes
+        return null;
+      }
+
+      // the purpose of this constraint is to just randomly hold up inserts on the server side
       SecureRandom rand = new SecureRandom();
       if (rand.nextBoolean()) {
         UtilWaitThread.sleep(4000);
@@ -109,11 +115,10 @@ public class WriteAfterCloseIT extends AccumuloClusterHarness {
     }
   }
 
-  private static Callable<Void> createWriteTask(int partition, AccumuloClient c, String table) {
+  private static Callable<Void> createWriteTask(int row, AccumuloClient c, String table) {
     Callable<Void> task = () -> {
-      int row = partition;
 
-      try (BatchWriter writer = c.createBatchWriter(table)) {
+        try (BatchWriter writer = c.createBatchWriter(table)) {
         Mutation m = new Mutation("r" + row);
         m.put("f1", "q1", new Value("v1"));
         writer.addMutation(m);
