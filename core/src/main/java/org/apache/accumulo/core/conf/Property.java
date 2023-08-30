@@ -1164,7 +1164,6 @@ public enum Property {
           + " data will be reported but queries will still run possibly returning a"
           + " subset of the data.",
       "1.3.5"),
-
   TABLE_DEFAULT_SCANTIME_VISIBILITY("table.security.scan.visibility.default", "",
       PropertyType.STRING,
       "The security label that will be assumed at scan time if an entry does"
