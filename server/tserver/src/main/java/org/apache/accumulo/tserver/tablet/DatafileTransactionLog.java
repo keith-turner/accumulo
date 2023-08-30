@@ -173,16 +173,14 @@ public class DatafileTransactionLog {
         this.tabletLog = Arrays.copyOf(log.tabletLog, log.tabletLog.length + 1);
         this.tabletLog[log.tabletLog.length] = transaction;
         this.finalFiles = applyTransaction(log.finalFiles, transaction);
-      }
-      // if the max size is 0, then return a log of 0 size, applying the transaction to the file set
-      else if (maxSize == 0) {
+      } else if (maxSize == 0) {
+        // if the max size is 0, then return a log of 0 size, applying the transaction to the file set
         this.initialTs = transaction.ts;
         this.initialFiles = this.finalFiles = applyTransaction(log.finalFiles, transaction);
         this.tabletLog = new DatafileTransaction[0];
-      }
-      // otherwise we are over the max size limit. Trim the transaction log and apply transactions
-      // appropriately to the initial and final file sets.
-      else {
+      } else {
+        // otherwise we are over the max size limit. Trim the transaction log and apply transactions
+        // appropriately to the initial and final file sets.
         this.tabletLog = new DatafileTransaction[maxSize];
         System.arraycopy(log.tabletLog, log.tabletLog.length - maxSize + 1, this.tabletLog, 0,
             maxSize - 1);
