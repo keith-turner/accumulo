@@ -105,7 +105,7 @@ public class DatafileTransactionLog {
    * @return true if we were able to update the log, false otherwise
    */
   private synchronized boolean updateLog(TransactionLog origLog, TransactionLog newLog) {
-    // only if this log is the original log as expected to we update
+    // only if this log is the original log as expected do we update
     if (this.log == origLog) {
       this.log = newLog;
       return true;
