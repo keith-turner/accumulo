@@ -19,6 +19,8 @@
 package org.apache.accumulo.core.clientImpl;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -114,8 +116,8 @@ public class TabletServerBatchWriter implements AutoCloseable {
   // basic configuration
   private final ClientContext context;
   private final long maxMem;
-  private final long maxLatency;
-  private final long timeout;
+  private final long maxLatencyNano;
+  private final long timeoutNano;
   private final Durability durability;
 
   // state
@@ -134,25 +136,25 @@ public class TabletServerBatchWriter implements AutoCloseable {
 
   // stats
   private long totalMemUsed = 0;
-  private long lastProcessingStartTime;
+  private long lastProcessingStartTimeNano;
 
   private long totalAdded = 0;
   private final AtomicLong totalSent = new AtomicLong(0);
   private final AtomicLong totalBinned = new AtomicLong(0);
-  private final AtomicLong totalBinTime = new AtomicLong(0);
-  private final AtomicLong totalSendTime = new AtomicLong(0);
-  private long startTime = 0;
+  private final AtomicLong totalBinTimeNano = new AtomicLong(0);
+  private final AtomicLong totalSendTimeNano = new AtomicLong(0);
+  private long startTimeNano = 0;
   private long initialGCTimes;
   private long initialCompileTimes;
   private double initialSystemLoad;
 
-  private AtomicInteger tabletServersBatchSum = new AtomicInteger(0);
-  private AtomicInteger tabletBatchSum = new AtomicInteger(0);
-  private AtomicInteger numBatches = new AtomicInteger(0);
-  private AtomicInteger maxTabletBatch = new AtomicInteger(Integer.MIN_VALUE);
-  private AtomicInteger minTabletBatch = new AtomicInteger(Integer.MAX_VALUE);
-  private AtomicInteger minTabletServersBatch = new AtomicInteger(Integer.MAX_VALUE);
-  private AtomicInteger maxTabletServersBatch = new AtomicInteger(Integer.MIN_VALUE);
+  private final AtomicInteger tabletServersBatchSum = new AtomicInteger(0);
+  private final AtomicInteger tabletBatchSum = new AtomicInteger(0);
+  private final AtomicInteger numBatches = new AtomicInteger(0);
+  private final AtomicInteger maxTabletBatch = new AtomicInteger(Integer.MIN_VALUE);
+  private final AtomicInteger minTabletBatch = new AtomicInteger(Integer.MAX_VALUE);
+  private final AtomicInteger minTabletServersBatch = new AtomicInteger(Integer.MAX_VALUE);
+  private final AtomicInteger maxTabletServersBatch = new AtomicInteger(Integer.MIN_VALUE);
 
   // error handling
   private final Violations violations = new Violations();
@@ -166,28 +168,28 @@ public class TabletServerBatchWriter implements AutoCloseable {
   private static class TimeoutTracker {
 
     final String server;
-    final long timeOut;
-    long activityTime;
-    Long firstErrorTime = null;
+    final long timeOutNano;
+    long activityTimeNano;
+    Long firstErrorTimeNano = null;
 
-    TimeoutTracker(String server, long timeOut) {
-      this.timeOut = timeOut;
+    TimeoutTracker(String server, long timeOutNano) {
+      this.timeOutNano = timeOutNano;
       this.server = server;
     }
 
     void startingWrite() {
-      activityTime = System.currentTimeMillis();
+      activityTimeNano = System.nanoTime();
     }
 
     void madeProgress() {
-      activityTime = System.currentTimeMillis();
-      firstErrorTime = null;
+      activityTimeNano = System.nanoTime();
+      firstErrorTimeNano = null;
     }
 
     void wroteNothing() {
-      if (firstErrorTime == null) {
-        firstErrorTime = activityTime;
-      } else if (System.currentTimeMillis() - firstErrorTime > timeOut) {
+      if (firstErrorTimeNano == null) {
+        firstErrorTimeNano = activityTimeNano;
+      } else if (System.nanoTime() - firstErrorTimeNano > timeOutNano) {
         throw new TimedOutException(Collections.singleton(server));
       }
     }
@@ -197,7 +199,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
     }
 
     public long getTimeOut() {
-      return timeOut;
+      return timeOutNano;
     }
   }
 
@@ -207,29 +209,29 @@ public class TabletServerBatchWriter implements AutoCloseable {
         .createGeneralScheduledExecutorService(this.context.getConfiguration());
     this.failedMutations = new FailedMutations();
     this.maxMem = config.getMaxMemory();
-    this.maxLatency = config.getMaxLatency(MILLISECONDS) <= 0 ? Long.MAX_VALUE
-        : config.getMaxLatency(MILLISECONDS);
-    this.timeout = config.getTimeout(MILLISECONDS);
+    this.maxLatencyNano = MILLISECONDS.toNanos(config.getMaxLatency(MILLISECONDS) <= 0
+        ? Long.MAX_VALUE : config.getMaxLatency(MILLISECONDS));
+    this.timeoutNano = MILLISECONDS.toNanos(config.getTimeout(MILLISECONDS));
     this.mutations = new MutationSet();
-    this.lastProcessingStartTime = System.currentTimeMillis();
+    this.lastProcessingStartTimeNano = System.nanoTime();
     this.durability = config.getDurability();
 
     this.writer = new MutationWriter(config.getMaxWriteThreads());
 
-    if (this.maxLatency != Long.MAX_VALUE) {
+    if (this.maxLatencyNano != Long.MAX_VALUE) {
       latencyTimerFuture = executor
           .scheduleWithFixedDelay(Threads.createNamedRunnable("BatchWriterLatencyTimer", () -> {
             try {
               synchronized (TabletServerBatchWriter.this) {
-                if ((System.currentTimeMillis() - lastProcessingStartTime)
-                    > TabletServerBatchWriter.this.maxLatency) {
+                if ((System.nanoTime() - lastProcessingStartTimeNano)
+                    > TabletServerBatchWriter.this.maxLatencyNano) {
                   startProcessing();
                 }
               }
             } catch (Exception e) {
               updateUnknownErrors("Max latency task failed " + e.getMessage(), e);
             }
-          }), 0, this.maxLatency / 4, MILLISECONDS);
+          }), 0, this.maxLatencyNano / 4, NANOSECONDS);
     }
   }
 
@@ -237,7 +239,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
     if (mutations.getMemoryUsed() == 0) {
       return;
     }
-    lastProcessingStartTime = System.currentTimeMillis();
+    lastProcessingStartTimeNano = System.nanoTime();
     writer.queueMutations(mutations);
     mutations = new MutationSet();
   }
@@ -271,8 +273,8 @@ public class TabletServerBatchWriter implements AutoCloseable {
     }
     checkForFailures();
 
-    if (startTime == 0) {
-      startTime = System.currentTimeMillis();
+    if (startTimeNano == 0) {
+      startTimeNano = System.nanoTime();
 
       List<GarbageCollectorMXBean> gcmBeans = ManagementFactory.getGarbageCollectorMXBeans();
       for (GarbageCollectorMXBean garbageCollectorMXBean : gcmBeans) {
@@ -381,7 +383,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
 
   private void logStats() {
     if (log.isTraceEnabled()) {
-      long finishTime = System.currentTimeMillis();
+      long finishTimeNano = System.nanoTime();
 
       long finalGCTimes = 0;
       List<GarbageCollectorMXBean> gcmBeans = ManagementFactory.getGarbageCollectorMXBeans();
@@ -395,8 +397,10 @@ public class TabletServerBatchWriter implements AutoCloseable {
         finalCompileTimes = compMxBean.getTotalCompilationTime();
       }
 
-      double averageRate = totalSent.get() / (totalSendTime.get() / 1000.0);
-      double overallRate = totalAdded / ((finishTime - startTime) / 1000.0);
+      double averageRate =
+          totalSent.get() / (totalSendTimeNano.get() / (double) SECONDS.toNanos(1));
+      double overallRate =
+          totalAdded / ((finishTimeNano - startTimeNano) / (double) SECONDS.toNanos(1));
 
       double finalSystemLoad = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
 
@@ -406,21 +410,22 @@ public class TabletServerBatchWriter implements AutoCloseable {
       log.trace(String.format("Sent                 : %,10d mutations", totalSent.get()));
       log.trace(String.format("Resent percentage   : %10.2f%s",
           (totalSent.get() - totalAdded) / (double) totalAdded * 100.0, "%"));
-      log.trace(
-          String.format("Overall time         : %,10.2f secs", (finishTime - startTime) / 1000.0));
+      log.trace(String.format("Overall time         : %,10.2f secs",
+          (finishTimeNano - startTimeNano) / 1000.0));
       log.trace(String.format("Overall send rate    : %,10.2f mutations/sec", overallRate));
       log.trace(
           String.format("Send efficiency      : %10.2f%s", overallRate / averageRate * 100.0, "%"));
       log.trace("");
       log.trace("BACKGROUND WRITER PROCESS STATISTICS");
-      log.trace(
-          String.format("Total send time      : %,10.2f secs %6.2f%s", totalSendTime.get() / 1000.0,
-              100.0 * totalSendTime.get() / (finishTime - startTime), "%"));
+      log.trace(String.format("Total send time      : %,10.2f secs %6.2f%s",
+          totalSendTimeNano.get() / (double) SECONDS.toNanos(1),
+          100.0 * totalSendTimeNano.get() / (finishTimeNano - startTimeNano), "%"));
       log.trace(String.format("Average send rate    : %,10.2f mutations/sec", averageRate));
       log.trace(String.format("Total bin time       : %,10.2f secs %6.2f%s",
-          totalBinTime.get() / 1000.0, 100.0 * totalBinTime.get() / (finishTime - startTime), "%"));
+          totalBinTimeNano.get() / (double) SECONDS.toNanos(1),
+          100.0 * totalBinTimeNano.get() / (finishTimeNano - startTimeNano), "%"));
       log.trace(String.format("Average bin rate     : %,10.2f mutations/sec",
-          totalBinned.get() / (totalBinTime.get() / 1000.0)));
+          totalBinned.get() / (totalBinTimeNano.get() / 1000.0)));
       log.trace(String.format("tservers per batch   : %,8.2f avg  %,6d min %,6d max",
           (float) (numBatches.get() != 0 ? (tabletServersBatchSum.get() / numBatches.get()) : 0),
           minTabletServersBatch.get(), maxTabletServersBatch.get()));
@@ -442,13 +447,13 @@ public class TabletServerBatchWriter implements AutoCloseable {
 
   private void updateSendStats(long count, long time) {
     totalSent.addAndGet(count);
-    totalSendTime.addAndGet(time);
+    totalSendTimeNano.addAndGet(time);
   }
 
   public void updateBinningStats(int count, long time,
       Map<String,TabletServerMutations<Mutation>> binnedMutations) {
     if (log.isTraceEnabled()) {
-      totalBinTime.addAndGet(time);
+      totalBinTimeNano.addAndGet(time);
       totalBinned.addAndGet(count);
       updateBatchStats(binnedMutations);
     }
@@ -590,7 +595,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
   private class FailedMutations {
 
     private MutationSet recentFailures = null;
-    private long initTime;
+    private long initTimeNano;
     private final Runnable task;
     private final ScheduledFuture<?> future;
 
@@ -605,7 +610,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
           "Background task that re-queues failed mutations has exited.");
       if (recentFailures == null) {
         recentFailures = new MutationSet();
-        initTime = System.currentTimeMillis();
+        initTimeNano = System.nanoTime();
       }
       return recentFailures;
     }
@@ -628,7 +633,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
         MutationSet rf = null;
 
         synchronized (this) {
-          if (recentFailures != null && System.currentTimeMillis() - initTime > 1000) {
+          if (recentFailures != null && System.nanoTime() - initTimeNano > SECONDS.toNanos(1)) {
             rf = recentFailures;
             recentFailures = null;
           }
@@ -676,7 +681,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
     private synchronized TabletLocator getLocator(TableId tableId) {
       TabletLocator ret = locators.get(tableId);
       if (ret == null) {
-        ret = new TimeoutTabletLocator(timeout, context, tableId);
+        ret = new TimeoutTabletLocator(timeoutNano, context, tableId);
         locators.put(tableId, ret);
       }
 
@@ -745,10 +750,10 @@ public class TabletServerBatchWriter implements AutoCloseable {
       Map<String,TabletServerMutations<Mutation>> binnedMutations = new HashMap<>();
       Span span = TraceUtil.startSpan(this.getClass(), "binMutations");
       try (Scope scope = span.makeCurrent()) {
-        long t1 = System.currentTimeMillis();
+        long t1Nano = System.nanoTime();
         binMutations(mutationsToSend, binnedMutations);
-        long t2 = System.currentTimeMillis();
-        updateBinningStats(mutationsToSend.size(), (t2 - t1), binnedMutations);
+        long t2Nano = System.nanoTime();
+        updateBinningStats(mutationsToSend.size(), (t2Nano - t1Nano), binnedMutations);
       } catch (Exception e) {
         TraceUtil.setException(span, e, true);
         throw e;
@@ -841,7 +846,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
       public void send(TabletServerMutations<Mutation> tsm)
           throws AccumuloServerException, AccumuloSecurityException {
 
-        MutationSet failures = null;
+        MutationSet failures;
 
         String oldName = Thread.currentThread().getName();
 
@@ -866,17 +871,18 @@ public class TabletServerBatchWriter implements AutoCloseable {
 
             TimeoutTracker timeoutTracker = timeoutTrackers.get(location);
             if (timeoutTracker == null) {
-              timeoutTracker = new TimeoutTracker(location, timeout);
+              timeoutTracker = new TimeoutTracker(location, timeoutNano);
               timeoutTrackers.put(location, timeoutTracker);
             }
 
-            long st1 = System.currentTimeMillis();
+            long st1Nano = System.nanoTime();
             failures = sendMutationsToTabletServer(location, mutationBatch, timeoutTracker);
-            long st2 = System.currentTimeMillis();
+            long st2Nano = System.nanoTime();
             if (log.isTraceEnabled()) {
               log.trace("sent " + String.format("%,d", count) + " mutations to " + location + " in "
                   + String.format("%.2f secs (%,.2f mutations/sec) with %,d failures",
-                      (st2 - st1) / 1000.0, count / ((st2 - st1) / 1000.0), failures.size()));
+                      (st2Nano - st1Nano) / 1000.0, count / ((st2Nano - st1Nano) / 1000.0),
+                      failures.size()));
             }
 
             long successBytes = 0;
@@ -891,7 +897,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
               successBytes -= failures.getMemoryUsed();
             }
 
-            updateSendStats(count, st2 - st1);
+            updateSendStats(count, st2Nano - st1Nano);
             decrementMemUsed(successBytes);
 
           } catch (Exception e) {
@@ -935,9 +941,10 @@ public class TabletServerBatchWriter implements AutoCloseable {
         final HostAndPort parsedServer = HostAndPort.fromString(location);
         final TabletClientService.Iface client;
 
-        if (timeoutTracker.getTimeOut() < context.getClientTimeoutInMillis()) {
+        if (timeoutTracker.getTimeOut()
+            < MILLISECONDS.toNanos(context.getClientTimeoutInMillis())) {
           client = ThriftUtil.getClient(ThriftClientTypes.TABLET_SERVER, parsedServer, context,
-              timeoutTracker.getTimeOut());
+              NANOSECONDS.toMillis(timeoutTracker.getTimeOut()));
         } else {
           client = ThriftUtil.getClient(ThriftClientTypes.TABLET_SERVER, parsedServer, context);
         }
