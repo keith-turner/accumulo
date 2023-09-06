@@ -384,7 +384,7 @@ public class CompactableImpl implements Compactable {
         boolean isCompactionStratConfigured) {
 
       if (!currFiles.containsAll(allCompactingFiles)) {
-        log.trace("Ignoring because compacting not a subset {}", getExtent());
+        log.debug("Ignoring because compacting not a subset {} {} {}", getExtent(), Sets.difference(allCompactingFiles, currFiles).stream().map(TabletFile::getFileName).collect(Collectors.toSet()), currFiles.stream().map(TabletFile::getFileName).collect(Collectors.toSet()));
 
         // A compaction finished, so things are out of date. This can happen because CompactableImpl
         // and Tablet have separate locks, it's ok.

@@ -188,7 +188,7 @@ public class CompactionService {
           try {
             Optional<Compactable.Files> files = compactable.getFiles(myId, kind);
             if (files.isEmpty() || files.orElseThrow().candidates.isEmpty()) {
-              log.trace("Compactable returned no files {} {}", compactable.getExtent(), kind);
+              log.debug("Compactable returned no files {} {}", compactable.getExtent(), kind);
             } else {
               CompactionPlan plan = getCompactionPlan(kind, files.orElseThrow(), compactable);
               submitCompactionJob(plan, files.orElseThrow(), compactable, completionCallback);
@@ -271,7 +271,7 @@ public class CompactionService {
       Compactable compactable) {
     PlanningParameters params = new CpPlanParams(kind, compactable, files);
 
-    log.trace("Planning compactions {} {} {} {}", planner.getClass().getName(),
+    log.debug("Planning compactions {} {} {} {}", planner.getClass().getName(),
         compactable.getExtent(), kind, files);
 
     CompactionPlan plan;
@@ -321,11 +321,11 @@ public class CompactionService {
       }
 
       if (!jobs.isEmpty()) {
-        log.trace("Submitted compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
+        log.debug("Submitted compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
             myId, files, plan);
       }
     } else {
-      log.trace("Did not submit compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
+      log.debug("Did not submit compaction plan {} id:{} files:{} plan:{}", compactable.getExtent(),
           myId, files, plan);
     }
   }
