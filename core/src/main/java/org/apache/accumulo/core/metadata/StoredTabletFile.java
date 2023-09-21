@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.core.metadata;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -217,10 +219,12 @@ public class StoredTabletFile extends AbstractTabletFile<StoredTabletFile> {
   private static byte[] encodeRow(final Key key) {
     final Text row = key != null ? key.getRow() : null;
     if (row != null) {
-      try (DataOutputBuffer buffer = new DataOutputBuffer()) {
-        row.write(buffer);
-        return buffer.getData();
-      } catch (IOException e) {
+      try(ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      DataOutputStream dos = new DataOutputStream(baos)) {
+        row.write(dos);
+        dos.close();
+        return baos.toByteArray();
+      }catch (IOException e) {
         throw new UncheckedIOException(e);
       }
     }
