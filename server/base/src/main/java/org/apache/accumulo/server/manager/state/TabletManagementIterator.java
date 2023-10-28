@@ -88,8 +88,8 @@ public class TabletManagementIterator extends SkippingIterator {
 
   private boolean shouldReturnDueToLocation(final TabletMetadata tm) {
 
-    TabletState state = TabletState.compute(tm, tgsParams.getOnlineTsevers());
-    TabletGoalState goalState = TabletGoalState.compute(tm, state, balancer, tgsParams);
+    TabletState state = TabletState.compute(tm, tabletMgmtParams.getOnlineTsevers());
+    TabletGoalState goalState = TabletGoalState.compute(tm, state, balancer, tabletMgmtParams);
     if (LOG.isTraceEnabled()) {
       LOG.trace("extent:{} state:{} goalState:{} hostingGoal:{}, hostingRequested: {}, opId: {}",
           tm.getExtent(), state, goalState, tm.getHostingGoal(), tm.getHostingRequested(),
@@ -109,7 +109,7 @@ public class TabletManagementIterator extends SkippingIterator {
   }
 
   public static void configureScanner(final ScannerBase scanner,
-      final TabletManagementParameters tgsParams) {
+      final TabletManagementParameters tabletMgmtParams) {
     // TODO so many columns are being fetch it may not make sense to fetch columns
     TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
     ServerColumnFamily.DIRECTORY_COLUMN.fetch(scanner);
@@ -126,7 +126,7 @@ public class TabletManagementIterator extends SkippingIterator {
     scanner.addScanIterator(new IteratorSetting(1000, "wholeRows", WholeRowIterator.class));
     IteratorSetting tabletChange =
         new IteratorSetting(1001, "ManagerTabletInfoIterator", TabletManagementIterator.class);
-    tabletChange.addOption(TABLET_GOAL_STATE_PARAMS_OPTION, tgsParams.serialize());
+    tabletChange.addOption(TABLET_GOAL_STATE_PARAMS_OPTION, tabletMgmtParams.serialize());
     scanner.addScanIterator(tabletChange);
   }
 
@@ -137,17 +137,17 @@ public class TabletManagementIterator extends SkippingIterator {
   private IteratorEnvironment env;
   private Key topKey = null;
   private Value topValue = null;
-  private TabletManagementParameters tgsParams = null;
+  private TabletManagementParameters tabletMgmtParams = null;
 
   @Override
   public void init(SortedKeyValueIterator<Key,Value> source, Map<String,String> options,
       IteratorEnvironment env) throws IOException {
     super.init(source, options, env);
     this.env = env;
-    tgsParams =
+    tabletMgmtParams =
         TabletManagementParameters.deserialize(options.get(TABLET_GOAL_STATE_PARAMS_OPTION));
     compactionGenerator =
-        new CompactionJobGenerator(env.getPluginEnv(), tgsParams.getCompactionHints());
+        new CompactionJobGenerator(env.getPluginEnv(), tabletMgmtParams.getCompactionHints());
     final AccumuloConfiguration conf = new ConfigurationCopy(env.getPluginEnv().getConfiguration());
     BalancerEnvironmentImpl benv =
         new BalancerEnvironmentImpl(((TabletIteratorEnvironment) env).getServerContext());
@@ -187,8 +187,9 @@ public class TabletManagementIterator extends SkippingIterator {
       actions.clear();
       Exception error = null;
       try {
-        if (tgsParams.getManagerState() != ManagerState.NORMAL
-            || tgsParams.getOnlineTsevers().isEmpty() || tgsParams.getOnlineTables().isEmpty()) {
+        if (tabletMgmtParams.getManagerState() != ManagerState.NORMAL
+            || tabletMgmtParams.getOnlineTsevers().isEmpty()
+            || tabletMgmtParams.getOnlineTables().isEmpty()) {
           // when manager is in the process of starting up or shutting down return everything.
           actions.add(ManagementAction.NEEDS_LOCATION_UPDATE);
         } else {

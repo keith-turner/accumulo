@@ -224,11 +224,11 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
               continue;
             }
 
-            TabletManagementParameters tgsParams = createTabletGoalStateParamaters();
+            TabletManagementParameters tabletMgmtParams = createTabletManagementParameters();
 
-            try (var iter = store.iterator(ranges, tgsParams)) {
+            try (var iter = store.iterator(ranges, tabletMgmtParams)) {
               long t1 = System.currentTimeMillis();
-              manageTablets(iter, tgsParams, currentTservers, false);
+              manageTablets(iter, tabletMgmtParams, currentTservers, false);
               long t2 = System.currentTimeMillis();
               Manager.log.debug(String.format("[%s]: partial scan time %.2f seconds for %,d ranges",
                   store.name(), (t2 - t1) / 1000., ranges.size()));
@@ -292,7 +292,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     }
   }
 
-  private TabletManagementParameters createTabletGoalStateParamaters() {
+  private TabletManagementParameters createTabletManagementParameters() {
 
     HashMap<Ample.DataLevel,Boolean> parentLevelUpgrade = new HashMap<>();
     UpgradeCoordinator.UpgradeStatus upgradeStatus = manager.getUpgradeStatus();
@@ -549,7 +549,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         // Clear the need for a full scan before starting a full scan inorder to detect events that
         // happen during the full scan.
         eventHandler.clearNeedsFullScan();
-        TabletManagementParameters tableMgmtParams = createTabletGoalStateParamaters();
+        TabletManagementParameters tableMgmtParams = createTabletManagementParameters();
 
         iter = store.iterator(tableMgmtParams);
         var tabletMgmtStats = manageTablets(iter, tableMgmtParams, currentTServers, true);
