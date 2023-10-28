@@ -59,7 +59,7 @@ class MetaDataStateStore extends AbstractTabletStateStore implements TabletState
   @Override
   public ClosableIterator<TabletManagement> iterator(List<Range> ranges,
       TabletManagementParameters parameters) {
-    Preconditions.checkArgument(parameters.getLevel() == level);
+    Preconditions.checkArgument(parameters.getLevel() == getLevel());
     return new TabletManagementScanner(context, ranges, parameters, targetTableName);
   }
 

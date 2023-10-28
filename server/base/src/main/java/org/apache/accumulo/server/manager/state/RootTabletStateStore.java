@@ -37,7 +37,7 @@ class RootTabletStateStore extends MetaDataStateStore {
   @Override
   public ClosableIterator<TabletManagement> iterator(List<Range> ranges,
       TabletManagementParameters parameters) {
-    Preconditions.checkArgument(parameters.getLevel() == DataLevel.ROOT);
+    Preconditions.checkArgument(parameters.getLevel() == getLevel());
     return new TabletManagementScanner(context, ranges, parameters, RootTable.NAME);
   }
 

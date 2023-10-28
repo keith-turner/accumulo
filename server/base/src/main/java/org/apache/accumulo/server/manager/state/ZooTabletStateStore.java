@@ -64,7 +64,7 @@ class ZooTabletStateStore extends AbstractTabletStateStore implements TabletStat
   @Override
   public ClosableIterator<TabletManagement> iterator(List<Range> ranges,
       TabletManagementParameters parameters) {
-    Preconditions.checkArgument(parameters.getLevel() == level);
+    Preconditions.checkArgument(parameters.getLevel() == getLevel());
 
     return new ClosableIterator<>() {
       boolean finished = false;
