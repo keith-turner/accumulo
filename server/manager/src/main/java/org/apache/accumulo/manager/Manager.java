@@ -129,7 +129,6 @@ import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.manager.LiveTServerSet;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
 import org.apache.accumulo.server.manager.balancer.BalancerEnvironmentImpl;
-import org.apache.accumulo.server.manager.state.CurrentState;
 import org.apache.accumulo.server.manager.state.DeadServerList;
 import org.apache.accumulo.server.manager.state.TabletServerState;
 import org.apache.accumulo.server.manager.state.TabletStateStore;
@@ -171,7 +170,7 @@ import io.opentelemetry.context.Scope;
  * The manager will also coordinate log recoveries and reports general status.
  */
 public class Manager extends AbstractServer
-    implements LiveTServerSet.Listener, TableObserver, CurrentState, HighlyAvailableService {
+    implements LiveTServerSet.Listener, TableObserver, HighlyAvailableService {
 
   static final Logger log = LoggerFactory.getLogger(Manager.class);
 
@@ -233,12 +232,14 @@ public class Manager extends AbstractServer
   private final TabletStateStore metadataTabletStore;
   private final TabletStateStore userTabletStore;
 
-  @Override
   public synchronized ManagerState getManagerState() {
     return state;
   }
 
-  @Override
+  // ELASTICITIY_TODO it would be nice if this method could take DataLevel as an argument and only
+  // retrieve information about compactions in that data level. Attempted this and a lot of
+  // refactoring was needed to get that small bit of information to this method. Would be best to
+  // address this after issue. May be best to attempt this after #3576.
   public Map<Long,Map<String,String>> getCompactionHints() {
     Map<Long,CompactionConfig> allConfig = null;
     try {
@@ -452,9 +453,9 @@ public class Manager extends AbstractServer
 
     final long tokenLifetime = aconf.getTimeInMillis(Property.GENERAL_DELEGATION_TOKEN_LIFETIME);
 
-    this.rootTabletStore = TabletStateStore.getStoreForLevel(DataLevel.ROOT, context, this);
-    this.metadataTabletStore = TabletStateStore.getStoreForLevel(DataLevel.METADATA, context, this);
-    this.userTabletStore = TabletStateStore.getStoreForLevel(DataLevel.USER, context, this);
+    this.rootTabletStore = TabletStateStore.getStoreForLevel(DataLevel.ROOT, context);
+    this.metadataTabletStore = TabletStateStore.getStoreForLevel(DataLevel.METADATA, context);
+    this.userTabletStore = TabletStateStore.getStoreForLevel(DataLevel.USER, context);
 
     authenticationTokenKeyManager = null;
     keyDistributor = null;
@@ -774,7 +775,7 @@ public class Manager extends AbstractServer
 
     private long balanceTablets() {
       BalanceParamsImpl params = BalanceParamsImpl.fromThrift(tserverStatusForBalancer,
-          tServerGroupingForBalancer, tserverStatus, migrationsSnapshot());
+          tServerGroupingForBalancer, tserverStatus, migrationsSnapshot().keySet());
       long wait = tabletBalancer.balance(params);
 
       for (TabletMigration m : checkMigrationSanity(tserverStatusForBalancer.keySet(),
@@ -1476,7 +1477,6 @@ public class Manager extends AbstractServer
   @Override
   public void sessionExpired() {}
 
-  @Override
   public Set<TableId> onlineTables() {
     Set<TableId> result = new HashSet<>();
     if (getManagerState() != ManagerState.NORMAL) {
@@ -1500,12 +1500,10 @@ public class Manager extends AbstractServer
     return result;
   }
 
-  @Override
   public Set<TServerInstance> onlineTabletServers() {
     return tserverSet.getCurrentServers();
   }
 
-  @Override
   public Map<String,Set<TServerInstance>> tServerResourceGroups() {
     return tserverSet.getCurrentServersGroups();
   }
@@ -1591,19 +1589,15 @@ public class Manager extends AbstractServer
     return delegationTokensAvailable;
   }
 
-  @Override
-  public Set<KeyExtent> migrationsSnapshot() {
-    Set<KeyExtent> migrationKeys;
+  public Map<KeyExtent,TServerInstance> migrationsSnapshot() {
     synchronized (migrations) {
-      migrationKeys = new HashSet<>(migrations.keySet());
+      return Map.copyOf(migrations);
     }
-    return Collections.unmodifiableSet(migrationKeys);
   }
 
-  @Override
   public Set<TServerInstance> shutdownServers() {
     synchronized (serversToShutdown) {
-      return new HashSet<>(serversToShutdown);
+      return Set.copyOf(serversToShutdown);
     }
   }
 

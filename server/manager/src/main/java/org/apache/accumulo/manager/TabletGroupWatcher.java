@@ -50,7 +50,6 @@ import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.logging.TabletLogger;
-import org.apache.accumulo.core.manager.balancer.TabletServerIdImpl;
 import org.apache.accumulo.core.manager.state.TabletManagement;
 import org.apache.accumulo.core.manager.state.TabletManagement.ManagementAction;
 import org.apache.accumulo.core.manager.state.tables.TableState;
@@ -67,7 +66,6 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Fu
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.security.Authorizations;
-import org.apache.accumulo.core.spi.balancer.data.TabletServerId;
 import org.apache.accumulo.core.util.TextUtil;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.core.util.threads.Threads.AccumuloDaemonThread;
@@ -87,6 +85,7 @@ import org.apache.accumulo.server.manager.state.ClosableIterator;
 import org.apache.accumulo.server.manager.state.DistributedStoreException;
 import org.apache.accumulo.server.manager.state.TabletGoalState;
 import org.apache.accumulo.server.manager.state.TabletManagementIterator;
+import org.apache.accumulo.server.manager.state.TabletManagementParameters;
 import org.apache.accumulo.server.manager.state.TabletStateStore;
 import org.apache.accumulo.server.manager.state.UnassignedTablet;
 import org.apache.hadoop.fs.Path;
@@ -173,9 +172,9 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     private final Map<String,Set<TServerInstance>> currentTServerGrouping;
 
     public TabletLists(Manager m, SortedMap<TServerInstance,TabletServerStatus> curTServers,
-        Map<String,Set<TServerInstance>> grouping) {
+        Map<String,Set<TServerInstance>> grouping, Set<TServerInstance> serversToShutdown) {
       var destinationsMod = new TreeMap<>(curTServers);
-      destinationsMod.keySet().removeAll(m.serversToShutdown);
+      destinationsMod.keySet().removeAll(serversToShutdown);
       this.destinations = Collections.unmodifiableSortedMap(destinationsMod);
       this.currentTServerGrouping = grouping;
     }
@@ -225,10 +224,9 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
               continue;
             }
 
-            TabletGoalState.Parameters tgsParams =
-                createTabletGoalStateParamaters(tservers.getTserverGroups());
+            TabletManagementParameters tgsParams = createTabletGoalStateParamaters();
 
-            try (var iter = store.iterator(ranges)) {
+            try (var iter = store.iterator(ranges, tgsParams)) {
               long t1 = System.currentTimeMillis();
               manageTablets(iter, tgsParams, currentTservers, false);
               long t2 = System.currentTimeMillis();
@@ -294,9 +292,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
     }
   }
 
-  private TabletGoalState.Parameters
-      createTabletGoalStateParamaters(Map<String,Set<TServerInstance>> tserverGroups) {
-    // TODO sync on serversToShutdown and migrations
+  private TabletManagementParameters createTabletGoalStateParamaters() {
 
     HashMap<Ample.DataLevel,Boolean> parentLevelUpgrade = new HashMap<>();
     UpgradeCoordinator.UpgradeStatus upgradeStatus = manager.getUpgradeStatus();
@@ -304,11 +300,10 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       parentLevelUpgrade.put(level, upgradeStatus.isParentLevelUpgraded(level));
     }
 
-    // TODO translate tsever groups
-
-    return new TabletGoalState.Parameters(manager.getManagerState(), parentLevelUpgrade,
-        manager.onlineTables(), manager.serversToShutdown, manager.migrations, null,
-        store.getLevel());
+    return new TabletManagementParameters(manager.getManagerState(), parentLevelUpgrade,
+        manager.onlineTables(), manager.tserverSet.getCurrentServers(), manager.shutdownServers(),
+        manager.migrationsSnapshot(), manager.tserverSet.getCurrentServersGroups(),
+        store.getLevel(), manager.getCompactionHints());
   }
 
   private static class TableMgmtStats {
@@ -317,14 +312,14 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
   }
 
   private TableMgmtStats manageTablets(Iterator<TabletManagement> iter,
-      TabletGoalState.Parameters tgsParams,
+      TabletManagementParameters tableMgmtParams,
       SortedMap<TServerInstance,TabletServerStatus> currentTServers, boolean isFullScan)
       throws BadLocationStateException, TException, DistributedStoreException, WalMarkerException,
       IOException {
 
     TableMgmtStats tableMgmtStats = new TableMgmtStats();
     final boolean shuttingDownAllTabletServers =
-        manager.serversToShutdown.equals(currentTServers.keySet());
+        tableMgmtParams.getServersToShutdown().equals(currentTServers.keySet());
     if (shuttingDownAllTabletServers && !isFullScan) {
       // If we are shutting down all of the TabletServers, then don't process any events
       // from the EventCoordinator.
@@ -334,19 +329,11 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
     int unloaded = 0;
 
-    final Map<String,Set<TServerInstance>> currentTServerGrouping =
-        manager.tserverSet.getCurrentServersGroups();
-
-    TabletLists tLists = new TabletLists(manager, currentTServers, currentTServerGrouping);
+    TabletLists tLists = new TabletLists(manager, currentTServers,
+        tableMgmtParams.getGroupedTservers(), tableMgmtParams.getServersToShutdown());
 
     CompactionJobGenerator compactionGenerator = new CompactionJobGenerator(
-        new ServiceEnvironmentImpl(manager.getContext()), manager.getCompactionHints());
-
-    final Map<TabletServerId,String> resourceGroups = new HashMap<>();
-    manager.tServerResourceGroups().forEach((group, tservers) -> {
-      tservers.stream().map(TabletServerIdImpl::new)
-          .forEach(tabletServerId -> resourceGroups.put(tabletServerId, group));
-    });
+        new ServiceEnvironmentImpl(manager.getContext()), tableMgmtParams.getCompactionHints());
 
     while (iter.hasNext()) {
       final TabletManagement mti = iter.next();
@@ -390,13 +377,12 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
       final TableConfiguration tableConf = manager.getContext().getTableConfiguration(tableId);
 
-      final TabletState state =
-          TabletState.compute(tm, currentTServers.keySet(), manager.tabletBalancer, resourceGroups);
+      final TabletState state = TabletState.compute(tm, currentTServers.keySet());
       // This is final because nothing in this method should change the goal. All computation of the
       // goal should be done in TabletGoalState.compute() so that all parts of the Accumulo code
       // will compute a consistent goal.
       final TabletGoalState goal =
-          TabletGoalState.compute(tm, state, manager.tabletBalancer, tgsParams);
+          TabletGoalState.compute(tm, state, manager.tabletBalancer, tableMgmtParams);
 
       final Location location = tm.getLocation();
       Location current = null;
@@ -417,7 +403,7 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       if (Manager.log.isTraceEnabled()) {
         Manager.log.trace(
             "[{}] Shutting down all Tservers: {}, dependentCount: {} Extent: {}, state: {}, goal: {} actions:{}",
-            store.name(), manager.serversToShutdown.equals(currentTServers.keySet()),
+            store.name(), tableMgmtParams.getServersToShutdown().equals(currentTServers.keySet()),
             dependentWatcher == null ? "null" : dependentWatcher.assignedOrHosted(), tm.getExtent(),
             state, goal, actions);
       }
@@ -496,7 +482,6 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
             case ASSIGNED_TO_DEAD_SERVER:
               unassignDeadTablet(tLists, tm);
               break;
-            case NEEDS_REASSIGNMENT:
             case HOSTED:
               TServerConnection client =
                   manager.tserverSet.getConnection(location.getServerInstance());
@@ -564,9 +549,10 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         // Clear the need for a full scan before starting a full scan inorder to detect events that
         // happen during the full scan.
         eventHandler.clearNeedsFullScan();
-        // TODO create tgsParams
-        iter = store.iterator();
-        var tabletMgmtStats = manageTablets(iter, null, currentTServers, true);
+        TabletManagementParameters tableMgmtParams = createTabletGoalStateParamaters();
+
+        iter = store.iterator(tableMgmtParams);
+        var tabletMgmtStats = manageTablets(iter, tableMgmtParams, currentTServers, true);
 
         // provide stats after flushing changes to avoid race conditions w/ delete table
         stats.end(managerState);

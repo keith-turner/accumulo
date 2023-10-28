@@ -82,8 +82,9 @@ public class FindOfflineTablets {
     tservers.startListeningForTabletServerChanges();
     scanning.set(true);
 
+    // TODO fix this
     Iterator<TabletManagement> zooScanner =
-        TabletStateStore.getStoreForLevel(DataLevel.ROOT, context).iterator();
+        TabletStateStore.getStoreForLevel(DataLevel.ROOT, context).iterator(null);
 
     int offline = 0;
 

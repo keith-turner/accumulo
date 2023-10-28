@@ -18,15 +18,10 @@
  */
 package org.apache.accumulo.server.manager.state;
 
-import java.util.Map;
-import java.util.Set;
-
-import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.TabletIdImpl;
 import org.apache.accumulo.core.manager.balancer.TabletServerIdImpl;
-import org.apache.accumulo.core.manager.thrift.ManagerState;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletState;
 import org.apache.accumulo.core.metadata.schema.Ample;
@@ -58,64 +53,8 @@ public enum TabletGoalState {
 
   private static final Logger log = LoggerFactory.getLogger(TabletGoalState.class);
 
-  public static class Parameters {
-
-    private final ManagerState managerState;
-    private final Map<Ample.DataLevel,Boolean> parentUpgradeMap;
-    private final Set<TableId> onlineTables;
-    private final Set<TServerInstance> serversToShutdown;
-    private final Map<KeyExtent,TServerInstance> migrations;
-
-    private final Ample.DataLevel level;
-
-    private final Map<TabletServerId,String> resourceGroups;
-
-    public Parameters(ManagerState managerState, Map<Ample.DataLevel,Boolean> parentUpgradeMap,
-        Set<TableId> onlineTables, Set<TServerInstance> serversToShutdown,
-        Map<KeyExtent,TServerInstance> migrations, Map<TabletServerId,String> resourceGroups,
-        Ample.DataLevel level) {
-      this.managerState = managerState;
-      this.parentUpgradeMap = parentUpgradeMap;
-      // TODO could filter by level
-      this.onlineTables = onlineTables;
-      this.serversToShutdown = serversToShutdown;
-      // TODO could filter by level
-      this.migrations = migrations;
-      this.level = level;
-      this.resourceGroups = resourceGroups;
-    }
-
-    public ManagerState getManagerState() {
-      return managerState;
-    }
-
-    public boolean isParentLevelUpgraded() {
-      return parentUpgradeMap.get(level);
-    }
-
-    public Set<TServerInstance> getServersToShutdown() {
-      return serversToShutdown;
-    }
-
-    public boolean isTableOnline(TableId tableId) {
-      return onlineTables.contains(tableId);
-    }
-
-    public Map<KeyExtent,TServerInstance> getMigrations() {
-      return migrations;
-    }
-
-    public Ample.DataLevel getLevel() {
-      return level;
-    }
-
-    public String getResourceGroup(TServerInstance tserver) {
-      return resourceGroups.get(tserver);
-    }
-  }
-
   public static TabletGoalState compute(TabletMetadata tm, TabletState currentState,
-      TabletBalancer balancer, Parameters params) {
+      TabletBalancer balancer, TabletManagementParameters params) {
     Preconditions.checkArgument(Ample.DataLevel.of(tm.getTableId()) == params.getLevel(),
         "Tablet %s not in expected level %s", tm.getExtent(), params.getLevel());
 
@@ -200,11 +139,6 @@ public enum TabletGoalState {
         }
       }
 
-      // todo maybe move this computation here and remove NEEDS_REASSIGNMENT from TabletState
-      if (currentState == TabletState.NEEDS_REASSIGNMENT) {
-        return UNASSIGNED;
-      }
-
       if (tm.hasCurrent()
           && params.getServersToShutdown().contains(tm.getLocation().getServerInstance())) {
         return TabletGoalState.SUSPENDED;
@@ -214,7 +148,8 @@ public enum TabletGoalState {
   }
 
   // TODO precompute this as a parameter
-  private static TabletGoalState getSystemGoalState(TabletMetadata tm, Parameters params) {
+  private static TabletGoalState getSystemGoalState(TabletMetadata tm,
+      TabletManagementParameters params) {
     switch (params.getManagerState()) {
       case NORMAL:
         return TabletGoalState.HOSTED;
