@@ -99,7 +99,6 @@ import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
-import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metrics.MetricsUtil;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.spi.balancer.BalancerEnvironment;
@@ -108,7 +107,6 @@ import org.apache.accumulo.core.spi.balancer.TabletBalancer;
 import org.apache.accumulo.core.spi.balancer.data.TServerStatus;
 import org.apache.accumulo.core.spi.balancer.data.TabletMigration;
 import org.apache.accumulo.core.spi.balancer.data.TabletServerId;
-import org.apache.accumulo.core.tablet.thrift.TUnloadTabletGoal;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.Retry;
@@ -542,110 +540,8 @@ public class Manager extends AbstractServer
     return compactionJobQueues;
   }
 
-  enum TabletGoalState {
-    HOSTED(TUnloadTabletGoal.UNKNOWN),
-    UNASSIGNED(TUnloadTabletGoal.UNASSIGNED),
-    DELETED(TUnloadTabletGoal.DELETED),
-    SUSPENDED(TUnloadTabletGoal.SUSPENDED);
-
-    private final TUnloadTabletGoal unloadGoal;
-
-    TabletGoalState(TUnloadTabletGoal unloadGoal) {
-      this.unloadGoal = unloadGoal;
-    }
-
-    /** The purpose of unloading this tablet. */
-    public TUnloadTabletGoal howUnload() {
-      return unloadGoal;
-    }
-  }
-
-  TabletGoalState getSystemGoalState(TabletMetadata tm) {
-    switch (getManagerState()) {
-      case NORMAL:
-        return TabletGoalState.HOSTED;
-      case HAVE_LOCK: // fall-through intended
-      case INITIAL: // fall-through intended
-      case SAFE_MODE:
-        if (tm.getExtent().isMeta()) {
-          return TabletGoalState.HOSTED;
-        }
-        return TabletGoalState.UNASSIGNED;
-      case UNLOAD_METADATA_TABLETS:
-        if (tm.getExtent().isRootTablet()) {
-          return TabletGoalState.HOSTED;
-        }
-        return TabletGoalState.UNASSIGNED;
-      case UNLOAD_ROOT_TABLET:
-        return TabletGoalState.UNASSIGNED;
-      case STOP:
-        return TabletGoalState.UNASSIGNED;
-      default:
-        throw new IllegalStateException("Unknown Manager State");
-    }
-  }
-
-  TabletGoalState getTableGoalState(TabletMetadata tm) {
-    TableState tableState = getContext().getTableManager().getTableState(tm.getTableId());
-    if (tableState == null) {
-      return TabletGoalState.DELETED;
-    }
-    switch (tableState) {
-      case DELETING:
-        return TabletGoalState.DELETED;
-      case OFFLINE:
-      case NEW:
-        return TabletGoalState.UNASSIGNED;
-      default:
-        switch (tm.getHostingGoal()) {
-          case ALWAYS:
-            return TabletGoalState.HOSTED;
-          case NEVER:
-            return TabletGoalState.UNASSIGNED;
-          case ONDEMAND:
-            if (tm.getHostingRequested()) {
-              return TabletGoalState.HOSTED;
-            } else {
-              return TabletGoalState.UNASSIGNED;
-            }
-          default:
-            throw new IllegalStateException(
-                "Tablet Hosting Goal is unhandled: " + tm.getHostingGoal());
-        }
-    }
-  }
-
-  TabletGoalState getGoalState(TabletMetadata tm) {
-    KeyExtent extent = tm.getExtent();
-    // Shutting down?
-    TabletGoalState state = getSystemGoalState(tm);
-
-    if (state == TabletGoalState.HOSTED) {
-      if (!upgradeCoordinator.getStatus().isParentLevelUpgraded(extent)) {
-        // The place where this tablet stores its metadata was not upgraded, so do not assign this
-        // tablet yet.
-        return TabletGoalState.UNASSIGNED;
-      }
-
-      if (tm.getOperationId() != null) {
-        return TabletGoalState.UNASSIGNED;
-      }
-
-      if (tm.hasCurrent() && serversToShutdown.contains(tm.getLocation().getServerInstance())) {
-        return TabletGoalState.SUSPENDED;
-      }
-
-      // taking table offline?
-      state = getTableGoalState(tm);
-      if (state == TabletGoalState.HOSTED) {
-        // Maybe this tablet needs to be migrated
-        TServerInstance dest = migrations.get(extent);
-        if (dest != null && tm.hasCurrent() && !dest.equals(tm.getLocation().getServerInstance())) {
-          return TabletGoalState.UNASSIGNED;
-        }
-      }
-    }
-    return state;
+  public UpgradeCoordinator.UpgradeStatus getUpgradeStatus() {
+    return upgradeCoordinator.getStatus();
   }
 
   private class MigrationCleanupThread implements Runnable {

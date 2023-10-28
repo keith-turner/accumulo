@@ -260,6 +260,7 @@ public class TabletManagementIterator extends SkippingIterator {
           tm.getExtent(), state, (shouldBeOnline ? "on" : "off"), tm.getHostingGoal(),
           tm.getHostingRequested(), tm.getOperationId());
     }
+
     switch (state) {
       case ASSIGNED:
         // we always want data about assigned tablets
