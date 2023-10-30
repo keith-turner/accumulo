@@ -426,8 +426,6 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
             state, goal, actions);
       }
 
-      // TODO handle shutting down tservers, a big chunk of code was removed
-
       if (actions.contains(ManagementAction.NEEDS_SPLITTING)) {
         LOG.debug("{} may need splitting.", tm.getExtent());
         if (manager.getSplitter().isSplittable(tm)) {
@@ -470,7 +468,6 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
           switch (state) {
             case HOSTED:
               if (location.getServerInstance().equals(manager.migrations.get(tm.getExtent()))) {
-                // TODO may never hit this case now
                 manager.migrations.remove(tm.getExtent());
               }
               break;

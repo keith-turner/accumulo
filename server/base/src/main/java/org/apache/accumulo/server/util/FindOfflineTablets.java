@@ -82,7 +82,10 @@ public class FindOfflineTablets {
     tservers.startListeningForTabletServerChanges();
     scanning.set(true);
 
-    // TODO fix this
+    // ELASTICITY_TOD this was broken by passing null below. Should probably migrate this code away
+    // from using the TabletManagmentIterator which is tightly coupled to the TabletGroupWatcher.
+    // Using the TabletManagmentIterator outside of the TGW makes Accumulo's code harder to
+    // maintain.
     Iterator<TabletManagement> zooScanner =
         TabletStateStore.getStoreForLevel(DataLevel.ROOT, context).iterator(null);
 

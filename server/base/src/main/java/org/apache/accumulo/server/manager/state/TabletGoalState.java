@@ -147,7 +147,6 @@ public enum TabletGoalState {
     return state;
   }
 
-  // TODO precompute this as a parameter
   private static TabletGoalState getSystemGoalState(TabletMetadata tm,
       TabletManagementParameters params) {
     switch (params.getManagerState()) {
