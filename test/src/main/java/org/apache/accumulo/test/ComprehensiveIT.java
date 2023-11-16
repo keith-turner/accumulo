@@ -45,6 +45,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import org.apache.accumulo.cluster.AccumuloCluster;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -133,11 +134,12 @@ public class ComprehensiveIT extends SharedMiniClusterBase {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
       client.tableOperations().create(table);
 
-      bulkImport(client, table, List.of(generateKeys(0, 100), generateKeys(100, 200)));
+      bulkImport(getCluster(), client, table,
+          List.of(generateKeys(0, 100), generateKeys(100, 200)));
 
       verifyData(client, table, AUTHORIZATIONS, generateKeys(0, 200));
 
-      bulkImport(client, table,
+      bulkImport(getCluster(), client, table,
           List.of(generateKeys(200, 300), generateKeys(300, 400), generateKeys(400, 500)));
 
       verifyData(client, table, AUTHORIZATIONS, generateKeys(0, 500));
@@ -402,7 +404,7 @@ public class ComprehensiveIT extends SharedMiniClusterBase {
 
       verifyData(client, table, AUTHORIZATIONS, expected);
 
-      bulkImport(client, table, List.of(generateKeys(25, 75, 0x12345678, tr -> true),
+      bulkImport(getCluster(), client, table, List.of(generateKeys(25, 75, 0x12345678, tr -> true),
           generateKeys(90, 200, 0x76543210, tr -> true)));
 
       expected.putAll(generateKeys(25, 75, 0x12345678, tr -> true));
@@ -607,8 +609,9 @@ public class ComprehensiveIT extends SharedMiniClusterBase {
         assertEquals(splits, Set.copyOf(userClient.tableOperations().listSplits(rootsTable)));
 
         // user should not have permission to bulk import
-        ase = assertThrows(AccumuloSecurityException.class, () -> bulkImport(userClient, rootsTable,
-            List.of(generateKeys(200, 250, tr -> true), generateKeys(250, 300, tr -> true))));
+        ase = assertThrows(AccumuloSecurityException.class,
+            () -> bulkImport(getCluster(), userClient, rootsTable,
+                List.of(generateKeys(200, 250, tr -> true), generateKeys(250, 300, tr -> true))));
         assertEquals(SecurityErrorCode.PERMISSION_DENIED, ase.getSecurityErrorCode());
         verifyData(userClient, rootsTable, AUTHORIZATIONS, generateKeys(0, 200));
 
@@ -619,7 +622,7 @@ public class ComprehensiveIT extends SharedMiniClusterBase {
             TablePermission.BULK_IMPORT);
         Wait.waitFor(() -> {
           try {
-            bulkImport(userClient, rootsTable,
+            bulkImport(getCluster(), userClient, rootsTable,
                 List.of(generateKeys(200, 250, tr -> true), generateKeys(250, 300, tr -> true)));
             return true;
           } catch (AccumuloSecurityException e) {
@@ -1046,17 +1049,19 @@ public class ComprehensiveIT extends SharedMiniClusterBase {
     }).collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1, TreeMap::new));
   }
 
-  private static void bulkImport(AccumuloClient client, String table,
+  public static void bulkImport(AccumuloCluster cluster, AccumuloClient client, String table,
       List<SortedMap<Key,Value>> data) throws Exception {
-    String tmp = getCluster().getTemporaryPath().toString();
+    String tmp = cluster.getTemporaryPath().toString();
     Path dir = new Path(tmp, "comp_bulk_" + UUID.randomUUID());
 
-    getCluster().getFileSystem().mkdirs(dir);
+    var fs = cluster.getFileSystem();
+
+    fs.mkdirs(dir);
 
     try {
       int count = 0;
       for (var keyValues : data) {
-        try (var output = getCluster().getFileSystem().create(new Path(dir, "f" + count + ".rf"));
+        try (var output = fs.create(new Path(dir, "f" + count + ".rf"));
             var writer = RFile.newWriter().to(output).build()) {
           writer.startDefaultLocalityGroup();
           for (Map.Entry<Key,Value> entry : keyValues.entrySet()) {
@@ -1068,7 +1073,7 @@ public class ComprehensiveIT extends SharedMiniClusterBase {
 
       client.tableOperations().importDirectory(dir.toString()).to(table).load();
     } finally {
-      getCluster().getFileSystem().delete(dir, true);
+      fs.delete(dir, true);
     }
   }
 

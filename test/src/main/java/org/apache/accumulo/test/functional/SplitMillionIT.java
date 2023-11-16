@@ -20,11 +20,14 @@ package org.apache.accumulo.test.functional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.SortedMap;
 import java.util.SortedSet;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -40,6 +43,7 @@ import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.Filter;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
+import org.apache.accumulo.test.ComprehensiveIT;
 import org.apache.hadoop.io.Text;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -89,24 +93,36 @@ public class SplitMillionIT extends AccumuloClusterHarness {
               IntStream.of(0, 1, 99_999_998, 99_999_999))
           .toArray();
 
+      List<SortedMap<Key,Value>> bulkData = new ArrayList<>();
+      for (var rowInt : rows) {
+        var row = String.format("%010d", rowInt);
+        TreeMap<Key,Value> rowData = new TreeMap<>();
+        rowData.put(new Key(row, "c", "y"), new Value("900"));
+        bulkData.add(rowData);
+      }
+
+      long t1 = System.currentTimeMillis();
+      ComprehensiveIT.bulkImport(getCluster(), c, tableName, bulkData);
+      long t2 = System.currentTimeMillis();
+      log.info("Time to bulk import {} rows : {}ms", bulkData.size(), t2 - t1);
+
       // read and write to a few of the 1 million tablets. The following should touch the first,
       // last, and a few middle tablets.
       for (var rowInt : rows) {
 
         var row = String.format("%010d", rowInt);
 
-        long t1 = System.currentTimeMillis();
+        t1 = System.currentTimeMillis();
         try (var scanner = c.createScanner(tableName)) {
           scanner.setRange(new Range(row));
-          assertEquals(0, scanner.stream().count());
+          assertEquals(1, scanner.stream().count());
         }
 
-        long t2 = System.currentTimeMillis();
+        t2 = System.currentTimeMillis();
 
         try (var writer = c.createBatchWriter(tableName)) {
           Mutation m = new Mutation(row);
           m.put("c", "x", "200");
-          m.put("c", "y", "900");
           m.put("c", "z", "300");
           writer.addMutation(m);
         }
@@ -117,9 +133,9 @@ public class SplitMillionIT extends AccumuloClusterHarness {
         log.info("Row: {} scan1: {}ms write: {}ms scan2: {}ms", row, t2 - t1, t3 - t2, t4 - t3);
       }
 
-      long t1 = System.currentTimeMillis();
+      t1 = System.currentTimeMillis();
       long count = c.tableOperations().getTabletInformation(tableName, new Range()).count();
-      long t2 = System.currentTimeMillis();
+      t2 = System.currentTimeMillis();
       assertEquals(1_000_000, count);
       log.info("Time to scan all tablets information : {}ms", t2 - t1);
 

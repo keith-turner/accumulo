@@ -30,6 +30,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.accumulo.core.clientImpl.bulk.Bulk;
 import org.apache.accumulo.core.clientImpl.bulk.Bulk.Files;
@@ -98,14 +99,29 @@ class LoadFiles extends ManagerRepo {
     protected Manager manager;
     protected long tid;
     protected boolean setTime;
-    Ample.ConditionalTabletsMutator conditionalMutator;
+    Ample.AsyncConditionalTabletsMutator conditionalMutator;
+
+    protected final AtomicLong rejectedCount = new AtomicLong(0);
+    protected final AtomicLong totalCount = new AtomicLong(0);
 
     void start(Path bulkDir, Manager manager, long tid, boolean setTime) throws Exception {
       this.bulkDir = bulkDir;
       this.manager = manager;
       this.tid = tid;
       this.setTime = setTime;
-      conditionalMutator = manager.getContext().getAmple().conditionallyMutateTablets();
+      this.rejectedCount.set(0);
+      this.totalCount.set(0);
+      conditionalMutator = manager.getContext().getAmple().conditionallyMutateTablets(result -> {
+        if (result.getStatus() == Status.REJECTED) {
+          rejectedCount.incrementAndGet();
+          var metadata = result.readMetadata();
+          log.debug("Tablet update failed {} {} {} {} {} {}", FateTxId.formatTid(tid),
+              result.getExtent(), result.getStatus(), metadata.getOperationId(),
+              metadata.getLocation(), metadata.getLoaded());
+        }
+
+        totalCount.incrementAndGet();
+      });
     }
 
     void load(List<TabletMetadata> tablets, Files files) {
@@ -139,7 +155,6 @@ class LoadFiles extends ManagerRepo {
         });
 
         if (!filesToLoad.isEmpty()) {
-          // ELASTICITY_TODO lets automatically call require prev end row
           var tabletMutator =
               conditionalMutator.mutateTablet(tablet.getExtent()).requireAbsentOperation();
 
@@ -166,23 +181,14 @@ class LoadFiles extends ManagerRepo {
     }
 
     long finish() {
-      var results = conditionalMutator.process();
+      // must close to ensure all async background processing of conditional muations is complete
+      conditionalMutator.close();
 
-      boolean allDone =
-          results.values().stream().allMatch(result -> result.getStatus() == Status.ACCEPTED);
+      boolean allDone = rejectedCount.get() == 0;
 
       long sleepTime = 0;
       if (!allDone) {
-        sleepTime = 1000;
-
-        results.forEach((extent, condResult) -> {
-          if (condResult.getStatus() != Status.ACCEPTED) {
-            var metadata = condResult.readMetadata();
-            log.debug("Tablet update failed {} {} {} {} {} {}", FateTxId.formatTid(tid), extent,
-                condResult.getStatus(), metadata.getOperationId(), metadata.getLocation(),
-                metadata.getLoaded());
-          }
-        });
+        sleepTime = Math.min(Math.max(1000, totalCount.get()), 30000);
       }
 
       return sleepTime;
