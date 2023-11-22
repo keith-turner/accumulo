@@ -33,7 +33,9 @@ import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 
 public class StatsIterator extends ServerWrappingIterator {
 
-  private int numRead = 0;
+  private int numRead = 0; // TODO same thread reading as writing?
+  private int totalRead = 0;
+  private int totalSeeked = 0;
   private AtomicLong seekCounter;
   private AtomicLong scanCounter;
   private LongAdder serverScanCounter;
@@ -54,6 +56,7 @@ public class StatsIterator extends ServerWrappingIterator {
     if (numRead % 23 == 0) {
       scanCounter.addAndGet(numRead);
       serverScanCounter.add(numRead);
+      totalRead += numRead;
       numRead = 0;
     }
   }
@@ -70,12 +73,23 @@ public class StatsIterator extends ServerWrappingIterator {
     seekCounter.incrementAndGet();
     scanCounter.addAndGet(numRead);
     serverScanCounter.add(numRead);
+    totalRead += numRead;
+    totalSeeked++;
     numRead = 0;
   }
 
   public void report() {
     scanCounter.addAndGet(numRead);
     serverScanCounter.add(numRead);
+    totalRead += numRead;
     numRead = 0;
+  }
+
+  public int getReads() {
+    return totalRead;
+  }
+
+  public int getSeeks() {
+    return totalSeeked;
   }
 }

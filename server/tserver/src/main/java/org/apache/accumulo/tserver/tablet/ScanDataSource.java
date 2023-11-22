@@ -56,6 +56,8 @@ import org.apache.commons.lang3.builder.ToStringStyle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.api.trace.Span;
+
 class ScanDataSource implements DataSource {
 
   private static final Logger log = LoggerFactory.getLogger(ScanDataSource.class);
@@ -283,6 +285,13 @@ class ScanDataSource implements DataSource {
           statsIterator.report();
         }
       }
+    }
+  }
+
+  public void setAttributes(Span span) {
+    if (statsIterator != null) {
+      span.setAttribute("pre-iterator-reads", statsIterator.getReads());
+      span.setAttribute("pre-iterator-seeks", statsIterator.getSeeks());
     }
   }
 

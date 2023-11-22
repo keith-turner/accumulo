@@ -48,6 +48,7 @@ import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.security.ColumnVisibility;
+import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.ShutdownUtil;
@@ -196,12 +197,12 @@ public abstract class TabletBase {
       tabletRange.clip(range);
     }
 
-    SourceSwitchingIterator.DataSource dataSource =
-        createDataSource(scanParams, true, interruptFlag);
+    ScanDataSource dataSource = createDataSource(scanParams, true, interruptFlag);
 
     Tablet.LookupResult result = null;
 
     boolean sawException = false;
+    var span = TraceUtil.startSpan(TabletBase.class, "BatchScanner batch"); // TODO scope??
     try {
       SortedKeyValueIterator<Key,Value> iter = new SourceSwitchingIterator(dataSource);
       this.lookupCount.incrementAndGet();
@@ -215,6 +216,10 @@ public abstract class TabletBase {
       // code in finally block because always want
       // to return mapfiles, even when exception is thrown
       dataSource.close(sawException);
+
+      dataSource.setAttributes(span);
+      span.setAttribute("post-iterator-reads", results.size());
+      span.end();
 
       synchronized (this) {
         queryResultCount.addAndGet(results.size());
