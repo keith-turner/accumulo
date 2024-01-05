@@ -128,6 +128,56 @@ public class ComprehensiveIT extends SharedMiniClusterBase {
   }
 
   @Test
+  public void testFateTable() throws Exception {
+    String table = getUniqueNames(1)[0];
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+      System.out.println(client.tableOperations().list());
+
+      try(var scanner = client.createScanner("accumulo.root"))
+      {
+        System.out.println("ROOT");
+        scanner.forEach((k,v)->System.out.println(k.toStringNoTruncate()+" "+v));
+      }
+
+      try(var scanner = client.createScanner("accumulo.metadata")) {
+        System.out.println("META");
+        scanner.forEach((k,v)->System.out.println(k.toStringNoTruncate()+" "+v));
+      }
+
+      try(var scanner = client.createScanner("accumulo.fate")) {
+        System.out.println("FATE");
+        scanner.forEach((k,v)->System.out.println(k.toStringNoTruncate()+" "+v));
+      }
+
+      client.securityOperations().grantTablePermission("root", "accumulo.fate", TablePermission.WRITE);
+
+      try(var writer = client.createBatchWriter("accumulo.fate")) {
+        Mutation m = new Mutation("test");
+        m.put("f","q","v");
+        writer.addMutation(m);
+      }
+
+      try(var scanner = client.createScanner("accumulo.fate")) {
+        System.out.println("FATE");
+        scanner.forEach((k,v)->System.out.println(k.toStringNoTruncate()+" "+v));
+      }
+
+      client.tableOperations().flush("accumulo.fate", null, null, true);
+
+      try(var scanner = client.createScanner("accumulo.metadata")) {
+        System.out.println("META");
+        scanner.forEach((k,v)->System.out.println(k.toStringNoTruncate()+" "+v));
+      }
+
+      try(var scanner = client.createScanner("accumulo.fate")) {
+        System.out.println("FATE");
+        scanner.forEach((k,v)->System.out.println(k.toStringNoTruncate()+" "+v));
+      }
+    }
+  }
+
+
+  @Test
   public void testBulkImport() throws Exception {
     String table = getUniqueNames(1)[0];
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {

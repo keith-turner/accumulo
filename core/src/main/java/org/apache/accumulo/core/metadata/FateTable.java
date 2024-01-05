@@ -22,6 +22,6 @@ import org.apache.accumulo.core.clientImpl.Namespace;
 import org.apache.accumulo.core.data.TableId;
 
 public class FateTable {
-  public static final TableId ID = TableId.of("!1");
+  public static final TableId ID = TableId.of("+fate");
   public static final String NAME = Namespace.ACCUMULO.name() + ".fate";
 }
