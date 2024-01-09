@@ -1,3 +1,5 @@
+These are notes from testing the changes in this branch.  These changes count entries read before all iterators in a batch scan and the number after.  These counts are dumped to the tracing system.
+
 Followed this [blog post](https://accumulo.apache.org/blog/2022/06/22/2.1.0-metrics-and-tracing.html). Ran the following the accumulo lib dir, used the same version as other opentelemetry jars already in the lib dir.
 
 ```
