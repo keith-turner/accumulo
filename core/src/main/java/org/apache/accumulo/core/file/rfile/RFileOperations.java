@@ -42,6 +42,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,10 +137,29 @@ public class RFileOperations extends FileOperations {
       String file = options.getFilename();
       FileSystem fs = options.getFileSystem();
 
+      // need ecPolicyName and usage flag from the table configuration
+      String ecPolicyName = options.getTableConfiguration().get(Property.TABLE_ERASURE_CODE_POLICY);
+      boolean useEC =
+          options.getTableConfiguration().getBoolean(Property.TABLE_ENABLE_ERASURE_CODES);
+
       if (options.dropCacheBehind) {
+
         EnumSet<CreateFlag> set = EnumSet.of(CreateFlag.SYNC_BLOCK, CreateFlag.CREATE);
-        outputStream = fs.create(new Path(file), FsPermission.getDefault(), set, bufferSize,
-            (short) rep, block, null);
+        if (useEC && (fs instanceof DistributedFileSystem)) {
+
+          outputStream =
+              ((DistributedFileSystem) fs).createFile(new Path(file)).bufferSize(bufferSize)
+                  .blockSize(block).syncBlock().ecPolicyName(ecPolicyName).build();
+
+        } else {
+
+          // outputStream = fs.create(new Path(file), false, bufferSize, (short) rep, block);
+          // }
+
+          outputStream = fs.create(new Path(file), FsPermission.getDefault(), set, bufferSize,
+              (short) rep, block, null);
+        }
+
         try {
           // Tell the DataNode that the file does not need to be cached in the OS page cache
           outputStream.setDropBehind(Boolean.TRUE);
@@ -151,7 +171,15 @@ public class RFileOperations extends FileOperations {
               e.getMessage());
         }
       } else {
-        outputStream = fs.create(new Path(file), false, bufferSize, (short) rep, block);
+
+        if (useEC && (fs instanceof DistributedFileSystem)) {
+
+          outputStream = ((DistributedFileSystem) fs).createFile(new Path(file))
+              .bufferSize(bufferSize).blockSize(block).ecPolicyName(ecPolicyName).build();
+        } else {
+
+          outputStream = fs.create(new Path(file), false, bufferSize, (short) rep, block);
+        }
       }
     }
 

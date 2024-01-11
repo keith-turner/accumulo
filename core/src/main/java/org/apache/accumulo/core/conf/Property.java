@@ -1292,6 +1292,17 @@ public enum Property {
           + "constraint.",
       "2.0.0"),
 
+  TABLE_ENABLE_ERASURE_CODES("table.ec.enable", "false", PropertyType.BOOLEAN,
+      "This determines if Accumulo will manage erasure codes on a table."
+          + " This requires using The ErasureCodeConfigurer as well as setting erasure.code.policy setting."
+          + " A valid erasure code policy most be provided.  To see the list of possible ec schemas "
+          + " you can run hdfs ec -listPolices.",
+      "2.1.2"),
+
+  TABLE_ERASURE_CODE_POLICY("table.ec.policy", "", PropertyType.STRING,
+      "The name of the erasure code policy to be used.  Policy must be available and enabled in hdfs.  "
+          + "To view if policy is enabled check hdfs ec -listPolicies.",
+      "2.1.2"),
   // VFS ClassLoader properties
 
   // this property shouldn't be used directly; it exists solely to document the default value
