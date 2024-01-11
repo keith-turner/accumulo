@@ -79,7 +79,8 @@ public class CompressionConfigurer implements CompactionConfigurer {
     long inputsSum =
         params.getInputFiles().stream().mapToLong(CompactableFile::getEstimatedSize).sum();
 
-    if (inputsSum > largeThresh) {
+    // TODO seems like a bug... seems like its ok to set no config in init but throws a NPE here
+    if (largeThresh != null && inputsSum > largeThresh) {
       return new Overrides(Map.of(Property.TABLE_FILE_COMPRESSION_TYPE.getKey(), largeCompress));
     }
 

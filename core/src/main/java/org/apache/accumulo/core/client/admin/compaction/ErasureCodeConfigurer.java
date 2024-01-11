@@ -84,11 +84,11 @@ import org.slf4j.LoggerFactory;
  * @since 2.1.0
  */
 public class ErasureCodeConfigurer extends CompressionConfigurer {
-
   private static final Logger LOG = LoggerFactory.getLogger(ErasureCodeConfigurer.class);
   public static final String ERASURE_CODE_SIZE = "erasure.code.size.conversion";
   public static final String ERASURE_CODE_MIN_NAMENODE_OVERHEAD =
       "erasure.code.minimize.nn.overhead";
+  // TODO this is not used
   public static final String ERASURE_CODE_OVERRIDE_TO_REP = "erasure.code.override.to.replication";
   public static final String BYPASS_ERASURE_CODES = "erasure.code.bypass";
   private String ecPolicyName = null;
@@ -124,11 +124,14 @@ public class ErasureCodeConfigurer extends CompressionConfigurer {
       this.minNamenodeOverhead =
           Boolean.parseBoolean(options.get(ERASURE_CODE_MIN_NAMENODE_OVERHEAD));
       if (this.minNamenodeOverhead && blockSize != null) {
+        // TODO the defautl for this is zero, can cause deivide by zero.. also when zero, may fall
+        // back to hdfs setting
         this.hdfsBlockSize = ConfigurationTypeHelper.getFixedMemoryAsBytes(blockSize);
         this.numReplication = Long.parseLong(reps, 10);
       }
 
     }
+
     super.init(iparams);
 
   }
@@ -168,6 +171,11 @@ public class ErasureCodeConfigurer extends CompressionConfigurer {
 
       // compute number of hdfs blocks * replication factor
       total_file_blocks_with_rep = (max(inputsSum / this.hdfsBlockSize, 1L)) * this.numReplication;
+
+      // TODO set to trace,debug,or remove
+      LOG.info("total_ec_blocks:{} total_file_blocks_with_rep:{} inputSum:{} ecSize:{}",
+          total_ec_blocks, total_file_blocks_with_rep, inputsSum, ecSize);
+
       ecFile = ((total_file_blocks_with_rep >= total_ec_blocks) && (inputsSum >= this.ecSize));
     } else {
       // Compare projected compacted file size with minimum ec file size. If smaller do not encode.
@@ -206,8 +214,11 @@ public class ErasureCodeConfigurer extends CompressionConfigurer {
       // rc-legacy (used for legacy rc coder)
       dbIdx = 2;
       pbIdx = 3;
+    } else {
+      throw new IllegalArgumentException("Unexpected EC policy " + ecPolicy);
     }
     try {
+      // TODO does total_ec_blocks need to be a function of the file size?
       numBlocks = Long.parseLong(parts[dbIdx]) + Long.parseLong(parts[pbIdx]);
     } catch (NumberFormatException nfe) {
       LOG.warn("Could not parse ec scheme correctly: " + ecPolicy + " can not use "
