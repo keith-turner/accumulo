@@ -15,6 +15,8 @@ public class Test {
         for(int i = 0; i<10;i++) {
             write();
         }
+
+        checkData();
     }
 
     private static void write() throws IOException {
@@ -37,5 +39,33 @@ public class Test {
         long t2 = System.nanoTime();
 
         System.out.printf("%,d ms\n", TimeUnit.NANOSECONDS.toMillis(t2-t1));
+    }
+
+    private static void checkData() {
+        try(var scanner = RFile.newScanner().from("/tmp/file1.rf").build()){
+            var iter = scanner.iterator();
+            for(int i = 0; i < 1000000; i++) {
+                String row = String.format("%09x", i);
+                String fam= Integer.toString(i%1000,36);
+                String value = (i*31)+"";
+                var key = new Key(row, fam);
+                var e = iter.next();
+                if(!e.getKey().equals(key)) {
+                    System.err.println(" bad key "+key+" "+e.getKey());
+                    break;
+                }
+
+                if(!e.getValue().toString().equals(value)) {
+                    System.err.println(" bad value "+value+" "+e.getValue());
+                    break;
+                }
+            }
+
+            if(iter.hasNext()){
+                System.err.println(" more data");
+            } else {
+                System.out.println(" data ok");
+            }
+        }
     }
 }
