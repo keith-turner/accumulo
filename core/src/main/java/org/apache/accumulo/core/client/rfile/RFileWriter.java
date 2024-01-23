@@ -31,6 +31,7 @@ import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.file.FileSKVWriter;
+import org.apache.accumulo.core.file.ThreadedFileSKVWriter;
 import org.apache.accumulo.core.security.ColumnVisibility;
 import org.apache.commons.collections4.map.LRUMap;
 
@@ -96,7 +97,8 @@ public class RFileWriter implements AutoCloseable {
   private boolean startedDefaultLG;
 
   RFileWriter(FileSKVWriter fileSKVWriter, int visCacheSize) {
-    this.writer = fileSKVWriter;
+    this.writer = new ThreadedFileSKVWriter(fileSKVWriter);
+    //this.writer = fileSKVWriter;
     this.validVisibilities = new LRUMap<>(visCacheSize);
   }
 
