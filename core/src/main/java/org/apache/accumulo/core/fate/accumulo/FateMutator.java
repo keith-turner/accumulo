@@ -44,4 +44,11 @@ public interface FateMutator<T> {
 
   void mutate();
 
+  // This exists to represent the subset of statuses from ConditionalWriter.Status that are expected
+  // and need to be handled.
+  enum Status {
+    ACCEPTED, REJECTED, UNKNOWN
+  }
+
+  Status tryMutate();
 }

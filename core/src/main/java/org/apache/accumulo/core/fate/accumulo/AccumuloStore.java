@@ -44,6 +44,7 @@ import org.apache.accumulo.core.metadata.AccumuloTable;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.util.ColumnFQ;
 import org.apache.accumulo.core.util.FastFormat;
+import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.hadoop.io.Text;
 
 import com.google.common.base.Preconditions;
@@ -68,12 +69,26 @@ public class AccumuloStore<T> extends AbstractFateStore<T> {
 
   @Override
   public long create() {
-    long tid = RANDOM.get().nextLong() & 0x7fffffffffffffffL;
 
-    newMutator(tid).requireStatus().putStatus(TStatus.NEW).putCreateTime(System.currentTimeMillis())
-        .mutate();
+    while (true) {
+      long tid = RANDOM.get().nextLong() & 0x7fffffffffffffffL;
 
-    return tid;
+      var status = newMutator(tid).requireStatus().putStatus(TStatus.NEW)
+          .putCreateTime(System.currentTimeMillis()).tryMutate();
+
+      switch (status) {
+        case ACCEPTED:
+          return tid;
+        case UNKNOWN:
+        case REJECTED:
+          // TODO use a retry
+          // log.debug("Failed to create new id {}, trying again", FateTxId.formatTid(tid));
+          UtilWaitThread.sleep(100);
+          continue;
+        default:
+          throw new IllegalStateException("Unknown status " + status);
+      }
+    }
   }
 
   @Override
