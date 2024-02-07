@@ -25,18 +25,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Predicate;
 
-import org.apache.accumulo.core.client.Accumulo;
-import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.BatchWriter;
-import org.apache.accumulo.core.client.BatchWriterConfig;
+import org.apache.accumulo.core.client.*;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.conf.Property;
@@ -160,6 +155,47 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
         }
       }
       client.tableOperations().compact(tableName, new CompactionConfig());
+
+      var executor = Executors.newFixedThreadPool(256);
+
+      log.info("Starting scans");
+      List<Future<?>> futures = new ArrayList<>();
+
+      for(int i=0;i<10_000_000;i++) {
+        var future = executor.submit(()->{
+          try (Scanner scanner = client.createScanner(tableName)) {
+            scanner.setConsistencyLevel(ScannerBase.ConsistencyLevel.EVENTUAL);
+            scanner.forEach((k, v) -> {});
+          }catch (Exception e){
+            throw new RuntimeException(e);
+          }
+        });
+
+        futures.add(future);
+
+        if(futures.size() > 10_000) {
+          futures.forEach(f-> {
+            try {
+              f.get();
+            } catch (Exception e) {
+              throw new RuntimeException(e);
+            }
+          });
+
+          futures.clear();
+        }
+      }
+
+      futures.forEach(f-> {
+          try {
+              f.get();
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+      });
+
+      log.info("Finished scans");
+
       try (Scanner scanner = client.createScanner(tableName)) {
         scanner.forEach((k, v) -> {});
       }

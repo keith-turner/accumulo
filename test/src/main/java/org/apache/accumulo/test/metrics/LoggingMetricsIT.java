@@ -21,6 +21,7 @@ package org.apache.accumulo.test.metrics;
 import java.time.Duration;
 
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Disabled;
@@ -35,7 +36,9 @@ public class LoggingMetricsIT extends MetricsIT {
 
   @Override
   protected void configure(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
+    System.out.println("HERE");
     cfg.setNumTservers(2);
+    cfg.setNumScanServers(2);
     cfg.setProperty(Property.GC_CYCLE_START, "1s");
     cfg.setProperty(Property.GC_CYCLE_DELAY, "1s");
     cfg.setProperty(Property.MANAGER_FATE_METRICS_MIN_UPDATE_INTERVAL, "1s");
@@ -63,9 +66,10 @@ public class LoggingMetricsIT extends MetricsIT {
 
   @Test
   public void doWorkToGenerateLogs() throws Exception {
+    getCluster().getClusterControl().start(ServerType.SCAN_SERVER);
     // Metrics are pushed every 1m using a logger with the name LoggingMeterRegistry
     // we need the test to take longer than 1m
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 1; i++) {
       doWorkToGenerateMetrics();
       Thread.sleep(10_000);
     }
