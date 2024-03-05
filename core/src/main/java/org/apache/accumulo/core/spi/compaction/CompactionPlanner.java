@@ -77,6 +77,8 @@ public interface CompactionPlanner extends SpiConfigurationValidation {
   default void validateConfiguration(String classProperty, Optional<TableId> tableId,
       ServiceEnvironment env) {
 
+    // TODO extract service id from classProperty
+
     try {
       // TODO reuse code for InitParameters
       init(new InitParameters() {
@@ -87,17 +89,19 @@ public interface CompactionPlanner extends SpiConfigurationValidation {
 
         @Override
         public Map<String,String> getOptions() {
-          // TODO implement using ServiceEnvironment
+          // TODO implement using ServiceEnvironment and classProperty
           throw new UnsupportedOperationException();
         }
 
         @Override
         public String getFullyQualifiedOption(String key) {
+          // TODO implement using classProperty and env
           throw new UnsupportedOperationException();
         }
 
         @Override
         public ExecutorManager getExecutorManager() {
+          // TODO implement
           throw new UnsupportedOperationException();
         }
       });
