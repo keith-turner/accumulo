@@ -19,8 +19,10 @@
 package org.apache.accumulo.core.spi.scan;
 
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.spi.SpiConfigurationValidation;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 
 import com.google.common.base.Preconditions;
@@ -33,7 +35,7 @@ import com.google.common.base.Preconditions;
  * @since 2.0.0
  * @see org.apache.accumulo.core.spi
  */
-public interface ScanDispatcher {
+public interface ScanDispatcher extends SpiConfigurationValidation {
 
   /**
    * The method parameters for {@link ScanDispatcher#init(InitParameters)}. This interface exists so
@@ -61,6 +63,34 @@ public interface ScanDispatcher {
    */
   default void init(InitParameters params) {
     Preconditions.checkArgument(params.getOptions().isEmpty(), "No options expected");
+  }
+
+  @Override
+  default void validateConfiguration(String classProperty, Optional<TableId> tableId,
+      ServiceEnvironment env) {
+    Preconditions.checkArgument(tableId.isPresent());
+    try {
+      init(new InitParameters() {
+        @Override
+        public Map<String,String> getOptions() {
+          // TODO implement
+          // return parseOptions(env.getConfiguration(tableId.orElseThrow()));
+          throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public TableId getTableId() {
+          return tableId.orElseThrow();
+        }
+
+        @Override
+        public ServiceEnvironment getServiceEnv() {
+          return env;
+        }
+      });
+    } catch (RuntimeException e) {
+      throw new IllegalArgumentException(e);
+    }
   }
 
   /**

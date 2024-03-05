@@ -20,10 +20,12 @@ package org.apache.accumulo.core.spi.compaction;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.spi.SpiConfigurationValidation;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 
 /**
@@ -32,7 +34,7 @@ import org.apache.accumulo.core.spi.common.ServiceEnvironment;
  * @since 2.1.0
  * @see org.apache.accumulo.core.spi.compaction
  */
-public interface CompactionPlanner {
+public interface CompactionPlanner extends SpiConfigurationValidation {
 
   /**
    * This interface exists so the API can evolve and additional parameters can be passed to the
@@ -70,6 +72,40 @@ public interface CompactionPlanner {
   }
 
   public void init(InitParameters params);
+
+  @Override
+  default void validateConfiguration(String classProperty, Optional<TableId> tableId,
+      ServiceEnvironment env) {
+
+    try {
+      // TODO reuse code for InitParameters
+      init(new InitParameters() {
+        @Override
+        public ServiceEnvironment getServiceEnvironment() {
+          return env;
+        }
+
+        @Override
+        public Map<String,String> getOptions() {
+          // TODO implement using ServiceEnvironment
+          throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public String getFullyQualifiedOption(String key) {
+          throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ExecutorManager getExecutorManager() {
+          throw new UnsupportedOperationException();
+        }
+      });
+    } catch (RuntimeException e) {
+      throw new IllegalArgumentException(e);
+    }
+
+  }
 
   /**
    * This interface exists so the API can evolve and additional parameters can be passed to the

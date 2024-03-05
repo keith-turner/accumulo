@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -304,7 +305,7 @@ public class UpgradeCoordinator {
       Class<? extends SpiConfigurationValidation> clazz =
           ClassLoaderUtil.loadClass(context, className, SpiConfigurationValidation.class);
       SpiConfigurationValidation instance = clazz.getDeclaredConstructor().newInstance();
-      instance.validateConfiguration(createServiceEnvironment(conf).getConfiguration());
+      instance.validateConfiguration(p.getKey(), Optional.empty(), createServiceEnvironment(conf));
     } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
         | InvocationTargetException | NoSuchMethodException | SecurityException e) {
       throw new IllegalArgumentException(

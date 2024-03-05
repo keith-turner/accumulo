@@ -31,6 +31,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -55,6 +56,7 @@ import org.apache.accumulo.core.spi.balancer.data.TableStatistics;
 import org.apache.accumulo.core.spi.balancer.data.TabletMigration;
 import org.apache.accumulo.core.spi.balancer.data.TabletServerId;
 import org.apache.accumulo.core.spi.balancer.data.TabletStatistics;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 import org.slf4j.Logger;
@@ -571,13 +573,13 @@ public class HostRegexTableLoadBalancer extends TableLoadBalancer
   }
 
   @Override
-  public boolean validateConfiguration(PluginEnvironment.Configuration conf) {
+  public void validateConfiguration(String classProperty, Optional<TableId> tableId,
+      ServiceEnvironment env) {
     try {
-      new HrtlbConf(conf);
-      return true;
+      new HrtlbConf(env.getConfiguration());
     } catch (RuntimeException e) {
       LOG.warn("Error validating configuration", e);
-      return false;
+      throw new IllegalArgumentException(e);
     }
   }
 

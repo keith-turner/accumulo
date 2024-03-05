@@ -18,10 +18,15 @@
  */
 package org.apache.accumulo.core.spi;
 
-import org.apache.accumulo.core.client.PluginEnvironment;
+import java.util.Optional;
+
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 
 public interface SpiConfigurationValidation {
-
-  public boolean validateConfiguration(PluginEnvironment.Configuration conf);
-
+  /**
+   * @throws IllegalArgumentException if the config is not valid  .. TODO maybe create custom expcetion or return boolean instead
+   */
+  void validateConfiguration(String classProperty, Optional<TableId> tableId,
+      ServiceEnvironment env) throws IllegalArgumentException;
 }

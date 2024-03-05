@@ -19,8 +19,10 @@
 package org.apache.accumulo.core.spi.compaction;
 
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.spi.SpiConfigurationValidation;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 
 import com.google.common.base.Preconditions;
@@ -34,7 +36,7 @@ import com.google.common.base.Preconditions;
  * @since 2.1.0
  * @see org.apache.accumulo.core.spi.compaction
  */
-public interface CompactionDispatcher {
+public interface CompactionDispatcher extends SpiConfigurationValidation {
   /**
    * The method parameters for {@link CompactionDispatcher#init(InitParameters)}. This interface
    * exists so the API can evolve and additional parameters can be passed to the method in the
@@ -62,6 +64,34 @@ public interface CompactionDispatcher {
    */
   default void init(InitParameters params) {
     Preconditions.checkArgument(params.getOptions().isEmpty(), "No options expected");
+  }
+
+  @Override
+  default void validateConfiguration(String classProperty, Optional<TableId> tableId,
+      ServiceEnvironment env) {
+    try {
+      Preconditions.checkArgument(tableId.isPresent());
+      init(new InitParameters() {
+        @Override
+        public Map<String,String> getOptions() {
+          // TODO parse options from , refactor existing code that does this for reuse
+          // return parseOptions(env.getConfiguration(tableId.orElseThrow()));
+          return Map.of();
+        }
+
+        @Override
+        public TableId getTableId() {
+          return tableId.orElseThrow();
+        }
+
+        @Override
+        public ServiceEnvironment getServiceEnv() {
+          return env;
+        }
+      });
+    } catch (RuntimeException e) {
+      throw new IllegalArgumentException(e);
+    }
   }
 
   /**
