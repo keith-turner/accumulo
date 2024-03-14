@@ -281,4 +281,5 @@ public class SplitIT extends AccumuloClusterHarness {
       assertEquals(1000, c.createScanner(tableName).stream().count());
     }
   }
+
 }
