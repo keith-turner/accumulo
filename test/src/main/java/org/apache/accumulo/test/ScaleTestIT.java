@@ -115,7 +115,7 @@ public class ScaleTestIT extends ConfigurableMacBase {
 
       List<Future<Integer>> futures = new ArrayList<>();
 
-      int iterations = 6;
+      int iterations = 100;
 
       // run three bulk import loops that will go to the same subset of tablets, this will cause
       // lots of compactions on those tablets
