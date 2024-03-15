@@ -75,14 +75,32 @@ public class ConfigurationImpl implements Configuration {
 
   @Override
   public Map<String,String> getWithPrefix(String prefix) {
-    Property propertyPrefix = Property.getPropertyByKey(prefix);
-    if (propertyPrefix != null && propertyPrefix.getType() == PropertyType.PREFIX) {
-      return acfg.getAllPropertiesWithPrefix(propertyPrefix);
+    return getWithPrefix(prefix, false);
+  }
+
+  @Override
+  public Map<String,String> getWithPrefix(String prefix, boolean stripPrefix) {
+
+    if (stripPrefix) {
+      Property propertyPrefix = Property.getPropertyByKey(prefix);
+      if (propertyPrefix != null && propertyPrefix.getType() == PropertyType.PREFIX) {
+        return acfg.getAllPropertiesWithPrefixStripped(propertyPrefix);
+      } else {
+        return StreamSupport.stream(acfg.spliterator(), false)
+            .filter(prop -> prop.getKey().startsWith(prefix))
+            .collect(Collectors.toMap(e -> e.getKey().substring(prefix.length()), Entry::getValue));
+      }
     } else {
-      return StreamSupport.stream(acfg.spliterator(), false)
-          .filter(prop -> prop.getKey().startsWith(prefix))
-          .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+      Property propertyPrefix = Property.getPropertyByKey(prefix);
+      if (propertyPrefix != null && propertyPrefix.getType() == PropertyType.PREFIX) {
+        return acfg.getAllPropertiesWithPrefix(propertyPrefix);
+      } else {
+        return StreamSupport.stream(acfg.spliterator(), false)
+            .filter(prop -> prop.getKey().startsWith(prefix))
+            .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+      }
     }
+
   }
 
   @Override

@@ -67,6 +67,18 @@ public interface PluginEnvironment {
     Map<String,String> getWithPrefix(String prefix);
 
     /**
+     * Returns all properties with a given prefix.
+     *
+     *
+     * @param prefix prefix of properties to be returned. Include the trailing '.' in the prefix.
+     * @param stripPrefix if true then the prefix is stripped from the keys in the returned map
+     * @return all properties with a given prefix
+     * @return
+     * @since 2.1.3
+     */
+    Map<String,String> getWithPrefix(String prefix, boolean stripPrefix);
+
+    /**
      * Users can set arbitrary custom properties in Accumulo using the prefix
      * {@code general.custom.}. This method will return all properties with that prefix, stripping
      * the prefix. For example, assume the following properties were set :

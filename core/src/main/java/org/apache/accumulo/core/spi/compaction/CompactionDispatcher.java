@@ -20,6 +20,7 @@ package org.apache.accumulo.core.spi.compaction;
 
 import java.util.Map;
 
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 
@@ -33,8 +34,25 @@ import com.google.common.base.Preconditions;
  *
  * @since 2.1.0
  * @see org.apache.accumulo.core.spi.compaction
+ * @see org.apache.accumulo.core.spi.common.CustomPropertyValidator
  */
 public interface CompactionDispatcher {
+
+  /**
+   * This method can extract the configured options for a CompactionDispatcher plugin. This can be
+   * used when implementing {@link org.apache.accumulo.core.spi.common.CustomPropertyValidator}.
+   *
+   * @return The configured options. For example if the table properties
+   *         {@code table.compaction.dispatcher.opts.p1=abc} and
+   *         {@code table.compaction.dispatcher.opts.p9=123} were set, then this map would contain
+   *         {@code p1=abc} and {@code p9=123}.
+   *
+   * @since 2.1.3
+   */
+  static Map<String,String> getOptions(ServiceEnvironment.Configuration conf) {
+    return conf.getWithPrefix(Property.TABLE_COMPACTION_DISPATCHER_OPTS.getKey(), true);
+  }
+
   /**
    * The method parameters for {@link CompactionDispatcher#init(InitParameters)}. This interface
    * exists so the API can evolve and additional parameters can be passed to the method in the
@@ -44,6 +62,14 @@ public interface CompactionDispatcher {
    */
   public interface InitParameters {
     /**
+     * Calling this function is the same as making the following call.
+     *
+     * <pre>
+     * {@code
+     *    InitParameters iparams=...;
+     *    CompactionDispatcher.getOptions(iparams.getServiceEnv().getConfiguration(iparams.getTableId()))
+     * }
+     * </pre>
      *
      * @return The configured options. For example if the table properties
      *         {@code table.compaction.dispatcher.opts.p1=abc} and

@@ -186,12 +186,11 @@ public class TableConfiguration extends ZooBasedConfiguration {
       return null;
     }
 
-    Map<String,String> opts =
-        conf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_DISPATCHER_OPTS);
-
     newDispatcher.init(new CompactionDispatcher.InitParameters() {
 
       private final ServiceEnvironment senv = new ServiceEnvironmentImpl(context);
+      private final Map<String,String> options =
+          CompactionDispatcher.getOptions(senv.getConfiguration(tableId));
 
       @Override
       public TableId getTableId() {
@@ -200,7 +199,7 @@ public class TableConfiguration extends ZooBasedConfiguration {
 
       @Override
       public Map<String,String> getOptions() {
-        return opts;
+        return options;
       }
 
       @Override
