@@ -20,6 +20,7 @@ package org.apache.accumulo.core.spi.compaction;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -32,7 +33,9 @@ import java.util.Set;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
+import org.apache.accumulo.core.util.RateLimitedLogger;
 import org.apache.accumulo.core.util.compaction.CompactionJobPrioritizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,6 +134,9 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 public class DefaultCompactionPlanner implements CompactionPlanner {
 
   private static final Logger log = LoggerFactory.getLogger(DefaultCompactionPlanner.class);
+
+  private static final RateLimitedLogger<TableId> failedRatioAdjustmentLog =
+      new RateLimitedLogger<>(log, Duration.ofMinutes(5));
 
   private static class ExecutorConfig {
     String type;
@@ -398,8 +404,13 @@ public class DefaultCompactionPlanner implements CompactionPlanner {
     }
 
     if (found.isEmpty() && lowRatio == 1.0) {
+
+      failedRatioAdjustmentLog.run(params.getTableId(), log -> log.warn(
+          "Attempted to lower compaction ratio for a tablet in table {} because it files exceeded max tablet files, however no set of files to compact were found.  More details are logged at debug.",
+          params.getTableId()));
+
       // in this case the data must be really skewed, operator intervention may be needed.
-      log.warn(
+      log.debug(
           "Attempted to lower compaction ration from {} to {} for {} because there are {} files "
               + "and the max tablet files is {}, however no set of files to compact were found.",
           params.getRatio(), highRatio, params.getTableId(), params.getCandidates().size(),
