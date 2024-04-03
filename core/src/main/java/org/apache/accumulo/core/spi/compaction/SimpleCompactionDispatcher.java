@@ -75,17 +75,15 @@ import com.google.common.base.Preconditions;
 public class SimpleCompactionDispatcher implements CompactionDispatcher, CustomPropertyValidator {
 
   private static final Logger LOG = LoggerFactory.getLogger(SimpleCompactionDispatcher.class);
+  private static final Pattern VALID_OPTIONS_PATTERN =
+      Pattern.compile("service|service[.][^.]+|service.user[.][^.]+");
 
   private Map<CompactionKind,CompactionDispatch> services;
   private Map<String,CompactionDispatch> userServices;
 
-  private static final Pattern VALID_OPTIONS_PATTERN =
-      Pattern.compile("service|service[.][^.]+|service.user[.][^.]+");
-
   @Override
   public void init(InitParameters params) {
     Preconditions.checkArgument(validateOptions(params.getOptions()));
-
     services = new EnumMap<>(CompactionKind.class);
 
     var defaultService =
@@ -141,8 +139,8 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher, CustomP
     if (!allValid) {
       opts.entrySet().stream().filter(e -> !VALID_OPTIONS_PATTERN.matcher(e.getKey()).matches())
           .forEach(e -> LOG.warn("Illegal option {} {}", e.getKey(), e.getValue()));
-    }
 
+    }
     return allValid;
   }
 
@@ -150,4 +148,5 @@ public class SimpleCompactionDispatcher implements CompactionDispatcher, CustomP
   public boolean validateConfiguration(PropertyValidationEnvironment env) {
     return validateOptions(env.getPluginOptions());
   }
+
 }

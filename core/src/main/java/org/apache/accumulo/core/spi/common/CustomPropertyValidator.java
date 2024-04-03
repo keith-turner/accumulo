@@ -37,7 +37,7 @@ public interface CustomPropertyValidator {
 
   public interface PropertyValidationEnvironment extends ServiceEnvironment {
 
-    public Optional<TableId> getTableId();
+    Optional<TableId> getTableId();
 
     /**
      * Some plugins in Accumulo support a map of options that go along with the plugin. If the
@@ -53,8 +53,7 @@ public interface CustomPropertyValidator {
      *         {@link org.apache.accumulo.core.spi.scan.ScanDispatcher} plugin is being validated
      *         then this will return the same thing as
      *         {@link ScanDispatcher.InitParameters#getOptions()}
-     * @throws UnsupportedOperationException if the plugin type being validated does not have
-     *         options.
+     * @throws IllegalArgumentException if the plugin type being validated does not have options.
      */
     Map<String,String> getPluginOptions();
   }

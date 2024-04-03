@@ -627,17 +627,19 @@ public class DefaultCompactionPlanner implements CompactionPlanner, CustomProper
   @Override
   public boolean validateConfiguration(PropertyValidationEnvironment env) {
 
-    // TODO refactor code to validate config using the following plugin opts
+    // ELASTICITY_TODO refactor code to validate config using the following plugin opts
     var opts = env.getPluginOptions();
 
     try {
       CompactionServicesConfig csc =
           new CompactionServicesConfig(new ConfigurationCopy(env.getConfiguration()), log::warn);
       for (var entry : csc.getPlanners().entrySet()) {
-        String serviceId = entry.getKey();
-        CompactionPlannerInitParams params = new CompactionPlannerInitParams(
-            CompactionServiceId.of(serviceId), csc.getOptions().get(serviceId), env);
-        this.init(params);
+        if (entry.getKey().equals(this.getClass().getName())) {
+          String serviceId = entry.getKey();
+          CompactionPlannerInitParams params = new CompactionPlannerInitParams(
+              CompactionServiceId.of(serviceId), csc.getOptions().get(serviceId), env);
+          this.init(params);
+        }
       }
       return true;
     } catch (RuntimeException e) {

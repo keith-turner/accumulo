@@ -49,6 +49,7 @@ import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.conf.PropertyType;
@@ -59,6 +60,7 @@ import org.apache.accumulo.core.data.NamespaceId;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.fate.zookeeper.ZooReader;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
+import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.rpc.SslConnectionParams;
 import org.apache.accumulo.core.singletons.SingletonReservation;
@@ -465,16 +467,26 @@ public class ServerContext extends ClientContext {
 
   public void validateSpiConfiguration(boolean validateNsAndTables)
       throws AccumuloException, AccumuloSecurityException {
-    boolean valid = validateClasses(getSiteConfiguration());
-    valid = valid && validateClasses(getConfiguration());
+    boolean valid = validateClasses(getConfiguration(), RootTable.ID);
     if (validateNsAndTables) {
       for (String ns : namespaceOperations().list()) {
         NamespaceId nsId = NamespaceId.of(namespaceOperations().namespaceIdMap().get(ns));
-        valid = valid && validateClasses(getNamespaceConfiguration(nsId));
+        String tname = null;
+        for (String name : tableOperations().list()) {
+          if (name.startsWith(ns)) {
+            tname = name;
+            break;
+          }
+        }
+        if (tname == null) {
+          throw new IllegalStateException("No table found in namespace: " + ns);
+        }
+        valid = valid && validateClasses(getNamespaceConfiguration(nsId),
+            TableId.of(tableOperations().tableIdMap().get(tname)));
       }
       for (String table : tableOperations().list()) {
         TableId tableId = TableId.of(tableOperations().tableIdMap().get(table));
-        valid = valid && validateClasses(getTableConfiguration(tableId));
+        valid = valid && validateClasses(getTableConfiguration(tableId), tableId);
       }
     }
     if (!valid) {
@@ -482,24 +494,24 @@ public class ServerContext extends ClientContext {
     }
   }
 
-  private boolean validateClasses(AccumuloConfiguration conf) {
+  private boolean validateClasses(AccumuloConfiguration conf, TableId tid) {
 
     boolean valid = true;
     for (Property p : Property.values()) {
       if (p.getType().equals(PropertyType.CLASSNAMELIST)) {
         String[] classNames = conf.get(p).split(",");
         for (String className : classNames) {
-          valid = valid && validateClassConfiguration(conf, p, className);
+          valid = valid && validateClassConfiguration(conf, p, className, tid);
         }
       } else if (p.getType().equals(PropertyType.CLASSNAME)) {
-        valid = valid && validateClassConfiguration(conf, p, conf.get(p));
+        valid = valid && validateClassConfiguration(conf, p, conf.get(p), tid);
       }
     }
     return valid;
   }
 
   private boolean validateClassConfiguration(AccumuloConfiguration conf, Property p,
-      String className) {
+      String className, TableId tid) {
 
     if (p.isDeprecated()) {
       // Some deprecated properties reference classes that don't exist. For example in 2.1 the
@@ -521,7 +533,7 @@ public class ServerContext extends ClientContext {
         return false;
       }
       CustomPropertyValidator instance = clazz.getDeclaredConstructor().newInstance();
-      return instance.validateConfiguration(createValidationEnvironment(conf, p));
+      return instance.validateConfiguration(createValidationEnvironment(conf, p, tid));
     } catch (InstantiationException | IllegalAccessException | IllegalArgumentException
         | InvocationTargetException | NoSuchMethodException | SecurityException e) {
       log.error(className + " does not implement no-arg constructor for configuration validation");
@@ -533,17 +545,21 @@ public class ServerContext extends ClientContext {
   }
 
   private PropertyValidationEnvironment createValidationEnvironment(AccumuloConfiguration config,
-      Property classProp) {
+      Property property, TableId tid) {
     return new PropertyValidationEnvironment() {
 
       @Override
-      public <T> T instantiate(TableId tableId, String className, Class<T> base) {
-        throw new UnsupportedOperationException();
+      public <T> T instantiate(TableId tableId, String className, Class<T> base)
+          throws ReflectiveOperationException, IOException {
+        String ctx = ClassLoaderUtil.tableContext(getTableConfiguration(tableId));
+        return ConfigurationTypeHelper.getClassInstance(ctx, className, base);
+
       }
 
       @Override
-      public <T> T instantiate(String className, Class<T> base) {
-        throw new UnsupportedOperationException();
+      public <T> T instantiate(String className, Class<T> base)
+          throws IOException, ReflectiveOperationException {
+        return ConfigurationTypeHelper.getClassInstance(null, className, base);
       }
 
       @Override
@@ -553,7 +569,7 @@ public class ServerContext extends ClientContext {
 
       @Override
       public Configuration getConfiguration(TableId tableId) {
-        return new ConfigurationImpl(config);
+        return new ConfigurationImpl(getTableConfiguration(tableId));
       }
 
       @Override
@@ -562,33 +578,30 @@ public class ServerContext extends ClientContext {
       }
 
       @Override
+      public Optional<TableId> getTableId() {
+        return Optional.of(tid);
+      }
+
+      @Override
       public Map<String,String> getPluginOptions() {
-        switch (classProp) {
+        switch (property) {
           case TABLE_COMPACTION_DISPATCHER:
             return config
                 .getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_DISPATCHER_OPTS);
           case TABLE_SCAN_DISPATCHER:
             return config.getAllPropertiesWithPrefixStripped(Property.TABLE_SCAN_DISPATCHER_OPTS);
-          // TODO support other props
+          default:
+            // handle different property prefixes in the default case
+            if (property.getKey().startsWith(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey())
+                && property.getKey().endsWith(".planner")) {
+              final String optionsPrefix = property.getKey() + ".opts.";
+              final HashMap<String,String> opts = new HashMap<>();
+              getConfiguration().getWithPrefix(optionsPrefix)
+                  .forEach((k, v) -> opts.put(k.substring(optionsPrefix.length()), v));
+              return opts;
+            }
+            throw new IllegalArgumentException("Unhandled property: " + property);
         }
-
-        // handle getting the options for a compaction service
-        if (classProp.getKey().startsWith(Property.TSERV_COMPACTION_SERVICE_PREFIX.getKey())
-            && classProp.getKey().endsWith(".planner")) {
-          String optionsPrefix = classProp.getKey() + ".opts.";
-          HashMap<String,String> opts = new HashMap<>();
-          getConfiguration().getWithPrefix(optionsPrefix)
-              .forEach((k, v) -> opts.put(k.substring(optionsPrefix.length()), v));
-          return opts;
-        }
-
-        return Map.of();
-      }
-
-      @Override
-      public Optional<TableId> getTableId() {
-        return (config instanceof TableConfiguration)
-            ? Optional.of(((TableConfiguration) config).getTableId()) : Optional.empty();
       }
     };
   }
