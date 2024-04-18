@@ -63,6 +63,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
 import com.google.common.collect.MoreCollectors;
 
+// could make this an interface like TestAmple externds Ample... and then could add test methods to the interface... could make the static create() methods return TestAmple interface.. might avoid the need to cast
 public class TestAmple {
 
   private static final ConditionalWriterInterceptor EMPTY_INTERCEPTOR =

@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -65,17 +66,21 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.AccumuloTable;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.StoredTabletFile;
+import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.security.TablePermission;
 import org.apache.accumulo.core.util.UtilWaitThread;
+import org.apache.accumulo.manager.TabletGroupWatcher;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.fs.VolumeUtil;
 import org.apache.accumulo.server.init.Initialize;
 import org.apache.accumulo.server.log.WalStateManager;
 import org.apache.accumulo.server.log.WalStateManager.WalMarkerException;
 import org.apache.accumulo.server.log.WalStateManager.WalState;
+import org.apache.accumulo.server.metadata.TestAmple;
 import org.apache.accumulo.server.security.SystemCredentials;
 import org.apache.accumulo.server.util.Admin;
 import org.apache.accumulo.test.functional.ConfigurableMacBase;
@@ -570,5 +575,40 @@ public class VolumeIT extends ConfigurableMacBase {
   private static Text getTabletMidPoint(Text row) {
     return row != null ? new Text(String.format("%06d", Integer.parseInt(row.toString()) - 50))
         : null;
+  }
+
+  @Test
+  public void testMetadataUpdate() throws Exception {
+
+    String[] names = getUniqueNames(2);
+    String fakeMeta = names[0];
+    String tableName = names[1];
+
+    TestAmple.createMetadataTable(getServerContext(), fakeMeta);
+
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
+      client.tableOperations().create(tableName);
+      for (int i = 0; i < 2; i++) {
+        try (var writer = client.createBatchWriter(tableName)) {
+          Mutation m = new Mutation();
+          m.put("1", "2", "3");
+          writer.addMutation(m);
+        }
+
+        client.tableOperations().flush(tableName, null, null, true);
+      }
+
+      // TODO setup conditoinal writer to do unknown
+      TestAmple.TestServerAmpleImpl ample = (TestAmple.TestServerAmpleImpl) TestAmple
+          .create(getServerContext(), Map.of(Ample.DataLevel.USER, fakeMeta));
+
+      // probably do not need to pass a client
+      ample.createMetadataFromExisting(client, getServerContext().getTableId(tableName));
+
+      // TODO examine tablet and setup replacements
+      List<VolumeUtil.VolumeReplacements> replacements = null;
+      TabletGroupWatcher.replaceVolumes(ample, replacements);
+    }
+
   }
 }

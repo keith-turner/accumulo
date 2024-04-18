@@ -99,10 +99,12 @@ import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterators;
 
-abstract class TabletGroupWatcher extends AccumuloDaemonThread {
+// TODO maybe move method to test elsewhere instead of make this public
+public abstract class TabletGroupWatcher extends AccumuloDaemonThread {
 
   public static class BadLocationStateException extends Exception {
     private static final long serialVersionUID = 2L;
@@ -981,11 +983,13 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
       manager.assignedTablet(a.tablet);
     }
 
-    replaceVolumes(tLists.volumeReplacements);
+    replaceVolumes(manager.getContext().getAmple(), tLists.volumeReplacements);
   }
 
-  private void replaceVolumes(List<VolumeUtil.VolumeReplacements> volumeReplacementsList) {
-    try (var tabletsMutator = manager.getContext().getAmple().conditionallyMutateTablets()) {
+  @VisibleForTesting
+  public static void replaceVolumes(Ample ample,
+      List<VolumeUtil.VolumeReplacements> volumeReplacementsList) {
+    try (var tabletsMutator = ample.conditionallyMutateTablets()) {
       for (VolumeUtil.VolumeReplacements vr : volumeReplacementsList) {
         var tabletMutator =
             tabletsMutator.mutateTablet(vr.tabletMeta.getExtent()).requireAbsentOperation()
@@ -996,7 +1000,9 @@ abstract class TabletGroupWatcher extends AccumuloDaemonThread {
         vr.filesToRemove.forEach(tabletMutator::deleteFile);
         vr.filesToAdd.forEach(tabletMutator::putFile);
 
-        tabletMutator.putZooLock(manager.getContext().getZooKeeperRoot(), manager.getManagerLock());
+        // TODO
+        // tabletMutator.putZooLock(manager.getContext().getZooKeeperRoot(),
+        // manager.getManagerLock());
 
         tabletMutator.submit(
             tm -> tm.getLogs().containsAll(vr.logsToAdd) && tm.getFiles().containsAll(vr.filesToAdd
