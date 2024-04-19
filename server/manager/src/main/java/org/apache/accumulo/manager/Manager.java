@@ -56,7 +56,6 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperation;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperationExceptionType;
@@ -709,19 +708,27 @@ public class Manager extends AbstractServer
      */
     private void cleanupNonexistentMigrations(final AccumuloClient accumuloClient)
         throws TableNotFoundException {
-      Scanner scanner = accumuloClient.createScanner(MetadataTable.NAME, Authorizations.EMPTY);
-      TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
-      scanner.setRange(MetadataSchema.TabletsSection.getRange());
-      Set<KeyExtent> notSeen;
-      synchronized (migrations) {
-        notSeen = new HashSet<>(migrations.keySet());
+      try (var rootScanner = accumuloClient.createScanner(RootTable.NAME, Authorizations.EMPTY);
+          var metadataScanner =
+              accumuloClient.createScanner(MetadataTable.NAME, Authorizations.EMPTY)) {
+        Set<KeyExtent> notSeen;
+        synchronized (migrations) {
+          notSeen = new HashSet<>(migrations.keySet());
+        }
+
+        for (var scanner : List.of(rootScanner, metadataScanner)) {
+          TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
+          scanner.setRange(MetadataSchema.TabletsSection.getRange());
+
+          for (Entry<Key,Value> entry : scanner) {
+            KeyExtent extent = KeyExtent.fromMetaPrevRow(entry);
+            notSeen.remove(extent);
+
+          }
+        }
+        // remove tablets that used to be in migrations and were not seen in the metadata table
+        migrations.keySet().removeAll(notSeen);
       }
-      for (Entry<Key,Value> entry : scanner) {
-        KeyExtent extent = KeyExtent.fromMetaPrevRow(entry);
-        notSeen.remove(extent);
-      }
-      // remove tablets that used to be in migrations and were not seen in the metadata table
-      migrations.keySet().removeAll(notSeen);
     }
 
     /**
