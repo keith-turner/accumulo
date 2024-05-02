@@ -38,12 +38,15 @@ import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.ScannerBase;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
+import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.metrics.MetricsProducer;
 import org.apache.accumulo.core.spi.metrics.LoggingMeterRegistryFactory;
+import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.test.functional.ConfigurableMacBase;
 import org.apache.accumulo.test.metrics.TestStatsDSink.Metric;
@@ -77,6 +80,7 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
   @Override
   protected void configure(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
     cfg.setNumTservers(2);
+    cfg.setNumScanServers(1);
     cfg.setProperty(Property.GC_CYCLE_START, "1s");
     cfg.setProperty(Property.GC_CYCLE_DELAY, "1s");
     cfg.setProperty(Property.MANAGER_FATE_METRICS_MIN_UPDATE_INTERVAL, "1s");
@@ -95,6 +99,8 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
 
   @Test
   public void confirmMetricsPublished() throws Exception {
+
+    cluster.getClusterControl().start(ServerType.SCAN_SERVER);
 
     doWorkToGenerateMetrics();
     cluster.stop();
@@ -167,7 +173,19 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
       client.tableOperations().compact(tableName, new CompactionConfig());
       try (Scanner scanner = client.createScanner(tableName)) {
         scanner.forEach((k, v) -> {});
+        scanner.setConsistencyLevel(ScannerBase.ConsistencyLevel.EVENTUAL);
+        scanner.forEach((k, v) -> {});
       }
+
+      for(int i=0;i<100;i++){
+        try (var scanner = client.createBatchScanner(tableName)) {
+          scanner.setConsistencyLevel(ScannerBase.ConsistencyLevel.EVENTUAL);
+          scanner.setRanges(List.of(new Range()));
+          scanner.forEach((k, v) -> {
+          });
+        }
+      }
+
       client.tableOperations().delete(tableName);
       while (client.tableOperations().exists(tableName)) {
         Thread.sleep(1000);

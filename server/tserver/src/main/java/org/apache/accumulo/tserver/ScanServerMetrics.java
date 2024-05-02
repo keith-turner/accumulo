@@ -21,6 +21,7 @@ package org.apache.accumulo.tserver;
 import java.util.List;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metrics.MetricsProducer;
 
@@ -31,6 +32,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.cache.CaffeineCacheMetrics;
+import org.checkerframework.checker.units.qual.K;
 
 public class ScanServerMetrics implements MetricsProducer {
 
@@ -56,6 +58,12 @@ public class ScanServerMetrics implements MetricsProducer {
             .description("The number of scans where a busy timeout happened").register(registry);
     CaffeineCacheMetrics.monitor(registry, tabletMetadataCache, METRICS_SCAN_TABLET_METADATA_CACHE,
         List.of(Tag.of("resource.group", resourceGroup)));
+
+    registry.forEachMeter(meter -> {
+      if(meter.getId().getName().startsWith("cache")) {
+        System.out.println("meter id 1 "+meter.getId());
+      }
+    });
   }
 
   public Timer getReservationTimer() {

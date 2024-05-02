@@ -45,6 +45,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import io.micrometer.core.instrument.Meter;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
@@ -206,6 +207,9 @@ public class ScanServer extends AbstractServer
 
   private final String groupName;
 
+  private Meter cacheGetMeter;
+  private Meter cacheLoadMeter;
+
   public ScanServer(ScanServerOpts opts, String[] args) {
     super("sserver", opts, args);
 
@@ -245,7 +249,7 @@ public class ScanServer extends AbstractServer
       }
       tabletMetadataCache =
           Caffeine.newBuilder().expireAfterWrite(cacheExpiration, TimeUnit.MILLISECONDS)
-              .scheduler(Scheduler.systemScheduler()).build(tabletMetadataLoader);
+              .scheduler(Scheduler.systemScheduler()).recordStats().build(tabletMetadataLoader);
     }
 
     delegate = newThriftScanClientHandler(new WriteTracker());
@@ -379,6 +383,20 @@ public class ScanServer extends AbstractServer
 
     metricsInfo.addMetricsProducers(scanMetrics, scanServerMetrics);
     metricsInfo.init();
+
+    metricsInfo.getRegistry().forEachMeter(meter -> {
+      if(meter.getId().getName().startsWith("cache")) {
+        System.out.println("meter id 2 "+meter.getId());
+      }
+
+      if(meter.getId().getName().startsWith("cache.gets")) {
+        cacheGetMeter = meter;
+      }
+
+      if(meter.getId().getName().startsWith("cache.load")) {
+        cacheLoadMeter = meter;
+      }
+    });
     // We need to set the compaction manager so that we don't get an NPE in CompactableImpl.close
 
     ServiceLock lock = announceExistence();
@@ -512,6 +530,9 @@ public class ScanServer extends AbstractServer
         extents);
 
     Map<KeyExtent,TabletMetadata> tabletsMetadata = getTabletMetadata(extents);
+    cacheGetMeter.measure().forEach(measurement -> System.out.println("cache get "+measurement));
+    cacheLoadMeter.measure().forEach(measurement -> System.out.println("cache load "+measurement));
+    System.out.println("cache stats "+tabletMetadataCache.stats());
 
     for (KeyExtent extent : extents) {
       var tabletMetadata = tabletsMetadata.get(extent);
