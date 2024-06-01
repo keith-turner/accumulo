@@ -71,6 +71,7 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TRange;
 import org.apache.accumulo.core.fate.FateId;
 import org.apache.accumulo.core.fate.FateInstanceType;
+import org.apache.accumulo.core.fate.FateKey;
 import org.apache.accumulo.core.fate.ReadOnlyFateStore.TStatus;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.manager.thrift.BulkImportState;
@@ -112,6 +113,8 @@ import org.apache.hadoop.io.Text;
 import org.apache.thrift.TDeserializer;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
+
+import com.google.common.base.Preconditions;
 
 class FateServiceHandler implements FateService.Iface {
 
@@ -963,5 +966,26 @@ class FateServiceHandler implements FateService.Iface {
     }
 
     return manager.fate(fateId.getType()).cancel(fateId);
+  }
+
+  @Override
+  public long countNonLocking(TInfo tinfo, TCredentials credentials, String thriftTableId)
+      throws ThriftSecurityException, ThriftNotActiveServiceException, TException {
+
+    authenticate(credentials);
+
+    var tableId = TableId.of(thriftTableId);
+    var fit = FateInstanceType.fromTableId(tableId);
+
+    // This code is assuming that only fate operations with a key do not acquire locks.
+    long total = 0;
+    for (FateKey.FateKeyType fkt : FateKey.FateKeyType.values()) {
+      Preconditions.checkState(!fkt.acquiresTableLock());
+
+      total += manager.fate(fit).list(fkt)
+          .filter(fateKey -> fateKey.getKeyExtent().tableId().equals(tableId)).count();
+    }
+
+    return total;
   }
 }

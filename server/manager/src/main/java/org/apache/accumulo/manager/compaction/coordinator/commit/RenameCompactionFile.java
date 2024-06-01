@@ -20,8 +20,12 @@ package org.apache.accumulo.manager.compaction.coordinator.commit;
 
 import java.io.IOException;
 
+import org.apache.accumulo.core.clientImpl.AcceptableThriftTableOperationException;
+import org.apache.accumulo.core.clientImpl.thrift.TableOperation;
+import org.apache.accumulo.core.clientImpl.thrift.TableOperationExceptionType;
 import org.apache.accumulo.core.fate.FateId;
 import org.apache.accumulo.core.fate.Repo;
+import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.manager.tableOps.ManagerRepo;
@@ -43,6 +47,12 @@ public class RenameCompactionFile extends ManagerRepo {
   public Repo<Manager> call(FateId fateId, Manager manager) throws Exception {
     ReferencedTabletFile newDatafile = null;
     var ctx = manager.getContext();
+
+    if (manager.getContext().getTableState(commitData.getTableId()) != TableState.ONLINE) {
+      throw new AcceptableThriftTableOperationException(commitData.getTableId().canonical(), null,
+          TableOperation.COMPACT, TableOperationExceptionType.OFFLINE,
+          "Unable to split tablet because the table is offline");
+    }
 
     var tmpPath = new Path(commitData.outputTmpPath);
 

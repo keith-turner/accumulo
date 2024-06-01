@@ -1365,7 +1365,17 @@ public class TableOperationsImpl extends TableOperationsHelper {
         lastRow = null;
       }
 
-      if (waitFor > 0 || holes > 0 || total == 0) {
+      long nonLockingFateOps = 0;
+      if (expectedState == TableState.OFFLINE) {
+        // This check is guarding against fate ops that have checked the table state but not yet
+        // written to the metadata table. This check is only needed for fate ops that do not obtain
+        // a table lock. This check will see those, it needs to run after checking the metadata
+        // table. Any fate operations that start after this check is done will check the table
+        // state.
+        nonLockingFateOps = countNonLockingFateOps(tableId);
+      }
+
+      if (waitFor > 0 || holes > 0 || total == 0 || nonLockingFateOps > 0) {
         long waitTime;
         long maxPerServer = 0;
         if (serverCounts.size() > 0) {
@@ -1376,13 +1386,36 @@ public class TableOperationsImpl extends TableOperationsHelper {
         }
         waitTime = Math.max(100, waitTime);
         waitTime = Math.min(5000, waitTime);
-        log.trace("Waiting for {}({}) tablets, startRow = {} lastRow = {}, holes={} sleeping:{}ms",
-            waitFor, maxPerServer, startRow, lastRow, holes, waitTime);
+        log.trace(
+            "Waiting for {}({}) tablets, startRow = {} lastRow = {}, holes={} nonLockingFateOps = {} sleeping:{}ms",
+            waitFor, maxPerServer, startRow, lastRow, holes, nonLockingFateOps, waitTime);
         sleepUninterruptibly(waitTime, MILLISECONDS);
       } else {
         break;
       }
 
+    }
+  }
+
+  private long countNonLockingFateOps(TableId tableId) throws AccumuloException {
+    while (true) {
+      FateService.Client client = null;
+      try {
+        client = ThriftClientTypes.FATE.getConnectionWithRetry(context);
+        return client.countNonLocking(TraceUtil.traceInfo(), context.rpcCreds(),
+            tableId.canonical());
+      } catch (TTransportException tte) {
+        log.debug("Failed to call finishFateOperation(), retrying ... ", tte);
+        sleepUninterruptibly(100, MILLISECONDS);
+      } catch (ThriftNotActiveServiceException e) {
+        // Let it loop, fetching a new location
+        log.debug("Contacted a Manager which is no longer active, retrying");
+        sleepUninterruptibly(100, MILLISECONDS);
+      } catch (TException e) {
+        throw new AccumuloException(e);
+      } finally {
+        ThriftUtil.close(client, context);
+      }
     }
   }
 

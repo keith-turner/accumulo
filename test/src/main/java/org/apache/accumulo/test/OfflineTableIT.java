@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -40,6 +41,8 @@ import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.fate.FateId;
 import org.apache.accumulo.core.fate.FateInstanceType;
+import org.apache.accumulo.core.fate.FateKey;
+import org.apache.accumulo.core.fate.user.UserFateStore;
 import org.apache.accumulo.core.metadata.ReferencedTabletFile;
 import org.apache.accumulo.core.metadata.schema.Ample.TabletsMutator;
 import org.apache.accumulo.core.metadata.schema.CompactionMetadata;
@@ -51,6 +54,7 @@ import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactorGroupId;
 import org.apache.accumulo.harness.MiniClusterConfigurationCallback;
 import org.apache.accumulo.harness.SharedMiniClusterBase;
+import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.hadoop.fs.Path;
@@ -180,6 +184,37 @@ public class OfflineTableIT extends SharedMiniClusterBase {
       // until the opid is deleted
       testWaitForOffline(ctx, client, tableId, tableName,
           mutator -> mutator.mutateTablet(tabletMeta.getExtent()).deleteOperation().mutate());
+    }
+  }
+
+  @Test
+  public void testFateKeyWaitForOffline() throws Exception {
+    final var ctx = getCluster().getServerContext();
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+      String tableName = getUniqueNames(1)[0];
+      ScanServerIT.createTableAndIngest(client, tableName, null, 10, 10, "colf");
+      TableId tableId = TableId.of(client.tableOperations().tableIdMap().get(tableName));
+
+      UserFateStore<Manager> ufs = new UserFateStore<>(ctx);
+
+      var extent = new KeyExtent(tableId, null, null);
+
+      // the existence of these should block the offline operation from completing even though they
+      // have not created any metadata entries
+      var fateTx1 = ufs.createAndReserve(FateKey.forSplit(extent)).orElseThrow();
+      var fateTx2 = ufs
+          .createAndReserve(
+              FateKey.forCompactionCommit(ExternalCompactionId.generate(UUID.randomUUID()), extent))
+          .orElseThrow();
+
+      testWaitForOffline(ctx, client, tableId, tableName, mutator -> {
+        // once these are deleted, offline should be able to complete
+        fateTx1.delete();
+        fateTx2.delete();
+      });
+
+      fateTx1.unreserve(Duration.ZERO);
+      fateTx2.unreserve(Duration.ZERO);
     }
   }
 

@@ -73,6 +73,7 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.fate.FateId;
 import org.apache.accumulo.core.fate.FateInstanceType;
 import org.apache.accumulo.core.fate.FateKey;
@@ -343,8 +344,9 @@ public class ExternalCompaction_1_IT extends SharedMiniClusterBase {
     // Create a fate transaction for one of the compaction ids that is in the new state, it
     // should never run. Its purpose is to prevent the dead compaction detector
     // from deleting the id.
-    FateStore.FateTxStore<Manager> fateTx = fateStore
-        .createAndReserve(FateKey.forCompactionCommit(allCids.get(tableId).get(0))).orElseThrow();
+    FateStore.FateTxStore<Manager> fateTx =
+        fateStore.createAndReserve(FateKey.forCompactionCommit(allCids.get(tableId).get(0),
+            new KeyExtent(tableId, null, null))).orElseThrow();
     var fateId = fateTx.getID();
     fateTx.unreserve(Duration.ZERO);
 

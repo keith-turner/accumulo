@@ -231,7 +231,16 @@ service FateService {
     1:client.ThriftSecurityException sec
     2:client.ThriftNotActiveServiceException tnase
   )
-  
+
+  // return a count of the number of active fate operation for a table that do not lock
+  i64 countNonLocking(
+    1:client.TInfo tinfo
+    2:security.TCredentials credentials
+    3:string tableId
+  ) throws (
+    1:client.ThriftSecurityException sec
+    2:client.ThriftNotActiveServiceException tnase
+  )
 }
 
 service ManagerClientService {

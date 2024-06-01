@@ -33,22 +33,22 @@ import org.apache.hadoop.io.DataInputBuffer;
 public class FateKey {
 
   private final FateKeyType type;
-  private final Optional<KeyExtent> keyExtent;
+  private final KeyExtent keyExtent;
   private final Optional<ExternalCompactionId> compactionId;
   private final byte[] serialized;
 
   private FateKey(FateKeyType type, KeyExtent keyExtent) {
     this.type = Objects.requireNonNull(type);
-    this.keyExtent = Optional.of(keyExtent);
+    this.keyExtent = Objects.requireNonNull(keyExtent);
     this.compactionId = Optional.empty();
     this.serialized = serialize(type, keyExtent);
   }
 
-  private FateKey(FateKeyType type, ExternalCompactionId compactionId) {
+  private FateKey(FateKeyType type, ExternalCompactionId compactionId, KeyExtent keyExtent) {
     this.type = Objects.requireNonNull(type);
-    this.keyExtent = Optional.empty();
+    this.keyExtent = Objects.requireNonNull(keyExtent);
     this.compactionId = Optional.of(compactionId);
-    this.serialized = serialize(type, compactionId);
+    this.serialized = serialize(type, compactionId, keyExtent);
   }
 
   private FateKey(byte[] serialized) {
@@ -67,7 +67,7 @@ public class FateKey {
     return type;
   }
 
-  public Optional<KeyExtent> getKeyExtent() {
+  public KeyExtent getKeyExtent() {
     return keyExtent;
   }
 
@@ -113,12 +113,27 @@ public class FateKey {
     return new FateKey(FateKeyType.SPLIT, extent);
   }
 
-  public static FateKey forCompactionCommit(ExternalCompactionId compactionId) {
-    return new FateKey(FateKeyType.COMPACTION_COMMIT, compactionId);
+  public static FateKey forCompactionCommit(ExternalCompactionId compactionId, KeyExtent extent) {
+    return new FateKey(FateKeyType.COMPACTION_COMMIT, compactionId, extent);
   }
 
   public enum FateKeyType {
-    SPLIT, COMPACTION_COMMIT
+    SPLIT(false), COMPACTION_COMMIT(false);
+
+    private final boolean acquiresTableLock;
+
+    FateKeyType(boolean acquiresTableLock) {
+      this.acquiresTableLock = acquiresTableLock;
+    }
+
+    /**
+     * If the fate operation related with this key acquires a table lock then this should return
+     * true. Currently this always returns false for all types, the reason this method exists is to
+     * document an assumption made by other parts of the code.
+     */
+    public boolean acquiresTableLock() {
+      return acquiresTableLock;
+    }
   }
 
   private static byte[] serialize(FateKeyType type, KeyExtent ke) {
@@ -133,10 +148,12 @@ public class FateKey {
     }
   }
 
-  private static byte[] serialize(FateKeyType type, ExternalCompactionId compactionId) {
+  private static byte[] serialize(FateKeyType type, ExternalCompactionId compactionId,
+      KeyExtent ke) {
     try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(baos)) {
       dos.writeUTF(type.toString());
+      ke.writeTo(dos);
       dos.writeUTF(compactionId.canonical());
       dos.close();
       return baos.toByteArray();
@@ -145,13 +162,12 @@ public class FateKey {
     }
   }
 
-  private static Optional<KeyExtent> deserializeKeyExtent(FateKeyType type, DataInputBuffer buffer)
+  private static KeyExtent deserializeKeyExtent(FateKeyType type, DataInputBuffer buffer)
       throws IOException {
     switch (type) {
       case SPLIT:
-        return Optional.of(KeyExtent.readFrom(buffer));
       case COMPACTION_COMMIT:
-        return Optional.empty();
+        return KeyExtent.readFrom(buffer);
       default:
         throw new IllegalStateException("Unexpected FateInstanceType found " + type);
     }

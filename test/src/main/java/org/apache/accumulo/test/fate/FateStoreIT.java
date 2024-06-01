@@ -302,7 +302,7 @@ public abstract class FateStoreIT extends SharedMiniClusterBase implements FateT
 
     FateKey fateKey1 = FateKey.forSplit(ke1);
     FateKey fateKey2 =
-        FateKey.forCompactionCommit(ExternalCompactionId.generate(UUID.randomUUID()));
+        FateKey.forCompactionCommit(ExternalCompactionId.generate(UUID.randomUUID()), ke1);
 
     FateTxStore<TestEnv> txStore1 = store.createAndReserve(fateKey1).orElseThrow();
     FateTxStore<TestEnv> txStore2 = store.createAndReserve(fateKey2).orElseThrow();
@@ -481,8 +481,8 @@ public abstract class FateStoreIT extends SharedMiniClusterBase implements FateT
 
     assertNotEquals(cid1, cid2);
 
-    var fateKey3 = FateKey.forCompactionCommit(cid1);
-    var fateKey4 = FateKey.forCompactionCommit(cid2);
+    var fateKey3 = FateKey.forCompactionCommit(cid1, extent1);
+    var fateKey4 = FateKey.forCompactionCommit(cid2, extent2);
 
     Map<FateKey,FateId> fateKeyIds = new HashMap<>();
     for (FateKey fateKey : List.of(fateKey1, fateKey2, fateKey3, fateKey4)) {
@@ -504,21 +504,22 @@ public abstract class FateStoreIT extends SharedMiniClusterBase implements FateT
     store.list(FateKey.FateKeyType.SPLIT).forEach(fateKey -> {
       assertEquals(FateKey.FateKeyType.SPLIT, fateKey.getType());
       assertNotNull(fateKeyIds.remove(fateKey));
-      assertTrue(seenExtents.add(fateKey.getKeyExtent().orElseThrow()));
+      assertTrue(seenExtents.add(fateKey.getKeyExtent()));
     });
 
     assertEquals(2, fateKeyIds.size());
     assertEquals(Set.of(extent1, extent2), seenExtents);
 
-    HashSet<ExternalCompactionId> seenCids = new HashSet<>();
+    HashMap<ExternalCompactionId,KeyExtent> seenCids =
+        new HashMap<ExternalCompactionId,KeyExtent>();
     store.list(FateKey.FateKeyType.COMPACTION_COMMIT).forEach(fateKey -> {
       assertEquals(FateKey.FateKeyType.COMPACTION_COMMIT, fateKey.getType());
       assertNotNull(fateKeyIds.remove(fateKey));
-      assertTrue(seenCids.add(fateKey.getCompactionId().orElseThrow()));
+      assertNull(seenCids.put(fateKey.getCompactionId().orElseThrow(), fateKey.getKeyExtent()));
     });
 
     assertEquals(0, fateKeyIds.size());
-    assertEquals(Set.of(cid1, cid2), seenCids);
+    assertEquals(Map.of(cid1, extent1, cid2, extent2), seenCids);
     // Cleanup so we don't interfere with other tests
     store.list()
         .forEach(fateIdStatus -> store.tryReserve(fateIdStatus.getFateId()).orElseThrow().delete());
