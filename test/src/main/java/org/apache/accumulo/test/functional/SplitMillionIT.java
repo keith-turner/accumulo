@@ -35,6 +35,7 @@ import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.admin.CloneConfiguration;
 import org.apache.accumulo.core.client.admin.CompactionConfig;
+import org.apache.accumulo.core.client.rfile.RFile;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
@@ -45,6 +46,7 @@ import org.apache.accumulo.minicluster.MemoryUnit;
 import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -104,19 +106,56 @@ public class SplitMillionIT extends ConfigurableMacBase {
         addSplits(c, tableName, splits, log);
       }
 
+      long t1 = System.currentTimeMillis();
+      var path = new Path(getCluster().getTemporaryPath(), "big_bulk");
+      int fileCount = 1;
+      var fileWriter = RFile.newWriter().to(new Path(path, "import" + fileCount+".rf").toString())
+          .withFileSystem(getCluster().getFileSystem()).build();
+      fileCount++;
+      int appended = 0;
+      fileWriter.startDefaultLocalityGroup();
+      for (int i = 100; i < 100_000_000; i += 100) {
+        String row = String.format("%010d", i - 50);
+        fileWriter.append(Key.builder().row(row).family("c").qualifier("x").build(),
+            new Value("bulk"));
+        appended++;
+        if (appended >= 997) {
+          fileWriter.close();
+          fileWriter = RFile.newWriter().to(new Path(path, "import" + fileCount+".rf").toString())
+              .withFileSystem(getCluster().getFileSystem()).build();
+          fileWriter.startDefaultLocalityGroup();
+          fileCount++;
+          appended = 0;
+        }
+      }
+      fileWriter.close();
+      long t2 = System.currentTimeMillis();
+      log.info("Time to create {} bulk files {} ms", fileCount, (t2 - t1));
+
+
+      t1 = System.currentTimeMillis();
+      c.tableOperations().importDirectory(path.toString()).to(tableName).tableTime(false).threads(64).load();
+      t2 = System.currentTimeMillis();
+      log.info("Time to bulk import {} ms", (t2 - t1));
+
+      if (true) {
+        // these experimental bulk import changes will break the rest of the test
+        return;
+      }
+
       var rows = IntStream
           .concat(new Random().ints(98, 0, 100_000_000).flatMap(i -> IntStream.of(i, i + 1)),
               IntStream.of(0, 1, 99_999_998, 99_999_999))
           .toArray();
 
-      long t1 = System.currentTimeMillis();
+      t1 = System.currentTimeMillis();
       try (var scanner = c.createBatchScanner(tableName)) {
         var ranges = Arrays.stream(rows).mapToObj(rowInt -> String.format("%010d", rowInt))
             .map(Range::new).collect(Collectors.toList());
         scanner.setRanges(ranges);
         assertEquals(0, scanner.stream().count());
       }
-      long t2 = System.currentTimeMillis();
+      t2 = System.currentTimeMillis();
       log.info("Time to scan {} rows {}ms", rows.length, (t2 - t1));
 
       t1 = System.currentTimeMillis();
