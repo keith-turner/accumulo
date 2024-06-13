@@ -87,7 +87,6 @@ import org.apache.accumulo.core.lock.ServiceLockData.ThriftService;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.schema.Ample;
-import org.apache.accumulo.core.metadata.schema.Ample.ReadConsistency;
 import org.apache.accumulo.core.metadata.schema.AmpleImpl;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
@@ -482,7 +481,7 @@ public class ClientContext implements AccumuloClient {
    */
   public String getRootTabletLocation() {
     ensureOpen();
-
+    // TODO remove the method
     OpTimer timer = null;
 
     if (log.isTraceEnabled()) {
@@ -491,8 +490,7 @@ public class ClientContext implements AccumuloClient {
       timer = new OpTimer().start();
     }
 
-    Location loc =
-        getAmple().readTablet(RootTable.EXTENT, ReadConsistency.EVENTUAL, LOCATION).getLocation();
+    Location loc = getAmple().readTablet(RootTable.EXTENT, LOCATION).getLocation();
 
     if (timer != null) {
       timer.stop();
