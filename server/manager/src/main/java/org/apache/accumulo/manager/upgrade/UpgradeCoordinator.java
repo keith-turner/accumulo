@@ -309,11 +309,13 @@ public class UpgradeCoordinator {
       justification = "Want to immediately stop all manager threads on upgrade error")
   private void abortIfFateTransactions(ServerContext context) {
     try {
+      // TODO can this new code read the old format?
       final ReadOnlyFateStore<UpgradeCoordinator> mfs = new MetaFateStore<>(
           context.getZooKeeperRoot() + Constants.ZFATE, context.getZooReaderWriter());
-      final ReadOnlyFateStore<UpgradeCoordinator> ufs = new UserFateStore<>(context);
-      try (var mfsList = mfs.list(); var ufsList = ufs.list();
-          var idStream = Stream.concat(mfsList, ufsList)) {
+      // TODO chicken and egg problem here
+     // final ReadOnlyFateStore<UpgradeCoordinator> ufs = new UserFateStore<>(context);
+      try (var mfsList = mfs.list();
+          var idStream = mfsList) {
         if (idStream.findFirst().isPresent()) {
           throw new AccumuloException("Aborting upgrade because there are"
               + " outstanding FATE transactions from a previous Accumulo version."

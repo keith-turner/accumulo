@@ -73,6 +73,8 @@ public class Upgrader12to13 implements Upgrader {
     removeUnusedZKNodes(context);
     LOG.info("Removing compact columns from root tablet");
     removeCompactColumnsFromRootTabletMetadata(context);
+    LOG.info("Adding compactions node to zookeeper");
+    addCompactionsNode(context);
   }
 
   @Override
@@ -103,6 +105,15 @@ public class Upgrader12to13 implements Upgrader {
     removeMetaDataBulkLoadFilter(context, AccumuloTable.METADATA.tableId());
     LOG.info("Removing compact columns from user tables");
     removeCompactColumnsFromTable(context, AccumuloTable.METADATA.tableName());
+  }
+
+  private static void addCompactionsNode(ServerContext context) {
+    try {
+      context.getZooReaderWriter().putPersistentData(ZooUtil.getRoot(context.getInstanceID()) + Constants.ZCOMPACTIONS, new byte[0],
+              ZooUtil.NodeExistsPolicy.SKIP);
+    } catch (KeeperException | InterruptedException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   private void createFateTable(ServerContext context) {
