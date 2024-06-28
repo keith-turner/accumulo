@@ -31,7 +31,6 @@ import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.SynchronousQueue;
-import java.util.stream.Stream;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
@@ -41,7 +40,6 @@ import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.conf.ConfigCheckUtil;
 import org.apache.accumulo.core.fate.MetaFateStore;
 import org.apache.accumulo.core.fate.ReadOnlyFateStore;
-import org.apache.accumulo.core.fate.user.UserFateStore;
 import org.apache.accumulo.core.metadata.schema.Ample;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.volume.Volume;
@@ -313,9 +311,8 @@ public class UpgradeCoordinator {
       final ReadOnlyFateStore<UpgradeCoordinator> mfs = new MetaFateStore<>(
           context.getZooKeeperRoot() + Constants.ZFATE, context.getZooReaderWriter());
       // TODO chicken and egg problem here
-     // final ReadOnlyFateStore<UpgradeCoordinator> ufs = new UserFateStore<>(context);
-      try (var mfsList = mfs.list();
-          var idStream = mfsList) {
+      // final ReadOnlyFateStore<UpgradeCoordinator> ufs = new UserFateStore<>(context);
+      try (var mfsList = mfs.list(); var idStream = mfsList) {
         if (idStream.findFirst().isPresent()) {
           throw new AccumuloException("Aborting upgrade because there are"
               + " outstanding FATE transactions from a previous Accumulo version."

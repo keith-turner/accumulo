@@ -121,7 +121,6 @@ import org.apache.accumulo.core.spi.balancer.data.TabletServerId;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.Retry;
-import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.core.util.time.NanoTime;
@@ -1039,7 +1038,6 @@ public class Manager extends AbstractServer
       throw new IllegalStateException("Exception getting manager lock", e);
     }
 
-
     // If UpgradeStatus is not at complete by this moment, then things are currently
     // upgrading.
     if (upgradeCoordinator.getStatus() != UpgradeCoordinator.UpgradeStatus.COMPLETE) {
@@ -1133,7 +1131,7 @@ public class Manager extends AbstractServer
             return false;
           }
         });
-    
+
     for (TabletGroupWatcher watcher : watchers) {
       watcher.start();
     }

@@ -82,7 +82,8 @@ public class AccumuloDataVersion {
     return CURRENT_VERSION;
   }
 
-  public static final Set<Integer> CAN_RUN = Set.of(CURRENT_VERSION, REMOVE_DEPRECATIONS_FOR_VERSION_3, METADATA_FILE_JSON_ENCODING);
+  public static final Set<Integer> CAN_RUN =
+      Set.of(CURRENT_VERSION, REMOVE_DEPRECATIONS_FOR_VERSION_3, METADATA_FILE_JSON_ENCODING);
 
   /**
    * Get the stored, current working version.

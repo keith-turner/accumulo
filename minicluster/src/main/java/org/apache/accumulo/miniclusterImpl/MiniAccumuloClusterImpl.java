@@ -106,7 +106,6 @@ import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.ServerDirs;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.init.Initialize;
-import org.apache.accumulo.server.util.AccumuloStatus;
 import org.apache.accumulo.server.util.PortUtils;
 import org.apache.accumulo.start.Main;
 import org.apache.accumulo.start.spi.KeywordExecutable;
@@ -546,10 +545,10 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
 
       config.setInstanceName(instanceName);
       // TODO
-      /*if (!AccumuloStatus.isAccumuloOffline(zrw, rootPath)) {
-        throw new IllegalStateException(
-            "The Accumulo instance being used is already running. Aborting.");
-      }*/
+      /*
+       * if (!AccumuloStatus.isAccumuloOffline(zrw, rootPath)) { throw new IllegalStateException(
+       * "The Accumulo instance being used is already running. Aborting."); }
+       */
     } else {
       if (!initialized) {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
