@@ -1,4 +1,30 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package org.apache.accumulo.test.upgrade;
+
+import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
+
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.util.Map;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.harness.WithTestNames;
@@ -7,48 +33,56 @@ import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStream;
-import java.util.Map;
-
-import static org.apache.accumulo.harness.AccumuloITBase.createTestDir;
-
+@Disabled
+@Tag(MINI_CLUSTER_ONLY)
 public class UpgradeIT extends WithTestNames {
-    @Test
-    public void testCleanUpgrade() throws Exception {
-        // TODO this test is doing a bunch of odd sh*t, so comment it well
-        File baseDir = createTestDir(this.getClass().getName() + "_" + this.testName());
+  @Test
+  public void testCleanUpgrade() throws Exception {
 
-        FileUtils.deleteQuietly(baseDir);
-        File prevMac = new File(baseDir, "prev-mac");
-        FileUtils.copyDirectory(UpgradeGenerateIT.MAC_DIR_CLEAN, prevMac);
+    var testDirs = UpgradeTestUtils.findTestDirs("cleanShutdown");
 
+    for (var testDir : testDirs) {
+      // copy the un-upgraded accumulo instance that test can be run repeatedly w/o having to
+      // regenerate
+      var copyDir = new File(testDir, "copy");
+      FileUtils.deleteQuietly(copyDir);
+      FileUtils.copyDirectory(new File(testDir, "original_mac"), copyDir);
 
-        File csFile = new File(prevMac, "conf/hdfs-site.xml");
-        Configuration hadoopSite = new Configuration();
-        hadoopSite.set("fs.defaultFS", "file:///");
-        try(OutputStream out = new BufferedOutputStream(new FileOutputStream(csFile.getAbsolutePath()))) {
-            hadoopSite.writeXml(out);
+      var newMacDir = new File(testDir, "new_mac");
+      FileUtils.deleteQuietly(copyDir);
+
+      // TODO need more comments
+
+      File csFile = new File(copyDir, "conf/hdfs-site.xml");
+      Configuration hadoopSite = new Configuration();
+      hadoopSite.set("fs.defaultFS", "file:///");
+      try (OutputStream out =
+          new BufferedOutputStream(new FileOutputStream(csFile.getAbsolutePath()))) {
+        hadoopSite.writeXml(out);
+      }
+
+      MiniAccumuloConfigImpl config =
+          new MiniAccumuloConfigImpl(newMacDir, UpgradeTestUtils.ROOT_PASSWORD);
+      config.useExistingInstance(new File(copyDir, "conf/accumulo.properties"),
+          new File(copyDir, "conf"));
+
+      var cluster = new MiniAccumuloClusterImpl(config);
+
+      cluster._exec(cluster.getConfig().getServerClass(ServerType.ZOOKEEPER), ServerType.ZOOKEEPER,
+          Map.of(), new File(copyDir, "conf/zoo.cfg").getAbsolutePath());
+
+      // TODO started processes continue to run
+      cluster.start();
+
+      try (var client = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
+        try (var scanner = client.createScanner("test")) {
+          scanner.forEach(System.out::println);
         }
-
-        MiniAccumuloConfigImpl config = new MiniAccumuloConfigImpl(new File(baseDir, "mac"), UpgradeGenerateIT.ROOT_PASSWORD);
-        config.useExistingInstance(new File(prevMac, "conf/accumulo.properties"), new File(prevMac,"conf"));
-
-        var cluster = new MiniAccumuloClusterImpl(config);
-
-        cluster._exec(cluster.getConfig().getServerClass(ServerType.ZOOKEEPER), ServerType.ZOOKEEPER, Map.of(), new File(prevMac, "conf/zoo.cfg").getAbsolutePath());
-
-        // TODO started processes continue to run
-        cluster.start();
-
-        try(var client = Accumulo.newClient().from(cluster.getClientProperties()).build()){
-            try(var scanner = client.createScanner("test")) {
-                scanner.forEach(System.out::println);
-            }
-        }
+      }
     }
+  }
 }
