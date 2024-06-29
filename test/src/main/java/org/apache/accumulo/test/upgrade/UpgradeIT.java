@@ -36,16 +36,22 @@ import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Disabled
 @Tag(MINI_CLUSTER_ONLY)
 public class UpgradeIT extends WithTestNames {
+
+  private static final Logger log = LoggerFactory.getLogger(UpgradeIT.class);
+
   @Test
   public void testCleanUpgrade() throws Exception {
 
     var testDirs = UpgradeTestUtils.findTestDirs("cleanShutdown");
 
     for (var testDir : testDirs) {
+      log.info("Running upgrade test: {}", testDir);
       // copy the un-upgraded accumulo instance that test can be run repeatedly w/o having to
       // regenerate
       var copyDir = new File(testDir, "copy");
@@ -53,7 +59,7 @@ public class UpgradeIT extends WithTestNames {
       FileUtils.copyDirectory(new File(testDir, "original_mac"), copyDir);
 
       var newMacDir = new File(testDir, "new_mac");
-      FileUtils.deleteQuietly(copyDir);
+      FileUtils.deleteQuietly(newMacDir);
 
       // TODO need more comments
 
@@ -75,6 +81,8 @@ public class UpgradeIT extends WithTestNames {
       cluster._exec(cluster.getConfig().getServerClass(ServerType.ZOOKEEPER), ServerType.ZOOKEEPER,
           Map.of(), new File(copyDir, "conf/zoo.cfg").getAbsolutePath());
 
+      // TODO check root tablet metadata and ensure it has no location
+
       // TODO started processes continue to run
       cluster.start();
 
@@ -82,6 +90,8 @@ public class UpgradeIT extends WithTestNames {
         try (var scanner = client.createScanner("test")) {
           scanner.forEach(System.out::println);
         }
+      } finally {
+        cluster.stop();
       }
     }
   }
