@@ -20,6 +20,7 @@ package org.apache.accumulo.test.upgrade;
 
 import static org.apache.accumulo.core.conf.Property.GENERAL_PROCESS_BIND_ADDRESS;
 import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
+import static org.apache.accumulo.test.upgrade.UpgradeTestUtils.getOriginalMacDir;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -44,18 +45,7 @@ import org.junit.jupiter.api.Test;
 @Tag(MINI_CLUSTER_ONLY)
 public class UpgradeGenerateIT {
 
-  public static final String BASE_DIR = "/target/upgrade-tests/";
-  public static final String ROOT_PASSWORD = "979d55ae-98fd-4d22-9b1c-2d5723546a5e";
-
   private MiniAccumuloClusterImpl cluster;
-
-  public static File getTestDir(String testName) {
-    return new File(System.getProperty("user.dir") + BASE_DIR + testName);
-  }
-
-  public static File getOriginalMacDir(String testName) {
-    return new File(getTestDir(testName), "original_mac");
-  }
 
   private void setupUpgradeTest(String testName) throws Exception {
 
@@ -63,7 +53,8 @@ public class UpgradeGenerateIT {
 
     FileUtils.deleteQuietly(testDir);
 
-    MiniAccumuloConfigImpl config = new MiniAccumuloConfigImpl(testDir, ROOT_PASSWORD);
+    MiniAccumuloConfigImpl config =
+        new MiniAccumuloConfigImpl(testDir, UpgradeTestUtils.ROOT_PASSWORD);
     config.setProperty(GENERAL_PROCESS_BIND_ADDRESS, "localhost");
     cluster = new MiniAccumuloClusterImpl(config);
     Configuration haddopConfig = new Configuration(false);
