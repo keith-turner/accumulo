@@ -24,6 +24,7 @@ import static org.apache.accumulo.test.ComprehensiveBaseIT.generateKeys;
 import static org.apache.accumulo.test.ComprehensiveBaseIT.scan;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -31,18 +32,23 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.conf.SiteConfiguration;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.harness.WithTestNames;
 import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
+import org.apache.accumulo.server.AccumuloDataVersion;
+import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.test.ComprehensiveIT;
+import org.apache.accumulo.test.util.Wait;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Disabled;
@@ -70,15 +76,15 @@ public class UpgradeIT extends WithTestNames {
       assertEquals(generateKeys(0, 1000, 7, tr -> true),
           scan(client, "ut3", ComprehensiveIT.AUTHORIZATIONS));
 
-      assertEquals(Set.of(), client.tableOperations().listSplits("ut1"));
-      assertEquals(Set.of(), client.tableOperations().listSplits("ut2"));
-      assertEquals(createSplits(0, 1000, 13), client.tableOperations().listSplits("ut3"));
+      assertTrue(client.tableOperations().listSplits("ut1").isEmpty());
+      assertTrue(client.tableOperations().listSplits("ut2").isEmpty());
+      assertEquals(createSplits(0, 1000, 13), new TreeSet<>(client.tableOperations().listSplits("ut3")));
 
-      assertEquals("3.14", client.tableOperations().getTableProperties("uti1")
+      assertEquals("3.14", client.tableOperations().getTableProperties("ut1")
           .get(Property.TABLE_MAJC_RATIO.getKey()));
-      assertNull(client.tableOperations().getTableProperties("uti2")
+      assertNull(client.tableOperations().getTableProperties("ut2")
           .get(Property.TABLE_MAJC_RATIO.getKey()));
-      assertEquals("2.72", client.tableOperations().getTableProperties("uti3")
+      assertEquals("2.72", client.tableOperations().getTableProperties("ut3")
           .get(Property.TABLE_MAJC_RATIO.getKey()));
 
     });
@@ -97,7 +103,7 @@ public class UpgradeIT extends WithTestNames {
         continue;
       }
 
-      log.info("Running upgrade test: {} -> {}", version, Constants.VERSION);
+      log.info("Running upgrade test: {} {} -> {}", testName, version, Constants.VERSION);
 
       var originalDir = UpgradeTestUtils.getTestDir(version, testName);
       UpgradeTestUtils.backupOrRestore(version, testName);
@@ -113,9 +119,11 @@ public class UpgradeIT extends WithTestNames {
         hadoopSite.writeXml(out);
       }
 
+      var accumuloProps = new File(originalDir, "conf/accumulo.properties");
+
       MiniAccumuloConfigImpl config =
           new MiniAccumuloConfigImpl(newMacDir, UpgradeTestUtils.ROOT_PASSWORD);
-      config.useExistingInstance(new File(originalDir, "conf/accumulo.properties"),
+      config.useExistingInstance(accumuloProps,
           new File(originalDir, "conf"));
 
       var cluster = new MiniAccumuloClusterImpl(config);
@@ -125,7 +133,10 @@ public class UpgradeIT extends WithTestNames {
 
       cluster.start();
 
-      try (var client = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
+      try (var serverContext = new ServerContext(SiteConfiguration.fromFile(accumuloProps).build());
+           var client = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
+        // wait for upgrade to complete
+        Wait.waitFor(() -> AccumuloDataVersion.get() == AccumuloDataVersion.getCurrentVersion(serverContext));
         verifier.verify(client);
       } finally {
         // The cluster stop method will not kill processes because the cluster was started using an
