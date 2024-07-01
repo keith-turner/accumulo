@@ -26,6 +26,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.util.Map;
 
+import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.harness.WithTestNames;
 import org.apache.accumulo.minicluster.ServerType;
@@ -33,6 +34,7 @@ import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -48,22 +50,22 @@ public class UpgradeIT extends WithTestNames {
   @Test
   public void testCleanUpgrade() throws Exception {
 
-    var testDirs = UpgradeTestUtils.findTestDirs("cleanShutdown");
+    String testName = "cleanShutdown";
+    var versions = UpgradeTestUtils.findVersions("cleanShutdown");
 
-    for (var testDir : testDirs) {
-      log.info("Running upgrade test: {}", testDir);
-      // copy the un-upgraded accumulo instance that test can be run repeatedly w/o having to
-      // regenerate
-      var copyDir = new File(testDir, "copy");
-      FileUtils.deleteQuietly(copyDir);
-      FileUtils.copyDirectory(new File(testDir, "original_mac"), copyDir);
+    for (var version : versions) {
+      log.info("Running upgrade test: {} -> {}", version, Constants.VERSION);
 
-      var newMacDir = new File(testDir, "new_mac");
+      var originalDir = UpgradeTestUtils.getTestDir(version, testName);
+      UpgradeTestUtils.backupOrRestore(version, testName);
+
+      Assertions.assertNotEquals(version, Constants.VERSION);
+      var newMacDir = UpgradeTestUtils.getTestDir(Constants.VERSION, testName);
       FileUtils.deleteQuietly(newMacDir);
 
       // TODO need more comments
 
-      File csFile = new File(copyDir, "conf/hdfs-site.xml");
+      File csFile = new File(originalDir, "conf/hdfs-site.xml");
       Configuration hadoopSite = new Configuration();
       hadoopSite.set("fs.defaultFS", "file:///");
       try (OutputStream out =
@@ -73,13 +75,13 @@ public class UpgradeIT extends WithTestNames {
 
       MiniAccumuloConfigImpl config =
           new MiniAccumuloConfigImpl(newMacDir, UpgradeTestUtils.ROOT_PASSWORD);
-      config.useExistingInstance(new File(copyDir, "conf/accumulo.properties"),
-          new File(copyDir, "conf"));
+      config.useExistingInstance(new File(originalDir, "conf/accumulo.properties"),
+          new File(originalDir, "conf"));
 
       var cluster = new MiniAccumuloClusterImpl(config);
 
       cluster._exec(cluster.getConfig().getServerClass(ServerType.ZOOKEEPER), ServerType.ZOOKEEPER,
-          Map.of(), new File(copyDir, "conf/zoo.cfg").getAbsolutePath());
+          Map.of(), new File(originalDir, "conf/zoo.cfg").getAbsolutePath());
 
       // TODO check root tablet metadata and ensure it has no location
 
