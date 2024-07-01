@@ -53,8 +53,9 @@ import org.junit.jupiter.api.Test;
  *
  * <ol>
  * <li>Run this IT in version N of accumulo to generate data</li>
- * <li>Checkout version N+1 of accumulo. Do not run mvn clean as the persisted data is in
- * test/target and would be wiped</li>
+ * <li>Checkout version N+1 of accumulo.</li>
+ * <li>Run {@code mvn package -DskipTests} to update the accumulo version in source. Do not run mvn
+ * clean as the persisted data is in test/target and would be wiped.</li>
  * <li>Run UpgradeIT which will upgrade and verify the persisted data created by this test.</li>
  * </ol>
  *
@@ -166,5 +167,4 @@ public class UpgradeGenerateIT {
       cluster.stop();
     }
   }
-
 }
