@@ -47,6 +47,7 @@ import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.server.AccumuloDataVersion;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.util.AccumuloStatus;
 import org.apache.accumulo.test.ComprehensiveIT;
 import org.apache.accumulo.test.util.Wait;
 import org.apache.commons.io.FileUtils;
@@ -78,7 +79,8 @@ public class UpgradeIT extends WithTestNames {
 
       assertTrue(client.tableOperations().listSplits("ut1").isEmpty());
       assertTrue(client.tableOperations().listSplits("ut2").isEmpty());
-      assertEquals(createSplits(0, 1000, 13), new TreeSet<>(client.tableOperations().listSplits("ut3")));
+      assertEquals(createSplits(0, 1000, 13),
+          new TreeSet<>(client.tableOperations().listSplits("ut3")));
 
       assertEquals("3.14", client.tableOperations().getTableProperties("ut1")
           .get(Property.TABLE_MAJC_RATIO.getKey()));
@@ -123,22 +125,27 @@ public class UpgradeIT extends WithTestNames {
 
       MiniAccumuloConfigImpl config =
           new MiniAccumuloConfigImpl(newMacDir, UpgradeTestUtils.ROOT_PASSWORD);
-      config.useExistingInstance(accumuloProps,
-          new File(originalDir, "conf"));
+      config.useExistingInstance(accumuloProps, new File(originalDir, "conf"));
 
       var cluster = new MiniAccumuloClusterImpl(config);
 
-      cluster._exec(cluster.getConfig().getServerClass(ServerType.ZOOKEEPER), ServerType.ZOOKEEPER,
-          Map.of(), new File(originalDir, "conf/zoo.cfg").getAbsolutePath());
-
-      cluster.start();
+      var zKProc = cluster._exec(cluster.getConfig().getServerClass(ServerType.ZOOKEEPER),
+          ServerType.ZOOKEEPER, Map.of(), new File(originalDir, "conf/zoo.cfg").getAbsolutePath());
 
       try (var serverContext = new ServerContext(SiteConfiguration.fromFile(accumuloProps).build());
-           var client = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
+          var client = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
+        // MiniAccumulo will be unhappy if server processes appear to be running. There may be
+        // ephemeral nodes in zookeeper related to servers that need to timeout. Wait for any of
+        // these nodes to go away. TODO this does not wait for scan servers or compactors.
+        Wait.waitFor(() -> AccumuloStatus.isAccumuloOffline(serverContext.getZooReader(),
+            serverContext.getZooKeeperRoot()), 60_000);
+        cluster.start();
         // wait for upgrade to complete
-        Wait.waitFor(() -> AccumuloDataVersion.get() == AccumuloDataVersion.getCurrentVersion(serverContext));
+        Wait.waitFor(() -> AccumuloDataVersion.get()
+            == AccumuloDataVersion.getCurrentVersion(serverContext));
         verifier.verify(client);
       } finally {
+        zKProc.getProcess().destroyForcibly();
         // The cluster stop method will not kill processes because the cluster was started using an
         // existing instance.
         UpgradeTestUtils.killAll(cluster);
