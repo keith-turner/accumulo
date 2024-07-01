@@ -35,12 +35,25 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.miniclusterImpl.ProcessNotFoundException;
-import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+
+/**
+ * <p>
+ * This IT supports manual upgrade testing via the following process.
+ *
+ * <ol>
+ * <li>Run this IT in version N of accumulo to generate data</li>
+ * <li>Checkout version N+1 of accumulo. Do not run mvn clean as the persisted data is in
+ * test/target and would be wiped</li>
+ * <li>Run UpgradeIT which will upgrade and verify the persisted data created by this test.</li>
+ * </ol>
+ *
+ *
+ */
 
 @Disabled
 @Tag(MINI_CLUSTER_ONLY)
@@ -50,9 +63,8 @@ public class UpgradeGenerateIT {
 
   private void setupUpgradeTest(String testName) throws Exception {
 
+    UpgradeTestUtils.deleteTest(Constants.VERSION, testName);
     File testDir = getTestDir(Constants.VERSION, testName);
-
-    FileUtils.deleteQuietly(testDir);
 
     MiniAccumuloConfigImpl config =
         new MiniAccumuloConfigImpl(testDir, UpgradeTestUtils.ROOT_PASSWORD);
