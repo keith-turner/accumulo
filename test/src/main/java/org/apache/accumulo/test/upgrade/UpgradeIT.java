@@ -23,6 +23,7 @@ import static org.apache.accumulo.test.ComprehensiveBaseIT.createSplits;
 import static org.apache.accumulo.test.ComprehensiveBaseIT.generateKeys;
 import static org.apache.accumulo.test.ComprehensiveBaseIT.scan;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,6 +34,7 @@ import java.io.OutputStream;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
@@ -58,6 +60,8 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.MoreCollectors;
+
 @Disabled
 @Tag(MINI_CLUSTER_ONLY)
 public class UpgradeIT extends WithTestNames {
@@ -65,8 +69,13 @@ public class UpgradeIT extends WithTestNames {
   private static final Logger log = LoggerFactory.getLogger(UpgradeIT.class);
 
   @Test
-  public void testBaseline() throws Exception {
-    runUpgradeTest("baseline", client -> {
+  public void testBasic() throws Exception {
+    runUpgradeTest("basic", (client, serverContext, cluster) -> {
+      // wait for upgrade to complete, scanning a table before upgrade is complete will fail with
+      // error if tablet availability is not present
+      Wait.waitFor(
+          () -> AccumuloDataVersion.get() == AccumuloDataVersion.getCurrentVersion(serverContext));
+
       var seenTables = client.tableOperations().list().stream()
           .filter(tableName -> !tableName.startsWith("accumulo.")).collect(Collectors.toSet());
       assertEquals(Set.of("ut1", "ut2", "ut3"), seenTables);
@@ -92,12 +101,29 @@ public class UpgradeIT extends WithTestNames {
     });
   }
 
+  @Test
+  public void testFate() throws Exception {
+    runUpgradeTest("fate", (client, serverContext, cluster) -> {
+      // When fate operations are present the manager process should exit with a non zero exit code
+      // and no upgrade should happen.
+      var managerProcess = cluster.getProcesses().get(ServerType.MANAGER).stream()
+          .collect(MoreCollectors.onlyElement()).getProcess();
+      assertTrue(managerProcess.waitFor(60, TimeUnit.SECONDS));
+      assertNotEquals(0, managerProcess.exitValue());
+      assertNotEquals(AccumuloDataVersion.get(),
+          AccumuloDataVersion.getCurrentVersion(serverContext));
+    });
+  }
+
   private interface Verifier {
-    void verify(AccumuloClient client) throws Exception;
+    void verify(AccumuloClient client, ServerContext serverContext, MiniAccumuloClusterImpl cluster)
+        throws Exception;
   }
 
   private void runUpgradeTest(String testName, Verifier verifier) throws Exception {
     var versions = UpgradeTestUtils.findVersions("baseline");
+
+    int run = 0;
 
     for (var version : versions) {
       if (version.equals(Constants.VERSION)) {
@@ -140,10 +166,7 @@ public class UpgradeIT extends WithTestNames {
         Wait.waitFor(() -> AccumuloStatus.isAccumuloOffline(serverContext.getZooReader(),
             serverContext.getZooKeeperRoot()), 60_000);
         cluster.start();
-        // wait for upgrade to complete
-        Wait.waitFor(() -> AccumuloDataVersion.get()
-            == AccumuloDataVersion.getCurrentVersion(serverContext));
-        verifier.verify(client);
+        verifier.verify(client, serverContext, cluster);
       } finally {
         zKProc.getProcess().destroyForcibly();
         // The cluster stop method will not kill processes because the cluster was started using an
@@ -151,6 +174,9 @@ public class UpgradeIT extends WithTestNames {
         UpgradeTestUtils.killAll(cluster);
         cluster.stop();
       }
+      run++;
     }
+
+    assertTrue(run > 0);
   }
 }
