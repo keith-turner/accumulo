@@ -67,8 +67,7 @@ public class UpgradeIT extends WithTestNames {
       assertEquals(generateKeys(0, 1000, 3, tr -> true),
           scan(client, "ut1", ComprehensiveIT.AUTHORIZATIONS));
       assertEquals(Map.of(), scan(client, "ut2", Authorizations.EMPTY));
-      // TODO change salt
-      assertEquals(generateKeys(0, 1000, 3, tr -> true),
+      assertEquals(generateKeys(0, 1000, 7, tr -> true),
           scan(client, "ut3", ComprehensiveIT.AUTHORIZATIONS));
 
       assertEquals(Set.of(), client.tableOperations().listSplits("ut1"));
