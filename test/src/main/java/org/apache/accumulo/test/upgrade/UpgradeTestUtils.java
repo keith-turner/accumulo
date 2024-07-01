@@ -23,20 +23,17 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.apache.accumulo.core.Constants;
-
 public class UpgradeTestUtils {
   public static final String BASE_DIR = "/target/upgrade-tests/";
   public static final String ROOT_PASSWORD = "979d55ae-98fd-4d22-9b1c-2d5723546a5e";
 
-  public static File getTestDir(String testName) {
-    return new File(System.getProperty("user.dir") + BASE_DIR + testName + "/" + Constants.VERSION);
+  public static File getTestDir(String version, String testName) {
+    return new File(System.getProperty("user.dir") + BASE_DIR + testName + "/" + version);
   }
 
-  public static File getOriginalMacDir(String testName) {
-    return new File(getTestDir(testName), "original_mac");
-  }
-
+  /**
+   * Finds all the dirs for a given test that exists for different versions.
+   */
   public static List<File> findTestDirs(String testName) {
     var testRoot = new File(System.getProperty("user.dir") + BASE_DIR + testName);
     var files = testRoot.listFiles();

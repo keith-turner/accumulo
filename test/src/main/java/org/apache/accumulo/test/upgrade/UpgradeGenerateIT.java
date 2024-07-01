@@ -20,7 +20,7 @@ package org.apache.accumulo.test.upgrade;
 
 import static org.apache.accumulo.core.conf.Property.GENERAL_PROCESS_BIND_ADDRESS;
 import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
-import static org.apache.accumulo.test.upgrade.UpgradeTestUtils.getOriginalMacDir;
+import static org.apache.accumulo.test.upgrade.UpgradeTestUtils.getTestDir;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -28,6 +28,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.util.Objects;
 
+import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.data.Mutation;
@@ -49,7 +50,7 @@ public class UpgradeGenerateIT {
 
   private void setupUpgradeTest(String testName) throws Exception {
 
-    File testDir = getOriginalMacDir(testName);
+    File testDir = getTestDir(Constants.VERSION, testName);
 
     FileUtils.deleteQuietly(testDir);
 
