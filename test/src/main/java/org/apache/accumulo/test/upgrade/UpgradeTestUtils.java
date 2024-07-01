@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
-import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.miniclusterImpl.ProcessNotFoundException;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;

@@ -19,6 +19,7 @@
 package org.apache.accumulo.test.upgrade;
 
 import static org.apache.accumulo.core.conf.Property.GENERAL_PROCESS_BIND_ADDRESS;
+import static org.apache.accumulo.core.conf.Property.TABLE_MAJC_RATIO;
 import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
 import static org.apache.accumulo.test.upgrade.UpgradeTestUtils.getTestDir;
 
@@ -31,10 +32,9 @@ import java.util.Objects;
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
-import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
-import org.apache.accumulo.miniclusterImpl.ProcessNotFoundException;
+import org.apache.accumulo.test.ComprehensiveIT;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.Disabled;
@@ -82,46 +82,49 @@ public class UpgradeGenerateIT {
   }
 
   @Test
-  public void cleanShutdown() throws Exception {
+  public void baseline() throws Exception {
 
-    setupUpgradeTest("cleanShutdown");
+    setupUpgradeTest("baseline");
     try (AccumuloClient c = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
-      c.tableOperations().create("test");
-      try (var writer = c.createBatchWriter("test")) {
-        var mutation = new Mutation("0");
-        mutation.put("f", "q", "v");
-        writer.addMutation(mutation);
+
+      var table1 = "ut1";
+
+      c.tableOperations().create(table1);
+      try (var writer = c.createBatchWriter(table1)) {
+        var mutations = ComprehensiveIT.generateMutations(0, 1000, 3, tr -> true);
+        int written = 0;
+        for (var mutation : mutations) {
+          writer.addMutation(mutation);
+          written++;
+          if (written == 50) {
+            // generate multiple files in the table
+            writer.flush();
+            c.tableOperations().flush(table1, null, null, true);
+          }
+        }
       }
+      c.tableOperations().flush(table1, null, null, true);
+
+      c.tableOperations().setProperty(table1, TABLE_MAJC_RATIO.getKey(), "3.14");
+
+      // create an empty table
+      var table2 = "ut2";
+      c.tableOperations().create(table2);
+
+      // create a table with splits
+      var table3 = "ut3";
+      c.tableOperations().create(table3);
+      c.tableOperations().addSplits(table3, ComprehensiveIT.createSplits(0, 1000, 13));
+      try (var writer = c.createBatchWriter(table3)) {
+        var mutations = ComprehensiveIT.generateMutations(0, 1000, 7, tr -> true);
+        for (var mutation : mutations) {
+          writer.addMutation(mutation);
+        }
+      }
+
+      c.tableOperations().setProperty(table3, TABLE_MAJC_RATIO.getKey(), "2.72");
 
       cluster.getClusterControl().adminStopAll();
-    } finally {
-      cluster.stop();
-    }
-  }
-
-  @Test
-  public void dirtyShutdown() throws Exception {
-
-    setupUpgradeTest("dirtyShutdown");
-    try (AccumuloClient c = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
-      c.tableOperations().create("test");
-      try (var writer = c.createBatchWriter("test")) {
-        var mutation = new Mutation("0");
-        mutation.put("f", "q", "v");
-        writer.addMutation(mutation);
-      }
-
-      // TODO run some eventual scans in 2.1 version of this test to leave some scan refs behind
-
-      cluster.getProcesses().forEach((server, processes) -> {
-        processes.forEach(process -> {
-          try {
-            cluster.killProcess(server, process);
-          } catch (ProcessNotFoundException | InterruptedException e) {
-            throw new IllegalStateException(e);
-          }
-        });
-      });
     } finally {
       cluster.stop();
     }

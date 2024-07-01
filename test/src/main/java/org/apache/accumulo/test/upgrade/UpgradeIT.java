@@ -19,22 +19,32 @@
 package org.apache.accumulo.test.upgrade;
 
 import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
+import static org.apache.accumulo.test.ComprehensiveBaseIT.createSplits;
+import static org.apache.accumulo.test.ComprehensiveBaseIT.generateKeys;
+import static org.apache.accumulo.test.ComprehensiveBaseIT.scan;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Accumulo;
+import org.apache.accumulo.core.client.AccumuloClient;
+import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.harness.WithTestNames;
 import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
+import org.apache.accumulo.test.ComprehensiveIT;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -48,13 +58,42 @@ public class UpgradeIT extends WithTestNames {
   private static final Logger log = LoggerFactory.getLogger(UpgradeIT.class);
 
   @Test
-  public void testCleanUpgrade() throws Exception {
+  public void testBaseline() throws Exception {
+    runUpgradeTest("baseline", client -> {
+      var seenTables = client.tableOperations().list().stream()
+          .filter(tableName -> !tableName.startsWith("accumulo.")).collect(Collectors.toSet());
+      assertEquals(Set.of("ut1", "ut2", "ut3"), seenTables);
 
-    String testName = "cleanShutdown";
-    var versions = UpgradeTestUtils.findVersions("cleanShutdown");
+      assertEquals(generateKeys(0, 1000, 3, tr -> true),
+          scan(client, "ut1", ComprehensiveIT.AUTHORIZATIONS));
+      assertEquals(Map.of(), scan(client, "ut2", Authorizations.EMPTY));
+      // TODO change salt
+      assertEquals(generateKeys(0, 1000, 3, tr -> true),
+          scan(client, "ut3", ComprehensiveIT.AUTHORIZATIONS));
+
+      assertEquals(Set.of(), client.tableOperations().listSplits("ut1"));
+      assertEquals(Set.of(), client.tableOperations().listSplits("ut2"));
+      assertEquals(createSplits(0, 1000, 13), client.tableOperations().listSplits("ut3"));
+
+      assertEquals("3.14", client.tableOperations().getTableProperties("uti1")
+          .get(Property.TABLE_MAJC_RATIO.getKey()));
+      assertNull(client.tableOperations().getTableProperties("uti2")
+          .get(Property.TABLE_MAJC_RATIO.getKey()));
+      assertEquals("2.72", client.tableOperations().getTableProperties("uti3")
+          .get(Property.TABLE_MAJC_RATIO.getKey()));
+
+    });
+  }
+
+  private interface Verifier {
+    void verify(AccumuloClient client) throws Exception;
+  }
+
+  private void runUpgradeTest(String testName, Verifier verifier) throws Exception {
+    var versions = UpgradeTestUtils.findVersions("baseline");
 
     for (var version : versions) {
-      if(version.equals(Constants.VERSION)) {
+      if (version.equals(Constants.VERSION)) {
         log.info("Skipping self {} ", Constants.VERSION);
         continue;
       }
@@ -66,8 +105,6 @@ public class UpgradeIT extends WithTestNames {
 
       var newMacDir = UpgradeTestUtils.getTestDir(Constants.VERSION, testName);
       FileUtils.deleteQuietly(newMacDir);
-
-      // TODO need more comments
 
       File csFile = new File(originalDir, "conf/hdfs-site.xml");
       Configuration hadoopSite = new Configuration();
@@ -87,17 +124,13 @@ public class UpgradeIT extends WithTestNames {
       cluster._exec(cluster.getConfig().getServerClass(ServerType.ZOOKEEPER), ServerType.ZOOKEEPER,
           Map.of(), new File(originalDir, "conf/zoo.cfg").getAbsolutePath());
 
-      // TODO check root tablet metadata and ensure it has no location
-
-      // TODO started processes continue to run
       cluster.start();
 
       try (var client = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
-        try (var scanner = client.createScanner("test")) {
-          scanner.forEach(System.out::println);
-        }
+        verifier.verify(client);
       } finally {
-        // The cluster stop method will not kill processes because the cluster was started using an existing instance.
+        // The cluster stop method will not kill processes because the cluster was started using an
+        // existing instance.
         UpgradeTestUtils.killAll(cluster);
         cluster.stop();
       }
