@@ -54,12 +54,16 @@ public class UpgradeIT extends WithTestNames {
     var versions = UpgradeTestUtils.findVersions("cleanShutdown");
 
     for (var version : versions) {
+      if(version.equals(Constants.VERSION)) {
+        log.info("Skipping self {} ", Constants.VERSION);
+        continue;
+      }
+
       log.info("Running upgrade test: {} -> {}", version, Constants.VERSION);
 
       var originalDir = UpgradeTestUtils.getTestDir(version, testName);
       UpgradeTestUtils.backupOrRestore(version, testName);
 
-      Assertions.assertNotEquals(version, Constants.VERSION);
       var newMacDir = UpgradeTestUtils.getTestDir(Constants.VERSION, testName);
       FileUtils.deleteQuietly(newMacDir);
 
@@ -93,6 +97,8 @@ public class UpgradeIT extends WithTestNames {
           scanner.forEach(System.out::println);
         }
       } finally {
+        // The cluster stop method will not kill processes because the cluster was started using an existing instance.
+        UpgradeTestUtils.killAll(cluster);
         cluster.stop();
       }
     }

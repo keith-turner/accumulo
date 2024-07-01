@@ -24,6 +24,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
+import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
+import org.apache.accumulo.miniclusterImpl.ProcessNotFoundException;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +43,10 @@ public class UpgradeTestUtils {
     return new File(System.getProperty("user.dir") + WORK_DIR + testName + "/" + version);
   }
 
+  public static File getBackupDir(String version, String testName) {
+    return new File(System.getProperty("user.dir") + BACKUP_DIR + testName + "/" + version);
+  }
+
   /**
    * For a given test name finds all the versions of all dirs created using
    * {@link #getTestDir(String, String)}
@@ -54,10 +61,9 @@ public class UpgradeTestUtils {
         .collect(Collectors.toList());
   }
 
-  public static void clearBackups(String version, String testName) {
-    File backupDir =
-        new File(System.getProperty("user.dir") + BACKUP_DIR + testName + "/" + version);
-    FileUtils.deleteQuietly(backupDir);
+  public static void deleteTest(String version, String testName) {
+    FileUtils.deleteQuietly(getTestDir(version, testName));
+    FileUtils.deleteQuietly(getBackupDir(version, testName));
   }
 
   /**
@@ -68,8 +74,7 @@ public class UpgradeTestUtils {
   public static void backupOrRestore(String version, String testName) throws IOException {
 
     File testDir = getTestDir(version, testName);
-    File backupDir =
-        new File(System.getProperty("user.dir") + BACKUP_DIR + testName + "/" + version);
+    File backupDir = getBackupDir(version, testName);
 
     if (backupDir.exists()) {
       log.info("Restoring backup {} -> {}", backupDir, testDir);
@@ -79,6 +84,18 @@ public class UpgradeTestUtils {
       log.info("Creating backup {} -> {}", testDir, backupDir);
       FileUtils.copyDirectory(testDir, backupDir);
     }
+  }
+
+  public static void killAll(MiniAccumuloClusterImpl cluster) {
+    cluster.getProcesses().forEach((server, processes) -> {
+      processes.forEach(process -> {
+        try {
+          cluster.killProcess(server, process);
+        } catch (ProcessNotFoundException | InterruptedException e) {
+          throw new IllegalStateException(e);
+        }
+      });
+    });
   }
 
 }
