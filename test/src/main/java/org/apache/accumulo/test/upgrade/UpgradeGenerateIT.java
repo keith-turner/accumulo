@@ -30,13 +30,17 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.util.List;
 import java.util.Objects;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
+import org.apache.accumulo.core.client.IteratorSetting;
+import org.apache.accumulo.core.client.admin.CompactionConfig;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
+import org.apache.accumulo.test.functional.SlowIterator;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.Disabled;
@@ -84,9 +88,9 @@ public class UpgradeGenerateIT {
   }
 
   @Test
-  public void baseline() throws Exception {
+  public void genBasic() throws Exception {
 
-    setupUpgradeTest("baseline");
+    setupUpgradeTest("basic");
     try (AccumuloClient c = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
 
       c.securityOperations().changeUserAuthorizations("root", AUTHORIZATIONS);
@@ -133,4 +137,34 @@ public class UpgradeGenerateIT {
       cluster.stop();
     }
   }
+
+  @Test
+  public void genFate() throws Exception {
+    setupUpgradeTest("fate");
+    try (AccumuloClient c = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
+      var table1 = "ut1";
+
+      c.tableOperations().create(table1);
+      try (var writer = c.createBatchWriter(table1)) {
+        var mutations = generateMutations(0, 1000, 3, tr -> true);
+        for (var mutation : mutations) {
+          writer.addMutation(mutation);
+        }
+      }
+
+      // Create a compaction operation that will not complete before the cluster is stopped. This
+      // will create a fate operation that should cause upgrade to fail.
+      CompactionConfig compactionConfig = new CompactionConfig();
+      IteratorSetting iteratorSetting = new IteratorSetting(100, SlowIterator.class);
+      SlowIterator.setSleepTime(iteratorSetting, 1000);
+      compactionConfig.setIterators(List.of(iteratorSetting));
+      compactionConfig.setWait(false);
+
+      c.tableOperations().compact(table1, compactionConfig);
+
+    } finally {
+      cluster.stop();
+    }
+  }
+
 }
