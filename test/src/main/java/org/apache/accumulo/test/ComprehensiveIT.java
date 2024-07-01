@@ -115,7 +115,7 @@ import com.google.common.collect.Sets;
 public class ComprehensiveIT extends SharedMiniClusterBase {
 
   public static final String DOG_AND_CAT = "DOG&CAT";
-  static final Authorizations AUTHORIZATIONS = new Authorizations("CAT", "DOG");
+  public static final Authorizations AUTHORIZATIONS = new Authorizations("CAT", "DOG");
 
   private static final Logger log = LoggerFactory.getLogger(ComprehensiveIT.class);
 

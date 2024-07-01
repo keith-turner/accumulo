@@ -21,6 +21,9 @@ package org.apache.accumulo.test.upgrade;
 import static org.apache.accumulo.core.conf.Property.GENERAL_PROCESS_BIND_ADDRESS;
 import static org.apache.accumulo.core.conf.Property.TABLE_MAJC_RATIO;
 import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
+import static org.apache.accumulo.test.ComprehensiveIT.AUTHORIZATIONS;
+import static org.apache.accumulo.test.ComprehensiveIT.createSplits;
+import static org.apache.accumulo.test.ComprehensiveIT.generateMutations;
 import static org.apache.accumulo.test.upgrade.UpgradeTestUtils.getTestDir;
 
 import java.io.BufferedOutputStream;
@@ -34,7 +37,6 @@ import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
-import org.apache.accumulo.test.ComprehensiveIT;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.Disabled;
@@ -87,11 +89,13 @@ public class UpgradeGenerateIT {
     setupUpgradeTest("baseline");
     try (AccumuloClient c = Accumulo.newClient().from(cluster.getClientProperties()).build()) {
 
+      c.securityOperations().changeUserAuthorizations("root", AUTHORIZATIONS);
+
       var table1 = "ut1";
 
       c.tableOperations().create(table1);
       try (var writer = c.createBatchWriter(table1)) {
-        var mutations = ComprehensiveIT.generateMutations(0, 1000, 3, tr -> true);
+        var mutations = generateMutations(0, 1000, 3, tr -> true);
         int written = 0;
         for (var mutation : mutations) {
           writer.addMutation(mutation);
@@ -114,9 +118,9 @@ public class UpgradeGenerateIT {
       // create a table with splits
       var table3 = "ut3";
       c.tableOperations().create(table3);
-      c.tableOperations().addSplits(table3, ComprehensiveIT.createSplits(0, 1000, 13));
+      c.tableOperations().addSplits(table3, createSplits(0, 1000, 13));
       try (var writer = c.createBatchWriter(table3)) {
-        var mutations = ComprehensiveIT.generateMutations(0, 1000, 3, tr -> true);
+        var mutations = generateMutations(0, 1000, 7, tr -> true);
         for (var mutation : mutations) {
           writer.addMutation(mutation);
         }
