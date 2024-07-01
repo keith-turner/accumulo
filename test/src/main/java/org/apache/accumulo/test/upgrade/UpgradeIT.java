@@ -121,7 +121,7 @@ public class UpgradeIT extends WithTestNames {
   }
 
   private void runUpgradeTest(String testName, Verifier verifier) throws Exception {
-    var versions = UpgradeTestUtils.findVersions("baseline");
+    var versions = UpgradeTestUtils.findVersions(testName);
 
     int run = 0;
 
