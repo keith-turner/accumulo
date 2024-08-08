@@ -206,8 +206,9 @@ public class ManagerRepoIT extends SharedMiniClusterBase {
 
       TableId tableId = TableId.of(client.tableOperations().tableIdMap().get(userTable));
 
-      TestServerAmpleImpl testAmple = (TestServerAmpleImpl) TestAmple
-          .create(getCluster().getServerContext(), Map.of(DataLevel.USER, metadataTable), () -> withStatus(ACCEPTED, UNKNOWN, 1));
+      TestServerAmpleImpl testAmple =
+          (TestServerAmpleImpl) TestAmple.create(getCluster().getServerContext(),
+              Map.of(DataLevel.USER, metadataTable), () -> withStatus(ACCEPTED, UNKNOWN, 1));
       // Prevent UNSPLITTABLE_COLUMN just in case a system split tried to run on the table
       // before we copied it and inserted the column
       testAmple.createMetadataFromExisting(client, tableId,
@@ -254,7 +255,7 @@ public class ManagerRepoIT extends SharedMiniClusterBase {
     String userTable = tableNames[1];
 
     try (ClientContext client =
-                 (ClientContext) Accumulo.newClient().from(getClientProps()).build()) {
+        (ClientContext) Accumulo.newClient().from(getClientProps()).build()) {
       TestAmple.createMetadataTable(client, metadataTable);
 
       // Create table with a smaller max end row size
@@ -263,19 +264,20 @@ public class ManagerRepoIT extends SharedMiniClusterBase {
 
       TableId tableId = TableId.of(client.tableOperations().tableIdMap().get(userTable));
 
-      TestServerAmpleImpl testAmple = (TestServerAmpleImpl) TestAmple
-              .create(getCluster().getServerContext(), Map.of(DataLevel.USER, metadataTable), () -> withStatus(ACCEPTED, UNKNOWN, 1));
+      TestServerAmpleImpl testAmple =
+          (TestServerAmpleImpl) TestAmple.create(getCluster().getServerContext(),
+              Map.of(DataLevel.USER, metadataTable), () -> withStatus(ACCEPTED, UNKNOWN, 1));
       // Prevent UNSPLITTABLE_COLUMN just in case a system split tried to run on the table
       // before we copied it and inserted the column
       testAmple.createMetadataFromExisting(client, tableId,
-              not(SplitColumnFamily.UNSPLITTABLE_COLUMN));
+          not(SplitColumnFamily.UNSPLITTABLE_COLUMN));
 
       KeyExtent extent = new KeyExtent(tableId, null, null);
       Manager manager = mockWithAmple(getCluster().getServerContext(), testAmple);
 
       FindSplits findSplits = new FindSplits(extent);
       PreSplit preSplit = (PreSplit) findSplits
-              .call(FateId.from(FateInstanceType.USER, UUID.randomUUID()), manager);
+          .call(FateId.from(FateInstanceType.USER, UUID.randomUUID()), manager);
 
       // The table should not need splitting
       assertNull(preSplit);
@@ -284,20 +286,20 @@ public class ManagerRepoIT extends SharedMiniClusterBase {
       var metadata = testAmple.readTablet(new KeyExtent(tableId, null, null)).getUnSplittable();
       assertNotNull(metadata);
 
-      // Increase the split threshold such that the tablet no longer needs to split.  This will also make the config differ from what is in the unsplittable column.
+      // Increase the split threshold such that the tablet no longer needs to split. This will also
+      // make the config differ from what is in the unsplittable column.
       client.tableOperations().setProperty(userTable, Property.TABLE_SPLIT_THRESHOLD.getKey(),
-              "1M");
+          "1M");
 
       findSplits = new FindSplits(extent);
       preSplit = (PreSplit) findSplits.call(FateId.from(FateInstanceType.USER, UUID.randomUUID()),
-              manager);
+          manager);
 
       // The table SHOULD not need splitting
       assertNull(preSplit);
 
-      //The tablet no longer needs to split so the unsplittable column should have been deleted
-      assertNull(
-              testAmple.readTablet(new KeyExtent(tableId, null, null)).getUnSplittable());
+      // The tablet no longer needs to split so the unsplittable column should have been deleted
+      assertNull(testAmple.readTablet(new KeyExtent(tableId, null, null)).getUnSplittable());
     }
   }
 

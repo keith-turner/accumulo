@@ -45,16 +45,20 @@ import org.apache.accumulo.core.data.ConditionalMutation;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.iterators.SortedFilesIterator;
 import org.apache.accumulo.core.lock.ServiceLock;
-import org.apache.accumulo.core.metadata.schema.*;
+import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.BulkFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CompactedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ExternalCompactionColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.LogColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.UserCompactionRequestedColumnFamily;
+import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.LocationType;
+import org.apache.accumulo.core.metadata.schema.TabletMutatorBase;
+import org.apache.accumulo.core.metadata.schema.TabletOperationId;
 import org.apache.accumulo.core.tabletserver.log.LogEntry;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.server.ServerContext;
@@ -294,11 +298,10 @@ public class ConditionalTabletMutatorImpl extends TabletMutatorBase<Ample.Condit
         mutation.addCondition(c);
       }
         break;
-      case UNSPLITTABLE:
-      {
-        Condition c =
-                new Condition(UNSPLITTABLE_COLUMN.getColumnFamily(), UNSPLITTABLE_COLUMN.getColumnQualifier());
-        if(tabletMetadata.getUnSplittable() != null) {
+      case UNSPLITTABLE: {
+        Condition c = new Condition(UNSPLITTABLE_COLUMN.getColumnFamily(),
+            UNSPLITTABLE_COLUMN.getColumnQualifier());
+        if (tabletMetadata.getUnSplittable() != null) {
           c.setValue(tabletMetadata.getUnSplittable().toBase64());
         }
         mutation.addCondition(c);

@@ -132,11 +132,7 @@ public class FindSplits extends ManagerRepo {
               tabletMetadata.getExtent(), unSplittableMeta);
           var mutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation()
               .requireSame(tabletMetadata, FILES, UNSPLITTABLE).setUnSplittable(unSplittableMeta);
-          mutator.submit(tm -> {
-                    System.out.println("HERE 1");
-                    return unSplittableMeta.equals(tm.getUnSplittable());
-                  }
-          );
+          mutator.submit(tm -> unSplittableMeta.equals(tm.getUnSplittable()));
 
           // Case 2: If the unsplittable marker has already been previously set, but we do not need
           // to split then clear the marker. This could happen in some scenarios such as
@@ -148,10 +144,7 @@ public class FindSplits extends ManagerRepo {
               tabletMetadata.getExtent());
           var mutator = tabletsMutator.mutateTablet(extent).requireAbsentOperation()
               .requireSame(tabletMetadata, FILES, UNSPLITTABLE).deleteUnSplittable();
-          mutator.submit(tm -> {
-            System.out.println("HERE 2");
-            return tm.getUnSplittable() == null;
-          });
+          mutator.submit(tm -> tm.getUnSplittable() == null);
           // Case 3: The table config and/or set of files changed since the tablet mgmt iterator
           // examined this tablet.
         } else {

@@ -25,14 +25,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample;
-import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.util.threads.Threads;
-import org.apache.accumulo.server.ServerContext;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -46,7 +43,8 @@ public class AsyncConditionalTabletsMutatorImpl implements Ample.AsyncConditiona
   public static final int BATCH_SIZE = 1000;
 
   @VisibleForTesting
-  public AsyncConditionalTabletsMutatorImpl(Consumer<Ample.ConditionalResult> resultsConsumer, Supplier<Ample.ConditionalTabletsMutator> mutatorFactory) {
+  public AsyncConditionalTabletsMutatorImpl(Consumer<Ample.ConditionalResult> resultsConsumer,
+      Supplier<Ample.ConditionalTabletsMutator> mutatorFactory) {
     this.resultsConsumer = Objects.requireNonNull(resultsConsumer);
     this.mutatorFactory = mutatorFactory;
     this.bufferingMutator = mutatorFactory.get();
