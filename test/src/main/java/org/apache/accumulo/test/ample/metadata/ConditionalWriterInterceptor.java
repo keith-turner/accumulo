@@ -66,6 +66,7 @@ public interface ConditionalWriterInterceptor {
 
       @Override
       public Result write(ConditionalWriter writer, ConditionalMutation mutation) {
+        System.out.println("Count "+count.get());
         return afterWrite(List.of(writer.write(mutation)).iterator()).next();
       }
 

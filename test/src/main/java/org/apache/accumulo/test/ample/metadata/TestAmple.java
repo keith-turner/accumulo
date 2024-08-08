@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.SortedMap;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.BatchWriter;
@@ -122,8 +123,8 @@ public class TestAmple {
     @Override
     public AsyncConditionalTabletsMutator
         conditionallyMutateTablets(Consumer<ConditionalResult> resultsConsumer) {
-      return new AsyncConditionalTabletsMutatorImpl(getContext(), getTableMapper(),
-          resultsConsumer);
+      return new AsyncConditionalTabletsMutatorImpl(
+          resultsConsumer, ()->conditionallyMutateTablets(cwInterceptor.get()));
     }
 
     @Override
