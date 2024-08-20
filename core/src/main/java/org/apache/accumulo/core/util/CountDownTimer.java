@@ -26,6 +26,17 @@ import com.google.common.base.Preconditions;
 /**
  * A utility class that tracks the time remaining from an initial duration. It allows the caller to
  * check how much time is left on the timer and if the countdown has expired.
+ * <p>
+ * Example usage:
+ *
+ * <pre>
+ * CountDownTimer timer = CountDownTimer.startNew(Duration.ofMillis(100));
+ * Thread.sleep(10);
+ * long timeLeft = timer.timeLeft(TimeUnit.MILLISECONDS); // approximately 90ms remaining
+ * boolean expired = timer.isExpired(); // false
+ * Thread.sleep(100);
+ * expired = timer.isExpired(); // true
+ * </pre>
  */
 public class CountDownTimer {
   private final long startNanos;
