@@ -24,7 +24,8 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.base.Preconditions;
 
 /**
- * Tracks the amount of time left from an initial duration.
+ * A utility class that tracks the time remaining from an initial duration. It allows the caller to
+ * check how much time is left on the timer and if the countdown has expired.
  */
 public class CountDownTimer {
   private final long startNanos;
@@ -36,9 +37,9 @@ public class CountDownTimer {
   }
 
   /**
-   * Starts a timer that will track the time left from the initial duration. For example starting a
-   * CountDownTimer with a duration of 100ms will return 90ms left after 10ms. After 110ms it should
-   * return 0 and always return 0 from that point.
+   * Starts a new countdown timer with the specified duration.
+   *
+   * @param duration the countdown duration, must be non-negative.
    */
   public static CountDownTimer startNew(Duration duration) {
     Preconditions.checkArgument(!duration.isNegative());
@@ -46,9 +47,10 @@ public class CountDownTimer {
   }
 
   /**
-   * Starts a timer that will track the time left from the initial duration. For example starting a
-   * CountDownTimer with a duration of 100ms will return 90ms left after 10ms. After 110ms it should
-   * return 0 and always return 0 from that point.
+   * Starts a new countdown timer with the specified duration.
+   *
+   * @param duration the countdown duration, must be non-negative.
+   * @param unit the time unit of the duration.
    */
   public static CountDownTimer startNew(long duration, TimeUnit unit) {
     Preconditions.checkArgument(duration >= 0);
@@ -56,7 +58,8 @@ public class CountDownTimer {
   }
 
   /**
-   * @return the amount of time left in the countdown or zero if the time is up.
+   * @param unit the desired {@link TimeUnit} for the returned time.
+   * @return the remaining time in the specified unit, or zero if expired.
    */
   public long timeLeft(TimeUnit unit) {
     var elapsed = (System.nanoTime() - startNanos);
@@ -69,6 +72,8 @@ public class CountDownTimer {
   }
 
   /**
+   * Checks if the countdown timer has expired.
+   *
    * @return true if the elapsed time since creation is greater than or equals to the initial
    *         duration, otherwise return false.
    */
