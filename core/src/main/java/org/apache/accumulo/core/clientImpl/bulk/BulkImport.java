@@ -21,6 +21,7 @@ package org.apache.accumulo.core.clientImpl.bulk;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.groupingBy;
 import static org.apache.accumulo.core.file.blockfile.impl.CachableBlockFile.pathToCacheId;
 import static org.apache.accumulo.core.util.Validators.EXISTING_TABLE_NAME;
@@ -30,6 +31,7 @@ import static org.apache.accumulo.core.util.threads.ThreadPoolNames.BULK_IMPORT_
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -48,6 +50,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import org.apache.accumulo.core.Constants;
@@ -78,6 +82,7 @@ import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
 import org.apache.accumulo.core.util.Retry;
+import org.apache.accumulo.core.util.Timer;
 import org.apache.accumulo.core.volume.VolumeConfiguration;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.hadoop.fs.FileStatus;
@@ -325,18 +330,24 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
   }
 
   public static List<KeyExtent> findOverlappingTablets(KeyExtentCache extentCache,
-      FileSKVIterator reader) throws IOException {
+      FileSKVIterator reader, BulkTimings bulkTimings) throws IOException {
+
+    Timer timer = Timer.startNew();
 
     List<KeyExtent> result = new ArrayList<>();
     Collection<ByteSequence> columnFamilies = Collections.emptyList();
     Text row = new Text();
     while (true) {
+      timer.restart();
       reader.seek(new Range(row, null), columnFamilies, false);
       if (!reader.hasTop()) {
         break;
       }
       row = reader.getTopKey().getRow();
+      bulkTimings.addFileSeekTime(timer);
+      timer.restart();
       KeyExtent extent = extentCache.lookup(row);
+      bulkTimings.addMetadataLookupTime(timer);
       result.add(extent);
       row = extent.endRow();
       if (row != null) {
@@ -357,12 +368,12 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
   public static List<KeyExtent> findOverlappingTablets(ClientContext context,
       KeyExtentCache extentCache, Path file, FileSystem fs, Cache<String,Long> fileLenCache,
-      CryptoService cs) throws IOException {
+      CryptoService cs, BulkTimings bulkTimings) throws IOException {
     try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
         .forFile(file.toString(), fs, fs.getConf(), cs)
         .withTableConfiguration(context.getConfiguration()).withFileLenCache(fileLenCache)
         .seekToBeginning().build()) {
-      return findOverlappingTablets(extentCache, reader);
+      return findOverlappingTablets(extentCache, reader, bulkTimings);
     }
   }
 
@@ -485,13 +496,12 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       executor = this.executor;
     } else if (numThreads > 0) {
       executor = service = context.threadPools().getPoolBuilder(BULK_IMPORT_CLIENT_LOAD_POOL)
-          .numCoreThreads(numThreads).enableThreadPoolMetrics().build();
+          .numCoreThreads(numThreads).build();
     } else {
       String threads = context.getConfiguration().get(ClientProperty.BULK_LOAD_THREADS.getKey());
       executor =
           service = context.threadPools().getPoolBuilder(BULK_IMPORT_CLIENT_BULK_THREADS_POOL)
-              .numCoreThreads(ConfigurationTypeHelper.getNumThreads(threads))
-              .enableThreadPoolMetrics().build();
+              .numCoreThreads(ConfigurationTypeHelper.getNumThreads(threads)).build();
     }
 
     try {
@@ -533,9 +543,68 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     return fileList;
   }
 
+  public static class BulkTimings {
+
+    private static final Logger log = LoggerFactory.getLogger(BulkTimings.class);
+
+    // Keep all data in nanoseconds so that merging data is more precise. Report data in millis so
+    // that its easier to read.
+
+    long totalSeekTime;
+    int numSeeks;
+    long totalLookupTime;
+    int numLookups;
+
+    long totalEstimateTime;
+    int numEstimates;
+
+    public void addFileSeekTime(Timer timer) {
+      totalSeekTime += timer.elapsed(TimeUnit.NANOSECONDS);
+      numSeeks++;
+    }
+
+    public void addMetadataLookupTime(Timer timer) {
+      totalLookupTime += timer.elapsed(TimeUnit.NANOSECONDS);
+      numLookups++;
+    }
+
+    public void addEstimateSizesTime(Timer timer) {
+      totalEstimateTime += timer.elapsed(TimeUnit.NANOSECONDS);
+      numEstimates++;
+    }
+
+    public synchronized void merge(BulkTimings other) {
+      totalSeekTime += other.totalSeekTime;
+      numSeeks += other.numSeeks;
+      totalLookupTime += other.totalLookupTime;
+      numLookups += other.numLookups;
+      totalEstimateTime += other.totalEstimateTime;
+      numEstimates += other.numEstimates;
+    }
+
+    public void logTiming(String group, String name, Timer totalTimer) {
+      log.info("{}.{},{},{},{},{},{},{},{}", group, name, NANOSECONDS.toMillis(totalSeekTime),
+          numSeeks, NANOSECONDS.toMillis(totalLookupTime), numLookups,
+          NANOSECONDS.toMillis(totalEstimateTime), numEstimates, totalTimer.elapsed(MILLISECONDS));
+    }
+
+    public void logContext(String logGroup, Path dirPath, Executor executor) {
+      int numThreads = -1;
+      if (executor instanceof ThreadPoolExecutor) {
+        numThreads = ((ThreadPoolExecutor) executor).getCorePoolSize();
+      }
+      log.info("{} threads={} dir={}", logGroup, numThreads, dirPath);
+    }
+  }
+
+  private static final SecureRandom random = new SecureRandom();
+
   public SortedMap<KeyExtent,Bulk.Files> computeFileToTabletMappings(FileSystem fs, TableId tableId,
       Map<String,String> tableProps, Path dirPath, Executor executor, ClientContext context,
       int maxTablets) throws IOException, AccumuloException, AccumuloSecurityException {
+
+    Timer totalTimer = Timer.startNew();
+    String logGroup = Integer.toHexString(random.nextInt());
 
     KeyExtentCache extentCache = new ConcurrentKeyExtentCache(tableId, context);
 
@@ -551,23 +620,28 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     CryptoService cs = CryptoFactoryLoader.getServiceForClientWithTable(
         context.instanceOperations().getSystemConfiguration(), tableProps, tableId);
 
+    BulkTimings totalTimings = new BulkTimings();
+
     for (FileStatus fileStatus : files) {
       Path filePath = fileStatus.getPath();
       CompletableFuture<Map<KeyExtent,Bulk.FileInfo>> future = CompletableFuture.supplyAsync(() -> {
         try {
-          long t1 = System.currentTimeMillis();
-          List<KeyExtent> extents =
-              findOverlappingTablets(context, extentCache, filePath, fs, fileLensCache, cs);
+          var fileTimer = Timer.startNew();
+          BulkTimings bulkTimings = new BulkTimings();
+          List<KeyExtent> extents = findOverlappingTablets(context, extentCache, filePath, fs,
+              fileLensCache, cs, bulkTimings);
           // make sure file isn't going to too many tablets
           checkTabletCount(maxTablets, extents.size(), filePath.toString());
+          Timer timer = Timer.startNew();
           Map<KeyExtent,Long> estSizes = estimateSizes(context.getConfiguration(), filePath,
               fileStatus.getLen(), extents, fs, fileLensCache, cs);
+          bulkTimings.addEstimateSizesTime(timer);
           Map<KeyExtent,Bulk.FileInfo> pathLocations = new HashMap<>();
           for (KeyExtent ke : extents) {
             pathLocations.put(ke, new Bulk.FileInfo(filePath, estSizes.getOrDefault(ke, 0L)));
           }
-          long t2 = System.currentTimeMillis();
-          log.debug("Mapped {} to {} tablets in {}ms", filePath, pathLocations.size(), t2 - t1);
+          bulkTimings.logTiming(logGroup, fileStatus.getPath().getName(), fileTimer);
+          totalTimings.merge(bulkTimings);
           return pathLocations;
         } catch (Exception e) {
           throw new CompletionException(e);
@@ -591,7 +665,12 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       }
     }
 
-    return mergeOverlapping(mappings);
+    var merged = mergeOverlapping(mappings);
+
+    totalTimings.logTiming(logGroup, "TOTAL", totalTimer);
+    totalTimings.logContext(logGroup, dirPath, executor);
+
+    return merged;
   }
 
   // This method handles the case of splits happening while files are being examined. It merges
