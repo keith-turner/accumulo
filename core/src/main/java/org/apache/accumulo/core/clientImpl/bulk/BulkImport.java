@@ -599,9 +599,10 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
   private static final SecureRandom random = new SecureRandom();
 
-  public SortedMap<KeyExtent,Bulk.Files> computeFileToTabletMappings(FileSystem fs, TableId tableId,
-      Map<String,String> tableProps, Path dirPath, Executor executor, ClientContext context,
-      int maxTablets) throws IOException, AccumuloException, AccumuloSecurityException {
+  public static SortedMap<KeyExtent,Bulk.Files> computeFileToTabletMappings(FileSystem fs,
+      TableId tableId, Map<String,String> tableProps, Path dirPath, Executor executor,
+      ClientContext context, int maxTablets)
+      throws IOException, AccumuloException, AccumuloSecurityException {
 
     Timer totalTimer = Timer.startNew();
     String logGroup = Integer.toHexString(random.nextInt());
@@ -700,7 +701,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     return mappings;
   }
 
-  private void checkTabletCount(int tabletMaxSize, int tabletCount, String file) {
+  private static void checkTabletCount(int tabletMaxSize, int tabletCount, String file) {
     if (tabletMaxSize > 0 && tabletCount > tabletMaxSize) {
       throw new IllegalArgumentException("The file " + file + " attempted to import to "
           + tabletCount + " tablets. Max tablets allowed set to " + tabletMaxSize);
