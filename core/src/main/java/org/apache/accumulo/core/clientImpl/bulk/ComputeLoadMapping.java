@@ -19,7 +19,6 @@
 package org.apache.accumulo.core.clientImpl.bulk;
 
 import java.util.Map;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -33,8 +32,9 @@ import org.apache.hadoop.fs.Path;
 public class ComputeLoadMapping {
   public static void main(String[] args) throws Exception {
 
-    if(args.length != 3) {
-      System.err.println("Usage : "+ComputeLoadMapping.class.getSimpleName()+" <table> <dir> <num threads>");
+    if (args.length != 3) {
+      System.err.println(
+          "Usage : " + ComputeLoadMapping.class.getSimpleName() + " <table> <dir> <num threads>");
       System.exit(-1);
     }
 
@@ -46,16 +46,16 @@ public class ComputeLoadMapping {
 
     ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
-    try(var client =  Accumulo.newClient().from(propsFile).build()) {
+    try (var client = Accumulo.newClient().from(propsFile).build()) {
       FileSystem fs = FileSystem.get(new Configuration());
       Path dirPath = new Path(dir);
       var context = (ClientContext) client;
       int maxTablets = 1000;
       TableId tableId = context.getTableId(tableName);
-      Map<String, String> tableProps = client.tableOperations().getConfiguration(tableName);
+      Map<String,String> tableProps = client.tableOperations().getConfiguration(tableName);
       BulkImport.computeFileToTabletMappings(fs, tableId, tableProps, dirPath, executor, context,
-              maxTablets);
-    }finally {
+          maxTablets);
+    } finally {
       executor.shutdownNow();
     }
   }

@@ -369,10 +369,12 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
   public static List<KeyExtent> findOverlappingTablets(ClientContext context,
       KeyExtentCache extentCache, Path file, FileSystem fs, Cache<String,Long> fileLenCache,
       CryptoService cs, BulkTimings bulkTimings) throws IOException {
+    Timer timer = Timer.startNew();
     try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
         .forFile(file.toString(), fs, fs.getConf(), cs)
         .withTableConfiguration(context.getConfiguration()).withFileLenCache(fileLenCache)
         .seekToBeginning().build()) {
+      bulkTimings.addFileOpenTime(timer);
       return findOverlappingTablets(extentCache, reader, bulkTimings);
     }
   }
@@ -552,6 +554,8 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     // Keep all data in nanoseconds so that merging data is more precise. Report data in millis so
     // that its easier to read.
 
+    long totalFileOpenTime;
+    int filesOpened;
     long totalSeekTime;
     int numSeeks;
     long totalLookupTime;
@@ -560,33 +564,42 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     long totalEstimateTime;
     int numEstimates;
 
-    public BulkTimings(String logGroup, String name){
+    public BulkTimings(String logGroup, String name) {
       this.logGroup = logGroup;
       this.name = name;
+    }
+
+    public void addFileOpenTime(Timer timer) {
+      long elapsed = timer.elapsed(TimeUnit.NANOSECONDS);
+      totalFileOpenTime += elapsed;
+      filesOpened++;
+      log.info("EVENT {},{},FILE_OPEN,{}", logGroup, name, NANOSECONDS.toMillis(elapsed));
     }
 
     public void addFileSeekTime(Timer timer) {
       long elapsed = timer.elapsed(TimeUnit.NANOSECONDS);
       totalSeekTime += elapsed;
       numSeeks++;
-      log.info("EVENT {},{},FILE_SEEK,{}",logGroup,name,NANOSECONDS.toMillis(elapsed));
+      log.info("EVENT {},{},FILE_SEEK,{}", logGroup, name, NANOSECONDS.toMillis(elapsed));
     }
 
     public void addMetadataLookupTime(Timer timer) {
       long elapsed = timer.elapsed(TimeUnit.NANOSECONDS);
       totalLookupTime += elapsed;
       numLookups++;
-      log.info("EVENT {},{},META_LOOKUP,{}",logGroup,name,NANOSECONDS.toMillis(elapsed));
+      log.info("EVENT {},{},META_LOOKUP,{}", logGroup, name, NANOSECONDS.toMillis(elapsed));
     }
 
     public void addEstimateSizesTime(Timer timer) {
       long elapsed = timer.elapsed(TimeUnit.NANOSECONDS);
       totalEstimateTime += elapsed;
       numEstimates++;
-      log.info("EVENT {},name,EST_SIZES,{}",logGroup,name,NANOSECONDS.toMillis(elapsed));
+      log.info("EVENT {},name,EST_SIZES,{} {}", logGroup, name, NANOSECONDS.toMillis(elapsed));
     }
 
     public synchronized void merge(BulkTimings other) {
+      totalFileOpenTime += other.totalFileOpenTime;
+      filesOpened += other.filesOpened;
       totalSeekTime += other.totalSeekTime;
       numSeeks += other.numSeeks;
       totalLookupTime += other.totalLookupTime;
@@ -595,12 +608,14 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       numEstimates += other.numEstimates;
     }
 
-    public void logSummaryHeader(){
-      log.info("SUMMARY_HEADER LOG_GROUP,NAME,FILE_SEEK_MS_SUM,NUM_SEEKS,META_LOOKUP_MS_SUM,NUM_LOOKUPS,EST_SIZES_MS_SUM,NUM_EST_SIZES,TOTAL_TIME_MS");
+    public void logSummaryHeader() {
+      log.info(
+          "SUMMARY_HEADER LOG_GROUP,NAME,FILE_OPEN_MS,NUM_OPENS,FILE_SEEK_MS,NUM_SEEKS,META_LOOKUP_MS,NUM_LOOKUPS,EST_SIZES_MS,NUM_EST_SIZES,TOTAL_TIME_MS");
     }
 
     public void logSummary(Timer totalTimer) {
-      log.info("SUMMARY {},{},{},{},{},{},{},{},{}", logGroup, name, NANOSECONDS.toMillis(totalSeekTime),
+      log.info("SUMMARY {},{},{},{},{},{},{},{},{},{},{}", logGroup, name,
+          NANOSECONDS.toMillis(totalFileOpenTime), filesOpened, NANOSECONDS.toMillis(totalSeekTime),
           numSeeks, NANOSECONDS.toMillis(totalLookupTime), numLookups,
           NANOSECONDS.toMillis(totalEstimateTime), numEstimates, totalTimer.elapsed(MILLISECONDS));
     }
