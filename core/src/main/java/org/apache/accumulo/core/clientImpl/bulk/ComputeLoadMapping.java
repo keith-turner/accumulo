@@ -20,6 +20,7 @@ package org.apache.accumulo.core.clientImpl.bulk;
 
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.apache.accumulo.core.client.Accumulo;
@@ -31,16 +32,31 @@ import org.apache.hadoop.fs.Path;
 
 public class ComputeLoadMapping {
   public static void main(String[] args) throws Exception {
-    FileSystem fs = FileSystem.get(new Configuration());
-    Map<String,String> tableProps = Map.of(); // TODO
-    Path dirPath = new Path(args[1]);
-    Executor executor = Executors.newFixedThreadPool(Integer.parseInt(args[2]));
-    var client = Accumulo.newClient()
-        .from(System.getenv("ACCUMULO_CONF_DIR") + "/accumulo-client.properties").build();
-    var context = (ClientContext) client;
-    int maxTablets = 1000;
-    TableId tableId = context.getTableId(args[0]);
-    BulkImport.computeFileToTabletMappings(fs, tableId, tableProps, dirPath, executor, context,
-        maxTablets);
+
+    if(args.length != 3) {
+      System.err.println("Usage : "+ComputeLoadMapping.class.getSimpleName()+" <table> <dir> <num threads>");
+      System.exit(-1);
+    }
+
+    String tableName = args[0];
+    String dir = args[1];
+    int numThreads = Integer.parseInt(args[2]);
+
+    String propsFile = System.getenv("ACCUMULO_CONF_DIR") + "/accumulo-client.properties";
+
+    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+
+    try(var client =  Accumulo.newClient().from(propsFile).build()) {
+      FileSystem fs = FileSystem.get(new Configuration());
+      Path dirPath = new Path(dir);
+      var context = (ClientContext) client;
+      int maxTablets = 1000;
+      TableId tableId = context.getTableId(tableName);
+      Map<String, String> tableProps = client.tableOperations().getConfiguration(tableName);
+      BulkImport.computeFileToTabletMappings(fs, tableId, tableProps, dirPath, executor, context,
+              maxTablets);
+    }finally {
+      executor.shutdownNow();
+    }
   }
 }

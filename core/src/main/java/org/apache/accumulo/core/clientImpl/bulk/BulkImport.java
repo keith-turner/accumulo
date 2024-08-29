@@ -546,6 +546,8 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
   public static class BulkTimings {
 
     private static final Logger log = LoggerFactory.getLogger(BulkTimings.class);
+    private final String logGroup;
+    private final String name;
 
     // Keep all data in nanoseconds so that merging data is more precise. Report data in millis so
     // that its easier to read.
@@ -558,19 +560,30 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     long totalEstimateTime;
     int numEstimates;
 
+    public BulkTimings(String logGroup, String name){
+      this.logGroup = logGroup;
+      this.name = name;
+    }
+
     public void addFileSeekTime(Timer timer) {
-      totalSeekTime += timer.elapsed(TimeUnit.NANOSECONDS);
+      long elapsed = timer.elapsed(TimeUnit.NANOSECONDS);
+      totalSeekTime += elapsed;
       numSeeks++;
+      log.info("EVENT {},{},FILE_SEEK,{}",logGroup,name,NANOSECONDS.toMillis(elapsed));
     }
 
     public void addMetadataLookupTime(Timer timer) {
-      totalLookupTime += timer.elapsed(TimeUnit.NANOSECONDS);
+      long elapsed = timer.elapsed(TimeUnit.NANOSECONDS);
+      totalLookupTime += elapsed;
       numLookups++;
+      log.info("EVENT {},{},META_LOOKUP,{}",logGroup,name,NANOSECONDS.toMillis(elapsed));
     }
 
     public void addEstimateSizesTime(Timer timer) {
-      totalEstimateTime += timer.elapsed(TimeUnit.NANOSECONDS);
+      long elapsed = timer.elapsed(TimeUnit.NANOSECONDS);
+      totalEstimateTime += elapsed;
       numEstimates++;
+      log.info("EVENT {},name,EST_SIZES,{}",logGroup,name,NANOSECONDS.toMillis(elapsed));
     }
 
     public synchronized void merge(BulkTimings other) {
@@ -582,18 +595,22 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       numEstimates += other.numEstimates;
     }
 
-    public void logTiming(String group, String name, Timer totalTimer) {
-      log.info("{}.{},{},{},{},{},{},{},{}", group, name, NANOSECONDS.toMillis(totalSeekTime),
+    public void logSummaryHeader(){
+      log.info("SUMMARY_HEADER LOG_GROUP,NAME,FILE_SEEK_MS_SUM,NUM_SEEKS,META_LOOKUP_MS_SUM,NUM_LOOKUPS,EST_SIZES_MS_SUM,NUM_EST_SIZES,TOTAL_TIME_MS");
+    }
+
+    public void logSummary(Timer totalTimer) {
+      log.info("SUMMARY {},{},{},{},{},{},{},{},{}", logGroup, name, NANOSECONDS.toMillis(totalSeekTime),
           numSeeks, NANOSECONDS.toMillis(totalLookupTime), numLookups,
           NANOSECONDS.toMillis(totalEstimateTime), numEstimates, totalTimer.elapsed(MILLISECONDS));
     }
 
-    public void logContext(String logGroup, Path dirPath, Executor executor) {
+    public void logContext(Path dirPath, Executor executor) {
       int numThreads = -1;
       if (executor instanceof ThreadPoolExecutor) {
         numThreads = ((ThreadPoolExecutor) executor).getCorePoolSize();
       }
-      log.info("{} threads={} dir={}", logGroup, numThreads, dirPath);
+      log.info("CONTEXT {} threads={} dir={}", logGroup, numThreads, dirPath);
     }
   }
 
@@ -621,14 +638,16 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     CryptoService cs = CryptoFactoryLoader.getServiceForClientWithTable(
         context.instanceOperations().getSystemConfiguration(), tableProps, tableId);
 
-    BulkTimings totalTimings = new BulkTimings();
+    BulkTimings totalTimings = new BulkTimings(logGroup, "TOTAL");
+
+    totalTimings.logSummaryHeader();
 
     for (FileStatus fileStatus : files) {
       Path filePath = fileStatus.getPath();
       CompletableFuture<Map<KeyExtent,Bulk.FileInfo>> future = CompletableFuture.supplyAsync(() -> {
         try {
           var fileTimer = Timer.startNew();
-          BulkTimings bulkTimings = new BulkTimings();
+          BulkTimings bulkTimings = new BulkTimings(logGroup, filePath.getName());
           List<KeyExtent> extents = findOverlappingTablets(context, extentCache, filePath, fs,
               fileLensCache, cs, bulkTimings);
           // make sure file isn't going to too many tablets
@@ -641,7 +660,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
           for (KeyExtent ke : extents) {
             pathLocations.put(ke, new Bulk.FileInfo(filePath, estSizes.getOrDefault(ke, 0L)));
           }
-          bulkTimings.logTiming(logGroup, fileStatus.getPath().getName(), fileTimer);
+          bulkTimings.logSummary(fileTimer);
           totalTimings.merge(bulkTimings);
           return pathLocations;
         } catch (Exception e) {
@@ -668,8 +687,8 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
     var merged = mergeOverlapping(mappings);
 
-    totalTimings.logTiming(logGroup, "TOTAL", totalTimer);
-    totalTimings.logContext(logGroup, dirPath, executor);
+    totalTimings.logSummary(totalTimer);
+    totalTimings.logContext(dirPath, executor);
 
     return merged;
   }
