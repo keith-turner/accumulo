@@ -110,6 +110,9 @@ public enum ClientProperty {
           + "If the value ends with C, then it will be multiplied by the number of cores on the "
           + "system. This property is only used by the bulk import API introduced in 2.0.0.",
       "2.0.0", false),
+  BULK_EXAMINATION("bulk.examination", "thorough", PropertyType.STRING,
+      "Must be either 'fast' or 'thorough'.  Determines how files are mapped to tablets.", "2.1.4",
+      false),
 
   // SSL
   SSL_ENABLED("ssl.enabled", "false", "Enable SSL for client RPC"),

@@ -31,7 +31,6 @@ import static org.apache.accumulo.core.util.threads.ThreadPoolNames.BULK_IMPORT_
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -96,6 +95,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
+import com.google.common.hash.Hashing;
 
 public class BulkImport implements ImportDestinationArguments, ImportMappingOptions {
 
@@ -329,6 +329,39 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     KeyExtent lookup(Text row);
   }
 
+  public static List<KeyExtent> findOverlappingTabletsFast(KeyExtentCache extentCache,
+      FileSKVIterator reader, BulkTimings bulkTimings) throws IOException {
+    Timer timer = Timer.startNew();
+
+    var firstRow = reader.getFirstKey().getRow();
+    var lastRow = reader.getLastKey().getRow();
+    bulkTimings.addFileSeekTime(timer);
+
+    List<KeyExtent> result = new ArrayList<>();
+
+    Text row = firstRow;
+
+    while (true) {
+      timer.restart();
+      KeyExtent extent = extentCache.lookup(row);
+      bulkTimings.addMetadataLookupTime(timer);
+      result.add(extent);
+
+      if (extent.contains(lastRow)) {
+        break;
+      }
+
+      row = extent.endRow();
+      if (row != null) {
+        row = nextRow(row);
+      } else {
+        break;
+      }
+    }
+
+    return result;
+  }
+
   public static List<KeyExtent> findOverlappingTablets(KeyExtentCache extentCache,
       FileSKVIterator reader, BulkTimings bulkTimings) throws IOException {
 
@@ -357,6 +390,18 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       }
     }
 
+    if (result.size() > 1) {
+      int holes = 0;
+      KeyExtent prev = result.get(0);
+      for (int i = 1; i < result.size(); i++) {
+        if (!result.get(i).isPreviousExtent(prev)) {
+          holes++;
+        }
+        prev = result.get(i);
+      }
+      bulkTimings.setHolesSeen(holes);
+    }
+
     return result;
   }
 
@@ -368,14 +413,18 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
   public static List<KeyExtent> findOverlappingTablets(ClientContext context,
       KeyExtentCache extentCache, Path file, FileSystem fs, Cache<String,Long> fileLenCache,
-      CryptoService cs, BulkTimings bulkTimings) throws IOException {
+      CryptoService cs, BulkTimings bulkTimings, boolean useFastExamination) throws IOException {
     Timer timer = Timer.startNew();
     try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
         .forFile(file.toString(), fs, fs.getConf(), cs)
         .withTableConfiguration(context.getConfiguration()).withFileLenCache(fileLenCache)
         .seekToBeginning().build()) {
       bulkTimings.addFileOpenTime(timer);
-      return findOverlappingTablets(extentCache, reader, bulkTimings);
+      if (useFastExamination) {
+        return findOverlappingTabletsFast(extentCache, reader, bulkTimings);
+      } else {
+        return findOverlappingTablets(extentCache, reader, bulkTimings);
+      }
     }
   }
 
@@ -563,6 +612,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
     long totalEstimateTime;
     int numEstimates;
+    private int holes;
 
     public BulkTimings(String logGroup, String name) {
       this.logGroup = logGroup;
@@ -597,6 +647,10 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       log.info("EVENT {},name,EST_SIZES,{} {}", logGroup, name, NANOSECONDS.toMillis(elapsed));
     }
 
+    public void setHolesSeen(int holes) {
+      this.holes = holes;
+    }
+
     public synchronized void merge(BulkTimings other) {
       totalFileOpenTime += other.totalFileOpenTime;
       filesOpened += other.filesOpened;
@@ -606,30 +660,31 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       numLookups += other.numLookups;
       totalEstimateTime += other.totalEstimateTime;
       numEstimates += other.numEstimates;
+      holes += other.holes;
     }
 
     public void logSummaryHeader() {
       log.info(
-          "SUMMARY_HEADER LOG_GROUP,NAME,FILE_OPEN_MS,NUM_OPENS,FILE_SEEK_MS,NUM_SEEKS,META_LOOKUP_MS,NUM_LOOKUPS,EST_SIZES_MS,NUM_EST_SIZES,TOTAL_TIME_MS");
+          "SUMMARY_HEADER LOG_GROUP,NAME,FILE_OPEN_MS,NUM_OPENS,FILE_SEEK_MS,NUM_SEEKS,META_LOOKUP_MS,NUM_LOOKUPS,NUM_HOLES,EST_SIZES_MS,NUM_EST_SIZES,TOTAL_TIME_MS");
     }
 
     public void logSummary(Timer totalTimer) {
-      log.info("SUMMARY {},{},{},{},{},{},{},{},{},{},{}", logGroup, name,
+      log.info("SUMMARY {},{},{},{},{},{},{},{},{},{},{},{}", logGroup, name,
           NANOSECONDS.toMillis(totalFileOpenTime), filesOpened, NANOSECONDS.toMillis(totalSeekTime),
-          numSeeks, NANOSECONDS.toMillis(totalLookupTime), numLookups,
+          numSeeks, NANOSECONDS.toMillis(totalLookupTime), numLookups, holes,
           NANOSECONDS.toMillis(totalEstimateTime), numEstimates, totalTimer.elapsed(MILLISECONDS));
     }
 
-    public void logContext(Path dirPath, Executor executor) {
+    public void logContext(Path dirPath, TableId tableId, boolean fastExamination,
+        Executor executor) {
       int numThreads = -1;
       if (executor instanceof ThreadPoolExecutor) {
         numThreads = ((ThreadPoolExecutor) executor).getCorePoolSize();
       }
-      log.info("CONTEXT {} threads={} dir={}", logGroup, numThreads, dirPath);
+      log.info("CONTEXT {} tableId={} threads={} fastExamination={} dir={}", logGroup, tableId,
+          numThreads, fastExamination, dirPath);
     }
   }
-
-  private static final SecureRandom random = new SecureRandom();
 
   public static SortedMap<KeyExtent,Bulk.Files> computeFileToTabletMappings(FileSystem fs,
       TableId tableId, Map<String,String> tableProps, Path dirPath, Executor executor,
@@ -637,7 +692,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
       throws IOException, AccumuloException, AccumuloSecurityException {
 
     Timer totalTimer = Timer.startNew();
-    String logGroup = Integer.toHexString(random.nextInt());
+    String logGroup = Hashing.murmur3_32_fixed().hashString(dirPath.toString(), UTF_8).toString();
 
     KeyExtentCache extentCache = new ConcurrentKeyExtentCache(tableId, context);
 
@@ -655,6 +710,9 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
 
     BulkTimings totalTimings = new BulkTimings(logGroup, "TOTAL");
 
+    boolean fastExamination =
+        "fast".equals(context.getConfiguration().get(ClientProperty.BULK_EXAMINATION.getKey()));
+
     totalTimings.logSummaryHeader();
 
     for (FileStatus fileStatus : files) {
@@ -664,7 +722,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
           var fileTimer = Timer.startNew();
           BulkTimings bulkTimings = new BulkTimings(logGroup, filePath.getName());
           List<KeyExtent> extents = findOverlappingTablets(context, extentCache, filePath, fs,
-              fileLensCache, cs, bulkTimings);
+              fileLensCache, cs, bulkTimings, fastExamination);
           // make sure file isn't going to too many tablets
           checkTabletCount(maxTablets, extents.size(), filePath.toString());
           Timer timer = Timer.startNew();
@@ -703,7 +761,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     var merged = mergeOverlapping(mappings);
 
     totalTimings.logSummary(totalTimer);
-    totalTimings.logContext(dirPath, executor);
+    totalTimings.logContext(dirPath, tableId, fastExamination, executor);
 
     return merged;
   }
