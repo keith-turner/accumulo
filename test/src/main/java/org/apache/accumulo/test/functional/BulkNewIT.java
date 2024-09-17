@@ -681,7 +681,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
         String endRow = tablet.getEndRow() == null ? "null" : tablet.getEndRow().toString();
 
-        assertEquals(expectedHashes.get(endRow), fileHashes, "endRow "+endRow);
+        assertEquals(expectedHashes.get(endRow), fileHashes, "endRow " + endRow);
 
         endRowsSeen.add(endRow);
       }
