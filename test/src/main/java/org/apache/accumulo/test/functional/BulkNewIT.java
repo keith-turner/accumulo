@@ -36,7 +36,6 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -500,8 +499,6 @@ public class BulkNewIT extends SharedMiniClusterBase {
       hashes.put("null", Set.of());
 
       SortedSet<Text> splits = new TreeSet<>(c.tableOperations().listSplits(tableName));
-
-      List<String> loadPlans = new ArrayList<>();
 
       for (String filename : List.of("f1.rf", "f2.rf", "f3.rf")) {
         // The body of this loop simulates what each reducer would do
