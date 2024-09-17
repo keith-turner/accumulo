@@ -48,6 +48,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.apache.accumulo.core.Constants;
@@ -324,7 +325,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     KeyExtent lookup(Text row);
   }
 
-  public static List<KeyExtent> findOverlappingTablets(KeyExtentCache extentCache,
+  public static List<KeyExtent> findOverlappingTablets(Function<Text,KeyExtent> rowToExtentResolver,
       FileSKVIterator reader) throws IOException {
 
     List<KeyExtent> result = new ArrayList<>();
@@ -336,7 +337,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
         break;
       }
       row = reader.getTopKey().getRow();
-      KeyExtent extent = extentCache.lookup(row);
+      KeyExtent extent = rowToExtentResolver.apply(row);
       result.add(extent);
       row = extent.endRow();
       if (row != null) {
@@ -356,13 +357,13 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
   }
 
   public static List<KeyExtent> findOverlappingTablets(ClientContext context,
-      KeyExtentCache extentCache, Path file, FileSystem fs, Cache<String,Long> fileLenCache,
-      CryptoService cs) throws IOException {
+      Function<Text,KeyExtent> rowToExtentResolver, Path file, FileSystem fs,
+      Cache<String,Long> fileLenCache, CryptoService cs) throws IOException {
     try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
         .forFile(file.toString(), fs, fs.getConf(), cs)
         .withTableConfiguration(context.getConfiguration()).withFileLenCache(fileLenCache)
         .seekToBeginning().build()) {
-      return findOverlappingTablets(extentCache, reader);
+      return findOverlappingTablets(rowToExtentResolver, reader);
     }
   }
 
@@ -557,7 +558,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
         try {
           long t1 = System.currentTimeMillis();
           List<KeyExtent> extents =
-              findOverlappingTablets(context, extentCache, filePath, fs, fileLensCache, cs);
+              findOverlappingTablets(context, extentCache::lookup, filePath, fs, fileLensCache, cs);
           // make sure file isn't going to too many tablets
           checkTabletCount(maxTablets, extents.size(), filePath.toString());
           Map<KeyExtent,Long> estSizes = estimateSizes(context.getConfiguration(), filePath,

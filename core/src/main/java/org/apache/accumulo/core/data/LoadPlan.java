@@ -20,17 +20,35 @@ package org.apache.accumulo.core.data;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
+import java.util.SortedSet;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.admin.TableOperations.ImportMappingOptions;
+import org.apache.accumulo.core.clientImpl.bulk.BulkImport;
+import org.apache.accumulo.core.conf.DefaultConfiguration;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.file.FileOperations;
+import org.apache.accumulo.core.file.FileSKVIterator;
+import org.apache.accumulo.core.spi.crypto.CryptoService;
+import org.apache.accumulo.core.spi.crypto.NoCryptoServiceFactory;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.UnsignedBytes;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -227,5 +245,89 @@ public class LoadPlan {
         return new LoadPlan(fmb.build());
       }
     };
+  }
+
+  private static final TableId FAKE_ID = TableId.of("999");
+
+  private static class JsonDestination {
+    String fileName;
+    String startRow;
+    String endRow;
+    RangeType rangeType;
+
+    JsonDestination() {}
+
+    JsonDestination(Destination destination) {
+      fileName = destination.getFileName();
+      startRow = destination.getStartRow() == null ? null
+          : Base64.getUrlEncoder().encodeToString(destination.getStartRow());
+      endRow = destination.getEndRow() == null ? null
+          : Base64.getUrlEncoder().encodeToString(destination.getEndRow());
+      rangeType = destination.getRangeType();
+    }
+
+    Destination toDestination() {
+      return new Destination(fileName, rangeType,
+          startRow == null ? null : Base64.getUrlDecoder().decode(startRow),
+          endRow == null ? null : Base64.getUrlDecoder().decode(endRow));
+    }
+  }
+
+  private static final class JsonAll {
+    List<JsonDestination> destinations;
+
+    JsonAll() {}
+
+    JsonAll(List<Destination> destinations) {
+      this.destinations =
+          destinations.stream().map(JsonDestination::new).collect(Collectors.toList());
+    }
+
+  }
+
+  private static final Gson gson = new GsonBuilder().disableJdkUnsafe().create();
+
+  // TODO javadoc
+  public String toJson() {
+    return gson.toJson(new JsonAll(destinations));
+  }
+
+  // TODO javadoc
+  public static LoadPlan fromJson(String json) {
+    var dests = gson.fromJson(json, JsonAll.class).destinations.stream()
+        .map(JsonDestination::toDestination).collect(Collectors.toUnmodifiableList());
+    return new LoadPlan(dests);
+  }
+
+  // TODO javadoc
+  public static LoadPlan compute(URI file, SortedSet<Text> splits) throws IOException {
+
+    // TODO if the files needed a crypto service how could it be instantiated? Was trying to make
+    // this method independent of an ClientContext or ServerContext object.
+    CryptoService cs = NoCryptoServiceFactory.NONE;
+    Configuration conf = new Configuration();
+    Path path = new Path(file);
+    FileSystem fs = path.getFileSystem(conf);
+
+    try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
+        .forFile(file.toString(), fs, fs.getConf(), cs)
+        .withTableConfiguration(DefaultConfiguration.getInstance()).seekToBeginning().build()) {
+
+      Function<Text,KeyExtent> rowToExtentResolver = row -> {
+        var headSet = splits.headSet(row);
+        Text prevRow = headSet.isEmpty() ? null : headSet.last();
+        var tailSet = splits.tailSet(row);
+        Text endRow = tailSet.isEmpty() ? null : tailSet.first();
+        return new KeyExtent(FAKE_ID, endRow, prevRow);
+      };
+
+      List<KeyExtent> overlapping = BulkImport.findOverlappingTablets(rowToExtentResolver, reader);
+
+      var builder = builder();
+      for (var extent : overlapping) {
+        builder.loadFileTo(path.getName(), RangeType.TABLE, extent.prevEndRow(), extent.endRow());
+      }
+      return builder.build();
+    }
   }
 }
