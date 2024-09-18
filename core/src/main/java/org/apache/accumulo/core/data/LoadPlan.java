@@ -299,9 +299,41 @@ public class LoadPlan {
     return new LoadPlan(dests);
   }
 
-  // TODO javadoc
-  public static LoadPlan compute(URI file, SortedSet<Text> splits) throws IOException {
+  /**
+   * Represents two split points that exist in a table being bulk imported to.
+   */
+  public static class TableSplits {
+    public final Text prevRow;
+    public final Text endRow;
 
+    public TableSplits(Text prevRow, Text endRow) {
+      // TODO check order, expect that prevRow < endRow
+      this.prevRow = prevRow;
+      this.endRow = endRow;
+    }
+  }
+
+  /**
+   * A function that maps a row to two table split points that contain the row. These splits must
+   * exist in the table being bulk imported to. There is no requirement that the splits are
+   * contiguous. For example if a table has splits C,D,E,M and we ask for splits containing row H
+   * its ok to return D,M, but that could result in the file mapping to more actual tablets than
+   * needed.
+   */
+  public interface SplitResolver extends Function<Text,TableSplits> {
+    static SplitResolver from(SortedSet<Text> splits) {
+      return row -> {
+        var headSet = splits.headSet(row);
+        Text prevRow = headSet.isEmpty() ? null : headSet.last();
+        var tailSet = splits.tailSet(row);
+        Text endRow = tailSet.isEmpty() ? null : tailSet.first();
+        return new TableSplits(prevRow, endRow);
+      };
+    }
+  }
+
+  // TODO javadoc
+  public static LoadPlan compute(URI file, SplitResolver tabletResolver) throws IOException {
     // TODO if the files needed a crypto service how could it be instantiated? Was trying to make
     // this method independent of an ClientContext or ServerContext object.
     CryptoService cs = NoCryptoServiceFactory.NONE;
@@ -314,11 +346,8 @@ public class LoadPlan {
         .withTableConfiguration(DefaultConfiguration.getInstance()).seekToBeginning().build()) {
 
       Function<Text,KeyExtent> rowToExtentResolver = row -> {
-        var headSet = splits.headSet(row);
-        Text prevRow = headSet.isEmpty() ? null : headSet.last();
-        var tailSet = splits.tailSet(row);
-        Text endRow = tailSet.isEmpty() ? null : tailSet.first();
-        return new KeyExtent(FAKE_ID, endRow, prevRow);
+        var tabletRange = tabletResolver.apply(row);
+        return new KeyExtent(FAKE_ID, tabletRange.endRow, tabletRange.prevRow);
       };
 
       List<KeyExtent> overlapping = BulkImport.findOverlappingTablets(rowToExtentResolver, reader);

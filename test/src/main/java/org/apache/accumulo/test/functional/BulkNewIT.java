@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
@@ -505,7 +506,8 @@ public class BulkNewIT extends SharedMiniClusterBase {
         Path path = new Path(dir + "/" + filename);
 
         // compute the load plan for the rfile
-        String lpJson = LoadPlan.compute(path.toUri(), splits).toJson();
+          URI file = path.toUri();
+          String lpJson = LoadPlan.compute(file, LoadPlan.SplitResolver.from(splits)).toJson();
 
         // save the load plan to a file
         Path lpPath = new Path(path.getParent(), path.getName().replace(".rf", ".lp"));
