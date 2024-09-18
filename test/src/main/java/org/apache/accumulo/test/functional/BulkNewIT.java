@@ -506,8 +506,8 @@ public class BulkNewIT extends SharedMiniClusterBase {
         Path path = new Path(dir + "/" + filename);
 
         // compute the load plan for the rfile
-          URI file = path.toUri();
-          String lpJson = LoadPlan.compute(file, LoadPlan.SplitResolver.from(splits)).toJson();
+        URI file = path.toUri();
+        String lpJson = LoadPlan.compute(file, LoadPlan.SplitResolver.from(splits)).toJson();
 
         // save the load plan to a file
         Path lpPath = new Path(path.getParent(), path.getName().replace(".rf", ".lp"));
