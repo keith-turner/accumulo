@@ -325,18 +325,24 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     KeyExtent lookup(Text row);
   }
 
+  /**
+   * Function that will find a row in a file being bulk imported that is >= the row passed to the
+   * function. If there is no row then it should return null.
+   */
+  public interface NextRowFunction {
+    Text apply(Text row) throws IOException;
+  }
+
   public static List<KeyExtent> findOverlappingTablets(Function<Text,KeyExtent> rowToExtentResolver,
-      FileSKVIterator reader) throws IOException {
+      NextRowFunction nextRowFunction) throws IOException {
 
     List<KeyExtent> result = new ArrayList<>();
-    Collection<ByteSequence> columnFamilies = Collections.emptyList();
     Text row = new Text();
     while (true) {
-      reader.seek(new Range(row, null), columnFamilies, false);
-      if (!reader.hasTop()) {
+      row = nextRowFunction.apply(row);
+      if (row == null) {
         break;
       }
-      row = reader.getTopKey().getRow();
       KeyExtent extent = rowToExtentResolver.apply(row);
       result.add(extent);
       row = extent.endRow();
@@ -357,13 +363,23 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
   }
 
   public static List<KeyExtent> findOverlappingTablets(ClientContext context,
-      Function<Text,KeyExtent> rowToExtentResolver, Path file, FileSystem fs,
-      Cache<String,Long> fileLenCache, CryptoService cs) throws IOException {
+      KeyExtentCache keyExtentCache, Path file, FileSystem fs, Cache<String,Long> fileLenCache,
+      CryptoService cs) throws IOException {
     try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
         .forFile(file.toString(), fs, fs.getConf(), cs)
         .withTableConfiguration(context.getConfiguration()).withFileLenCache(fileLenCache)
         .seekToBeginning().build()) {
-      return findOverlappingTablets(rowToExtentResolver, reader);
+
+      Collection<ByteSequence> columnFamilies = Collections.emptyList();
+      NextRowFunction nextRowFunction = row -> {
+        reader.seek(new Range(row, null), columnFamilies, false);
+        if (!reader.hasTop()) {
+          return null;
+        }
+        return reader.getTopKey().getRow();
+      };
+
+      return findOverlappingTablets(keyExtentCache::lookup, nextRowFunction);
     }
   }
 
@@ -558,7 +574,7 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
         try {
           long t1 = System.currentTimeMillis();
           List<KeyExtent> extents =
-              findOverlappingTablets(context, extentCache::lookup, filePath, fs, fileLensCache, cs);
+              findOverlappingTablets(context, extentCache, filePath, fs, fileLensCache, cs);
           // make sure file isn't going to too many tablets
           checkTabletCount(maxTablets, extents.size(), filePath.toString());
           Map<KeyExtent,Long> estSizes = estimateSizes(context.getConfiguration(), filePath,

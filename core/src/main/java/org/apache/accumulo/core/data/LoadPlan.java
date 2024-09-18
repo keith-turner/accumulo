@@ -27,20 +27,15 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.SortedSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.admin.TableOperations.ImportMappingOptions;
+import org.apache.accumulo.core.client.rfile.RFile;
 import org.apache.accumulo.core.clientImpl.bulk.BulkImport;
-import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.file.FileOperations;
-import org.apache.accumulo.core.file.FileSKVIterator;
-import org.apache.accumulo.core.spi.crypto.CryptoService;
-import org.apache.accumulo.core.spi.crypto.NoCryptoServiceFactory;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 
@@ -332,25 +327,35 @@ public class LoadPlan {
     }
   }
 
-  // TODO javadoc
-  public static LoadPlan compute(URI file, SplitResolver tabletResolver) throws IOException {
-    // TODO if the files needed a crypto service how could it be instantiated? Was trying to make
-    // this method independent of an ClientContext or ServerContext object.
-    CryptoService cs = NoCryptoServiceFactory.NONE;
-    Configuration conf = new Configuration();
-    Path path = new Path(file);
-    FileSystem fs = path.getFileSystem(conf);
+  public static LoadPlan compute(URI file, SplitResolver splitResolver) throws IOException {
+    return compute(file, Map.of(), splitResolver);
+  }
 
-    try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
-        .forFile(file.toString(), fs, fs.getConf(), cs)
-        .withTableConfiguration(DefaultConfiguration.getInstance()).seekToBeginning().build()) {
+  // TODO test w/ empty file
+  // TODO javadoc
+  public static LoadPlan compute(URI file, Map<String,String> properties,
+      SplitResolver splitResolver) throws IOException {
+    try (var scanner = RFile.newScanner().from(file.toString()).withoutSystemIterators()
+        .withTableProperties(properties).build()) {
+      BulkImport.NextRowFunction nextRowFunction = row -> {
+        scanner.setRange(new Range(row, null));
+        var iter = scanner.iterator();
+        if (iter.hasNext()) {
+          return iter.next().getKey().getRow();
+        } else {
+          return null;
+        }
+      };
 
       Function<Text,KeyExtent> rowToExtentResolver = row -> {
-        var tabletRange = tabletResolver.apply(row);
+        var tabletRange = splitResolver.apply(row);
         return new KeyExtent(FAKE_ID, tabletRange.endRow, tabletRange.prevRow);
       };
 
-      List<KeyExtent> overlapping = BulkImport.findOverlappingTablets(rowToExtentResolver, reader);
+      List<KeyExtent> overlapping =
+          BulkImport.findOverlappingTablets(rowToExtentResolver, nextRowFunction);
+
+      Path path = new Path(file);
 
       var builder = builder();
       for (var extent : overlapping) {
