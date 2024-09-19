@@ -336,7 +336,7 @@ public class LoadPlan {
   public static LoadPlan compute(URI file, Map<String,String> properties,
       SplitResolver splitResolver) throws IOException {
     try (var scanner = RFile.newScanner().from(file.toString()).withoutSystemIterators()
-        .withTableProperties(properties).build()) {
+        .withTableProperties(properties).withIndexCache(10_000_000).build()) {
       BulkImport.NextRowFunction nextRowFunction = row -> {
         scanner.setRange(new Range(row, null));
         var iter = scanner.iterator();
