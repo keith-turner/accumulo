@@ -28,6 +28,7 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.SortedSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -298,13 +299,38 @@ public class LoadPlan {
    * Represents two split points that exist in a table being bulk imported to.
    */
   public static class TableSplits {
-    public final Text prevRow;
-    public final Text endRow;
+    private final Text prevRow;
+    private final Text endRow;
 
     public TableSplits(Text prevRow, Text endRow) {
-      // TODO check order, expect that prevRow < endRow
+      Preconditions.checkArgument(
+          prevRow == null || endRow == null || prevRow.compareTo(endRow) < 0, "%s >= %s", prevRow,
+          endRow);
       this.prevRow = prevRow;
       this.endRow = endRow;
+    }
+
+    public Text getPrevRow() {
+      return prevRow;
+    }
+
+    public Text getEndRow() {
+      return endRow;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o)
+        return true;
+      if (o == null || getClass() != o.getClass())
+        return false;
+      TableSplits that = (TableSplits) o;
+      return Objects.equals(prevRow, that.prevRow) && Objects.equals(endRow, that.endRow);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(prevRow, endRow);
     }
   }
 
