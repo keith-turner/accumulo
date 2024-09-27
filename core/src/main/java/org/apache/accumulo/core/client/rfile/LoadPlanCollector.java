@@ -39,6 +39,7 @@ class LoadPlanCollector {
   private Text lastRow;
   private Set<KeyExtent> overlappingExtents;
   private KeyExtent currentExtent;
+  private long appended = 0;
 
   LoadPlanCollector(LoadPlan.SplitResolver splitResolver) {
     this.splitResolver = splitResolver;
@@ -68,6 +69,7 @@ class LoadPlanCollector {
     if (currentExtent == null || !currentExtent.contains(row)) {
       var tableSplits = splitResolver.apply(row);
       var extent = new KeyExtent(FAKE_ID, tableSplits.getEndRow(), tableSplits.getPrevRow());
+      Preconditions.checkState(extent.contains(row), "%s does not contain %s", tableSplits, row);
       if (currentExtent != null) {
         // TODO validate that row is after the currentExtent
         overlappingExtents.add(currentExtent);
@@ -82,6 +84,7 @@ class LoadPlanCollector {
     } else {
       appendSplits(key);
     }
+    appended++;
   }
 
   public void startLocalityGroup() {
@@ -101,7 +104,11 @@ class LoadPlanCollector {
   }
 
   public LoadPlan getLoadPlan(String filename) {
-    Preconditions.checkState(finished);
+    if (appended == 0) {
+      return LoadPlan.builder().build();
+    }
+
+    Preconditions.checkState(finished, "Attempted to get load plan before closing");
     if (splitResolver == null) {
       return LoadPlan.builder().loadFileTo(filename, LoadPlan.RangeType.FILE, firstRow, lastRow)
           .build();

@@ -73,7 +73,7 @@ class RFileWriterBuilder implements RFile.OutputArguments, RFile.WriterFSOptions
   private int visCacheSize = 1000;
   private Map<String,String> samplerProps = Collections.emptyMap();
   private Map<String,String> summarizerProps = Collections.emptyMap();
-  private LoadPlan.SplitResolver splitReolver;
+  private LoadPlan.SplitResolver splitResolver;
 
   private void checkDisjoint(Map<String,String> props, Map<String,String> derivedProps,
       String kind) {
@@ -109,8 +109,8 @@ class RFileWriterBuilder implements RFile.OutputArguments, RFile.WriterFSOptions
         CryptoFactoryLoader.getServiceForClient(CryptoEnvironment.Scope.TABLE, tableConfig);
 
     LoadPlanCollector loadPlanCollector;
-    if (splitReolver != null) {
-      loadPlanCollector = new LoadPlanCollector(splitReolver);
+    if (splitResolver != null) {
+      loadPlanCollector = new LoadPlanCollector(splitResolver);
     } else {
       loadPlanCollector = new LoadPlanCollector();
     }
@@ -185,7 +185,7 @@ class RFileWriterBuilder implements RFile.OutputArguments, RFile.WriterFSOptions
 
   @Override
   public WriterOptions withSplitResolver(LoadPlan.SplitResolver splitResolver) {
-    this.splitReolver = splitResolver;
+    this.splitResolver = splitResolver;
     return this;
   }
 

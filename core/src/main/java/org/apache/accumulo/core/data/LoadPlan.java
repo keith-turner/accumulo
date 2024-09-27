@@ -281,7 +281,7 @@ public class LoadPlan {
 
   }
 
-  private static final Gson gson = new GsonBuilder().disableJdkUnsafe().create();
+  private static final Gson gson = new GsonBuilder().disableJdkUnsafe().serializeNulls().create();
 
   // TODO javadoc
   public String toJson() {
@@ -297,6 +297,8 @@ public class LoadPlan {
 
   /**
    * Represents two split points that exist in a table being bulk imported to.
+   *
+   * @since 2.1.4
    */
   public static class TableSplits {
     private final Text prevRow;
@@ -332,6 +334,11 @@ public class LoadPlan {
     public int hashCode() {
       return Objects.hash(prevRow, endRow);
     }
+
+    @Override
+    public String toString() {
+      return "(" + prevRow + "," + endRow + "]";
+    }
   }
 
   /**
@@ -340,6 +347,8 @@ public class LoadPlan {
    * contiguous. For example if a table has splits C,D,E,M and we ask for splits containing row H
    * its ok to return D,M, but that could result in the file mapping to more actual tablets than
    * needed.
+   *
+   * @since 2.1.4
    */
   public interface SplitResolver extends Function<Text,TableSplits> {
     static SplitResolver from(SortedSet<Text> splits) {
@@ -351,14 +360,27 @@ public class LoadPlan {
         return new TableSplits(prevRow, endRow);
       };
     }
+
+    /**
+     * For a given row R this function should find two split points S1 and S2 that exist in the
+     * table being bulk imported to such that S1 < R <= S2. The closer S1 and S2 are to each other
+     * the better.
+     */
+    @Override
+    TableSplits apply(Text row);
   }
 
   public static LoadPlan compute(URI file, SplitResolver splitResolver) throws IOException {
     return compute(file, Map.of(), splitResolver);
   }
 
+  /**
+   * Computes a load plan for a given rfile. This will open the rfile and find every
+   * {@link TableSplits} that overlaps rows in the file and add those to the returned load plan.
+   *
+   * @since 2.1.4
+   */
   // TODO test w/ empty file
-  // TODO javadoc
   public static LoadPlan compute(URI file, Map<String,String> properties,
       SplitResolver splitResolver) throws IOException {
     try (var scanner = RFile.newScanner().from(file.toString()).withoutSystemIterators()
@@ -375,7 +397,9 @@ public class LoadPlan {
 
       Function<Text,KeyExtent> rowToExtentResolver = row -> {
         var tabletRange = splitResolver.apply(row);
-        return new KeyExtent(FAKE_ID, tabletRange.endRow, tabletRange.prevRow);
+        var extent = new KeyExtent(FAKE_ID, tabletRange.endRow, tabletRange.prevRow);
+        Preconditions.checkState(extent.contains(row), "%s does not contain %s", tabletRange, row);
+        return extent;
       };
 
       List<KeyExtent> overlapping =

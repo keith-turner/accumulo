@@ -430,10 +430,11 @@ public class RFile {
     WriterOptions withVisibilityCacheSize(int maxSize);
 
     /**
-     * @param splitResolver builds a load plan using table split points provided by the given
+     * @param splitResolver builds a {@link LoadPlan} using table split points provided by the given
      *        splitResolver.
      * @return this
      * @see RFileWriter#getLoadPlan(String)
+     * @since 2.1.4
      */
     WriterOptions withSplitResolver(LoadPlan.SplitResolver splitResolver);
 
