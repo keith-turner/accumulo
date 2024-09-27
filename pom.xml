@@ -1651,7 +1651,7 @@
             <configuration>
               <shortRevisionLength>7</shortRevisionLength>
               <doCheck>true</doCheck>
-              <failTheBuild>false</failTheBuild>
+              <failTheBuild>true</failTheBuild>
             </configuration>
             <executions>
               <execution>
