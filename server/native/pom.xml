@@ -105,7 +105,7 @@
             <phase>package</phase>
             <configuration>
               <executable>make</executable>
-              <workingDirectory>${project.build.directory}/${project.build.finalName}/${project.build.finalName}</workingDirectory>
+              <workingDirectory>${project.build.directory}/${project.artifactId}-${project.version}/${project.artifactId}-${project.version}</workingDirectory>
               <arguments>
                 <argument>test</argument>
                 <argument>CXX=${CXX}</argument>
