@@ -283,12 +283,52 @@ public class LoadPlan {
 
   private static final Gson gson = new GsonBuilder().disableJdkUnsafe().serializeNulls().create();
 
-  // TODO javadoc
+  /**
+   * Serializes the load plan to json that looks like the following. The values of startRow and
+   * endRow field are base64 encoded using {@link Base64#getUrlEncoder()}.
+   *
+   * <pre>
+   * {
+   *   "destinations": [
+   *     {
+   *       "fileName": "f1.rf",
+   *       "startRow": null,
+   *       "endRow": "MDAz",
+   *       "rangeType": "TABLE"
+   *     },
+   *     {
+   *       "fileName": "f2.rf",
+   *       "startRow": "MDA0",
+   *       "endRow": "MDA3",
+   *       "rangeType": "FILE"
+   *     },
+   *     {
+   *       "fileName": "f1.rf",
+   *       "startRow": "MDA1",
+   *       "endRow": "MDA2",
+   *       "rangeType": "TABLE"
+   *     },
+   *     {
+   *       "fileName": "f3.rf",
+   *       "startRow": "MDA4",
+   *       "endRow": null,
+   *       "rangeType": "TABLE"
+   *     }
+   *   ]
+   * }
+   * </pre>
+   *
+   * @since 2.1.4
+   */
   public String toJson() {
     return gson.toJson(new JsonAll(destinations));
   }
 
-  // TODO javadoc
+  /**
+   * Deserializes json to a load plan.
+   *
+   * @param json produced by {@link #toJson()}
+   */
   public static LoadPlan fromJson(String json) {
     var dests = gson.fromJson(json, JsonAll.class).destinations.stream()
         .map(JsonDestination::toDestination).collect(Collectors.toUnmodifiableList());
@@ -380,7 +420,6 @@ public class LoadPlan {
    *
    * @since 2.1.4
    */
-  // TODO test w/ empty file
   public static LoadPlan compute(URI file, Map<String,String> properties,
       SplitResolver splitResolver) throws IOException {
     try (var scanner = RFile.newScanner().from(file.toString()).withoutSystemIterators()

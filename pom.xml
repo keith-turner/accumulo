@@ -1640,32 +1640,6 @@
       </properties>
     </profile>
     <profile>
-      <id>gitHash</id>
-      <build>
-        <finalName>${project.artifactId}-${project.version}-r${buildNumber}</finalName>
-        <plugins>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>buildnumber-maven-plugin</artifactId>
-            <version>3.2.1</version>
-            <configuration>
-              <shortRevisionLength>7</shortRevisionLength>
-              <doCheck>true</doCheck>
-              <failTheBuild>true</failTheBuild>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>create</goal>
-                </goals>
-                <phase>validate</phase>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-    <profile>
       <!-- This profile uses the Google ErrorProne tool to perform static code analysis at
       compile time. Auto-generated code is not checked.
       See: https://errorprone.info/bugpatterns for list of available bug patterns.-->
