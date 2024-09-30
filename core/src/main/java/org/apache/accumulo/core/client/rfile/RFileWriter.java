@@ -272,9 +272,8 @@ public class RFileWriter implements AutoCloseable {
    * @param filename
    * @return load plan computed from the keys written to the rfile.
    * @see org.apache.accumulo.core.client.rfile.RFile.WriterOptions#withSplitResolver(LoadPlan.SplitResolver)
-   *      TODO since tags on all new apis
+   * @since 2.1.4
    */
-  // TODO test case of empty rfile... and just test this in general
   public LoadPlan getLoadPlan(String filename) {
     return loadPlanCollector.getLoadPlan(filename);
   }

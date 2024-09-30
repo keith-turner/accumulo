@@ -71,7 +71,6 @@ class LoadPlanCollector {
       var extent = new KeyExtent(FAKE_ID, tableSplits.getEndRow(), tableSplits.getPrevRow());
       Preconditions.checkState(extent.contains(row), "%s does not contain %s", tableSplits, row);
       if (currentExtent != null) {
-        // TODO validate that row is after the currentExtent
         overlappingExtents.add(currentExtent);
       }
       currentExtent = extent;
