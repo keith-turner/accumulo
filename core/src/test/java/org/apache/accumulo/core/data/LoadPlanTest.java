@@ -132,7 +132,7 @@ public class LoadPlanTest {
     String expected = "{'destinations':[{'fileName':'f1.rf','startRow':null,'endRow':'" + b64003
         + "','rangeType':'TABLE'},{'fileName':'f2.rf','startRow':'" + b64004 + "','endRow':'"
         + b64007 + "','rangeType':'FILE'},{'fileName':'f1.rf','startRow':'" + b64005
-        + "','endRow':'" + b64006 + "','rangeType':'TABLE'}," + "{'fileName':'f3.rf','startRow':'"
+        + "','endRow':'" + b64006 + "','rangeType':'TABLE'},{'fileName':'f3.rf','startRow':'"
         + b64008 + "','endRow':null,'rangeType':'TABLE'}]}";
 
     assertEquals(expected.replace("'", "\""), json);
