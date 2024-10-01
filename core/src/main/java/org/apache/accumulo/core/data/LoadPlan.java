@@ -405,13 +405,19 @@ public class LoadPlan {
 
     /**
      * For a given row R this function should find two split points S1 and S2 that exist in the
-     * table being bulk imported to such that S1 < R <= S2. The closer S1 and S2 are to each other
-     * the better.
+     * table being bulk imported to such that S1 &lt; R &lt;= S2. The closer S1 and S2 are to each
+     * other the better.
      */
     @Override
     TableSplits apply(Text row);
   }
 
+  /**
+   * Computes a load plan for a given rfile. This will open the rfile and find every
+   * {@link TableSplits} that overlaps rows in the file and add those to the returned load plan.
+   *
+   * @since 2.1.4
+   */
   public static LoadPlan compute(URI file, SplitResolver splitResolver) throws IOException {
     return compute(file, Map.of(), splitResolver);
   }
@@ -420,6 +426,8 @@ public class LoadPlan {
    * Computes a load plan for a given rfile. This will open the rfile and find every
    * {@link TableSplits} that overlaps rows in the file and add those to the returned load plan.
    *
+   * @param properties used when opening the rfile, see
+   *        {@link org.apache.accumulo.core.client.rfile.RFile.ScannerOptions#withTableProperties(Map)}
    * @since 2.1.4
    */
   public static LoadPlan compute(URI file, Map<String,String> properties,
