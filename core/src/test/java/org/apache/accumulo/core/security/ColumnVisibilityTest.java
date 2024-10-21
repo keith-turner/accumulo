@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 
 import org.apache.accumulo.core.security.ColumnVisibility.Node;
@@ -90,7 +91,8 @@ public class ColumnVisibilityTest {
   public void normalized(String... values) {
     for (int i = 0; i < values.length; i += 2) {
       ColumnVisibility cv = new ColumnVisibility(values[i].getBytes(UTF_8));
-      assertArrayEquals(cv.flatten(), values[i + 1].getBytes(UTF_8));
+      byte[] flattened = cv.flatten();
+      assertArrayEquals(flattened, values[i + 1].getBytes(UTF_8), new String(flattened, UTF_8)+" != "+values[i+1]);
     }
   }
 
