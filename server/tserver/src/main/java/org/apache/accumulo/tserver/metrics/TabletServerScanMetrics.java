@@ -35,10 +35,15 @@ import static org.apache.accumulo.core.metrics.Metric.SCAN_YIELDS;
 import static org.apache.accumulo.core.metrics.Metric.SCAN_ZOMBIE_THREADS;
 
 import java.time.Duration;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.IntSupplier;
 
+import com.google.common.collect.Sets;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.metrics.MetricsProducer;
 import org.apache.accumulo.server.metrics.NoopMetrics;
 
@@ -65,6 +70,8 @@ public class TabletServerScanMetrics implements MetricsProducer {
   private final LongAdder queryResultCount = new LongAdder();
   private final LongAdder queryResultBytes = new LongAdder();
   private final LongAdder scannedCount = new LongAdder();
+  private final ConcurrentMap<TableId, TableMetrics> tableMetrics = new ConcurrentHashMap<>();
+  private volatile MeterRegistry registry;
 
   public void incrementLookupCount() {
     this.lookupCount.increment();
@@ -86,6 +93,7 @@ public class TabletServerScanMetrics implements MetricsProducer {
     scans.record(Duration.ofMillis(value));
   }
 
+  // TODO remove
   public void addResult(long value) {
     resultsPerScan.record(value);
   }
@@ -130,8 +138,62 @@ public class TabletServerScanMetrics implements MetricsProducer {
     openFiles = openFileSupplier;
   }
 
+  public static class TableMetrics {
+    private DistributionSummary resultsPerScan;
+    TableMetrics(TableId tableId, MeterRegistry registry){
+      resultsPerScan = DistributionSummary.builder(SCAN_RESULTS.getName())
+              .description(SCAN_RESULTS.getDescription()).tag("tableId", tableId.canonical()).register(registry);
+    }
+
+    TableMetrics(){
+      resultsPerScan = NoopMetrics.useNoopDistributionSummary();
+    }
+
+    public void addResult(long value) {
+      resultsPerScan.record(value);
+    }
+
+    public void cleanup(MeterRegistry registry) {
+
+      registry.getMeters().forEach(meter -> {
+        if(meter.getId().getName().equals("accumulo.scan.result")){
+          System.out.println("GSTR Before remove "+meter.getId());
+        }
+      });
+
+      System.out.println("GSTR Removing "+resultsPerScan.getId());
+      var rm = registry.remove(resultsPerScan.getId());
+      System.out.println("GSTR Removed "+(rm == null ? null : rm.getId()));
+      registry.getMeters().forEach(meter -> {
+        if(meter.getId().getName().equals("accumulo.scan.result")){
+          System.out.println("GSTR After remove "+meter.getId());
+        }
+      });
+    }
+  }
+
+  public TableMetrics getTableMetrics(TableId tableId) {
+    if(registry == null){
+      return new TableMetrics();
+    }
+
+    return tableMetrics.computeIfAbsent(tableId, tid->new TableMetrics(tid, registry));
+  }
+
+  public void cleanUpTableMetrics(Set<TableId> activeTableIds){
+    for(TableId tableId : Set.copyOf(Sets.difference(tableMetrics.keySet(), activeTableIds))){
+      tableMetrics.computeIfPresent(tableId, (tid,tmetrics)->{
+        tmetrics.cleanup(registry);
+        // TODO log instead
+        System.out.println("GSTR Removed table metrics for "+tableId);
+        return null;
+      });
+    }
+  }
+
   @Override
   public void registerMetrics(MeterRegistry registry) {
+    this.registry = registry;
     Gauge.builder(SCAN_OPEN_FILES.getName(), openFiles::getAsInt)
         .description(SCAN_OPEN_FILES.getDescription()).register(registry);
     scans = Timer.builder(SCAN_TIMES.getName()).description(SCAN_TIMES.getDescription())

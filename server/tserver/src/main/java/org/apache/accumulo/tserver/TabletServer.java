@@ -291,6 +291,15 @@ public class TabletServer extends AbstractServer implements TabletHostingServer 
         }), 5, 5, TimeUnit.SECONDS);
     watchNonCriticalScheduledTask(future);
 
+    // TODO watch future
+    // TOOD name thread
+    context.getScheduledExecutor().scheduleWithFixedDelay(()->{
+      if(scanMetrics != null){
+        var activeTableIds = getOnlineTablets().keySet().stream().map(KeyExtent::tableId).collect(Collectors.toSet());
+        scanMetrics.cleanUpTableMetrics(activeTableIds);
+      }
+    }, 5, 5, TimeUnit.SECONDS);
+
     final long walMaxSize = aconf.getAsBytes(Property.TSERV_WAL_MAX_SIZE);
     final long walMaxAge = aconf.getTimeInMillis(Property.TSERV_WAL_MAX_AGE);
     final long minBlockSize =

@@ -342,7 +342,8 @@ public class ThriftScanClientHandler implements TabletScanClientService.Iface {
       }
 
       server.getScanMetrics().addScan(t2 - ss.startTime);
-      server.getScanMetrics().addResult(ss.entriesReturned);
+      server.getScanMetrics().getTableMetrics(ss.getTableId()).addResult(ss.entriesReturned);
+      //server.getScanMetrics().addResult(ss.entriesReturned);
     }
   }
 
