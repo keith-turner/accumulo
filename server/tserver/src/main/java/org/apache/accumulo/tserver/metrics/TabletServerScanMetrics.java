@@ -42,10 +42,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.IntSupplier;
 
-import com.google.common.collect.Sets;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.metrics.MetricsProducer;
 import org.apache.accumulo.server.metrics.NoopMetrics;
+
+import com.google.common.collect.Sets;
 
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.FunctionCounter;
@@ -70,7 +71,7 @@ public class TabletServerScanMetrics implements MetricsProducer {
   private final LongAdder queryResultCount = new LongAdder();
   private final LongAdder queryResultBytes = new LongAdder();
   private final LongAdder scannedCount = new LongAdder();
-  private final ConcurrentMap<TableId, TableMetrics> tableMetrics = new ConcurrentHashMap<>();
+  private final ConcurrentMap<TableId,TableMetrics> tableMetrics = new ConcurrentHashMap<>();
   private volatile MeterRegistry registry;
 
   public void incrementLookupCount() {
@@ -140,12 +141,14 @@ public class TabletServerScanMetrics implements MetricsProducer {
 
   public static class TableMetrics {
     private DistributionSummary resultsPerScan;
-    TableMetrics(TableId tableId, MeterRegistry registry){
+
+    TableMetrics(TableId tableId, MeterRegistry registry) {
       resultsPerScan = DistributionSummary.builder(SCAN_RESULTS.getName())
-              .description(SCAN_RESULTS.getDescription()).tag("tableId", tableId.canonical()).register(registry);
+          .description(SCAN_RESULTS.getDescription()).tag("tableId", tableId.canonical())
+          .register(registry);
     }
 
-    TableMetrics(){
+    TableMetrics() {
       resultsPerScan = NoopMetrics.useNoopDistributionSummary();
     }
 
@@ -156,36 +159,36 @@ public class TabletServerScanMetrics implements MetricsProducer {
     public void cleanup(MeterRegistry registry) {
 
       registry.getMeters().forEach(meter -> {
-        if(meter.getId().getName().equals("accumulo.scan.result")){
-          System.out.println("GSTR Before remove "+meter.getId());
+        if (meter.getId().getName().equals("accumulo.scan.result")) {
+          System.out.println("GSTR Before remove " + meter.getId());
         }
       });
 
-      System.out.println("GSTR Removing "+resultsPerScan.getId());
+      System.out.println("GSTR Removing " + resultsPerScan.getId());
       var rm = registry.remove(resultsPerScan.getId());
-      System.out.println("GSTR Removed "+(rm == null ? null : rm.getId()));
+      System.out.println("GSTR Removed " + (rm == null ? null : rm.getId()));
       registry.getMeters().forEach(meter -> {
-        if(meter.getId().getName().equals("accumulo.scan.result")){
-          System.out.println("GSTR After remove "+meter.getId());
+        if (meter.getId().getName().equals("accumulo.scan.result")) {
+          System.out.println("GSTR After remove " + meter.getId());
         }
       });
     }
   }
 
   public TableMetrics getTableMetrics(TableId tableId) {
-    if(registry == null){
+    if (registry == null) {
       return new TableMetrics();
     }
 
-    return tableMetrics.computeIfAbsent(tableId, tid->new TableMetrics(tid, registry));
+    return tableMetrics.computeIfAbsent(tableId, tid -> new TableMetrics(tid, registry));
   }
 
-  public void cleanUpTableMetrics(Set<TableId> activeTableIds){
-    for(TableId tableId : Set.copyOf(Sets.difference(tableMetrics.keySet(), activeTableIds))){
-      tableMetrics.computeIfPresent(tableId, (tid,tmetrics)->{
+  public void cleanUpTableMetrics(Set<TableId> activeTableIds) {
+    for (TableId tableId : Set.copyOf(Sets.difference(tableMetrics.keySet(), activeTableIds))) {
+      tableMetrics.computeIfPresent(tableId, (tid, tmetrics) -> {
         tmetrics.cleanup(registry);
         // TODO log instead
-        System.out.println("GSTR Removed table metrics for "+tableId);
+        System.out.println("GSTR Removed table metrics for " + tableId);
         return null;
       });
     }

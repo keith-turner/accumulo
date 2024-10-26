@@ -22,8 +22,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import io.micrometer.core.instrument.Meter;
-import io.micrometer.core.instrument.config.MeterFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,7 +77,7 @@ public class LoggingMeterRegistryFactory implements MeterRegistryFactory {
     LOG.info("Creating logging metrics registry with params: {}", params);
     metricsProps.putAll(params.getOptions());
     var registry = LoggingMeterRegistry.builder(lconf).loggingSink(metricConsumer).build();
-    //registry.config().meterFilter(MeterFilter.ignoreTags("tableId"));
+    // registry.config().meterFilter(MeterFilter.ignoreTags("tableId"));
     return registry;
   }
 }

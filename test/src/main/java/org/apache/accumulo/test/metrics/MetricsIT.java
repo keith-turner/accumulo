@@ -226,7 +226,7 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProperties()).build()) {
       String tableName = this.getClass().getSimpleName();
       client.tableOperations().create(tableName);
-      client.tableOperations().create(tableName+"2");
+      client.tableOperations().create(tableName + "2");
       SortedSet<Text> splits = new TreeSet<>(List.of(new Text("5")));
       client.tableOperations().addSplits(tableName, splits);
       Thread.sleep(3_000);
@@ -237,12 +237,12 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
         writer.addMutation(m);
       }
       client.tableOperations().flush(tableName);
-      try (BatchWriter writer = client.createBatchWriter(tableName+"2", config)) {
+      try (BatchWriter writer = client.createBatchWriter(tableName + "2", config)) {
         Mutation m = new Mutation("row");
         m.put("cf", "cq", new Value("value"));
         writer.addMutation(m);
       }
-      client.tableOperations().flush(tableName+"2");
+      client.tableOperations().flush(tableName + "2");
       try (BatchWriter writer = client.createBatchWriter(tableName, config)) {
         Mutation m = new Mutation("row");
         m.put("cf", "cq", new Value("value"));
@@ -257,23 +257,20 @@ public class MetricsIT extends ConfigurableMacBase implements MetricsProducer {
         }
       }
       client.tableOperations().compact(tableName, new CompactionConfig().setWait(true));
-      for(int i =0; i<10000;i++) {
+      for (int i = 0; i < 10000; i++) {
         try (Scanner scanner = client.createScanner(tableName)) {
-          scanner.forEach((k, v) -> {
-          });
+          scanner.forEach((k, v) -> {});
         }
-        try (Scanner scanner = client.createScanner(tableName+"2")) {
-          scanner.forEach((k, v) -> {
-          });
+        try (Scanner scanner = client.createScanner(tableName + "2")) {
+          scanner.forEach((k, v) -> {});
         }
       }
 
-      client.tableOperations().delete(tableName+"2");
+      client.tableOperations().delete(tableName + "2");
 
-      for(int i =0; i<150000;i++) {
+      for (int i = 0; i < 150000; i++) {
         try (Scanner scanner = client.createScanner(tableName)) {
-          scanner.forEach((k, v) -> {
-          });
+          scanner.forEach((k, v) -> {});
         }
       }
 

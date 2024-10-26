@@ -293,9 +293,10 @@ public class TabletServer extends AbstractServer implements TabletHostingServer 
 
     // TODO watch future
     // TOOD name thread
-    context.getScheduledExecutor().scheduleWithFixedDelay(()->{
-      if(scanMetrics != null){
-        var activeTableIds = getOnlineTablets().keySet().stream().map(KeyExtent::tableId).collect(Collectors.toSet());
+    context.getScheduledExecutor().scheduleWithFixedDelay(() -> {
+      if (scanMetrics != null) {
+        var activeTableIds = getOnlineTablets().keySet().stream().map(KeyExtent::tableId)
+            .collect(Collectors.toSet());
         scanMetrics.cleanUpTableMetrics(activeTableIds);
       }
     }, 5, 5, TimeUnit.SECONDS);
