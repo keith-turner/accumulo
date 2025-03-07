@@ -199,26 +199,31 @@ class LoadFiles extends ManagerRepo {
 
           var clients = new TabletClientService.Client[neededConnections];
           try {
+            List<Map<TKeyExtent,Map<String,MapFileInfo>>> perConnectionData =
+                new ArrayList<>(clients.length);
             for (int i = 0; i < clients.length; i++) {
               clients[i] = ThriftUtil.getClient(ThriftClientTypes.TABLET_SERVER, server,
                   manager.getContext(), timeInMillis);
+              perConnectionData.add(new HashMap<>());
             }
 
             int nextConnection = 0;
 
-            // Send a message per tablet. On the tablet server side for each tablet it must write to
-            // the metadata tablet which requires waiting on the walog. Sending a message per tablet
-            // allows these per tablet metadata table writes to run in parallel. This avoids
-            // serially waiting on the metadata table write for each tablet.
             for (var entry : tabletFiles.entrySet()) {
               TKeyExtent tExtent = entry.getKey();
               Map<String,MapFileInfo> files = entry.getValue();
-
               // Round robin over the connections, each connection will start processing data in
-              // parallel on the tserver side.
-              var client = clients[nextConnection++ % clients.length];
+              // parallel on the tserver side. On the tablet server side for each tablet it will
+              // serially write to the metadata table for each tablet. Sending data over multiple
+              // connection allows this proceed in parallel on each tablet server. This can speed up
+              // the case where a single tablet server has a lot of tablets to process.
+              perConnectionData.get(nextConnection++ % clients.length).put(tExtent, files);
+            }
+
+            for (int i = 0; i < clients.length; i++) {
+              var client = clients[i];
               client.loadFiles(TraceUtil.traceInfo(), manager.getContext().rpcCreds(), tid,
-                  bulkDir.toString(), Map.of(tExtent, files), setTime);
+                  bulkDir.toString(), perConnectionData.get(i), setTime);
             }
           } catch (TException ex) {
             log.debug("rpc failed server: " + server + ", " + fmtTid + " " + ex.getMessage(), ex);
@@ -231,15 +236,20 @@ class LoadFiles extends ManagerRepo {
 
         if (log.isDebugEnabled()) {
           var elapsed = sendTimer.elapsed(TimeUnit.MILLISECONDS);
-          int count = 0;
-          for (var tableFiles : loadQueue.values()) {
-            for (var files : tableFiles.values()) {
-              count += files.size();
+          int tabletCount = 0;
+          int fileCount = 0;
+          int connections = 0;
+          for (Map<TKeyExtent,Map<String,MapFileInfo>> tabletFiles : loadQueue.values()) {
+            connections += Math.min(MAX_CONNECTIONS_PER_TSERVER, tabletFiles.size());
+            for (Map<String,MapFileInfo> files : tabletFiles.values()) {
+              tabletCount++;
+              fileCount += files.size();
             }
           }
 
-          log.debug("{} sent {} messages to {} tablet servers in {} ms", fmtTid, count,
-              loadQueue.size(), elapsed);
+          log.debug(
+              "{} sent load messages to {} tablet servers using {} connections for {} tablet and {} files in {} ms",
+              fmtTid, loadQueue.size(), connections, tabletCount, fileCount, elapsed);
         }
 
         loadQueue.clear();
@@ -251,6 +261,7 @@ class LoadFiles extends ManagerRepo {
     private void addToQueue(HostAndPort server, KeyExtent extent,
         Map<String,MapFileInfo> thriftImports) {
       if (!thriftImports.isEmpty()) {
+        log.debug("Queuing message for {}", extent);
         loadMsgs.increment(server, 1);
 
         Map<String,MapFileInfo> prev = loadQueue.computeIfAbsent(server, k -> new HashMap<>())
@@ -306,11 +317,13 @@ class LoadFiles extends ManagerRepo {
 
       long sleepTime = 0;
       if (loadMsgs.size() > 0) {
-        // Find which tablet server had the most load messages sent to it and sleep 13ms for each
-        // load message. Assuming it takes 13ms to process a single message. The tablet server will
-        // process these message in parallel, so assume it can process 16 in parallel. Must return a
-        // non-zero value when messages were sent or the calling code will think everything is done.
-        sleepTime = Math.max(1, (loadMsgs.max() * 13) / 16);
+        // Find which connection which had the most load messages sent to it and sleep 13ms for each
+        // load message. Assuming it takes 13ms to process a single message. The tserver with the
+        // most messages will have had its messages divided over multiple connections, so estimate
+        // the max sent over a single connection to it.
+        var maxLoadMessagePerConnection =
+            (int) Math.ceil((double) loadMsgs.max() / MAX_CONNECTIONS_PER_TSERVER);
+        sleepTime = Math.max(1, maxLoadMessagePerConnection * 13);
       }
 
       if (locationLess > 0) {
