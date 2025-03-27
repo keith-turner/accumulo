@@ -19,7 +19,10 @@
 package org.apache.accumulo.core.util;
 
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.function.Predicate;
+
+import com.google.common.base.Preconditions;
 
 public class PeekingIterator<E> implements Iterator<E> {
 
@@ -51,7 +54,7 @@ public class PeekingIterator<E> implements Iterator<E> {
   public PeekingIterator<E> initialize(Iterator<E> source) {
     this.source = source;
     if (source.hasNext()) {
-      top = source.next();
+      top = Objects.requireNonNull(source.next());
     } else {
       top = null;
     }
@@ -59,6 +62,10 @@ public class PeekingIterator<E> implements Iterator<E> {
     return this;
   }
 
+  /**
+   * @return If this iterator has a next this will return what calling next() would return otherwise
+   *         returns null.
+   */
   public E peek() {
     if (!isInitialized) {
       throw new IllegalStateException("Iterator has not yet been initialized");
@@ -97,25 +104,19 @@ public class PeekingIterator<E> implements Iterator<E> {
    * Advances the underlying iterator looking for a match, up to {@code limit} times.
    *
    * @param predicate condition that we are looking for
-   * @param limit number of times that we should look for a match
+   * @param limit number of times that we should call {@link #next()} looking for a match.
    * @return results of the search and number of elements consumed from the underlying iterator
    */
   public boolean advanceTo(Predicate<E> predicate, int limit) {
-    for (int i = 0; i < limit; i++) {
-      E next = peek();
-      if (next == null) {
-        return false;
-      }
-      if (predicate.test(next)) {
+    Preconditions.checkArgument(limit > 0);
+
+    for (int i = 0; i < limit && hasNext(); i++) {
+      if (predicate.test(peek())) {
         return true;
-      } else if (i < (limit - 1)) {
-        if (hasNext()) {
-          next();
-        } else {
-          return false;
-        }
       }
+      next();
     }
-    return false;
+
+    return hasNext() && predicate.test(peek());
   }
 }

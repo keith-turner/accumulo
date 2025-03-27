@@ -21,6 +21,7 @@ package org.apache.accumulo.core.util;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Iterator;
@@ -57,6 +58,9 @@ public class PeekingIteratorTest {
     Iterator<Integer> ints = IntStream.range(1, 11).iterator();
     PeekingIterator<Integer> peek = new PeekingIterator<>(ints);
 
+    // Test negative limit
+    assertThrows(IllegalArgumentException.class, () -> peek.advanceTo(e -> false, -1));
+
     assertEquals(1, peek.peek());
     assertTrue(peek.advanceTo((x) -> x == 4, 5));
     assertTrue(peek.hasNext());
@@ -66,9 +70,10 @@ public class PeekingIteratorTest {
     // Advance the iterator 2 times looking for 7.
     // This will return false, but will advance
     // twice leaving the iterator at 6.
-    assertFalse(peek.advanceTo((x) -> x == 7, 2));
+    assertFalse(peek.advanceTo((x) -> x == 7, 1));
 
     assertTrue(peek.hasNext());
+    assertEquals(6, peek.peek());
     assertEquals(6, peek.next());
 
     assertTrue(peek.advanceTo((x) -> x == 8, 2));
@@ -79,7 +84,5 @@ public class PeekingIteratorTest {
     assertFalse(peek.advanceTo((x) -> x == 7, 3));
     assertFalse(peek.hasNext());
     assertNull(peek.next());
-
   }
-
 }
