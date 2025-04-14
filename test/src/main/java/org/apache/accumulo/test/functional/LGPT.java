@@ -44,10 +44,12 @@ public class LGPT extends AccumuloClusterHarness {
   public void configureMiniCluster(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
     cfg.setMemory(ServerType.TABLET_SERVER, 2, MemoryUnit.GIGABYTE);
     cfg.setProperty(Property.TSERV_DATACACHE_SIZE.getKey(), "500M");
+    cfg.setProperty(Property.TSERV_NATIVEMAP_ENABLED.getKey(), "true");
   }
 
   @Test
   public void testLgp() throws Exception {
+
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
 
       var ntc = new NewTableConfiguration().setLocalityGroups(Map.of("g1", Set.of(new Text("fam1"), new Text("fam2"), new Text("fam3")), "g2",Set.of(new Text("fam4"), new Text("fam5"), new Text("fam6"))));
