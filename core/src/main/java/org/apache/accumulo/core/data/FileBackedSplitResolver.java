@@ -107,6 +107,8 @@ public class FileBackedSplitResolver {
         // TODO can multiple threads call this?
 
         scanner.setRange(new Range(lookupRow, null));
+        // This iterator() method redoes a lot of the same work each time it is called. The hacky
+        // code above is trying to avoid this.
         var iter = scanner.iterator();
         if (iter.hasNext()) {
           Map.Entry<Key,Value> entry = iter.next();
