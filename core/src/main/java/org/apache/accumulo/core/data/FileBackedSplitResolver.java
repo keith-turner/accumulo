@@ -45,7 +45,7 @@ public class FileBackedSplitResolver {
    */
   public static void createFile(String outputFile, SortedMap<TableId,Iterable<Text>> tableSplits)
       throws IOException {
-    Map<String,String> props = Map.of(Property.TABLE_FILE_COMPRESSED_BLOCK_SIZE.getKey(), "4K",
+    Map<String,String> props = Map.of(Property.TABLE_FILE_COMPRESSED_BLOCK_SIZE.getKey(), "8K",
         Property.TABLE_FILE_COMPRESSED_BLOCK_SIZE_INDEX.getKey(), "100K");
     try (var writer = RFile.newWriter().to(outputFile).withTableProperties(props).build()) {
       for (var tableEntry : tableSplits.entrySet()) {
@@ -79,7 +79,7 @@ public class FileBackedSplitResolver {
 
     boolean useHack = true;
     if (useHack) {
-      // This is a hack that massively speeds up the lookup by resuing the accumulo iterator,
+      // This is a hack that massively speeds up the lookup by reusing the accumulo iterator,
       // instead of completely recreating it each time RFileScanner.iterator() is called. There is
       // no way to get at this via public API.
       IteratorAdapter iteratorAdapter = (IteratorAdapter) scanner.iterator();
