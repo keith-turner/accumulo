@@ -26,6 +26,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
 import org.apache.accumulo.core.client.rfile.RFile;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.iterators.IteratorAdapter;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.hadoop.io.Text;
@@ -75,21 +77,48 @@ public class FileBackedSplitResolver {
     var scanner = RFile.newScanner().from(file).withoutSystemIterators()
         .withDataCache(dataCacheSize).withIndexCache(indexCacheSize).build();
 
-    return row -> {
-      var lookupRow = MetadataSchema.TabletsSection.encodeRow(table, row);
-      // TODO can multiple threads call this?
-      scanner.setRange(new Range(lookupRow, null));
-      var iter = scanner.iterator();
-      if (iter.hasNext()) {
-        Map.Entry<Key,Value> entry = iter.next();
-        var endRow = MetadataSchema.TabletsSection.decodeRow(entry.getKey().getRow());
-        var prevRow = TabletColumnFamily.decodePrevEndRow(entry.getValue());
-        return new LoadPlan.TableSplits(prevRow, endRow.getSecond());
-      }
+    boolean useHack = true;
+    if (useHack) {
+      // This is a hack that massively speeds up the lookup by resuing the accumulo iterator,
+      // instead of completely recreating it each time RFileScanner.iterator() is called. There is
+      // no way to get at this via public API.
+      IteratorAdapter iteratorAdapter = (IteratorAdapter) scanner.iterator();
+      var aiter = iteratorAdapter.getAccumuloIter();
 
-      // TODO this means data is not present in file for this table
-      throw new IllegalStateException();
-    };
+      return row -> {
+        var lookupRow = MetadataSchema.TabletsSection.encodeRow(table, row);
+        try {
+          aiter.seek(new Range(lookupRow, null), Set.of(), false);
+          if (aiter.hasTop()) {
+            var endRow = MetadataSchema.TabletsSection.decodeRow(aiter.getTopKey().getRow());
+            var prevRow = TabletColumnFamily.decodePrevEndRow(aiter.getTopValue());
+            return new LoadPlan.TableSplits(prevRow, endRow.getSecond());
+          }
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+
+        // TODO this means data is not present in file for this table
+        throw new IllegalStateException();
+      };
+    } else {
+      return row -> {
+        var lookupRow = MetadataSchema.TabletsSection.encodeRow(table, row);
+        // TODO can multiple threads call this?
+
+        scanner.setRange(new Range(lookupRow, null));
+        var iter = scanner.iterator();
+        if (iter.hasNext()) {
+          Map.Entry<Key,Value> entry = iter.next();
+          var endRow = MetadataSchema.TabletsSection.decodeRow(entry.getKey().getRow());
+          var prevRow = TabletColumnFamily.decodePrevEndRow(entry.getValue());
+          return new LoadPlan.TableSplits(prevRow, endRow.getSecond());
+        }
+
+        // TODO this means data is not present in file for this table
+        throw new IllegalStateException();
+      };
+    }
   }
 
   public static void main(String[] args) throws Exception {

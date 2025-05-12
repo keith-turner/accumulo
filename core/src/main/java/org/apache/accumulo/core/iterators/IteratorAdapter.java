@@ -56,4 +56,8 @@ public class IteratorAdapter implements Iterator<Entry<Key,Value>> {
   public void remove() {
     throw new UnsupportedOperationException();
   }
+
+  public SortedKeyValueIterator<Key,Value> getAccumuloIter() {
+    return inner;
+  }
 }
