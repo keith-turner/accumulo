@@ -28,6 +28,8 @@ import org.apache.accumulo.core.conf.Property;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
+
 /**
  *
  *
@@ -108,32 +110,42 @@ public class ErasureCodeConfigurer extends CompressionConfigurer {
     String blockSize = config.get(Property.TABLE_FILE_BLOCK_SIZE.getKey());
     String reps = config.get(Property.TABLE_FILE_REPLICATION.getKey());
     String policyName = config.get(Property.TABLE_ERASURE_CODE_POLICY.getKey());
-    Boolean orEC = false;// Boolean.parseBoolean(options.get(this.overrideToRepOnly));
 
     this.ecPolicyName = policyName;
     this.byPassEC = bypass;
 
     if (useEC) {
+      this.minNamenodeOverhead =
+          Boolean.parseBoolean(options.getOrDefault(ERASURE_CODE_MIN_NAMENODE_OVERHEAD, "false"));
+
       // Default min ec block size for encoding to blocksize if not set.
       if (ecSize != null) {
         this.ecSize = ConfigurationTypeHelper.getFixedMemoryAsBytes(ecSize);
+        Preconditions.checkArgument(this.ecSize > 0,
+            "Must set " + ERASURE_CODE_SIZE + " to a positive integer");
       } else {
-        this.ecSize = ConfigurationTypeHelper.getFixedMemoryAsBytes(blockSize);
+        this.ecSize = 0L;
       }
-      // Enable namenode memory optimization for ec
-      this.minNamenodeOverhead =
-          Boolean.parseBoolean(options.get(ERASURE_CODE_MIN_NAMENODE_OVERHEAD));
-      if (this.minNamenodeOverhead && blockSize != null) {
-        // TODO the defautl for this is zero, can cause deivide by zero.. also when zero, may fall
-        // back to hdfs setting
+
+      if (this.minNamenodeOverhead) {
         this.hdfsBlockSize = ConfigurationTypeHelper.getFixedMemoryAsBytes(blockSize);
         this.numReplication = Long.parseLong(reps, 10);
+
+        if (hdfsBlockSize <= 0 || numReplication <= 0) {
+          throw new IllegalArgumentException(Property.TABLE_FILE_BLOCK_SIZE.getKey() + " and "
+              + Property.TABLE_FILE_REPLICATION.getKey()
+              + " must be set to positive integers when using option "
+              + ERASURE_CODE_MIN_NAMENODE_OVERHEAD);
+        }
+      }
+
+      if (this.ecSize == 0 && !this.minNamenodeOverhead) {
+        throw new IllegalArgumentException("Conditions for enabling EC not properly configured.");
       }
 
     }
 
     super.init(iparams);
-
   }
 
   @Override
@@ -167,13 +179,14 @@ public class ErasureCodeConfigurer extends CompressionConfigurer {
 
       // Compute the blocks from current ec scheme (m,n) = m+n. If there is a failure in
       // return #Integer.MAX_VALUE if fail to parse scheme
+      // TODO it seems like the number of ec block should scale w/ the file size. Or should the
+      // replication calculation not scale with the file size?
       long total_ec_blocks = computeBlocksInECGroup(this.ecPolicyName);
 
       // compute number of hdfs blocks * replication factor
       total_file_blocks_with_rep = (max(inputsSum / this.hdfsBlockSize, 1L)) * this.numReplication;
 
-      // TODO set to trace,debug,or remove
-      LOG.info("total_ec_blocks:{} total_file_blocks_with_rep:{} inputSum:{} ecSize:{}",
+      LOG.trace("total_ec_blocks:{} total_file_blocks_with_rep:{} inputSum:{} ecSize:{}",
           total_ec_blocks, total_file_blocks_with_rep, inputsSum, ecSize);
 
       ecFile = ((total_file_blocks_with_rep >= total_ec_blocks) && (inputsSum >= this.ecSize));
@@ -184,11 +197,8 @@ public class ErasureCodeConfigurer extends CompressionConfigurer {
 
     // call compressionconfigurer to determine compression settings
     Map<String,String> overs = new HashMap<>(super.override(params).getOverrides());
-
     overs.put(Property.TABLE_ENABLE_ERASURE_CODES.getKey(), Boolean.toString(ecFile));
-
     return new Overrides(overs);
-    // Map.of(Property.TABLE_ENABLE_ERASURE_CODES.getKey(), Boolean.toString(ecFile)));
   }
 
   /**

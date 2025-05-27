@@ -36,6 +36,9 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class ErasureCodeConfigurerTest {
+
+  // TODO need to test file size limit
+
   @Test
   public void testMinNNOverhead() {
     var ecc = new ErasureCodeConfigurer();
@@ -142,4 +145,6 @@ public class ErasureCodeConfigurerTest {
 
     return files;
   }
+
+  // TODO need to test invalid config and ensure exception is thrown
 }
