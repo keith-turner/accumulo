@@ -87,6 +87,7 @@ import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
 import org.apache.accumulo.core.tabletserver.thrift.ActiveCompaction;
+import org.apache.accumulo.core.tabletserver.thrift.InputFile;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionKind;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
@@ -95,6 +96,7 @@ import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.ServerServices;
 import org.apache.accumulo.core.util.ServerServices.Service;
+import org.apache.accumulo.core.util.Timer;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
 import org.apache.accumulo.core.util.threads.ThreadPools;
@@ -711,6 +713,9 @@ public class Compactor extends AbstractServer
           err.set(null);
           JOB_HOLDER.reset();
 
+          long nextJobTime, compactTime, commitTime;
+          Timer timer = Timer.startNew();
+
           TExternalCompactionJob job;
           try {
             TNextCompactionJob next = getNextJob(getNextId());
@@ -728,6 +733,10 @@ public class Compactor extends AbstractServer
             LOG.warn("Retries exceeded getting next job. Retrying...");
             continue;
           }
+
+          nextJobTime = timer.elapsed(TimeUnit.MICROSECONDS);
+          timer.restart();
+
           LOG.debug("Received next compaction job: {}", job);
 
           final LongAdder totalInputEntries = new LongAdder();
@@ -789,6 +798,8 @@ public class Compactor extends AbstractServer
               }
             }
             compactionThread.join();
+            compactTime = timer.elapsed(TimeUnit.MICROSECONDS);
+
             LOG.trace("Compaction thread finished.");
             // Run the watcher again to clear out the finished compaction and set the
             // stuck count to zero.
@@ -833,7 +844,18 @@ public class Compactor extends AbstractServer
             } else {
               try {
                 LOG.trace("Updating coordinator with compaction completion.");
+                timer.restart();
                 updateCompactionCompleted(job, JOB_HOLDER.getStats());
+                commitTime = timer.elapsed(TimeUnit.MICROSECONDS);
+                // TODO next job time will include time waiting for a job when system is idle, in
+                // this case the numbers are not as meaningful. More useful in steady state when
+                // there is a stream of compaction work to do.
+                LOG.debug(
+                    "timing for {} getjob:{} μs compact:{} μs commit:{} μs efficiency:{}% size:{}",
+                    job.getExternalCompactionId(), nextJobTime, compactTime, commitTime,
+                    String.format("%.2f",
+                        100.0 * compactTime / (nextJobTime + compactTime + commitTime)),
+                    job.files.stream().mapToLong(InputFile::getSize).sum());
               } catch (RetriesExceededException e) {
                 LOG.error(
                     "Error updating coordinator with compaction completion, cancelling compaction.",
