@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
+import org.apache.accumulo.core.metadata.schema.ExternalCompactionFinalState;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
@@ -60,7 +61,8 @@ public class DeadCompactionDetector {
 
     // The order of obtaining information is very important to avoid race conditions.
 
-    log.trace("Starting to look for dead compactions");
+    log.debug("Starting to look for dead compactions, deadCompactions.size():{}",
+        deadCompactions.size());
 
     Map<ExternalCompactionId,KeyExtent> tabletCompactions = new HashMap<>();
 
@@ -79,6 +81,9 @@ public class DeadCompactionDetector {
       // no need to look for dead compactions when tablets don't have anything recorded as running
       return;
     }
+
+    log.debug("tabletCompactions.size():{} read into memory from metadata table",
+        tabletCompactions.size());
 
     if (log.isTraceEnabled()) {
       tabletCompactions.forEach((ecid, extent) -> log.trace("Saw {} for {}", ecid, extent));
@@ -106,20 +111,33 @@ public class DeadCompactionDetector {
     });
 
     // Determine which compactions are currently committing and remove those
-    context.getAmple().getExternalCompactionFinalStates()
-        .map(ecfs -> ecfs.getExternalCompactionId()).forEach(ecid -> {
-          if (tabletCompactions.remove(ecid) != null) {
-            log.trace("Removed compaction {} that is committing", ecid);
-          }
-          if (this.deadCompactions.remove(ecid) != null) {
-            log.trace("Removed {} from the dead compaction map, it's committing", ecid);
-          }
-        });
+    try (
+        var externalCompactionFinalStates = context.getAmple().getExternalCompactionFinalStates()) {
+      externalCompactionFinalStates.map(ExternalCompactionFinalState::getExternalCompactionId)
+          .forEach(ecid -> {
+            if (tabletCompactions.remove(ecid) != null) {
+              log.trace("Removed compaction {} that is committing", ecid);
+            }
+            if (this.deadCompactions.remove(ecid) != null) {
+              log.trace("Removed {} from the dead compaction map, it's committing", ecid);
+            }
+          });
+    }
 
+    log.trace("deadCompactions.size() after removals {}", deadCompactions.size());
     tabletCompactions.forEach((ecid, extent) -> {
-      log.debug("Possible dead compaction detected {} {}", ecid, extent);
-      this.deadCompactions.merge(ecid, 1L, Long::sum);
+      var count = this.deadCompactions.merge(ecid, 1L, Long::sum);
+      if (count == 1) {
+        // The first time a possible dead compaction is seen, for quick compactions there is a good
+        // chance that it is already complete instead of dead. In order to avoid spamming the logs
+        // w/ false positives, log the first seen at trace.
+        log.trace("Possible dead compaction detected {} {} {}", ecid, extent, count);
+      } else {
+        log.debug("Possible dead compaction detected {} {} {}", ecid, extent, count);
+      }
     });
+
+    log.debug("deadCompactions.size() after additions {}", deadCompactions.size());
 
     // Everything left in tabletCompactions is no longer running anywhere and should be failed.
     // Its possible that a compaction committed while going through the steps above, if so then
@@ -128,8 +146,8 @@ public class DeadCompactionDetector {
         this.deadCompactions.entrySet().stream().filter(e -> e.getValue() > 2).map(e -> e.getKey())
             .collect(Collectors.toCollection(TreeSet::new));
     tabletCompactions.keySet().retainAll(toFail);
-    tabletCompactions.forEach((eci, v) -> {
-      log.warn("Compaction {} believed to be dead, failing it.", eci);
+    tabletCompactions.forEach((ecid, extent) -> {
+      log.warn("Compaction believed to be dead, failing it: id: {}, extent: {}", ecid, extent);
     });
     coordinator.compactionFailed(tabletCompactions);
     this.deadCompactions.keySet().removeAll(toFail);

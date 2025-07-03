@@ -19,7 +19,6 @@
 package org.apache.accumulo.core.clientImpl;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.apache.accumulo.core.util.UtilWaitThread.sleepUninterruptibly;
 
 import java.util.ArrayList;
@@ -47,9 +46,9 @@ import org.apache.accumulo.core.data.PartialKey;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.util.OpTimer;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.TextUtil;
+import org.apache.accumulo.core.util.Timer;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.WritableComparator;
 import org.slf4j.Logger;
@@ -87,6 +86,7 @@ public class TabletLocatorImpl extends TabletLocator {
   protected Text lastTabletRow;
 
   private final TreeSet<KeyExtent> badExtents = new TreeSet<>();
+  private final HashSet<String> badServers = new HashSet<>();
   private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
   private final Lock rLock = rwLock.readLock();
   private final Lock wLock = rwLock.writeLock();
@@ -167,12 +167,12 @@ public class TabletLocatorImpl extends TabletLocator {
       Map<String,TabletServerMutations<T>> binnedMutations, List<T> failures)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
 
-    OpTimer timer = null;
+    Timer timer = null;
 
     if (log.isTraceEnabled()) {
       log.trace("tid={} Binning {} mutations for table {}", Thread.currentThread().getId(),
           mutations.size(), tableId);
-      timer = new OpTimer().start();
+      timer = Timer.startNew();
     }
 
     ArrayList<T> notInCache = new ArrayList<>();
@@ -233,10 +233,9 @@ public class TabletLocatorImpl extends TabletLocator {
     }
 
     if (timer != null) {
-      timer.stop();
       log.trace("tid={} Binned {} mutations for table {} to {} tservers in {}",
           Thread.currentThread().getId(), mutations.size(), tableId, binnedMutations.size(),
-          String.format("%.3f secs", timer.scale(SECONDS)));
+          String.format("%.3f secs", timer.elapsed(MILLISECONDS) / 1000.0));
     }
 
   }
@@ -373,12 +372,12 @@ public class TabletLocatorImpl extends TabletLocator {
      * logging. Therefore methods called by this are not synchronized and should not log.
      */
 
-    OpTimer timer = null;
+    Timer timer = null;
 
     if (log.isTraceEnabled()) {
       log.trace("tid={} Binning {} ranges for table {}", Thread.currentThread().getId(),
           ranges.size(), tableId);
-      timer = new OpTimer().start();
+      timer = Timer.startNew();
     }
 
     LockCheckerSession lcSession = new LockCheckerSession();
@@ -412,10 +411,9 @@ public class TabletLocatorImpl extends TabletLocator {
     }
 
     if (timer != null) {
-      timer.stop();
       log.trace("tid={} Binned {} ranges for table {} to {} tservers in {}",
           Thread.currentThread().getId(), ranges.size(), tableId, binnedRanges.size(),
-          String.format("%.3f secs", timer.scale(SECONDS)));
+          String.format("%.3f secs", timer.elapsed(MILLISECONDS) / 1000.0));
     }
 
     return failures;
@@ -449,16 +447,10 @@ public class TabletLocatorImpl extends TabletLocator {
 
   @Override
   public void invalidateCache(ClientContext context, String server) {
-    int invalidatedCount = 0;
 
     wLock.lock();
     try {
-      for (TabletLocation cacheEntry : metaCache.values()) {
-        if (cacheEntry.tablet_location.equals(server)) {
-          badExtents.add(cacheEntry.tablet_extent);
-          invalidatedCount++;
-        }
-      }
+      badServers.add(server);
     } finally {
       wLock.unlock();
     }
@@ -466,10 +458,8 @@ public class TabletLocatorImpl extends TabletLocator {
     lockChecker.invalidateCache(server);
 
     if (log.isTraceEnabled()) {
-      log.trace("invalidated {} cache entries  table={} server={}", invalidatedCount, tableId,
-          server);
+      log.trace("queued invalidation for table={} server={}", tableId, server);
     }
-
   }
 
   @Override
@@ -491,12 +481,12 @@ public class TabletLocatorImpl extends TabletLocator {
   public TabletLocation locateTablet(ClientContext context, Text row, boolean skipRow,
       boolean retry) throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
 
-    OpTimer timer = null;
+    Timer timer = null;
 
     if (log.isTraceEnabled()) {
       log.trace("tid={} Locating tablet  table={} row={} skipRow={} retry={}",
           Thread.currentThread().getId(), tableId, TextUtil.truncate(row), skipRow, retry);
-      timer = new OpTimer().start();
+      timer = Timer.startNew();
     }
 
     while (true) {
@@ -514,10 +504,9 @@ public class TabletLocatorImpl extends TabletLocator {
       }
 
       if (timer != null) {
-        timer.stop();
         log.trace("tid={} Located tablet {} at {} in {}", Thread.currentThread().getId(),
             (tl == null ? "null" : tl.tablet_extent), (tl == null ? "null" : tl.tablet_location),
-            String.format("%.3f secs", timer.scale(SECONDS)));
+            String.format("%.3f secs", timer.elapsed(MILLISECONDS) / 1000.0));
       }
 
       return tl;
@@ -729,7 +718,7 @@ public class TabletLocatorImpl extends TabletLocator {
   private void processInvalidated(ClientContext context, LockCheckerSession lcSession)
       throws AccumuloSecurityException, AccumuloException, TableNotFoundException {
 
-    if (badExtents.isEmpty()) {
+    if (badExtents.isEmpty() && badServers.isEmpty()) {
       return;
     }
 
@@ -738,7 +727,7 @@ public class TabletLocatorImpl extends TabletLocator {
       if (!writeLockHeld) {
         rLock.unlock();
         wLock.lock();
-        if (badExtents.isEmpty()) {
+        if (badExtents.isEmpty() && badServers.isEmpty()) {
           return;
         }
       }
@@ -748,6 +737,26 @@ public class TabletLocatorImpl extends TabletLocator {
       for (KeyExtent be : badExtents) {
         lookups.add(be.toMetaRange());
         removeOverlapping(metaCache, be);
+      }
+
+      if (!badServers.isEmpty()) {
+        int removedCount = 0;
+        var locationIterator = metaCache.values().iterator();
+        while (locationIterator.hasNext()) {
+          TabletLocation cacheEntry = locationIterator.next();
+          if (badServers.contains(cacheEntry.tablet_location)) {
+            locationIterator.remove();
+            lookups.add(cacheEntry.tablet_extent.toMetaRange());
+            removedCount++;
+          }
+        }
+
+        if (log.isTraceEnabled()) {
+          log.trace("Invalidated {} cache entries for table {} related to servers {}", removedCount,
+              tableId, badServers);
+        }
+
+        badServers.clear();
       }
 
       lookups = Range.mergeOverlapping(lookups);

@@ -20,7 +20,6 @@ package org.apache.accumulo.test;
 
 import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -52,7 +51,6 @@ import org.apache.accumulo.test.functional.ReadWriteIT;
 import org.apache.accumulo.test.functional.SlowIterator;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -167,34 +165,6 @@ public class ScanServerIT extends SharedMiniClusterBase {
   }
 
   @Test
-  @Disabled("Scanner.setTimeout does not work, issue #2606")
-  @Timeout(value = 20)
-  public void testScannerTimeout() throws Exception {
-    // Configure the client to use different scan server selector property values
-    Properties props = getClientProps();
-    String profiles = "[{'isDefault':true,'maxBusyTimeout':'1s', 'busyTimeoutMultiplier':8, "
-        + "'attemptPlans':[{'servers':'3', 'busyTimeout':'100ms'},"
-        + "{'servers':'100%', 'busyTimeout':'100ms'}]}]";
-    props.put(ClientProperty.SCAN_SERVER_SELECTOR_OPTS_PREFIX.getKey() + "profiles", profiles);
-
-    String tableName = getUniqueNames(1)[0];
-    try (AccumuloClient client = Accumulo.newClient().from(props).build()) {
-      createTableAndIngest(client, tableName, null, 10, 10, "colf");
-      try (Scanner scanner = client.createScanner(tableName, Authorizations.EMPTY)) {
-        IteratorSetting slow = new IteratorSetting(30, "slow", SlowIterator.class);
-        SlowIterator.setSleepTime(slow, 30000);
-        SlowIterator.setSeekSleepTime(slow, 30000);
-        scanner.addScanIterator(slow);
-        scanner.setRange(new Range());
-        scanner.setConsistencyLevel(ConsistencyLevel.EVENTUAL);
-        scanner.setTimeout(10, TimeUnit.SECONDS);
-        assertFalse(scanner.stream().findAny().isPresent(),
-            "The scanner should not see any entries");
-      }
-    }
-  }
-
-  @Test
   @Timeout(value = 20)
   public void testBatchScannerTimeout() throws Exception {
     // Configure the client to use different scan server selector property values
@@ -236,7 +206,7 @@ public class ScanServerIT extends SharedMiniClusterBase {
    * @param colf column family to use for ingest
    * @return the number of ingested entries
    */
-  protected static int createTableAndIngest(AccumuloClient client, String tableName,
+  public static int createTableAndIngest(AccumuloClient client, String tableName,
       NewTableConfiguration ntc, int rowCount, int colCount, String colf) throws Exception {
 
     if (Objects.isNull(ntc)) {
@@ -260,7 +230,7 @@ public class ScanServerIT extends SharedMiniClusterBase {
    * @param shouldFlush if true, the entries will be flushed after ingest
    * @return the number of ingested entries
    */
-  protected static int ingest(AccumuloClient client, String tableName, int rowCount, int colCount,
+  public static int ingest(AccumuloClient client, String tableName, int rowCount, int colCount,
       int offset, String colf, boolean shouldFlush) throws Exception {
     ReadWriteIT.ingest(client, colCount, rowCount, 50, offset, colf, tableName);
 

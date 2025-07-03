@@ -25,8 +25,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
@@ -83,15 +86,15 @@ public class GarbageCollectWriteAheadLogsTest {
     }
   }
 
-  private final Iterable<TabletLocationState> tabletOnServer1List =
-      Collections.singletonList(tabletAssignedToServer1);
-  private final Iterable<TabletLocationState> tabletOnServer2List =
-      Collections.singletonList(tabletAssignedToServer2);
-  private final List<Entry<Key,Value>> emptyList = Collections.emptyList();
-  private final Iterator<Entry<Key,Value>> emptyKV = emptyList.iterator();
+  private final Stream<TabletLocationState> tabletOnServer1List =
+      Stream.of(tabletAssignedToServer1);
+  private final Stream<TabletLocationState> tabletOnServer2List =
+      Stream.of(tabletAssignedToServer2);
+  private final Iterator<Entry<Key,Value>> emptyKV = Collections.emptyIterator();
 
   @Test
   public void testRemoveUnusedLog() throws Exception {
+    AccumuloConfiguration conf = EasyMock.createMock(AccumuloConfiguration.class);
     ServerContext context = EasyMock.createMock(ServerContext.class);
     VolumeManager fs = EasyMock.createMock(VolumeManager.class);
     WalStateManager marker = EasyMock.createMock(WalStateManager.class);
@@ -99,6 +102,8 @@ public class GarbageCollectWriteAheadLogsTest {
 
     GCStatus status = new GCStatus(null, null, null, new GcCycleStats());
 
+    EasyMock.expect(context.getConfiguration()).andReturn(conf).times(2);
+    EasyMock.expect(conf.getCount(Property.GC_DELETE_WAL_THREADS)).andReturn(8).anyTimes();
     tserverSet.scanServers();
     EasyMock.expectLastCall();
     EasyMock.expect(tserverSet.getCurrentServers()).andReturn(Collections.singleton(server1));
@@ -108,9 +113,9 @@ public class GarbageCollectWriteAheadLogsTest {
     EasyMock.expect(fs.deleteRecursively(path)).andReturn(true).once();
     marker.removeWalMarker(server1, id);
     EasyMock.expectLastCall().once();
-    EasyMock.replay(context, fs, marker, tserverSet);
-    GarbageCollectWriteAheadLogs gc = new GarbageCollectWriteAheadLogs(context, fs, false,
-        tserverSet, marker, tabletOnServer1List) {
+    EasyMock.replay(conf, context, fs, marker, tserverSet);
+    var gc = new GarbageCollectWriteAheadLogs(context, fs, tserverSet, false, marker,
+        tabletOnServer1List) {
       @Override
       @Deprecated
       protected int removeReplicationEntries(Map<UUID,TServerInstance> candidates) {
@@ -123,11 +128,12 @@ public class GarbageCollectWriteAheadLogsTest {
       }
     };
     gc.collect(status);
-    EasyMock.verify(context, fs, marker, tserverSet);
+    EasyMock.verify(conf, context, fs, marker, tserverSet);
   }
 
   @Test
   public void testKeepClosedLog() throws Exception {
+    AccumuloConfiguration conf = EasyMock.createMock(AccumuloConfiguration.class);
     ServerContext context = EasyMock.createMock(ServerContext.class);
     VolumeManager fs = EasyMock.createMock(VolumeManager.class);
     WalStateManager marker = EasyMock.createMock(WalStateManager.class);
@@ -135,15 +141,17 @@ public class GarbageCollectWriteAheadLogsTest {
 
     GCStatus status = new GCStatus(null, null, null, new GcCycleStats());
 
+    EasyMock.expect(context.getConfiguration()).andReturn(conf).times(2);
+    EasyMock.expect(conf.getCount(Property.GC_DELETE_WAL_THREADS)).andReturn(8).anyTimes();
     tserverSet.scanServers();
     EasyMock.expectLastCall();
     EasyMock.expect(tserverSet.getCurrentServers()).andReturn(Collections.singleton(server1));
 
     EasyMock.expect(marker.getAllMarkers()).andReturn(markers).once();
     EasyMock.expect(marker.state(server1, id)).andReturn(new Pair<>(WalState.CLOSED, path));
-    EasyMock.replay(context, marker, tserverSet, fs);
-    GarbageCollectWriteAheadLogs gc = new GarbageCollectWriteAheadLogs(context, fs, false,
-        tserverSet, marker, tabletOnServer1List) {
+    EasyMock.replay(conf, context, marker, tserverSet, fs);
+    var gc = new GarbageCollectWriteAheadLogs(context, fs, tserverSet, false, marker,
+        tabletOnServer1List) {
       @Override
       @Deprecated
       protected int removeReplicationEntries(Map<UUID,TServerInstance> candidates) {
@@ -156,11 +164,12 @@ public class GarbageCollectWriteAheadLogsTest {
       }
     };
     gc.collect(status);
-    EasyMock.verify(context, marker, tserverSet, fs);
+    EasyMock.verify(conf, context, marker, tserverSet, fs);
   }
 
   @Test
-  public void deleteUnreferenceLogOnDeadServer() throws Exception {
+  public void deleteUnreferencedLogOnDeadServer() throws Exception {
+    AccumuloConfiguration conf = EasyMock.createMock(AccumuloConfiguration.class);
     ServerContext context = EasyMock.createMock(ServerContext.class);
     VolumeManager fs = EasyMock.createMock(VolumeManager.class);
     WalStateManager marker = EasyMock.createMock(WalStateManager.class);
@@ -170,6 +179,8 @@ public class GarbageCollectWriteAheadLogsTest {
 
     GCStatus status = new GCStatus(null, null, null, new GcCycleStats());
 
+    EasyMock.expect(context.getConfiguration()).andReturn(conf).times(2);
+    EasyMock.expect(conf.getCount(Property.GC_DELETE_WAL_THREADS)).andReturn(8).anyTimes();
     tserverSet.scanServers();
     EasyMock.expectLastCall();
     EasyMock.expect(tserverSet.getCurrentServers()).andReturn(Collections.singleton(server1));
@@ -195,20 +206,21 @@ public class GarbageCollectWriteAheadLogsTest {
     EasyMock.expectLastCall().once();
     marker.forget(server2);
     EasyMock.expectLastCall().once();
-    EasyMock.replay(context, fs, marker, tserverSet, rscanner, mscanner);
-    GarbageCollectWriteAheadLogs gc = new GarbageCollectWriteAheadLogs(context, fs, false,
-        tserverSet, marker, tabletOnServer1List) {
+    EasyMock.replay(conf, context, fs, marker, tserverSet, rscanner, mscanner);
+    var gc = new GarbageCollectWriteAheadLogs(context, fs, tserverSet, false, marker,
+        tabletOnServer1List) {
       @Override
       protected Map<UUID,Path> getSortedWALogs() {
         return Collections.emptyMap();
       }
     };
     gc.collect(status);
-    EasyMock.verify(context, fs, marker, tserverSet, rscanner, mscanner);
+    EasyMock.verify(conf, context, fs, marker, tserverSet, rscanner, mscanner);
   }
 
   @Test
   public void ignoreReferenceLogOnDeadServer() throws Exception {
+    AccumuloConfiguration conf = EasyMock.createMock(AccumuloConfiguration.class);
     ServerContext context = EasyMock.createMock(ServerContext.class);
     VolumeManager fs = EasyMock.createMock(VolumeManager.class);
     WalStateManager marker = EasyMock.createMock(WalStateManager.class);
@@ -218,6 +230,8 @@ public class GarbageCollectWriteAheadLogsTest {
 
     GCStatus status = new GCStatus(null, null, null, new GcCycleStats());
 
+    EasyMock.expect(context.getConfiguration()).andReturn(conf).times(2);
+    EasyMock.expect(conf.getCount(Property.GC_DELETE_WAL_THREADS)).andReturn(8).anyTimes();
     tserverSet.scanServers();
     EasyMock.expectLastCall();
     EasyMock.expect(tserverSet.getCurrentServers()).andReturn(Collections.singleton(server1));
@@ -238,20 +252,21 @@ public class GarbageCollectWriteAheadLogsTest {
     mscanner.setRange(ReplicationSection.getRange());
     EasyMock.expectLastCall().once();
     EasyMock.expect(mscanner.iterator()).andReturn(emptyKV);
-    EasyMock.replay(context, fs, marker, tserverSet, rscanner, mscanner);
-    GarbageCollectWriteAheadLogs gc = new GarbageCollectWriteAheadLogs(context, fs, false,
-        tserverSet, marker, tabletOnServer2List) {
+    EasyMock.replay(conf, context, fs, marker, tserverSet, rscanner, mscanner);
+    var gc = new GarbageCollectWriteAheadLogs(context, fs, tserverSet, false, marker,
+        tabletOnServer2List) {
       @Override
       protected Map<UUID,Path> getSortedWALogs() {
         return Collections.emptyMap();
       }
     };
     gc.collect(status);
-    EasyMock.verify(context, fs, marker, tserverSet, rscanner, mscanner);
+    EasyMock.verify(conf, context, fs, marker, tserverSet, rscanner, mscanner);
   }
 
   @Test
   public void replicationDelaysFileCollection() throws Exception {
+    AccumuloConfiguration conf = EasyMock.createMock(AccumuloConfiguration.class);
     ServerContext context = EasyMock.createMock(ServerContext.class);
     VolumeManager fs = EasyMock.createMock(VolumeManager.class);
     WalStateManager marker = EasyMock.createMock(WalStateManager.class);
@@ -266,6 +281,8 @@ public class GarbageCollectWriteAheadLogsTest {
 
     GCStatus status = new GCStatus(null, null, null, new GcCycleStats());
 
+    EasyMock.expect(context.getConfiguration()).andReturn(conf).times(2);
+    EasyMock.expect(conf.getCount(Property.GC_DELETE_WAL_THREADS)).andReturn(8).anyTimes();
     tserverSet.scanServers();
     EasyMock.expectLastCall();
     EasyMock.expect(tserverSet.getCurrentServers()).andReturn(Collections.singleton(server1));
@@ -286,15 +303,15 @@ public class GarbageCollectWriteAheadLogsTest {
     mscanner.setRange(ReplicationSection.getRange());
     EasyMock.expectLastCall().once();
     EasyMock.expect(mscanner.iterator()).andReturn(replicationWork.entrySet().iterator());
-    EasyMock.replay(context, fs, marker, tserverSet, rscanner, mscanner);
-    GarbageCollectWriteAheadLogs gc = new GarbageCollectWriteAheadLogs(context, fs, false,
-        tserverSet, marker, tabletOnServer1List) {
+    EasyMock.replay(conf, context, fs, marker, tserverSet, rscanner, mscanner);
+    var gc = new GarbageCollectWriteAheadLogs(context, fs, tserverSet, false, marker,
+        tabletOnServer1List) {
       @Override
       protected Map<UUID,Path> getSortedWALogs() {
         return Collections.emptyMap();
       }
     };
     gc.collect(status);
-    EasyMock.verify(context, fs, marker, tserverSet, rscanner, mscanner);
+    EasyMock.verify(conf, context, fs, marker, tserverSet, rscanner, mscanner);
   }
 }

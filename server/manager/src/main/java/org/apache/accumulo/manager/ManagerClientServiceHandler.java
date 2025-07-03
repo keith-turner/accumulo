@@ -49,10 +49,9 @@ import org.apache.accumulo.core.clientImpl.thrift.TVersionedProperties;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperation;
 import org.apache.accumulo.core.clientImpl.thrift.TableOperationExceptionType;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftConcurrentModificationException;
+import org.apache.accumulo.core.clientImpl.thrift.ThriftNotActiveServiceException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftTableOperationException;
-import org.apache.accumulo.core.conf.DeprecatedPropertyUtil;
-import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.NamespaceId;
 import org.apache.accumulo.core.data.Range;
@@ -140,7 +139,7 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
       throw new ThriftTableOperationException(tableId.canonical(), null, TableOperation.FLUSH,
           TableOperationExceptionType.OTHER, null);
     }
-    return Long.parseLong(new String(fid));
+    return Long.parseLong(new String(fid, UTF_8));
   }
 
   @Override
@@ -343,6 +342,17 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
   }
 
   @Override
+  public void tabletServerStopping(TInfo tinfo, TCredentials credentials, String tabletServer)
+      throws ThriftSecurityException, ThriftNotActiveServiceException, TException {
+    if (!manager.security.canPerformSystemActions(credentials)) {
+      throw new ThriftSecurityException(credentials.getPrincipal(),
+          SecurityErrorCode.PERMISSION_DENIED);
+    }
+    log.info("Tablet Server {} has reported it's shutting down", tabletServer);
+    manager.tserverSet.tabletServerShuttingDown(tabletServer);
+  }
+
+  @Override
   public void reportSplitExtent(TInfo info, TCredentials credentials, String serverName,
       TabletSplit split) throws ThriftSecurityException {
     if (!manager.security.canPerformSystemActions(credentials)) {
@@ -351,7 +361,7 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
     }
 
     KeyExtent oldTablet = KeyExtent.fromThrift(split.oldTablet);
-    if (manager.migrations.remove(oldTablet) != null) {
+    if (manager.migrations.removeExtent(oldTablet) != null) {
       Manager.log.info("Canceled migration of {}", split.oldTablet);
     }
     for (TServerInstance instance : manager.tserverSet.getCurrentServers()) {
@@ -419,7 +429,6 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
 
     try {
       SystemPropUtil.removeSystemProperty(manager.getContext(), property);
-      updatePlugins(property);
     } catch (Exception e) {
       Manager.log.error("Problem removing config property in zookeeper", e);
       throw new RuntimeException(e.getMessage());
@@ -435,7 +444,6 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
 
     try {
       SystemPropUtil.setSystemProperty(manager.getContext(), property, value);
-      updatePlugins(property);
     } catch (IllegalArgumentException iae) {
       Manager.log.error("Problem setting invalid property", iae);
       throw new ThriftPropertyException(property, value, "Property is invalid");
@@ -455,9 +463,6 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
     try {
       SystemPropUtil.modifyProperties(manager.getContext(), properties.getVersion(),
           properties.getProperties());
-      for (Map.Entry<String,String> entry : properties.getProperties().entrySet()) {
-        updatePlugins(entry.getKey());
-      }
     } catch (IllegalArgumentException iae) {
       Manager.log.error("Problem setting invalid property", iae);
       throw new ThriftPropertyException("Modify properties", "failed", iae.getMessage());
@@ -555,10 +560,13 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
     }
 
     try {
-      if (value == null || value.isEmpty()) {
+      if (op == TableOperation.REMOVE_PROPERTY) {
         PropUtil.removeProperties(manager.getContext(),
             TablePropKey.of(manager.getContext(), tableId), List.of(property));
-      } else {
+      } else if (op == TableOperation.SET_PROPERTY) {
+        if (value == null || value.isEmpty()) {
+          value = "";
+        }
         PropUtil.setProperties(manager.getContext(), TablePropKey.of(manager.getContext(), tableId),
             Map.of(property, value));
       }
@@ -573,15 +581,6 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
               + tableId.canonical() + " to: " + property + "=" + value);
     } catch (IllegalArgumentException iae) {
       throw new ThriftPropertyException(property, value, iae.getMessage());
-    }
-  }
-
-  private void updatePlugins(String property) {
-    // resolve without warning; any warnings should have already occurred
-    String resolved = DeprecatedPropertyUtil.getReplacementName(property, (log, replacement) -> {});
-    if (resolved.equals(Property.MANAGER_TABLET_BALANCER.getKey())) {
-      manager.initializeBalancer();
-      log.info("tablet balancer changed to {}", manager.getBalancerClass().getName());
     }
   }
 

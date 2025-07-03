@@ -20,10 +20,12 @@ package org.apache.accumulo.core.manager.balancer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.stream.Collectors;
 
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.TabletIdImpl;
@@ -40,35 +42,44 @@ public class BalanceParamsImpl implements TabletBalancer.BalanceParameters {
   private final List<TabletMigration> migrationsOut;
   private final SortedMap<TServerInstance,TabletServerStatus> thriftCurrentStatus;
   private final Set<KeyExtent> thriftCurrentMigrations;
+  private final String partition;
+  private final Map<String,TableId> tablesToBalance;
 
   public static BalanceParamsImpl fromThrift(SortedMap<TabletServerId,TServerStatus> currentStatus,
       SortedMap<TServerInstance,TabletServerStatus> thriftCurrentStatus,
-      Set<KeyExtent> thriftCurrentMigrations) {
+      Set<KeyExtent> thriftCurrentMigrations, String partition,
+      Map<String,TableId> tablesToBalance) {
     Set<TabletId> currentMigrations = thriftCurrentMigrations.stream().map(TabletIdImpl::new)
         .collect(Collectors.toUnmodifiableSet());
 
     return new BalanceParamsImpl(currentStatus, currentMigrations, new ArrayList<>(),
-        thriftCurrentStatus, thriftCurrentMigrations);
+        thriftCurrentStatus, thriftCurrentMigrations, partition, tablesToBalance);
   }
 
   public BalanceParamsImpl(SortedMap<TabletServerId,TServerStatus> currentStatus,
-      Set<TabletId> currentMigrations, List<TabletMigration> migrationsOut) {
+      Set<TabletId> currentMigrations, List<TabletMigration> migrationsOut, String partition,
+      Map<String,TableId> tablesToBalance) {
     this.currentStatus = currentStatus;
     this.currentMigrations = currentMigrations;
     this.migrationsOut = migrationsOut;
     this.thriftCurrentStatus = null;
     this.thriftCurrentMigrations = null;
+    this.partition = partition;
+    this.tablesToBalance = tablesToBalance;
   }
 
   private BalanceParamsImpl(SortedMap<TabletServerId,TServerStatus> currentStatus,
       Set<TabletId> currentMigrations, List<TabletMigration> migrationsOut,
       SortedMap<TServerInstance,TabletServerStatus> thriftCurrentStatus,
-      Set<KeyExtent> thriftCurrentMigrations) {
+      Set<KeyExtent> thriftCurrentMigrations, String partition,
+      Map<String,TableId> tablesToBalance) {
     this.currentStatus = currentStatus;
     this.currentMigrations = currentMigrations;
     this.migrationsOut = migrationsOut;
     this.thriftCurrentStatus = thriftCurrentStatus;
     this.thriftCurrentMigrations = thriftCurrentMigrations;
+    this.partition = partition;
+    this.tablesToBalance = tablesToBalance;
   }
 
   @Override
@@ -99,5 +110,15 @@ public class BalanceParamsImpl implements TabletBalancer.BalanceParameters {
     TabletServerId oldTsid = new TabletServerIdImpl(oldServer);
     TabletServerId newTsid = new TabletServerIdImpl(newServer);
     migrationsOut.add(new TabletMigration(id, oldTsid, newTsid));
+  }
+
+  @Override
+  public String partitionName() {
+    return partition;
+  }
+
+  @Override
+  public Map<String,TableId> getTablesToBalance() {
+    return tablesToBalance;
   }
 }

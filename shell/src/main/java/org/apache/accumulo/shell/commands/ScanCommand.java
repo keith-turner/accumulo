@@ -57,9 +57,10 @@ import org.apache.hadoop.io.Text;
 
 public class ScanCommand extends Command {
 
-  private Option scanOptAuths, scanOptRow, scanOptColumns, disablePaginationOpt, showFewOpt,
-      formatterOpt, interpreterOpt, formatterInterpeterOpt, outputFileOpt, scanOptCf, scanOptCq;
+  private Option scanOptAuths, scanOptRow, scanOptColumns, disablePaginationOpt, formatterOpt,
+      interpreterOpt, formatterInterpreterOpt, outputFileOpt, scanOptCf, scanOptCq;
 
+  protected Option showFewOpt;
   protected Option timestampOpt;
   protected Option profileOpt;
   private Option optStartRowExclusive;
@@ -103,15 +104,14 @@ public class ScanCommand extends Command {
 
       final Class<? extends Formatter> formatter = getFormatter(cl, tableName, shellState);
       @SuppressWarnings("deprecation")
-      final org.apache.accumulo.core.util.interpret.ScanInterpreter interpeter =
+      final org.apache.accumulo.core.util.interpret.ScanInterpreter interpreter =
           getInterpreter(cl, tableName, shellState);
 
       String classLoaderContext = null;
       if (cl.hasOption(contextOpt.getOpt())) {
         classLoaderContext = cl.getOptionValue(contextOpt.getOpt());
       }
-      // handle first argument, if present, the authorizations list to
-      // scan with
+      // handle first argument, if present, the authorizations list to scan with
       final Authorizations auths = getAuths(cl, shellState);
       final Scanner scanner = shellState.getAccumuloClient().createScanner(tableName, auths);
       if (classLoaderContext != null) {
@@ -121,11 +121,10 @@ public class ScanCommand extends Command {
       addScanIterators(shellState, cl, scanner, tableName);
 
       // handle remaining optional arguments
-      scanner.setRange(getRange(cl, interpeter));
+      scanner.setRange(getRange(cl, interpreter));
 
       // handle columns
-      fetchColumns(cl, scanner, interpeter);
-      fetchColumsWithCFAndCQ(cl, scanner, interpeter);
+      fetchColumns(cl, scanner, interpreter);
 
       // set timeout
       scanner.setTimeout(getTimeout(cl), TimeUnit.MILLISECONDS);
@@ -152,7 +151,7 @@ public class ScanCommand extends Command {
         } catch (NumberFormatException nfe) {
           Shell.log.error("Arg must be an integer.", nfe);
         } catch (IllegalArgumentException iae) {
-          Shell.log.error("Arg must be greater than one.", iae);
+          Shell.log.error("Invalid length argument", iae);
         }
       }
       printRecords(cl, shellState, config, scanner, formatter, printFile);
@@ -244,11 +243,11 @@ public class ScanCommand extends Command {
 
         clazz = ClassLoaderUtil.loadClass(cl.getOptionValue(interpreterOpt.getOpt()),
             org.apache.accumulo.core.util.interpret.ScanInterpreter.class);
-      } else if (cl.hasOption(formatterInterpeterOpt.getOpt())) {
+      } else if (cl.hasOption(formatterInterpreterOpt.getOpt())) {
         Shell.log
             .warn("Scan Interpreter option is deprecated and will be removed in a future version.");
 
-        clazz = ClassLoaderUtil.loadClass(cl.getOptionValue(formatterInterpeterOpt.getOpt()),
+        clazz = ClassLoaderUtil.loadClass(cl.getOptionValue(formatterInterpreterOpt.getOpt()),
             org.apache.accumulo.core.util.interpret.ScanInterpreter.class);
       }
     } catch (ClassNotFoundException e) {
@@ -275,11 +274,11 @@ public class ScanCommand extends Command {
 
         return shellState.getClassLoader(cl, shellState)
             .loadClass(cl.getOptionValue(formatterOpt.getOpt())).asSubclass(Formatter.class);
-      } else if (cl.hasOption(formatterInterpeterOpt.getOpt())) {
+      } else if (cl.hasOption(formatterInterpreterOpt.getOpt())) {
         Shell.log.warn("Formatter option is deprecated and will be removed in a future version.");
 
         return shellState.getClassLoader(cl, shellState)
-            .loadClass(cl.getOptionValue(formatterInterpeterOpt.getOpt()))
+            .loadClass(cl.getOptionValue(formatterInterpreterOpt.getOpt()))
             .asSubclass(Formatter.class);
       }
     } catch (Exception e) {
@@ -290,67 +289,58 @@ public class ScanCommand extends Command {
   }
 
   protected void fetchColumns(final CommandLine cl, final ScannerBase scanner,
-      @SuppressWarnings("deprecation") final org.apache.accumulo.core.util.interpret.ScanInterpreter formatter)
+      @SuppressWarnings("deprecation") final org.apache.accumulo.core.util.interpret.ScanInterpreter interpreter)
       throws UnsupportedEncodingException {
 
-    if ((cl.hasOption(scanOptCf.getOpt()) || cl.hasOption(scanOptCq.getOpt()))
-        && cl.hasOption(scanOptColumns.getOpt())) {
+    if (cl.hasOption(scanOptCf.getOpt()) || cl.hasOption(scanOptCq.getOpt())) {
+      if (cl.hasOption(scanOptColumns.getOpt())) {
+        String formattedString =
+            String.format("Option -%s is mutually exclusive with options -%s and -%s.",
+                scanOptColumns.getOpt(), scanOptCf.getOpt(), scanOptCq.getOpt());
+        throw new IllegalArgumentException(formattedString);
+      }
+      String cf = cl.getOptionValue(scanOptCf.getOpt(), "");
+      String cq = cl.getOptionValue(scanOptCq.getOpt(), "");
 
-      String formattedString =
-          String.format("Option -%s is mutually exclusive with options -%s and -%s.",
-              scanOptColumns.getOpt(), scanOptCf.getOpt(), scanOptCq.getOpt());
-      throw new IllegalArgumentException(formattedString);
-    }
-
-    if (cl.hasOption(scanOptColumns.getOpt())) {
+      if (!cq.isEmpty()) {
+        if (cf.isEmpty()) {
+          String formattedString = String.format("Option -%s is required when using -%s.",
+              scanOptCf.getOpt(), scanOptCq.getOpt());
+          throw new IllegalArgumentException(formattedString);
+        } else {
+          @SuppressWarnings("deprecation")
+          var interprettedCF =
+              interpreter.interpretColumnFamily(new Text(cf.getBytes(Shell.CHARSET)));
+          @SuppressWarnings("deprecation")
+          var interprettedCQ =
+              interpreter.interpretColumnQualifier(new Text(cq.getBytes(Shell.CHARSET)));
+          scanner.fetchColumn(interprettedCF, interprettedCQ);
+        }
+      } else if (!cf.isEmpty()) {
+        @SuppressWarnings("deprecation")
+        var interprettedCF =
+            interpreter.interpretColumnFamily(new Text(cf.getBytes(Shell.CHARSET)));
+        scanner.fetchColumnFamily(interprettedCF);
+      }
+    } else if (cl.hasOption(scanOptColumns.getOpt())) {
       for (String a : cl.getOptionValue(scanOptColumns.getOpt()).split(",")) {
         final String[] sa = a.split(":", 2);
         if (sa.length == 1) {
           @SuppressWarnings("deprecation")
-          var interprettedCF = formatter.interpretColumnFamily(new Text(a.getBytes(Shell.CHARSET)));
+          var interprettedCF =
+              interpreter.interpretColumnFamily(new Text(a.getBytes(Shell.CHARSET)));
           scanner.fetchColumnFamily(interprettedCF);
         } else {
           @SuppressWarnings("deprecation")
           var interprettedCF =
-              formatter.interpretColumnFamily(new Text(sa[0].getBytes(Shell.CHARSET)));
+              interpreter.interpretColumnFamily(new Text(sa[0].getBytes(Shell.CHARSET)));
           @SuppressWarnings("deprecation")
           var interprettedCQ =
-              formatter.interpretColumnQualifier(new Text(sa[1].getBytes(Shell.CHARSET)));
+              interpreter.interpretColumnQualifier(new Text(sa[1].getBytes(Shell.CHARSET)));
           scanner.fetchColumn(interprettedCF, interprettedCQ);
         }
       }
     }
-  }
-
-  private void fetchColumsWithCFAndCQ(CommandLine cl, Scanner scanner,
-      @SuppressWarnings("deprecation") org.apache.accumulo.core.util.interpret.ScanInterpreter interpeter) {
-    String cf = "";
-    String cq = "";
-    if (cl.hasOption(scanOptCf.getOpt())) {
-      cf = cl.getOptionValue(scanOptCf.getOpt());
-    }
-    if (cl.hasOption(scanOptCq.getOpt())) {
-      cq = cl.getOptionValue(scanOptCq.getOpt());
-    }
-
-    if (cf.isEmpty() && !cq.isEmpty()) {
-      String formattedString = String.format("Option -%s is required when using -%s.",
-          scanOptCf.getOpt(), scanOptCq.getOpt());
-      throw new IllegalArgumentException(formattedString);
-    } else if (!cf.isEmpty() && cq.isEmpty()) {
-      @SuppressWarnings("deprecation")
-      var interprettedCF = interpeter.interpretColumnFamily(new Text(cf.getBytes(Shell.CHARSET)));
-      scanner.fetchColumnFamily(interprettedCF);
-    } else if (!cf.isEmpty() && !cq.isEmpty()) {
-      @SuppressWarnings("deprecation")
-      var interprettedCF = interpeter.interpretColumnFamily(new Text(cf.getBytes(Shell.CHARSET)));
-      @SuppressWarnings("deprecation")
-      var interprettedCQ =
-          interpeter.interpretColumnQualifier(new Text(cq.getBytes(Shell.CHARSET)));
-      scanner.fetchColumn(interprettedCF, interprettedCQ);
-
-    }
-
   }
 
   protected Range getRange(final CommandLine cl,
@@ -436,7 +426,7 @@ public class ScanCommand extends Command {
         new Option("fm", "formatter", true, "fully qualified name of the formatter class to use");
     interpreterOpt = new Option("i", "interpreter", true,
         "fully qualified name of the interpreter class to use");
-    formatterInterpeterOpt = new Option("fi", "fmt-interpreter", true,
+    formatterInterpreterOpt = new Option("fi", "fmt-interpreter", true,
         "fully qualified name of a class that is a formatter and interpreter");
     timeoutOption = new Option(null, "timeout", true,
         "time before scan should fail if no data is returned. If no unit is"
@@ -481,16 +471,16 @@ public class ScanCommand extends Command {
     o.addOption(timestampOpt);
     o.addOption(disablePaginationOpt);
     o.addOption(OptUtil.tableOpt("table to be scanned"));
-    o.addOption(showFewOpt);
     o.addOption(formatterOpt);
     o.addOption(interpreterOpt);
-    o.addOption(formatterInterpeterOpt);
+    o.addOption(formatterInterpreterOpt);
     o.addOption(timeoutOption);
     if (Arrays.asList(ScanCommand.class.getName(), GrepCommand.class.getName(),
         EGrepCommand.class.getName()).contains(this.getClass().getName())) {
       // supported subclasses must handle the output file option properly
       // only add this option to commands which handle it correctly
       o.addOption(outputFileOpt);
+      o.addOption(showFewOpt);
     }
     o.addOption(profileOpt);
     o.addOption(sampleOpt);

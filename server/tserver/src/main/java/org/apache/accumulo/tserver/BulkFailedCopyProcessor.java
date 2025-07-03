@@ -34,11 +34,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Copy failed bulk imports.
  */
+// TODO: Remove when Property.TSERV_WORKQ_THREADS is removed
 public class BulkFailedCopyProcessor implements Processor {
 
   private static final Logger log = LoggerFactory.getLogger(BulkFailedCopyProcessor.class);
 
-  private ServerContext context;
+  private final ServerContext context;
 
   BulkFailedCopyProcessor(ServerContext context) {
     this.context = context;

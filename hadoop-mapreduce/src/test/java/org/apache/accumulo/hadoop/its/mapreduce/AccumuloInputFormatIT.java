@@ -19,6 +19,7 @@
 package org.apache.accumulo.hadoop.its.mapreduce;
 
 import static java.lang.System.currentTimeMillis;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.core.util.UtilWaitThread.sleepUninterruptibly;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -205,7 +206,7 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
     // Check we are getting back correct type pf split
     splits = inputFormat.getSplits(job);
     for (InputSplit split : splits) {
-      assert (split instanceof BatchInputSplit);
+      assertTrue(split instanceof BatchInputSplit);
     }
 
     // We should split along the tablet lines
@@ -243,10 +244,10 @@ public class AccumuloInputFormatIT extends AccumuloClusterHarness {
         assertNotNull(table);
         try {
           if (key != null) {
-            assertEquals(key.getRow().toString(), new String(v.get()));
+            assertEquals(key.getRow().toString(), new String(v.get(), UTF_8));
           }
           assertEquals(k.getRow(), new Text(String.format("%09x", count + 1)));
-          assertEquals(new String(v.get()), String.format("%09x", count));
+          assertEquals(new String(v.get(), UTF_8), String.format("%09x", count));
         } catch (AssertionError e) {
           assertionErrors.put(table + "_map", e);
         }

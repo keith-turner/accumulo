@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -490,9 +492,9 @@ public class CompactableUtils {
 
       CompactionStrategyConfig stratCfg = null;
 
-      if (cselCfg == null && tconf.isPropertySet(Property.TABLE_COMPACTION_STRATEGY)) {
-        var stratClassName = tconf.get(Property.TABLE_COMPACTION_STRATEGY);
-
+      var stratClassName = tconf.get(Property.TABLE_COMPACTION_STRATEGY);
+      if (cselCfg == null && tconf.isPropertySet(Property.TABLE_COMPACTION_STRATEGY)
+          && stratClassName != null && !stratClassName.isBlank()) {
         try {
           strategyWarningsCache.get(tablet.getExtent().tableId(), () -> {
             log.warn(
@@ -558,17 +560,28 @@ public class CompactableUtils {
   static CompactionStats compact(Tablet tablet, CompactionJob job,
       CompactableImpl.CompactionInfo cInfo, CompactionEnv cenv,
       Map<StoredTabletFile,DataFileValue> compactFiles, TabletFile tmpFileName)
-      throws IOException, CompactionCanceledException {
+      throws IOException, CompactionCanceledException, InterruptedException {
     TableConfiguration tableConf = tablet.getTableConfiguration();
 
     AccumuloConfiguration compactionConfig = getCompactionConfig(tableConf,
         getOverrides(job.getKind(), tablet, cInfo.localHelper, job.getFiles()));
 
-    FileCompactor compactor = new FileCompactor(tablet.getContext(), tablet.getExtent(),
+    final FileCompactor compactor = new FileCompactor(tablet.getContext(), tablet.getExtent(),
         compactFiles, tmpFileName, cInfo.propagateDeletes, cenv, cInfo.iters, compactionConfig,
         tableConf.getCryptoService());
 
-    return compactor.call();
+    final Runnable compactionCancellerTask = () -> {
+      if (!cenv.isCompactionEnabled()) {
+        compactor.interrupt();
+      }
+    };
+    final ScheduledFuture<?> future = tablet.getContext().getScheduledExecutor()
+        .scheduleWithFixedDelay(compactionCancellerTask, 3, 3, TimeUnit.SECONDS);
+    try {
+      return compactor.call();
+    } finally {
+      future.cancel(true);
+    }
   }
 
   /**

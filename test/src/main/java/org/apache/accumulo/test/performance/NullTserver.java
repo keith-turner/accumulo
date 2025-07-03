@@ -55,7 +55,6 @@ import org.apache.accumulo.core.dataImpl.thrift.TSummaries;
 import org.apache.accumulo.core.dataImpl.thrift.TSummaryRequest;
 import org.apache.accumulo.core.dataImpl.thrift.UpdateErrors;
 import org.apache.accumulo.core.master.thrift.TabletServerStatus;
-import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletLocationState;
 import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
@@ -75,6 +74,7 @@ import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.server.client.ClientServiceHandler;
 import org.apache.accumulo.server.manager.state.Assignment;
 import org.apache.accumulo.server.manager.state.MetaDataTableScanner;
@@ -115,6 +115,11 @@ public class NullTserver {
     }
 
     @Override
+    public boolean cancelUpdate(TInfo tinfo, long updateID) throws TException {
+      return true;
+    }
+
+    @Override
     public List<TKeyExtent> bulkImport(TInfo tinfo, TCredentials credentials, long tid,
         Map<TKeyExtent,Map<String,MapFileInfo>> files, boolean setTime) {
       return null;
@@ -122,6 +127,10 @@ public class NullTserver {
 
     @Override
     public void loadFiles(TInfo tinfo, TCredentials credentials, long tid, String dir,
+        Map<TKeyExtent,Map<String,MapFileInfo>> fileMap, boolean setTime) {}
+
+    @Override
+    public void loadFilesV2(TInfo tinfo, TCredentials credentials, long tid, String dir,
         Map<TKeyExtent,Map<String,MapFileInfo>> fileMap, boolean setTime) {}
 
     @Override
@@ -340,7 +349,9 @@ public class NullTserver {
 
     TServerUtils.startTServer(context.getConfiguration(), ThriftServerType.CUSTOM_HS_HA,
         muxProcessor, "NullTServer", "null tserver", 2, ThreadPools.DEFAULT_TIMEOUT_MILLISECS, 1000,
-        10 * 1024 * 1024, null, null, -1, HostAndPort.fromParts("0.0.0.0", opts.port));
+        10 * 1024 * 1024, null, null, -1, context.getConfiguration().getCount(Property.RPC_BACKLOG),
+        context.getMetricsInfo(), false,
+        HostAndPort.fromParts(ServerOpts.BIND_ALL_ADDRESSES, opts.port));
 
     HostAndPort addr = HostAndPort.fromParts(InetAddress.getLocalHost().getHostName(), opts.port);
 
@@ -349,7 +360,7 @@ public class NullTserver {
     // read the locations for the table
     Range tableRange = new KeyExtent(tableId, null, null).toMetaRange();
     List<Assignment> assignments = new ArrayList<>();
-    try (var s = new MetaDataTableScanner(context, tableRange, MetadataTable.NAME)) {
+    try (var s = new MetaDataTableScanner(context, tableRange, DataLevel.of(tableId))) {
       long randomSessionID = opts.port;
       TServerInstance instance = new TServerInstance(addr, randomSessionID);
 

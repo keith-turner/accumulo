@@ -59,13 +59,13 @@ public class RecoveryManager {
 
   private static final Logger log = LoggerFactory.getLogger(RecoveryManager.class);
 
-  private Map<String,Long> recoveryDelay = new HashMap<>();
-  private Set<String> closeTasksQueued = new HashSet<>();
-  private Set<String> sortsQueued = new HashSet<>();
-  private Cache<Path,Boolean> existenceCache;
-  private ScheduledExecutorService executor;
-  private Manager manager;
-  private ZooCache zooCache;
+  private final Map<String,Long> recoveryDelay = new HashMap<>();
+  private final Set<String> closeTasksQueued = new HashSet<>();
+  private final Set<String> sortsQueued = new HashSet<>();
+  private final Cache<Path,Boolean> existenceCache;
+  private final ScheduledExecutorService executor;
+  private final Manager manager;
+  private final ZooCache zooCache;
 
   public RecoveryManager(Manager manager, long timeToCacheExistsInMillis) {
     this.manager = manager;
@@ -73,13 +73,13 @@ public class RecoveryManager {
         CacheBuilder.newBuilder().expireAfterWrite(timeToCacheExistsInMillis, TimeUnit.MILLISECONDS)
             .maximumWeight(10_000_000).weigher((path, exist) -> path.toString().length()).build();
 
-    executor = ThreadPools.getServerThreadPools().createScheduledExecutorService(4,
-        "Walog sort starter", false);
+    executor =
+        ThreadPools.getServerThreadPools().createScheduledExecutorService(4, "Walog sort starter");
     zooCache = new ZooCache(manager.getContext().getZooReader(), null);
     try {
       List<String> workIDs =
           new DistributedWorkQueue(manager.getZooKeeperRoot() + Constants.ZRECOVERY,
-              manager.getConfiguration(), manager.getContext()).getWorkQueued();
+              manager.getConfiguration(), manager).getWorkQueued();
       sortsQueued.addAll(workIDs);
     } catch (Exception e) {
       log.warn("{}", e.getMessage(), e);
@@ -87,10 +87,10 @@ public class RecoveryManager {
   }
 
   private class LogSortTask implements Runnable {
-    private String source;
-    private String destination;
-    private String sortId;
-    private LogCloser closer;
+    private final String source;
+    private final String destination;
+    private final String sortId;
+    private final LogCloser closer;
 
     public LogSortTask(LogCloser closer, String source, String destination, String sortId) {
       this.closer = closer;
@@ -132,7 +132,7 @@ public class RecoveryManager {
       throws KeeperException, InterruptedException {
     String work = source + "|" + destination;
     new DistributedWorkQueue(manager.getZooKeeperRoot() + Constants.ZRECOVERY,
-        manager.getConfiguration(), manager.getContext()).addWork(sortId, work.getBytes(UTF_8));
+        manager.getConfiguration(), manager).addWork(sortId, work.getBytes(UTF_8));
 
     synchronized (this) {
       sortsQueued.add(sortId);

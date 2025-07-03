@@ -77,8 +77,12 @@ public class ServerConfigurationFactory extends ServerConfiguration {
   public ServerConfigurationFactory(ServerContext context, SiteConfiguration siteConfig) {
     this.context = context;
     this.siteConfig = siteConfig;
-    this.systemConfig = memoize(() -> new SystemConfiguration(context,
-        SystemPropKey.of(context.getInstanceID()), siteConfig));
+    this.systemConfig = memoize(() -> {
+      var sysConf =
+          new SystemConfiguration(context, SystemPropKey.of(context.getInstanceID()), siteConfig);
+      ConfigCheckUtil.validate(sysConf, "system config");
+      return sysConf;
+    });
     tableParentConfigs =
         Caffeine.newBuilder().expireAfterAccess(CACHE_EXPIRATION_HRS, TimeUnit.HOURS).build();
     tableConfigs =
@@ -87,8 +91,8 @@ public class ServerConfigurationFactory extends ServerConfiguration {
         Caffeine.newBuilder().expireAfterAccess(CACHE_EXPIRATION_HRS, TimeUnit.HOURS).build();
 
     refresher = new ConfigRefreshRunner();
-    Runtime.getRuntime()
-        .addShutdownHook(Threads.createThread("config-refresh-shutdownHook", refresher::shutdown));
+    Runtime.getRuntime().addShutdownHook(
+        Threads.createNonCriticalThread("config-refresh-shutdownHook", refresher::shutdown));
   }
 
   public ServerContext getServerContext() {
@@ -115,7 +119,7 @@ public class ServerConfigurationFactory extends ServerConfiguration {
         context.getPropStore().registerAsListener(TablePropKey.of(context, tableId), changeWatcher);
         var conf =
             new TableConfiguration(context, tableId, getNamespaceConfigurationForTable(tableId));
-        ConfigCheckUtil.validate(conf);
+        ConfigCheckUtil.validate(conf, "table id: " + tableId.toString());
         return conf;
       }
       return null;
@@ -138,7 +142,7 @@ public class ServerConfigurationFactory extends ServerConfiguration {
       context.getPropStore().registerAsListener(NamespacePropKey.of(context, namespaceId),
           changeWatcher);
       var conf = new NamespaceConfiguration(context, namespaceId, getSystemConfiguration());
-      ConfigCheckUtil.validate(conf);
+      ConfigCheckUtil.validate(conf, "namespace id: " + namespaceId.toString());
       return conf;
     });
   }
@@ -191,8 +195,8 @@ public class ServerConfigurationFactory extends ServerConfiguration {
 
       Runnable refreshTask = this::verifySnapshotVersions;
 
-      ScheduledThreadPoolExecutor executor = ThreadPools.getServerThreadPools()
-          .createScheduledExecutorService(1, "config-refresh", false);
+      ScheduledThreadPoolExecutor executor =
+          ThreadPools.getServerThreadPools().createScheduledExecutorService(1, "config-refresh");
 
       // scheduleWithFixedDelay - used so only one task will run concurrently.
       // staggering the initial delay prevents synchronization of Accumulo servers communicating

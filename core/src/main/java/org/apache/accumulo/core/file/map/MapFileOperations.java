@@ -20,7 +20,6 @@ package org.apache.accumulo.core.file.map;
 
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,19 +28,20 @@ import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.file.FileSKVWriter;
 import org.apache.accumulo.core.file.blockfile.impl.CacheProvider;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
-import org.apache.accumulo.core.iteratorsImpl.system.MapFileIterator;
 import org.apache.accumulo.core.iteratorsImpl.system.SequenceFileIterator;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.MapFile;
 
 public class MapFileOperations extends FileOperations {
+  private static final String MSG = "Map files are not supported";
 
   public static class RangeIterator implements FileSKVIterator {
 
@@ -71,6 +71,11 @@ public class MapFileOperations extends FileOperations {
     @Override
     public DataInputStream getMetaStore(String name) throws IOException {
       return ((FileSKVIterator) reader).getMetaStore(name);
+    }
+
+    @Override
+    public long estimateOverlappingEntries(KeyExtent extent) throws IOException {
+      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -148,12 +153,7 @@ public class MapFileOperations extends FileOperations {
 
   @Override
   protected FileSKVIterator openReader(FileOptions options) throws IOException {
-    FileSKVIterator iter = new RangeIterator(new MapFileIterator(options.getFileSystem(),
-        options.getFilename(), options.getConfiguration()));
-    if (options.isSeekToBeginning()) {
-      iter.seek(new Range(new Key(), null), new ArrayList<>(), false);
-    }
-    return iter;
+    throw new UnsupportedOperationException(MSG);
   }
 
   @Override
@@ -175,12 +175,6 @@ public class MapFileOperations extends FileOperations {
 
   @Override
   protected FileSKVIterator openScanReader(FileOptions options) throws IOException {
-    MapFileIterator mfIter = new MapFileIterator(options.getFileSystem(), options.getFilename(),
-        options.getConfiguration());
-
-    FileSKVIterator iter = new RangeIterator(mfIter);
-    iter.seek(options.getRange(), options.getColumnFamilies(), options.isRangeInclusive());
-
-    return iter;
+    throw new UnsupportedOperationException(MSG);
   }
 }

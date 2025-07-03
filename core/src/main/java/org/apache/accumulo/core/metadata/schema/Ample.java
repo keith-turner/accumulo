@@ -27,6 +27,7 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.fate.zookeeper.ServiceLock;
+import org.apache.accumulo.core.gc.GcCandidate;
 import org.apache.accumulo.core.gc.ReferenceFile;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.RootTable;
@@ -97,7 +98,7 @@ public interface Ample {
     /**
      * @return The Id of the Accumulo table in which this data level stores its metadata.
      */
-    public TableId tableId() {
+    public TableId metaTableId() {
       if (id == null) {
         throw new UnsupportedOperationException();
       }
@@ -131,6 +132,24 @@ public interface Ample {
      * Read data in a way that may be faster but may yield out of date data.
      */
     EVENTUAL
+  }
+
+  /**
+   * Enables status based processing of GcCandidates.
+   */
+  public enum GcCandidateType {
+    /**
+     * Candidates which have corresponding file references still present in tablet metadata.
+     */
+    INUSE,
+    /**
+     * Candidates that have no matching file references and can be removed from the system.
+     */
+    VALID,
+    /**
+     * Candidates that are malformed.
+     */
+    INVALID
   }
 
   /**
@@ -193,16 +212,15 @@ public interface Ample {
     throw new UnsupportedOperationException();
   }
 
-  default void deleteGcCandidates(DataLevel level, Collection<String> paths) {
+  /**
+   * Enum added to support unique candidate deletions in 2.1
+   */
+  default void deleteGcCandidates(DataLevel level, Collection<GcCandidate> candidates,
+      GcCandidateType type) {
     throw new UnsupportedOperationException();
   }
 
-  default Iterator<String> getGcCandidates(DataLevel level) {
-    throw new UnsupportedOperationException();
-  }
-
-  default void
-      putExternalCompactionFinalStates(Collection<ExternalCompactionFinalState> finalStates) {
+  default Iterator<GcCandidate> getGcCandidates(DataLevel level) {
     throw new UnsupportedOperationException();
   }
 

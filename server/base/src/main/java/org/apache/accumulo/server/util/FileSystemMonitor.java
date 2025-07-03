@@ -97,7 +97,7 @@ public class FileSystemMonitor {
     return mounts;
   }
 
-  private Map<String,Boolean> readWriteFilesystems = new HashMap<>();
+  private final Map<String,Boolean> readWriteFilesystems = new HashMap<>();
 
   public FileSystemMonitor(final String procFile, long period, AccumuloConfiguration conf)
       throws IOException {
@@ -121,8 +121,7 @@ public class FileSystemMonitor {
             try {
               checkMount(mount);
             } catch (final Exception e) {
-              Halt.halt(-42,
-                  () -> log.error("Exception while checking mount points, halting process", e));
+              Halt.halt(1, "Exception while checking mount points, halting process", e);
             }
           }));
     }

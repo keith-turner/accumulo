@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -68,7 +69,8 @@ public abstract class GroupBalancer implements TabletBalancer {
 
   protected BalancerEnvironment environment;
   private final TableId tableId;
-  private long lastRun = 0;
+
+  protected final Map<String,Long> lastRunTimes = new HashMap<>();
 
   @Override
   public void init(BalancerEnvironment balancerEnvironment) {
@@ -211,7 +213,8 @@ public abstract class GroupBalancer implements TabletBalancer {
       return 5000;
     }
 
-    if (System.currentTimeMillis() - lastRun < getWaitTime()) {
+    if (System.currentTimeMillis() - lastRunTimes.getOrDefault(params.partitionName(), 0L)
+        < getWaitTime()) {
       return 5000;
     }
 
@@ -275,7 +278,7 @@ public abstract class GroupBalancer implements TabletBalancer {
 
     populateMigrations(tservers.keySet(), params.migrationsOut(), moves);
 
-    lastRun = System.currentTimeMillis();
+    lastRunTimes.put(params.partitionName(), System.currentTimeMillis());
 
     return 5000;
   }
@@ -485,7 +488,7 @@ public abstract class GroupBalancer implements TabletBalancer {
     }
 
     ArrayList<Pair<String,TabletServerId>> serversGroupsToRemove = new ArrayList<>();
-    ArrayList<TabletServerId> serversToRemove = new ArrayList<>();
+    HashSet<TabletServerId> serversToRemove = new HashSet<>();
 
     for (TserverGroupInfo destTgi : tservers.values()) {
       if (surplusExtra.isEmpty()) {
@@ -609,7 +612,7 @@ public abstract class GroupBalancer implements TabletBalancer {
       }
     }
 
-    ArrayList<TabletServerId> emptyServers = new ArrayList<>();
+    HashSet<TabletServerId> emptyServers = new HashSet<>();
     ArrayList<Pair<String,TabletServerId>> emptyServerGroups = new ArrayList<>();
     for (TserverGroupInfo destTgi : tservers.values()) {
       if (extraSurplus.isEmpty()) {

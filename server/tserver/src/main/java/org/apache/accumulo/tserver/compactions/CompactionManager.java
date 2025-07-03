@@ -21,7 +21,6 @@ package org.apache.accumulo.tserver.compactions;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
-import static org.apache.accumulo.core.util.compaction.CompactionServicesConfig.DEFAULT_SERVICE;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -32,9 +31,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
@@ -42,11 +43,13 @@ import org.apache.accumulo.core.spi.compaction.CompactionKind;
 import org.apache.accumulo.core.spi.compaction.CompactionServiceId;
 import org.apache.accumulo.core.spi.compaction.CompactionServices;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionQueueSummary;
+import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.Retry;
 import org.apache.accumulo.core.util.compaction.CompactionExecutorIdImpl;
 import org.apache.accumulo.core.util.compaction.CompactionServicesConfig;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.tserver.OpeningAndOnlineCompactables;
 import org.apache.accumulo.tserver.compactions.CompactionExecutor.CType;
 import org.apache.accumulo.tserver.metrics.CompactionExecutorsMetrics;
 import org.apache.accumulo.tserver.tablet.Tablet;
@@ -54,32 +57,37 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
 
 public class CompactionManager {
 
   private static final Logger log = LoggerFactory.getLogger(CompactionManager.class);
 
-  private Iterable<Compactable> compactables;
+  private final Supplier<OpeningAndOnlineCompactables> compactables;
   private volatile Map<CompactionServiceId,CompactionService> services;
 
-  private LinkedBlockingQueue<Compactable> compactablesToCheck = new LinkedBlockingQueue<>();
+  private final LinkedBlockingQueue<Compactable> compactablesToCheck = new LinkedBlockingQueue<>();
 
-  private long maxTimeBetweenChecks;
+  private final long maxTimeBetweenChecks;
 
-  private ServerContext context;
+  private final ServerContext context;
 
   private CompactionServicesConfig currentCfg;
 
   private long lastConfigCheckTime = System.nanoTime();
 
-  private CompactionExecutorsMetrics ceMetrics;
+  private final CompactionExecutorsMetrics ceMetrics;
 
   private String lastDeprecationWarning = "";
 
-  private Map<CompactionExecutorId,ExternalCompactionExecutor> externalExecutors;
+  private final Map<CompactionExecutorId,ExternalCompactionExecutor> externalExecutors;
 
-  private Map<ExternalCompactionId,ExtCompInfo> runningExternalCompactions;
+  private final Map<ExternalCompactionId,ExtCompInfo> runningExternalCompactions;
+
+  // use to limit logging of unknown compaction services
+  private final Cache<Pair<TableId,CompactionServiceId>,Long> unknownCompactionServiceErrorCache;
 
   static class ExtCompInfo {
     final KeyExtent extent;
@@ -114,18 +122,33 @@ public class CompactionManager {
         long passed = NANOSECONDS.toMillis(System.nanoTime() - lastCheckAllTime);
         if (passed >= maxTimeBetweenChecks) {
           // take a snapshot of what is currently running
-          HashSet<ExternalCompactionId> runningEcids =
-              new HashSet<>(runningExternalCompactions.keySet());
-          for (Compactable compactable : compactables) {
+          HashMap<ExternalCompactionId,ExtCompInfo> runningEcids =
+              new HashMap<>(runningExternalCompactions);
+          // Get a snapshot of the tablets that are online and opening, this must be obtained after
+          // getting the runningExternalCompactions snapshot above. If it were obtained before then
+          // an opening tablet could add itself to runningExternalCompactions after this code
+          // obtained the snapshot of opening and online tablets and this code would remove it.
+          var compactablesSnapshot = compactables.get();
+          for (Tablet tablet : compactablesSnapshot.online.values()) {
+            Compactable compactable = tablet.asCompactable();
             last = compactable;
             submitCompaction(compactable);
             // remove anything from snapshot that tablets know are running
             compactable.getExternalCompactionIds(runningEcids::remove);
           }
           lastCheckAllTime = System.nanoTime();
+
+          // remove any tablets that are currently opening, these may have been added to
+          // runningExternalCompactions while in the process of opening
+          runningEcids.values()
+              .removeIf(extCompInfo -> compactablesSnapshot.opening.contains(extCompInfo.extent));
+
           // anything left in the snapshot is unknown to any tablet and should be removed if it
           // still exists
-          runningExternalCompactions.keySet().removeAll(runningEcids);
+          runningEcids.forEach((ecid, info) -> log.debug(
+              "Removing unknown external compaction {} {} from runningExternalCompactions", ecid,
+              info.extent));
+          runningExternalCompactions.keySet().removeAll(runningEcids.keySet());
         } else {
           var compactable = compactablesToCheck.poll(maxTimeBetweenChecks - passed, MILLISECONDS);
           if (compactable != null) {
@@ -165,12 +188,18 @@ public class CompactionManager {
         checkForConfigChanges(true);
         service = services.get(csid);
         if (service == null) {
-          log.error(
-              "Tablet {} returned non-existent compaction service {} for compaction type {}.  Check"
-                  + " the table compaction dispatcher configuration. Attempting to fall back to "
-                  + "{} service.",
-              compactable.getExtent(), csid, ctype, DEFAULT_SERVICE);
-          service = services.get(DEFAULT_SERVICE);
+          var cacheKey = new Pair<>(compactable.getTableId(), csid);
+          var last = unknownCompactionServiceErrorCache.getIfPresent(cacheKey);
+          if (last == null) {
+            // have not logged an error recently for this, so lets log one
+            log.error(
+                "Tablet {} returned non-existent compaction service {} for compaction type {}.  Check"
+                    + " the table compaction dispatcher configuration. No compactions will happen"
+                    + " until the configuration is fixed. This log message is temporarily suppressed for the"
+                    + " entire table.",
+                compactable.getExtent(), csid, ctype);
+            unknownCompactionServiceErrorCache.put(cacheKey, System.currentTimeMillis());
+          }
         }
       }
 
@@ -180,8 +209,8 @@ public class CompactionManager {
     }
   }
 
-  public CompactionManager(Iterable<Compactable> compactables, ServerContext context,
-      CompactionExecutorsMetrics ceMetrics) {
+  public CompactionManager(Supplier<OpeningAndOnlineCompactables> compactables,
+      ServerContext context, CompactionExecutorsMetrics ceMetrics) {
     this.compactables = compactables;
 
     this.currentCfg =
@@ -196,6 +225,9 @@ public class CompactionManager {
     this.runningExternalCompactions = new ConcurrentHashMap<>();
 
     Map<CompactionServiceId,CompactionService> tmpServices = new HashMap<>();
+
+    unknownCompactionServiceErrorCache =
+        CacheBuilder.newBuilder().expireAfterWrite(5, MINUTES).build();
 
     currentCfg.getPlanners().forEach((serviceName, plannerClassName) -> {
       try {
@@ -261,13 +293,13 @@ public class CompactionManager {
           }
         });
 
-        var deletedServices =
-            Sets.difference(currentCfg.getPlanners().keySet(), tmpCfg.getPlanners().keySet());
+        var deletedServices = Sets.difference(services.keySet(), tmpServices.keySet());
 
-        for (String serviceName : deletedServices) {
-          services.get(CompactionServiceId.of(serviceName)).stop();
+        for (var dcsid : deletedServices) {
+          services.get(dcsid).stop();
         }
 
+        this.currentCfg = tmpCfg;
         this.services = Map.copyOf(tmpServices);
 
         HashSet<CompactionExecutorId> activeExternalExecs = new HashSet<>();
@@ -283,7 +315,7 @@ public class CompactionManager {
 
   public void start() {
     log.debug("Started compaction manager");
-    Threads.createThread("Compaction Manager", () -> mainLoop()).start();
+    Threads.createCriticalThread("Compaction Manager", () -> mainLoop()).start();
   }
 
   public CompactionServices getServices() {
@@ -323,7 +355,8 @@ public class CompactionManager {
     if (ecJob != null) {
       runningExternalCompactions.put(ecJob.getExternalCompactionId(),
           new ExtCompInfo(ecJob.getExtent(), extCE.getId()));
-      log.debug("Reserved external compaction {}", ecJob.getExternalCompactionId());
+      log.debug("Reserved external compaction {} {}", ecJob.getExternalCompactionId(),
+          ecJob.getExtent());
     }
     return ecJob;
   }
@@ -339,6 +372,7 @@ public class CompactionManager {
   public void registerExternalCompaction(ExternalCompactionId ecid, KeyExtent extent,
       CompactionExecutorId ceid) {
     runningExternalCompactions.put(ecid, new ExtCompInfo(extent, ceid));
+    log.trace("registered external compaction {} {}", ecid, extent);
   }
 
   public void commitExternalCompaction(ExternalCompactionId extCompactionId,
@@ -350,10 +384,19 @@ public class CompactionManager {
           "Unexpected extent seen on compaction commit %s %s", ecInfo.extent, extentCompacted);
       Tablet tablet = currentTablets.get(ecInfo.extent);
       if (tablet != null) {
+        log.debug("Attempting to commit external compaction {} {}", extCompactionId,
+            tablet.getExtent());
         tablet.asCompactable().commitExternalCompaction(extCompactionId, fileSize, entries);
         compactablesToCheck.add(tablet.asCompactable());
+        runningExternalCompactions.remove(extCompactionId);
+        log.trace("Committed external compaction {} {}", extCompactionId, tablet.getExtent());
+      } else {
+        log.debug("Ignoring request to commit {} {} because its not in set of known tablets",
+            extCompactionId, ecInfo.extent);
       }
-      runningExternalCompactions.remove(extCompactionId);
+    } else {
+      log.debug("Ignoring request to commit {} because its not in runningExternalCompactions",
+          extCompactionId);
     }
   }
 
@@ -365,10 +408,17 @@ public class CompactionManager {
           "Unexpected extent seen on compaction commit %s %s", ecInfo.extent, extentCompacted);
       Tablet tablet = currentTablets.get(ecInfo.extent);
       if (tablet != null) {
+        log.debug("Attempting to fail external compaction {} {}", ecid, tablet.getExtent());
         tablet.asCompactable().externalCompactionFailed(ecid);
         compactablesToCheck.add(tablet.asCompactable());
+        runningExternalCompactions.remove(ecid);
+        log.trace("Failed external compaction {} {}", ecid, tablet.getExtent());
+      } else {
+        log.debug("Ignoring request to fail {} {} because its not in set of known tablets", ecid,
+            ecInfo.extent);
       }
-      runningExternalCompactions.remove(ecid);
+    } else {
+      log.debug("Ignoring request to fail {} because its not in runningExternalCompactions", ecid);
     }
   }
 
@@ -409,6 +459,10 @@ public class CompactionManager {
   public void compactableClosed(KeyExtent extent, Set<CompactionServiceId> servicesUsed,
       Set<ExternalCompactionId> ecids) {
     runningExternalCompactions.keySet().removeAll(ecids);
+    if (log.isTraceEnabled()) {
+      ecids.forEach(ecid -> log.trace(
+          "Removed {} from runningExternalCompactions for {} as part of close", ecid, extent));
+    }
     servicesUsed.stream().map(services::get).filter(Objects::nonNull)
         .forEach(compService -> compService.compactableClosed(extent));
   }

@@ -28,6 +28,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.Constants;
@@ -238,12 +239,15 @@ public class LiveTServerSet implements Watcher {
   }
 
   // The set of active tservers with locks, indexed by their name in zookeeper
-  private Map<String,TServerInfo> current = new HashMap<>();
+  private final Map<String,TServerInfo> current = new HashMap<>();
   // as above, indexed by TServerInstance
-  private Map<TServerInstance,TServerInfo> currentInstances = new HashMap<>();
+  private final Map<TServerInstance,TServerInfo> currentInstances = new HashMap<>();
+
+  private final ConcurrentHashMap<String,TServerInfo> serversShuttingDown =
+      new ConcurrentHashMap<>();
 
   // The set of entries in zookeeper without locks, and the first time each was noticed
-  private Map<String,Long> locklessServers = new HashMap<>();
+  private final Map<String,Long> locklessServers = new HashMap<>();
 
   public LiveTServerSet(ServerContext context, Listener cback) {
     this.cback = cback;
@@ -262,6 +266,19 @@ public class LiveTServerSet implements Watcher {
 
     ThreadPools.watchCriticalScheduledTask(this.context.getScheduledExecutor()
         .scheduleWithFixedDelay(this::scanServers, 0, 5000, TimeUnit.MILLISECONDS));
+  }
+
+  public void tabletServerShuttingDown(String server) {
+
+    TServerInfo info = null;
+    synchronized (this) {
+      info = current.get(server);
+    }
+    if (info != null) {
+      serversShuttingDown.put(server, info);
+    } else {
+      log.info("Tablet Server reported it's shutting down, but not in list of current servers");
+    }
   }
 
   public synchronized void scanServers() {
@@ -312,6 +329,7 @@ public class LiveTServerSet implements Watcher {
         doomed.add(info.instance);
         current.remove(zPath);
         currentInstances.remove(info.instance);
+        serversShuttingDown.remove(zPath);
       }
 
       Long firstSeen = locklessServers.get(zPath);
@@ -389,7 +407,9 @@ public class LiveTServerSet implements Watcher {
   }
 
   public synchronized Set<TServerInstance> getCurrentServers() {
-    return new HashSet<>(currentInstances.keySet());
+    Set<TServerInstance> current = currentInstances.keySet();
+    serversShuttingDown.values().forEach(tsi -> current.remove(tsi.instance));
+    return new HashSet<>(current);
   }
 
   public synchronized int size() {
@@ -445,9 +465,7 @@ public class LiveTServerSet implements Watcher {
       context.getZooReaderWriter().recursiveDelete(fullpath, SKIP);
     } catch (Exception e) {
       String msg = "error removing tablet server lock";
-      // ACCUMULO-3651 Changed level to error and added FATAL to message for slf4j compatibility
-      log.error("FATAL: {}", msg, e);
-      Halt.halt(msg, -1);
+      Halt.halt(-1, msg, e);
     }
     getZooCache().clear(fullpath);
   }

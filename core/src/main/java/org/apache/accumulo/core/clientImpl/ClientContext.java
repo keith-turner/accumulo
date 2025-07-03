@@ -19,15 +19,17 @@
 package org.apache.accumulo.core.clientImpl;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Suppliers.memoize;
 import static com.google.common.base.Suppliers.memoizeWithExpiration;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOCATION;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.CONDITIONAL_WRITER_CLEANUP_POOL;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.SCANNER_READ_AHEAD_POOL;
 
 import java.lang.Thread.UncaughtExceptionHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -97,8 +99,8 @@ import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.scan.ScanServerInfo;
 import org.apache.accumulo.core.spi.scan.ScanServerSelector;
-import org.apache.accumulo.core.util.OpTimer;
 import org.apache.accumulo.core.util.Pair;
+import org.apache.accumulo.core.util.Timer;
 import org.apache.accumulo.core.util.tables.TableZooHelper;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.core.util.threads.Threads;
@@ -140,6 +142,7 @@ public class ClientContext implements AccumuloClient {
   private final Supplier<ScanServerSelector> scanServerSelectorSupplier;
   private TCredentials rpcCreds;
   private ThriftTransportPool thriftTransportPool;
+  private ZookeeperLockChecker zkLockChecker;
 
   private volatile boolean closed = false;
 
@@ -150,7 +153,7 @@ public class ClientContext implements AccumuloClient {
   @SuppressWarnings("deprecation")
   private org.apache.accumulo.core.client.admin.ReplicationOperations replicationops = null;
   private final SingletonReservation singletonReservation;
-  private final ThreadPools clientThreadPools;
+  private final Supplier<ThreadPools> clientThreadPools;
   private ThreadPoolExecutor cleanupThreadPool;
   private ThreadPoolExecutor scannerReadaheadPool;
 
@@ -205,9 +208,7 @@ public class ClientContext implements AccumuloClient {
         }
       });
       return scanServerSelector;
-    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
-        | IllegalArgumentException | InvocationTargetException | NoSuchMethodException
-        | SecurityException e) {
+    } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException e) {
       throw new RuntimeException("Error creating ScanServerSelector implementation: " + clazz, e);
     }
   }
@@ -232,21 +233,20 @@ public class ClientContext implements AccumuloClient {
     saslSupplier = memoizeWithExpiration(
         () -> SaslConnectionParams.from(getConfiguration(), getCredentials().getToken()), 100,
         MILLISECONDS);
-    scanServerSelectorSupplier =
-        memoizeWithExpiration(this::createScanServerSelector, 100, MILLISECONDS);
+    scanServerSelectorSupplier = memoize(this::createScanServerSelector);
     this.singletonReservation = Objects.requireNonNull(reservation);
     this.tableops = new TableOperationsImpl(this);
     this.namespaceops = new NamespaceOperationsImpl(this, tableops);
     if (ueh == Threads.UEH) {
-      clientThreadPools = ThreadPools.getServerThreadPools();
+      clientThreadPools = () -> ThreadPools.getServerThreadPools();
     } else {
       // Provide a default UEH that just logs the error
       if (ueh == null) {
-        clientThreadPools = ThreadPools.getClientThreadPools((t, e) -> {
+        clientThreadPools = () -> ThreadPools.getClientThreadPools(getConfiguration(), (t, e) -> {
           log.error("Caught an Exception in client background thread: {}. Thread is dead.", t, e);
         });
       } else {
-        clientThreadPools = ThreadPools.getClientThreadPools(ueh);
+        clientThreadPools = () -> ThreadPools.getClientThreadPools(getConfiguration(), ueh);
       }
     }
   }
@@ -260,8 +260,9 @@ public class ClientContext implements AccumuloClient {
       submitScannerReadAheadTask(Callable<List<KeyValue>> c) {
     ensureOpen();
     if (scannerReadaheadPool == null) {
-      scannerReadaheadPool = clientThreadPools.createThreadPool(0, Integer.MAX_VALUE, 3L, SECONDS,
-          "Accumulo scanner read ahead thread", new SynchronousQueue<>(), true);
+      scannerReadaheadPool = clientThreadPools.get().getPoolBuilder(SCANNER_READ_AHEAD_POOL)
+          .numCoreThreads(0).numMaxThreads(Integer.MAX_VALUE).withTimeOut(3L, SECONDS)
+          .withQueue(new SynchronousQueue<>()).build();
     }
     return scannerReadaheadPool.submit(c);
   }
@@ -269,8 +270,8 @@ public class ClientContext implements AccumuloClient {
   public synchronized void executeCleanupTask(Runnable r) {
     ensureOpen();
     if (cleanupThreadPool == null) {
-      cleanupThreadPool = clientThreadPools.createFixedThreadPool(1, 3, SECONDS,
-          "Conditional Writer Cleanup Thread", true);
+      cleanupThreadPool = clientThreadPools.get().getPoolBuilder(CONDITIONAL_WRITER_CLEANUP_POOL)
+          .numCoreThreads(1).withTimeOut(3L, SECONDS).build();
     }
     this.cleanupThreadPool.execute(r);
   }
@@ -280,7 +281,7 @@ public class ClientContext implements AccumuloClient {
    */
   public ThreadPools threadPools() {
     ensureOpen();
-    return clientThreadPools;
+    return clientThreadPools.get();
   }
 
   /**
@@ -478,21 +479,20 @@ public class ClientContext implements AccumuloClient {
   public String getRootTabletLocation() {
     ensureOpen();
 
-    OpTimer timer = null;
+    Timer timer = null;
 
     if (log.isTraceEnabled()) {
       log.trace("tid={} Looking up root tablet location in zookeeper.",
           Thread.currentThread().getId());
-      timer = new OpTimer().start();
+      timer = Timer.startNew();
     }
 
     Location loc =
         getAmple().readTablet(RootTable.EXTENT, ReadConsistency.EVENTUAL, LOCATION).getLocation();
 
     if (timer != null) {
-      timer.stop();
       log.trace("tid={} Found root tablet at {} in {}", Thread.currentThread().getId(), loc,
-          String.format("%.3f secs", timer.scale(SECONDS)));
+          String.format("%.3f secs", timer.elapsed(MILLISECONDS) / 1000.0));
     }
 
     if (loc == null || loc.getType() != LocationType.CURRENT) {
@@ -517,20 +517,19 @@ public class ClientContext implements AccumuloClient {
     var zLockManagerPath =
         ServiceLock.path(Constants.ZROOT + "/" + instanceId + Constants.ZMANAGER_LOCK);
 
-    OpTimer timer = null;
+    Timer timer = null;
 
     if (log.isTraceEnabled()) {
       log.trace("tid={} Looking up manager location in zookeeper.", Thread.currentThread().getId());
-      timer = new OpTimer().start();
+      timer = Timer.startNew();
     }
 
     byte[] loc = zooCache.getLockData(zLockManagerPath);
 
     if (timer != null) {
-      timer.stop();
       log.trace("tid={} Found manager at {} in {}", Thread.currentThread().getId(),
           (loc == null ? "null" : new String(loc, UTF_8)),
-          String.format("%.3f secs", timer.scale(SECONDS)));
+          String.format("%.3f secs", timer.elapsed(MILLISECONDS) / 1000.0));
     }
 
     if (loc == null) {
@@ -785,9 +784,7 @@ public class ClientContext implements AccumuloClient {
 
   @Override
   public ConditionalWriter createConditionalWriter(String tableName) throws TableNotFoundException {
-    ensureOpen();
-    return new ConditionalWriterImpl(this, requireNotOffline(getTableId(tableName), tableName),
-        tableName, new ConditionalWriterConfig());
+    return createConditionalWriter(tableName, null);
   }
 
   @Override
@@ -1121,11 +1118,23 @@ public class ClientContext implements AccumuloClient {
   }
 
   public synchronized ThriftTransportPool getTransportPool() {
+    return getTransportPoolImpl(false);
+  }
+
+  protected synchronized ThriftTransportPool getTransportPoolImpl(boolean shouldHalt) {
     ensureOpen();
     if (thriftTransportPool == null) {
-      thriftTransportPool = ThriftTransportPool.startNew(this::getTransportPoolMaxAgeMillis);
+      thriftTransportPool =
+          ThriftTransportPool.startNew(this::getTransportPoolMaxAgeMillis, shouldHalt);
     }
     return thriftTransportPool;
   }
 
+  public synchronized ZookeeperLockChecker getTServerLockChecker() {
+    ensureOpen();
+    if (this.zkLockChecker == null) {
+      this.zkLockChecker = new ZookeeperLockChecker(this);
+    }
+    return this.zkLockChecker;
+  }
 }

@@ -23,14 +23,22 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.gc.thrift.GCStatus;
@@ -44,6 +52,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.ReplicationSectio
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.Pair;
+import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.log.WalStateManager;
@@ -57,8 +66,8 @@ import org.apache.hadoop.io.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Iterators;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Streams;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;
@@ -71,7 +80,8 @@ public class GarbageCollectWriteAheadLogs {
   private final boolean useTrash;
   private final LiveTServerSet liveServers;
   private final WalStateManager walMarker;
-  private final Iterable<TabletLocationState> store;
+  private final AtomicBoolean hasCollected = new AtomicBoolean(false);
+  private final Stream<TabletLocationState> store;
 
   /**
    * Creates a new GC WAL object.
@@ -82,38 +92,51 @@ public class GarbageCollectWriteAheadLogs {
    */
   GarbageCollectWriteAheadLogs(final ServerContext context, final VolumeManager fs,
       final LiveTServerSet liveServers, boolean useTrash) {
+    this(context, fs, liveServers, useTrash, new WalStateManager(context), createStore(context));
+  }
+
+  /**
+   * Creates a new GC WAL object. Meant for testing -- allows for mocked objects.
+   *
+   *
+   * @param context the collection server's context
+   * @param fs volume manager to use
+   * @param liveServers a started LiveTServerSet instance
+   * @param useTrash true to move files to trash rather than delete them
+   * @param walMarker a WalStateManager instance
+   * @param store a stream of TabletLocationState objects
+   */
+  GarbageCollectWriteAheadLogs(final ServerContext context, final VolumeManager fs,
+      final LiveTServerSet liveServers, boolean useTrash, final WalStateManager walMarker,
+      final Stream<TabletLocationState> store) {
     this.context = context;
     this.fs = fs;
     this.useTrash = useTrash;
     this.liveServers = liveServers;
-    this.walMarker = new WalStateManager(context);
-    this.store = () -> Iterators.concat(
-        TabletStateStore.getStoreForLevel(DataLevel.ROOT, context).iterator(),
-        TabletStateStore.getStoreForLevel(DataLevel.METADATA, context).iterator(),
-        TabletStateStore.getStoreForLevel(DataLevel.USER, context).iterator());
-  }
-
-  /**
-   * Creates a new GC WAL object. Meant for testing -- allows mocked objects.
-   *
-   * @param context the collection server's context
-   * @param fs volume manager to use
-   * @param useTrash true to move files to trash rather than delete them
-   * @param liveTServerSet a started LiveTServerSet instance
-   */
-  @VisibleForTesting
-  GarbageCollectWriteAheadLogs(ServerContext context, VolumeManager fs, boolean useTrash,
-      LiveTServerSet liveTServerSet, WalStateManager walMarker,
-      Iterable<TabletLocationState> store) {
-    this.context = context;
-    this.fs = fs;
-    this.useTrash = useTrash;
-    this.liveServers = liveTServerSet;
     this.walMarker = walMarker;
     this.store = store;
   }
 
+  private static Stream<TabletLocationState> createStore(final ServerContext context) {
+    var rootStream = TabletStateStore.getStoreForLevel(DataLevel.ROOT, context).stream();
+    var metadataStream = TabletStateStore.getStoreForLevel(DataLevel.METADATA, context).stream();
+    var userStream = TabletStateStore.getStoreForLevel(DataLevel.USER, context).stream();
+    return Streams.concat(rootStream, metadataStream, userStream).onClose(() -> {
+      try {
+        rootStream.close();
+      } finally {
+        try {
+          metadataStream.close();
+        } finally {
+          userStream.close();
+        }
+      }
+    });
+  }
+
   public void collect(GCStatus status) {
+    Preconditions.checkState(hasCollected.compareAndSet(false, true),
+        "collect() has already been called on this object (which should only be called once)");
     try {
       long count;
       long fileScanStop;
@@ -216,7 +239,6 @@ public class GarbageCollectWriteAheadLogs {
       } finally {
         span5.end();
       }
-
     } catch (Exception e) {
       log.error("exception occurred while garbage collecting write ahead logs", e);
     } finally {
@@ -251,37 +273,102 @@ public class GarbageCollectWriteAheadLogs {
     return result;
   }
 
-  private long removeFile(Path path) {
-    try {
-      if (!useTrash || !fs.moveToTrash(path)) {
-        fs.deleteRecursively(path);
+  private Future<?> removeFile(ExecutorService deleteThreadPool, Path path, AtomicLong counter,
+      String msg) {
+    return deleteThreadPool.submit(() -> {
+      try {
+        log.debug(msg);
+        if (!useTrash || !fs.moveToTrash(path)) {
+          fs.deleteRecursively(path);
+        }
+        counter.incrementAndGet();
+      } catch (FileNotFoundException ex) {
+        // ignored
+      } catch (IOException ex) {
+        log.error("Unable to delete {}", path, ex);
       }
-      return 1;
-    } catch (FileNotFoundException ex) {
-      // ignored
-    } catch (IOException ex) {
-      log.error("Unable to delete wal {}", path, ex);
-    }
-
-    return 0;
+    });
   }
 
   private long removeFiles(Collection<Pair<WalState,Path>> collection, final GCStatus status) {
-    for (Pair<WalState,Path> stateFile : collection) {
-      Path path = stateFile.getSecond();
-      log.debug("Removing {} WAL {}", stateFile.getFirst(), path);
-      status.currentLog.deleted += removeFile(path);
+
+    final ExecutorService deleteThreadPool = ThreadPools.getServerThreadPools()
+        .createExecutorService(context.getConfiguration(), Property.GC_DELETE_WAL_THREADS);
+    final Map<Path,Future<?>> futures = new HashMap<>(collection.size());
+    final AtomicLong counter = new AtomicLong();
+
+    try {
+      for (Pair<WalState,Path> stateFile : collection) {
+        Path path = stateFile.getSecond();
+        futures.put(path, removeFile(deleteThreadPool, path, counter,
+            "Removing " + stateFile.getFirst() + " WAL " + path));
+      }
+
+      while (!futures.isEmpty()) {
+        Iterator<Entry<Path,Future<?>>> iter = futures.entrySet().iterator();
+        while (iter.hasNext()) {
+          Entry<Path,Future<?>> f = iter.next();
+          if (f.getValue().isDone()) {
+            try {
+              iter.remove();
+              f.getValue().get();
+            } catch (InterruptedException | ExecutionException e) {
+              throw new RuntimeException("Uncaught exception deleting wal file" + f.getKey(), e);
+            }
+          }
+        }
+        try {
+          Thread.sleep(500);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException("Interrupted while sleeping", e);
+        }
+      }
+    } finally {
+      deleteThreadPool.shutdownNow();
     }
-    return status.currentLog.deleted;
+    status.currentLog.deleted += counter.get();
+    return counter.get();
   }
 
   private long removeFiles(Collection<Path> values) {
-    long count = 0;
-    for (Path path : values) {
-      log.debug("Removing recovery log {}", path);
-      count += removeFile(path);
+
+    final ExecutorService deleteThreadPool = ThreadPools.getServerThreadPools()
+        .createExecutorService(context.getConfiguration(), Property.GC_DELETE_WAL_THREADS);
+    final Map<Path,Future<?>> futures = new HashMap<>(values.size());
+    final AtomicLong counter = new AtomicLong();
+
+    try {
+      for (Path path : values) {
+        futures.put(path,
+            removeFile(deleteThreadPool, path, counter, "Removing recovery log " + path));
+      }
+
+      while (!futures.isEmpty()) {
+        Iterator<Entry<Path,Future<?>>> iter = futures.entrySet().iterator();
+        while (iter.hasNext()) {
+          Entry<Path,Future<?>> f = iter.next();
+          if (f.getValue().isDone()) {
+            try {
+              iter.remove();
+              f.getValue().get();
+            } catch (InterruptedException | ExecutionException e) {
+              throw new RuntimeException(
+                  "Uncaught exception deleting recovery log file" + f.getKey(), e);
+            }
+          }
+        }
+        try {
+          Thread.sleep(500);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException("Interrupted while sleeping", e);
+        }
+      }
+    } finally {
+      deleteThreadPool.shutdownNow();
     }
-    return count;
+    return counter.get();
   }
 
   private UUID path2uuid(Path path) {
@@ -302,30 +389,34 @@ public class GarbageCollectWriteAheadLogs {
     }
 
     // remove any entries if there's a log reference (recovery hasn't finished)
-    for (TabletLocationState state : store) {
-      // Tablet is still assigned to a dead server. Manager has moved markers and reassigned it
-      // Easiest to just ignore all the WALs for the dead server.
-      if (state.getState(liveServers) == TabletState.ASSIGNED_TO_DEAD_SERVER) {
-        Set<UUID> idsToIgnore = candidates.remove(state.current.getServerInstance());
-        if (idsToIgnore != null) {
-          result.keySet().removeAll(idsToIgnore);
-          recoveryLogs.keySet().removeAll(idsToIgnore);
-        }
-      }
-      // Tablet is being recovered and has WAL references, remove all the WALs for the dead server
-      // that made the WALs.
-      for (Collection<String> wals : state.walogs) {
-        for (String wal : wals) {
-          UUID walUUID = path2uuid(new Path(wal));
-          TServerInstance dead = result.get(walUUID);
-          // There's a reference to a log file, so skip that server's logs
-          Set<UUID> idsToIgnore = candidates.remove(dead);
+    try {
+      store.forEach(state -> {
+        // Tablet is still assigned to a dead server. Manager has moved markers and reassigned it
+        // Easiest to just ignore all the WALs for the dead server.
+        if (state.getState(liveServers) == TabletState.ASSIGNED_TO_DEAD_SERVER) {
+          Set<UUID> idsToIgnore = candidates.remove(state.current.getServerInstance());
           if (idsToIgnore != null) {
             result.keySet().removeAll(idsToIgnore);
             recoveryLogs.keySet().removeAll(idsToIgnore);
           }
         }
-      }
+        // Tablet is being recovered and has WAL references, remove all the WALs for the dead server
+        // that made the WALs.
+        for (Collection<String> wals : state.walogs) {
+          for (String wal : wals) {
+            UUID walUUID = path2uuid(new Path(wal));
+            TServerInstance dead = result.get(walUUID);
+            // There's a reference to a log file, so skip that server's logs
+            Set<UUID> idsToIgnore = candidates.remove(dead);
+            if (idsToIgnore != null) {
+              result.keySet().removeAll(idsToIgnore);
+              recoveryLogs.keySet().removeAll(idsToIgnore);
+            }
+          }
+        }
+      });
+    } finally {
+      store.close();
     }
 
     // Remove OPEN and CLOSED logs for live servers: they are still in use

@@ -247,9 +247,9 @@ public class CachableBlockFile {
     }
 
     private class RawBlockLoader extends BaseBlockLoader {
-      private long offset;
-      private long compressedSize;
-      private long rawSize;
+      private final long offset;
+      private final long compressedSize;
+      private final long rawSize;
 
       private RawBlockLoader(long offset, long compressedSize, long rawSize, boolean loadingMeta) {
         super(loadingMeta);
@@ -273,7 +273,7 @@ public class CachableBlockFile {
     }
 
     private class OffsetBlockLoader extends BaseBlockLoader {
-      private int blockIndex;
+      private final int blockIndex;
 
       private OffsetBlockLoader(int blockIndex, boolean loadingMeta) {
         super(loadingMeta);
@@ -322,7 +322,7 @@ public class CachableBlockFile {
 
       abstract String getBlockId();
 
-      private boolean loadingMetaBlock;
+      private final boolean loadingMetaBlock;
 
       public BaseBlockLoader(boolean loadingMetaBlock) {
         this.loadingMetaBlock = loadingMetaBlock;
@@ -351,23 +351,18 @@ public class CachableBlockFile {
             }
           }
 
-          BlockReader _currBlock = getBlockReader(maxSize, reader);
-          if (_currBlock == null) {
-            return null;
-          }
+          try (BlockReader _currBlock = getBlockReader(maxSize, reader)) {
+            if (_currBlock == null) {
+              return null;
+            }
 
-          byte[] b = null;
-          try {
-            b = new byte[(int) _currBlock.getRawSize()];
+            byte[] b = new byte[(int) _currBlock.getRawSize()];
             _currBlock.readFully(b);
+            return b;
           } catch (IOException e) {
             log.debug("Error full blockRead for file " + cacheId + " for block " + getBlockId(), e);
             throw new UncheckedIOException(e);
-          } finally {
-            _currBlock.close();
           }
-
-          return b;
         } catch (IOException e) {
           throw new UncheckedIOException(e);
         }
@@ -496,7 +491,7 @@ public class CachableBlockFile {
   }
 
   public static class CachedBlockRead extends DataInputStream {
-    private SeekableByteArrayInputStream seekableInput;
+    private final SeekableByteArrayInputStream seekableInput;
     private final CacheEntry cb;
     boolean indexable;
 

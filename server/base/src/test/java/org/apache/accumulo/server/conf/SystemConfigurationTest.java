@@ -32,6 +32,7 @@ import static org.easymock.EasyMock.expectLastCall;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.reset;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
@@ -104,7 +105,7 @@ public class SystemConfigurationTest {
     assertEquals("true", sysConfig.get(TABLE_BLOOM_ENABLED)); // sys config
     assertEquals(TABLE_BLOOM_SIZE.getDefaultValue(), sysConfig.get(TABLE_BLOOM_SIZE)); // default
 
-    assertTrue(sysConfig.isPropertySet(TSERV_CLIENTPORT)); // default
+    assertFalse(sysConfig.isPropertySet(TSERV_CLIENTPORT)); // default
     assertTrue(sysConfig.isPropertySet(GC_PORT)); // fixed sys config
     assertTrue(sysConfig.isPropertySet(TSERV_SCAN_MAX_OPENFILES)); // fixed sys config
     assertTrue(sysConfig.isPropertySet(TABLE_BLOOM_ENABLED)); // sys config
@@ -116,6 +117,8 @@ public class SystemConfigurationTest {
         Map.of(GC_PORT.getKey(), "3456", TSERV_SCAN_MAX_OPENFILES.getKey(), "27",
             TABLE_BLOOM_ENABLED.getKey(), "false", TABLE_BLOOM_SIZE.getKey(), "2048"));
     expect(propStore.get(eq(sysPropKey))).andReturn(sysUpdateProps).anyTimes();
+    propStore.invalidate(sysPropKey);
+    expectLastCall().atLeastOnce();
     replay(propStore);
 
     sysConfig.zkChangeEvent(sysPropKey);
@@ -126,7 +129,7 @@ public class SystemConfigurationTest {
     assertEquals("false", sysConfig.get(TABLE_BLOOM_ENABLED)); // sys config
     assertEquals("2048", sysConfig.get(TABLE_BLOOM_SIZE)); // default
 
-    assertTrue(sysConfig.isPropertySet(TSERV_CLIENTPORT)); // default
+    assertFalse(sysConfig.isPropertySet(TSERV_CLIENTPORT)); // default
     assertTrue(sysConfig.isPropertySet(GC_PORT)); // fixed sys config
     assertTrue(sysConfig.isPropertySet(TSERV_SCAN_MAX_OPENFILES)); // fixed sys config
     assertTrue(sysConfig.isPropertySet(TABLE_BLOOM_ENABLED)); // sys config

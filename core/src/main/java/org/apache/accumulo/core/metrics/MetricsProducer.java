@@ -36,7 +36,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <a href="https://micrometer.io/docs/concepts#_naming_meters">naming convention</a> for the
  * metrics. The table below contains a mapping of the old to new metric names.
  * <table border="1">
- * <caption>Summary of Metric Changes</caption> <!-- fate -->
+ * <caption>Summary of Metric Changes</caption>
  * <tr>
  * <th>Old Name</th>
  * <th>Hadoop Metrics2 Type</th>
@@ -44,24 +44,48 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <th>Micrometer Type</th>
  * <th>Notes</th>
  * </tr>
+ * <!-- general server metrics -->
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_COMPACTOR_MAJC_STUCK}</td>
+ * <td>{@value #METRICS_SERVER_IDLE}</td>
+ * <td>Gauge</td>
+ * <td>Indicates if the server is idle or not. The value will be 1 when idle and 0 when not idle.
+ * <!-- compactor -->
+ * <tr>
+ * <td>N/A</td>
+ * <td>N/A</td>
+ * <td>{@value #METRICS_COMPACTOR_MAJC_STUCK}</td>
  * <td>LongTaskTimer</td>
  * <td></td>
  * </tr>
  * <tr>
+ * <td>N/A</td>
+ * <td>N/A</td>
+ * <td>{@value #METRICS_COMPACTOR_ENTRIES_READ}</td>
+ * <td>FunctionCounter</td>
+ * <td>Number of entries read by all threads performing compactions</td>
+ * </tr>
+ * <tr>
+ * <td>N/A</td>
+ * <td>N/A</td>
+ * <td>{@value #METRICS_COMPACTOR_ENTRIES_WRITTEN}</td>
+ * <td>FunctionCounter</td>
+ * <td>Number of entries written by all threads performing compactions</td>
+ * </tr>
+ * <!-- fate -->
+ * <tr>
  * <td>currentFateOps</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TOTAL_IN_PROGRESS}</td>
+ * <td>{@value #METRICS_FATE_OPS}</td>
  * <td>Gauge</td>
- * <td></td>
+ * <td>Was previously named "accumulo.fate.ops.in.progress". Changed to better reflect what the
+ * gauge is actually tracking which is all the current fate ops in any state.</td>
  * </tr>
  * <tr>
  * <td>FateTxOpType_{name}</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TYPE_IN_PROGRESS}</td>
+ * <td>{@value #METRICS_FATE_TYPE_IN_PROGRESS}</td>
  * <td>Gauge</td>
  * <td>Previously there was a metric per operation type with the count of in-progress transactions
  * of that type. Now there is one metric and the type is in the tag op.type</td>
@@ -69,56 +93,56 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>totalFateOps</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_OPS_ACTIVITY}</td>
+ * <td>{@value #METRICS_FATE_OPS_ACTIVITY}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>totalZkConnErrors</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_ERRORS}</td>
+ * <td>{@value #METRICS_FATE_ERRORS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>FateTxState_NEW</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TX}</td>
+ * <td>{@value #METRICS_FATE_TX}</td>
  * <td>Gauge</td>
  * <td>The state is now in a tag: state=new</td>
  * </tr>
  * <tr>
  * <td>FateTxState_IN_PROGRESS</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TX}</td>
+ * <td>{@value #METRICS_FATE_TX}</td>
  * <td>Gauge</td>
  * <td>The state is now in a tag: state=in.progress</td>
  * </tr>
  * <tr>
  * <td>FateTxState_FAILED_IN_PROGRESS</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TX}</td>
+ * <td>{@value #METRICS_FATE_TX}</td>
  * <td>Gauge</td>
  * <td>The state is now in a tag: state=failed.in.progress</td>
  * </tr>
  * <tr>
  * <td>FateTxState_FAILED</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TX}</td>
+ * <td>{@value #METRICS_FATE_TX}</td>
  * <td>Gauge</td>
  * <td>The state is now in a tag: state=failed</td>
  * </tr>
  * <tr>
  * <td>FateTxState_SUCCESSFUL</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TX}</td>
+ * <td>{@value #METRICS_FATE_TX}</td>
  * <td>Gauge</td>
  * <td>The state is now in a tag: state=successful</td>
  * </tr>
  * <tr>
  * <td>FateTxState_UNKNOWN</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_FATE_TX}</td>
+ * <td>{@value #METRICS_FATE_TX}</td>
  * <td>Gauge</td>
  * <td>The state is now in a tag: state=unknown</td>
  * </tr>
@@ -126,98 +150,98 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>AccGcStarted</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_STARTED}</td>
+ * <td>{@value #METRICS_GC_STARTED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcFinished</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_FINISHED}</td>
+ * <td>{@value #METRICS_GC_FINISHED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcCandidates</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_CANDIDATES}</td>
+ * <td>{@value #METRICS_GC_CANDIDATES}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcInUse</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_IN_USE}</td>
+ * <td>{@value #METRICS_GC_IN_USE}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcDeleted</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_DELETED}</td>
+ * <td>{@value #METRICS_GC_DELETED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcErrors</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_ERRORS}</td>
+ * <td>{@value #METRICS_GC_ERRORS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcWalStarted</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_WAL_STARTED}</td>
+ * <td>{@value #METRICS_GC_WAL_STARTED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcWalFinished</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_WAL_FINISHED}</td>
+ * <td>{@value #METRICS_GC_WAL_FINISHED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcWalCandidates</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_WAL_CANDIDATES}</td>
+ * <td>{@value #METRICS_GC_WAL_CANDIDATES}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcWalInUse</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_WAL_IN_USE}</td>
+ * <td>{@value #METRICS_GC_WAL_IN_USE}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcWalDeleted</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_WAL_DELETED}</td>
+ * <td>{@value #METRICS_GC_WAL_DELETED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcWalErrors</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_WAL_ERRORS}</td>
+ * <td>{@value #METRICS_GC_WAL_ERRORS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcPosOpDuration</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_POST_OP_DURATION}</td>
+ * <td>{@value #METRICS_GC_POST_OP_DURATION}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>AccGcRunCycleCount</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_GC_RUN_CYCLE}</td>
+ * <td>{@value #METRICS_GC_RUN_CYCLE}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
@@ -225,129 +249,98 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>entries</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_ENTRIES}</td>
+ * <td>{@value #METRICS_TSERVER_ENTRIES}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>entriesInMem</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_MEM_ENTRIES}</td>
+ * <td>{@value #METRICS_TSERVER_MEM_ENTRIES}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>activeMajCs</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_MAJC_RUNNING}</td>
+ * <td>{@value #METRICS_TSERVER_MAJC_RUNNING}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_TSERVER_MAJC_STUCK}</td>
+ * <td>{@value #METRICS_TSERVER_MAJC_STUCK}</td>
  * <td>LongTaskTimer</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>queuedMajCs</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_MAJC_QUEUED}</td>
+ * <td>{@value #METRICS_TSERVER_MAJC_QUEUED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>activeMinCs</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_MINC_RUNNING}</td>
+ * <td>{@value #METRICS_TSERVER_MINC_RUNNING}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>queuedMinCs</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_MINC_QUEUED}</td>
+ * <td>{@value #METRICS_TSERVER_MINC_QUEUED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>totalMinCs</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_MINC_TOTAL}</td>
+ * <td>{@value #METRICS_TSERVER_MINC_TOTAL}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>onlineTablets</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_TABLETS_ONLINE}</td>
+ * <td>{@value #METRICS_TSERVER_TABLETS_ONLINE}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_TSERVER_TABLETS_LONG_ASSIGNMENTS}</td>
+ * <td>{@value #METRICS_TSERVER_TABLETS_LONG_ASSIGNMENTS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>openingTablets</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_TABLETS_OPENING}</td>
+ * <td>{@value #METRICS_TSERVER_TABLETS_OPENING}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>unopenedTablets</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_TABLETS_UNOPENED}</td>
+ * <td>{@value #METRICS_TSERVER_TABLETS_UNOPENED}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>filesPerTablet</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_TABLETS_FILES}</td>
+ * <td>{@value #METRICS_TSERVER_TABLETS_FILES}</td>
  * <td>Gauge</td>
  * <td></td>
- * </tr>
- * <tr>
- * <td>queries</td>
- * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_QUERIES}</td>
- * <td>Gauge</td>
- * <td></td>
- * </tr>
- * <tr>
- * <td>scannedRate</td>
- * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_SCANNED_ENTRIES}</td>
- * <td>Gauge</td>
- * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
- * derived</td>
- * </tr>
- * <tr>
- * <td>queryRate</td>
- * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_SCAN_RESULTS}</td>
- * <td>Gauge</td>
- * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
- * derived</td>
- * </tr>
- * <tr>
- * <td>queryByteRate</td>
- * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_SCAN_RESULTS_BYTES}</td>
- * <td>Gauge</td>
- * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
- * derived</td>
  * </tr>
  * <tr>
  * <td>ingestRate</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_INGEST_MUTATIONS}</td>
+ * <td>{@value #METRICS_TSERVER_INGEST_MUTATIONS}</td>
  * <td>Gauge</td>
  * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
  * derived</td>
@@ -355,7 +348,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>ingestByteRate</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_INGEST_BYTES}</td>
+ * <td>{@value #METRICS_TSERVER_INGEST_BYTES}</td>
  * <td>Gauge</td>
  * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
  * derived</td>
@@ -363,72 +356,125 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>holdTime</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_TSERVER_HOLD}</td>
+ * <td>{@value #METRICS_TSERVER_HOLD}</td>
  * <td>Gauge</td>
  * <td></td>
+ * </tr>
+ * <!-- scan server -->
+ * <tr>
+ * <td>N/A</td>
+ * <td>N/A</td>
+ * <td>{@value #METRICS_SCAN_RESERVATION_TOTAL_TIMER}</td>
+ * <td>Timer</td>
+ * <td>Time to reserve a tablets files for scan</td>
+ * </tr>
+ * <tr>
+ * <td>N/A</td>
+ * <td>N/A</td>
+ * <td>{@value #METRICS_SCAN_BUSY_TIMEOUT_COUNTER}</td>
+ * <td>Counter</td>
+ * <td>Count of the scans where a busy timeout happened</td>
+ * </tr>
+ * <tr>
+ * <td>N/A</td>
+ * <td>N/A</td>
+ * <td>{@value #METRICS_SCAN_TABLET_METADATA_CACHE}</td>
+ * <td>Cache</td>
+ * <td>scan server tablet cache metrics</td>
  * </tr>
  * <!-- scans -->
  * <tr>
  * <td>scan</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_SCAN_TIMES}</td>
+ * <td>{@value #METRICS_SCAN_TIMES}</td>
  * <td>Timer</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_SCAN_OPEN_FILES}</td>
+ * <td>{@value #METRICS_SCAN_OPEN_FILES}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>result</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_SCAN_RESULTS}</td>
+ * <td>{@value #METRICS_SCAN_RESULTS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>yield</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_SCAN_YIELDS}</td>
+ * <td>{@value #METRICS_SCAN_YIELDS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_SCAN_START}</td>
+ * <td>{@value #METRICS_SCAN_START}</td>
  * <td>Counter</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_SCAN_CONTINUE}</td>
+ * <td>{@value #METRICS_SCAN_CONTINUE}</td>
  * <td>Counter</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_SCAN_CLOSE}</td>
+ * <td>{@value #METRICS_SCAN_CLOSE}</td>
  * <td>Counter</td>
  * <td></td>
  * </tr>
  * <tr>
+ * <td>queries</td>
+ * <td>Gauge</td>
+ * <td>{@value #METRICS_SCAN_QUERIES}</td>
+ * <td>Gauge</td>
+ * <td></td>
+ * </tr>
+ * <tr>
+ * <td>scannedRate</td>
+ * <td>Gauge</td>
+ * <td>{@value #METRICS_SCAN_SCANNED_ENTRIES}</td>
+ * <td>Gauge</td>
+ * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
+ * derived</td>
+ * </tr>
+ * <tr>
+ * <td>queryRate</td>
+ * <td>Gauge</td>
+ * <td>{@value #METRICS_SCAN_QUERY_SCAN_RESULTS}</td>
+ * <td>Gauge</td>
+ * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
+ * derived</td>
+ * </tr>
+ * <tr>
+ * <td>queryByteRate</td>
+ * <td>Gauge</td>
+ * <td>{@value #METRICS_SCAN_QUERY_SCAN_RESULTS_BYTES}</td>
+ * <td>Gauge</td>
+ * <td>Prior to 2.1.0 this metric was reported as a rate, it is now the count and the rate can be
+ * derived</td>
+ * </tr>
+ * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_SCAN_BUSY_TIMEOUT}</td>
- * <td>Counter</td>
+ * <td>{@value #METRICS_SCAN_ZOMBIE_THREADS}</td>
+ * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <!-- major compactions -->
  * <tr>
  * <td>{i|e}_{compactionServiceName}_{executor_name}_queued</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_MAJC_QUEUED}</td>
+ * <td>{@value #METRICS_MAJC_QUEUED}</td>
  * <td>Gauge</td>
  * <td>The compaction service information is in a tag:
  * id={i|e}_{compactionServiceName}_{executor_name}</td>
@@ -436,7 +482,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>{i|e}_{compactionServiceName}_{executor_name}_running</td>
  * <td>Gauge</td>
- * <td>{@link #METRICS_MAJC_RUNNING}</td>
+ * <td>{@value #METRICS_MAJC_RUNNING}</td>
  * <td>Gauge</td>
  * <td>The compaction service information is in a tag:
  * id={i|e}_{compactionServiceName}_{executor_name}</td>
@@ -445,14 +491,14 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>Queue</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_MINC_QUEUED}</td>
+ * <td>{@value #METRICS_MINC_QUEUED}</td>
  * <td>Timer</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>Minc</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_MINC_RUNNING}</td>
+ * <td>{@value #METRICS_MINC_RUNNING}</td>
  * <td>Timer</td>
  * <td></td>
  * </tr>
@@ -460,7 +506,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>ReplicationQueue</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_REPLICATION_QUEUE}</td>
+ * <td>{@value #METRICS_REPLICATION_QUEUE}</td>
  * <td>Timer</td>
  * <td></td>
  * </tr>
@@ -474,21 +520,21 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>filesPendingReplication</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_REPLICATION_PENDING_FILES}</td>
+ * <td>{@value #METRICS_REPLICATION_PENDING_FILES}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>maxReplicationThreads</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_REPLICATION_THREADS}</td>
+ * <td>{@value #METRICS_REPLICATION_THREADS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>numPeers</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_REPLICATION_PEERS}</td>
+ * <td>{@value #METRICS_REPLICATION_PEERS}</td>
  * <td>Gauge</td>
  * <td></td>
  * </tr>
@@ -496,49 +542,49 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>permissionErrors</td>
  * <td>Counter</td>
- * <td>{@link #METRICS_UPDATE_ERRORS}</td>
+ * <td>{@value #METRICS_UPDATE_ERRORS}</td>
  * <td>Gauge</td>
  * <td>Type is stored in tag: type=permission</td>
  * </tr>
  * <tr>
  * <td>unknownTabletErrors</td>
  * <td>Counter</td>
- * <td>{@link #METRICS_UPDATE_ERRORS}</td>
+ * <td>{@value #METRICS_UPDATE_ERRORS}</td>
  * <td>Gauge</td>
  * <td>Type is stored in tag: type=unknown.tablet</td>
  * </tr>
  * <tr>
  * <td>constraintViolations</td>
  * <td>Counter</td>
- * <td>{@link #METRICS_UPDATE_ERRORS}</td>
+ * <td>{@value #METRICS_UPDATE_ERRORS}</td>
  * <td>Gauge</td>
  * <td>Type is stored in tag: type=constraint.violation</td>
  * </tr>
  * <tr>
  * <td>commitPrep</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_UPDATE_COMMIT_PREP}</td>
+ * <td>{@value #METRICS_UPDATE_COMMIT_PREP}</td>
  * <td>Timer</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>commitTime</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_UPDATE_COMMIT}</td>
+ * <td>{@value #METRICS_UPDATE_COMMIT}</td>
  * <td>Timer</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>waLogWriteTime</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_UPDATE_WALOG_WRITE}</td>
+ * <td>{@value #METRICS_UPDATE_WALOG_WRITE}</td>
  * <td>Timer</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>mutationArraysSize</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_UPDATE_MUTATION_ARRAY_SIZE}</td>
+ * <td>{@value #METRICS_UPDATE_MUTATION_ARRAY_SIZE}</td>
  * <td>Distribution Summary</td>
  * <td></td>
  * </tr>
@@ -546,52 +592,24 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <tr>
  * <td>idle</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_THRIFT_IDLE}</td>
+ * <td>{@value #METRICS_THRIFT_IDLE}</td>
  * <td>Distribution Summary</td>
  * <td></td>
  * </tr>
  * <tr>
  * <td>execute</td>
  * <td>Stat</td>
- * <td>{@link #METRICS_THRIFT_EXECUTE}</td>
+ * <td>{@value #METRICS_THRIFT_EXECUTE}</td>
  * <td>Distribution Summary</td>
  * <td></td>
  * </tr>
- * <!-- ZooKeeper property cache -->
+ * <!-- Balancing -->
  * <tr>
  * <td>N/A</td>
  * <td>N/A</td>
- * <td>{@link #METRICS_PROPSTORE_LOAD_TIMER}</td>
- * <td>Timer</td>
- * <td></td>
- * </tr>
- * <tr>
- * <td>N/A</td>
- * <td>N/A</td>
- * <td>{@link #METRICS_PROPSTORE_REFRESH_COUNT}</td>
- * <td>Counter</td>
- * <td></td>
- * </tr>
- * <tr>
- * <td>N/A</td>
- * <td>N/A</td>
- * <td>{@link #METRICS_PROPSTORE_REFRESH_LOAD_COUNT}</td>
- * <td>Counter</td>
- * <td></td>
- * </tr>
- * <tr>
- * <td>N/A</td>
- * <td>N/A</td>
- * <td>{@link #METRICS_PROPSTORE_EVICTION_COUNT}</td>
- * <td>Counter</td>
- * <td></td>
- * </tr>
- * <tr>
- * <td>N/A</td>
- * <td>N/A</td>
- * <td>{@link #METRICS_PROPSTORE_ZK_ERROR_COUNT}</td>
- * <td>Counter</td>
- * <td></td>
+ * <td>{@value #METRICS_MANAGER_BALANCER_MIGRATIONS_NEEDED}</td>
+ * <td>Gauge</td>
+ * <td>The number of migrations that need to complete before the system is balanced</td>
  * </tr>
  * </table>
  *
@@ -601,12 +619,16 @@ public interface MetricsProducer {
 
   Logger LOG = LoggerFactory.getLogger(MetricsProducer.class);
 
+  String METRICS_SERVER_IDLE = "accumulo.server.idle";
+
   String METRICS_COMPACTOR_PREFIX = "accumulo.compactor.";
   String METRICS_COMPACTOR_MAJC_STUCK = METRICS_COMPACTOR_PREFIX + "majc.stuck";
+  String METRICS_COMPACTOR_ENTRIES_READ = METRICS_COMPACTOR_PREFIX + "entries.read";
+  String METRICS_COMPACTOR_ENTRIES_WRITTEN = METRICS_COMPACTOR_PREFIX + "entries.written";
 
   String METRICS_FATE_PREFIX = "accumulo.fate.";
   String METRICS_FATE_TYPE_IN_PROGRESS = METRICS_FATE_PREFIX + "ops.in.progress.by.type";
-  String METRICS_FATE_TOTAL_IN_PROGRESS = METRICS_FATE_PREFIX + "ops.in.progress";
+  String METRICS_FATE_OPS = METRICS_FATE_PREFIX + "ops";
   String METRICS_FATE_OPS_ACTIVITY = METRICS_FATE_PREFIX + "ops.activity";
   String METRICS_FATE_ERRORS = METRICS_FATE_PREFIX + "errors";
   String METRICS_FATE_TX = METRICS_FATE_PREFIX + "tx";
@@ -641,7 +663,7 @@ public interface MetricsProducer {
   String METRICS_REPLICATION_PEERS = METRICS_REPLICATION_PREFIX + "peers";
   String METRICS_REPLICATION_THREADS = METRICS_REPLICATION_PREFIX + "threads";
 
-  String METRICS_SCAN_PREFIX = "accumulo.tserver.scans.";
+  String METRICS_SCAN_PREFIX = "accumulo.scan.";
   String METRICS_SCAN_TIMES = METRICS_SCAN_PREFIX + "times";
   String METRICS_SCAN_OPEN_FILES = METRICS_SCAN_PREFIX + "files.open";
   String METRICS_SCAN_RESULTS = METRICS_SCAN_PREFIX + "result";
@@ -649,7 +671,18 @@ public interface MetricsProducer {
   String METRICS_SCAN_START = METRICS_SCAN_PREFIX + "start";
   String METRICS_SCAN_CONTINUE = METRICS_SCAN_PREFIX + "continue";
   String METRICS_SCAN_CLOSE = METRICS_SCAN_PREFIX + "close";
-  String METRICS_SCAN_BUSY_TIMEOUT = METRICS_SCAN_PREFIX + "busy.timeout";
+  String METRICS_SCAN_RESERVATION_TOTAL_TIMER = METRICS_SCAN_PREFIX + "reservation.total.timer";
+  String METRICS_SCAN_RESERVATION_WRITEOUT_TIMER =
+      METRICS_SCAN_PREFIX + "reservation.writeout.timer";
+  String METRICS_SCAN_BUSY_TIMEOUT_COUNTER = METRICS_SCAN_PREFIX + "busy.timeout.count";
+  String METRICS_SCAN_RESERVATION_CONFLICT_COUNTER =
+      METRICS_SCAN_PREFIX + "reservation.conflict.count";
+  String METRICS_SCAN_QUERIES = METRICS_SCAN_PREFIX + "queries";
+  String METRICS_SCAN_QUERY_SCAN_RESULTS = METRICS_SCAN_PREFIX + "query.results";
+  String METRICS_SCAN_QUERY_SCAN_RESULTS_BYTES = METRICS_SCAN_PREFIX + "query.results.bytes";
+  String METRICS_SCAN_SCANNED_ENTRIES = METRICS_SCAN_PREFIX + "query.scanned.entries";
+  String METRICS_SCAN_ZOMBIE_THREADS = METRICS_SCAN_PREFIX + "zombie.threads";
+  String METRICS_SCAN_TABLET_METADATA_CACHE = METRICS_SCAN_PREFIX + "tablet.metadata.cache";
 
   String METRICS_TSERVER_PREFIX = "accumulo.tserver.";
   String METRICS_TSERVER_ENTRIES = METRICS_TSERVER_PREFIX + "entries";
@@ -665,14 +698,10 @@ public interface MetricsProducer {
   String METRICS_TSERVER_TABLETS_ONLINE = METRICS_TSERVER_PREFIX + "tablets.online";
   String METRICS_TSERVER_TABLETS_OPENING = METRICS_TSERVER_PREFIX + "tablets.opening";
   String METRICS_TSERVER_TABLETS_UNOPENED = METRICS_TSERVER_PREFIX + "tablets.unopened";
-  String METRICS_TSERVER_QUERIES = METRICS_TSERVER_PREFIX + "queries";
   String METRICS_TSERVER_TABLETS_FILES = METRICS_TSERVER_PREFIX + "tablets.files";
   String METRICS_TSERVER_HOLD = METRICS_TSERVER_PREFIX + "hold";
   String METRICS_TSERVER_INGEST_MUTATIONS = METRICS_TSERVER_PREFIX + "ingest.mutations";
   String METRICS_TSERVER_INGEST_BYTES = METRICS_TSERVER_PREFIX + "ingest.bytes";
-  String METRICS_TSERVER_SCAN_RESULTS = METRICS_TSERVER_PREFIX + "scan.results";
-  String METRICS_TSERVER_SCAN_RESULTS_BYTES = METRICS_TSERVER_PREFIX + "scan.results.bytes";
-  String METRICS_TSERVER_SCANNED_ENTRIES = METRICS_TSERVER_PREFIX + "scan.scanned.entries";
 
   String METRICS_THRIFT_PREFIX = "accumulo.thrift.";
   String METRICS_THRIFT_EXECUTE = METRICS_THRIFT_PREFIX + "execute";
@@ -685,12 +714,16 @@ public interface MetricsProducer {
   String METRICS_UPDATE_WALOG_WRITE = METRICS_UPDATE_PREFIX + "walog.write";
   String METRICS_UPDATE_MUTATION_ARRAY_SIZE = METRICS_UPDATE_PREFIX + "mutation.arrays.size";
 
-  String METRICS_PROPSTORE_PREFIX = "accumulo.prop.store.";
-  String METRICS_PROPSTORE_LOAD_TIMER = METRICS_PROPSTORE_PREFIX + "load";
-  String METRICS_PROPSTORE_REFRESH_COUNT = METRICS_PROPSTORE_PREFIX + "refresh";
-  String METRICS_PROPSTORE_REFRESH_LOAD_COUNT = METRICS_PROPSTORE_PREFIX + "refresh.load";
-  String METRICS_PROPSTORE_EVICTION_COUNT = METRICS_PROPSTORE_PREFIX + "evictions";
-  String METRICS_PROPSTORE_ZK_ERROR_COUNT = METRICS_PROPSTORE_PREFIX + "zookeeper.error";
+  String METRICS_BLOCKCACHE_PREFIX = "accumulo.blockcache.";
+  String METRICS_BLOCKCACHE_INDEX_HITCOUNT = METRICS_BLOCKCACHE_PREFIX + "index.hitcount";
+  String METRICS_BLOCKCACHE_INDEX_REQUESTCOUNT = METRICS_BLOCKCACHE_PREFIX + "index.requestcount";
+  String METRICS_BLOCKCACHE_DATA_HITCOUNT = METRICS_BLOCKCACHE_PREFIX + "data.hitcount";
+  String METRICS_BLOCKCACHE_DATA_REQUESTCOUNT = METRICS_BLOCKCACHE_PREFIX + "data.requestcount";
+  String METRICS_BLOCKCACHE_SUMMARY_HITCOUNT = METRICS_BLOCKCACHE_PREFIX + "summary.hitcount";
+  String METRICS_BLOCKCACHE_SUMMARY_REQUESTCOUNT =
+      METRICS_BLOCKCACHE_PREFIX + "summary.requestcount";
+
+  String METRICS_MANAGER_BALANCER_MIGRATIONS_NEEDED = "accumulo.manager.balancer.migrations.needed";
 
   /**
    * Build Micrometer Meter objects and register them with the registry
@@ -712,7 +745,7 @@ public interface MetricsProducer {
           fields.put((String) f.get(MetricsProducer.class), f.getName());
         } catch (IllegalArgumentException | IllegalAccessException e) {
           // this shouldn't happen, but let's log it anyway
-          LOG.error("Error getting metric value for field: " + f.getName());
+          LOG.error("Error getting metric value for field: {}", f.getName());
         }
       }
     }

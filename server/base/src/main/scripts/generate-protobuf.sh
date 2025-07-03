@@ -25,7 +25,7 @@
 #   In other scripts, set the variables that diverge from the defaults below, then call this script.
 #   Leave the BUILD_DIR and FINAL_DIR alone for Maven builds.
 # ========================================================================================================================
-[[ -z $REQUIRED_PROTOC_VERSION ]] && REQUIRED_PROTOC_VERSION='libprotoc 3.19.2'
+[[ -z $REQUIRED_PROTOC_VERSION ]] && REQUIRED_PROTOC_VERSION='libprotoc 25.6'
 [[ -z $BUILD_DIR ]] && BUILD_DIR='target/proto'
 [[ -z $FINAL_DIR ]] && FINAL_DIR='src/main'
 # ========================================================================================================================
@@ -46,15 +46,14 @@ if ! protoc --version 2>/dev/null | grep -qF "${REQUIRED_PROTOC_VERSION}"; then
 fi
 
 # Ensure output directories are created
-PROTOC_ARGS="--java_out=$BUILD_DIR"
-rm -rf $BUILD_DIR
-mkdir -p $BUILD_DIR
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
 
-protoc ${PROTOC_ARGS} src/main/protobuf/*.proto || fail unable to generate Java protocol buffer classes
+protoc --java_out="$BUILD_DIR" src/main/protobuf/*.proto || fail unable to generate Java protocol buffer classes
 
 # For all generated protobuf code, suppress all warnings and add the LICENSE header
 s='@SuppressWarnings("unused")'
-find $BUILD_DIR -name '*.java' -print0 | xargs -0 sed -i.orig -e 's/\(public final class \)/'"$s"' \1/'
+find "$BUILD_DIR" -name '*.java' -print0 | xargs -0 sed -i.orig -e 's/\(public final class \)/'"$s"' \1/'
 
 PREFIX="/*
 "

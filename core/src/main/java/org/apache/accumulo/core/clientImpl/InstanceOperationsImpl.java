@@ -28,10 +28,12 @@ import static org.apache.accumulo.core.rpc.ThriftUtil.createClient;
 import static org.apache.accumulo.core.rpc.ThriftUtil.createTransport;
 import static org.apache.accumulo.core.rpc.ThriftUtil.getClient;
 import static org.apache.accumulo.core.rpc.ThriftUtil.returnClient;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.INSTANCE_OPS_COMPACTIONS_FINDER_POOL;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.ConcurrentModificationException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -211,6 +213,15 @@ public class InstanceOperationsImpl implements InstanceOperations {
   }
 
   @Override
+  public Set<String> getCompactors() {
+    Set<String> compactors = new HashSet<>();
+    ExternalCompactionUtil.getCompactorAddrs(context).values().forEach(addrs -> {
+      addrs.forEach(hp -> compactors.add(hp.toString()));
+    });
+    return compactors;
+  }
+
+  @Override
   public Set<String> getScanServers() {
     return Set.copyOf(context.getScanServers().keySet());
   }
@@ -270,26 +281,37 @@ public class InstanceOperationsImpl implements InstanceOperations {
   }
 
   @Override
-  public List<ActiveCompaction> getActiveCompactions(String tserver)
+  public List<ActiveCompaction> getActiveCompactions(String server)
       throws AccumuloException, AccumuloSecurityException {
-    final var parsedTserver = HostAndPort.fromString(tserver);
-    Client client = null;
-    try {
-      client = getClient(ThriftClientTypes.TABLET_SERVER, parsedTserver, context);
+    final var serverHostAndPort = HostAndPort.fromString(server);
 
-      List<ActiveCompaction> as = new ArrayList<>();
-      for (var tac : client.getActiveCompactions(TraceUtil.traceInfo(), context.rpcCreds())) {
-        as.add(new ActiveCompactionImpl(context, tac, parsedTserver, CompactionHost.Type.TSERVER));
+    final List<ActiveCompaction> as = new ArrayList<>();
+    try {
+      if (context.getTServerLockChecker().doesTabletServerLockExist(server)) {
+        Client client = null;
+        try {
+          client = getClient(ThriftClientTypes.TABLET_SERVER, serverHostAndPort, context);
+          for (var tac : client.getActiveCompactions(TraceUtil.traceInfo(), context.rpcCreds())) {
+            as.add(new ActiveCompactionImpl(context, tac, serverHostAndPort,
+                CompactionHost.Type.TSERVER));
+          }
+        } finally {
+          if (client != null) {
+            returnClient(client, context);
+          }
+        }
+      } else {
+        // if not a TabletServer address, maybe it's a Compactor
+        for (var tac : ExternalCompactionUtil.getActiveCompaction(serverHostAndPort, context)) {
+          as.add(new ActiveCompactionImpl(context, tac, serverHostAndPort,
+              CompactionHost.Type.COMPACTOR));
+        }
       }
       return as;
     } catch (ThriftSecurityException e) {
       throw new AccumuloSecurityException(e.user, e.code, e);
     } catch (TException e) {
       throw new AccumuloException(e);
-    } finally {
-      if (client != null) {
-        returnClient(client, context);
-      }
     }
   }
 
@@ -301,8 +323,8 @@ public class InstanceOperationsImpl implements InstanceOperations {
     List<String> tservers = getTabletServers();
 
     int numThreads = Math.max(4, Math.min((tservers.size() + compactors.size()) / 10, 256));
-    var executorService =
-        context.threadPools().createFixedThreadPool(numThreads, "getactivecompactions", false);
+    var executorService = context.threadPools().getPoolBuilder(INSTANCE_OPS_COMPACTIONS_FINDER_POOL)
+        .numCoreThreads(numThreads).build();
     try {
       List<Future<List<ActiveCompaction>>> futures = new ArrayList<>();
 
@@ -391,4 +413,5 @@ public class InstanceOperationsImpl implements InstanceOperations {
   public InstanceId getInstanceId() {
     return context.getInstanceID();
   }
+
 }

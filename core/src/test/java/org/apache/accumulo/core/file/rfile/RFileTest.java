@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.core.file.rfile;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -48,7 +49,6 @@ import java.util.Set;
 
 import org.apache.accumulo.core.client.sample.RowSampler;
 import org.apache.accumulo.core.client.sample.Sampler;
-import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
@@ -73,6 +73,7 @@ import org.apache.accumulo.core.file.rfile.RFile.Reader;
 import org.apache.accumulo.core.file.rfile.bcfile.BCFile;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
+import org.apache.accumulo.core.iteratorsImpl.ClientIteratorEnvironment;
 import org.apache.accumulo.core.iteratorsImpl.system.ColumnFamilySkippingIterator;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection;
@@ -106,26 +107,6 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 public class RFileTest {
 
   private static final SecureRandom random = new SecureRandom();
-
-  public static class SampleIE implements IteratorEnvironment {
-
-    private SamplerConfiguration samplerConfig;
-
-    SampleIE(SamplerConfiguration config) {
-      this.samplerConfig = config;
-    }
-
-    @Override
-    public boolean isSamplingEnabled() {
-      return samplerConfig != null;
-    }
-
-    @Override
-    public SamplerConfiguration getSamplerConfiguration() {
-      return samplerConfig;
-    }
-  }
-
   private static final Collection<ByteSequence> EMPTY_COL_FAMS = new ArrayList<>();
   private static final Configuration hadoopConf = new Configuration();
 
@@ -307,7 +288,7 @@ public class RFileTest {
 
       DefaultConfiguration dc = DefaultConfiguration.getInstance();
       ConfigurationCopy cc = new ConfigurationCopy(dc);
-      cc.set(Property.TSERV_CACHE_MANAGER_IMPL, LruBlockCacheManager.class.getName());
+      cc.set(Property.GENERAL_CACHE_MANAGER_IMPL, LruBlockCacheManager.class.getName());
       try {
         manager = BlockCacheManagerFactory.getInstance(cc);
       } catch (Exception e) {
@@ -347,7 +328,8 @@ public class RFileTest {
   }
 
   static Key newKey(String row, String cf, String cq, String cv, long ts) {
-    return new Key(row.getBytes(), cf.getBytes(), cq.getBytes(), cv.getBytes(), ts);
+    return new Key(row.getBytes(UTF_8), cf.getBytes(UTF_8), cq.getBytes(UTF_8), cv.getBytes(UTF_8),
+        ts);
   }
 
   static Value newValue(String val) {
@@ -358,13 +340,12 @@ public class RFileTest {
     return String.format(prefix + "%06d", i);
   }
 
-  public AccumuloConfiguration conf = null;
+  private AccumuloConfiguration conf = null;
 
   @Test
   public void test1() throws IOException {
 
     // test an empty file
-
     TestRFile trf = new TestRFile(conf);
 
     trf.openWriter();
@@ -1724,7 +1705,7 @@ public class RFileTest {
     byte[] data = baos.toByteArray();
     SeekableByteArrayInputStream bais = new SeekableByteArrayInputStream(data);
     FSDataInputStream in2 = new FSDataInputStream(bais);
-    aconf.set(Property.TSERV_CACHE_MANAGER_IMPL, LruBlockCacheManager.class.getName());
+    aconf.set(Property.GENERAL_CACHE_MANAGER_IMPL, LruBlockCacheManager.class.getName());
     aconf.set(Property.TSERV_DEFAULT_BLOCKSIZE, Long.toString(100000));
     aconf.set(Property.TSERV_DATACACHE_SIZE, Long.toString(100000000));
     aconf.set(Property.TSERV_INDEXCACHE_SIZE, Long.toString(100000000));
@@ -2067,15 +2048,16 @@ public class RFileTest {
 
         trf.openReader();
 
-        FileSKVIterator sample =
-            trf.reader.getSample(SamplerConfigurationImpl.newSamplerConfig(sampleConf));
+        SamplerConfigurationImpl sc = SamplerConfigurationImpl.newSamplerConfig(sampleConf);
+
+        FileSKVIterator sample = trf.reader.getSample(sc);
 
         checkSample(sample, sampleData);
 
         assertEquals(expectedDataHash, hash(trf.reader));
 
-        SampleIE ie = new SampleIE(
-            SamplerConfigurationImpl.newSamplerConfig(sampleConf).toSamplerConfiguration());
+        IteratorEnvironment ie = new ClientIteratorEnvironment.Builder()
+            .withSamplerConfiguration(sc.toSamplerConfiguration()).withSamplingEnabled().build();
 
         for (int i = 0; i < 3; i++) {
           // test opening and closing deep copies a few times.
@@ -2085,8 +2067,10 @@ public class RFileTest {
           SortedKeyValueIterator<Key,Value> sampleDC1 = sample.deepCopy(ie);
           SortedKeyValueIterator<Key,Value> sampleDC2 = sample.deepCopy(ie);
           SortedKeyValueIterator<Key,Value> sampleDC3 = trf.reader.deepCopy(ie);
-          SortedKeyValueIterator<Key,Value> allDC1 = sampleDC1.deepCopy(new SampleIE(null));
-          SortedKeyValueIterator<Key,Value> allDC2 = sample.deepCopy(new SampleIE(null));
+          SortedKeyValueIterator<Key,Value> allDC1 =
+              sampleDC1.deepCopy(ClientIteratorEnvironment.DEFAULT);
+          SortedKeyValueIterator<Key,Value> allDC2 =
+              sample.deepCopy(ClientIteratorEnvironment.DEFAULT);
 
           assertEquals(expectedDataHash, hash(allDC1));
           assertEquals(expectedDataHash, hash(allDC2));
@@ -2282,7 +2266,7 @@ public class RFileTest {
     // If we get here, we have encrypted bytes
     for (Property prop : Property.values()) {
       if (prop.isSensitive()) {
-        byte[] toCheck = prop.getKey().getBytes();
+        byte[] toCheck = prop.getKey().getBytes(UTF_8);
         assertEquals(-1, Bytes.indexOf(rfBytes, toCheck));
       }
     }

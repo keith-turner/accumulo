@@ -528,7 +528,8 @@ public interface TableOperations {
    * @return The map that became Accumulo's new properties for this table. This map is immutable and
    *         contains the snapshot passed to mapMutator and the changes made by mapMutator.
    *
-   * @throws AccumuloException if a general error occurs
+   * @throws AccumuloException if a general error occurs. Wrapped TableNotFoundException if table
+   *         does not exist.
    * @throws AccumuloSecurityException if the user does not have permission
    * @throws IllegalArgumentException if the Consumer alters the map by adding properties that
    *         cannot be stored
@@ -553,11 +554,11 @@ public interface TableOperations {
       throws AccumuloException, AccumuloSecurityException;
 
   /**
-   * Gets properties of a table. This operation is asynchronous and eventually consistent. It is not
-   * guaranteed that all tablets in a table will return the same values. Within a few seconds
-   * without another change, all tablets in a table should be consistent. The clone table feature
-   * can be used if consistency is required. Method calls {@link #getConfiguration(String)} and then
-   * calls .entrySet() on the map.
+   * Gets a merged view of the properties of a table with its parent configuration. This operation
+   * is asynchronous and eventually consistent. It is not guaranteed that all tablets in a table
+   * will return the same values. Within a few seconds without another change, all tablets in a
+   * table should be consistent. The clone table feature can be used if consistency is required.
+   * Method calls {@link #getConfiguration(String)} and then calls .entrySet() on the map.
    *
    * @param tableName the name of the table
    * @return all properties visible by this table (system and per-table properties). Note that
@@ -571,10 +572,11 @@ public interface TableOperations {
   }
 
   /**
-   * Gets properties of a table. This operation is asynchronous and eventually consistent. It is not
-   * guaranteed that all tablets in a table will return the same values. Within a few seconds
-   * without another change, all tablets in a table should be consistent. The clone table feature
-   * can be used if consistency is required. This new method returns a Map instead of an Iterable.
+   * Gets a merged view of the properties of a table with its parent configuration. This operation
+   * is asynchronous and eventually consistent. It is not guaranteed that all tablets in a table
+   * will return the same values. Within a few seconds without another change, all tablets in a
+   * table should be consistent. The clone table feature can be used if consistency is required.
+   * This method returns a Map instead of an Iterable.
    *
    * @param tableName the name of the table
    * @return all properties visible by this table (system and per-table properties). Note that
@@ -586,10 +588,11 @@ public interface TableOperations {
       throws AccumuloException, TableNotFoundException;
 
   /**
-   * Gets per-table properties of a table. This operation is asynchronous and eventually consistent.
-   * It is not guaranteed that all tablets in a table will return the same values. Within a few
-   * seconds without another change, all tablets in a table should be consistent. The clone table
-   * feature can be used if consistency is required.
+   * Gets per-table properties of a table. Note that this does not return a merged view of the
+   * properties with its parent configuration. This operation is asynchronous and eventually
+   * consistent. It is not guaranteed that all tablets in a table will return the same values.
+   * Within a few seconds without another change, all tablets in a table should be consistent. The
+   * clone table feature can be used if consistency is required.
    *
    * @param tableName the name of the table
    * @return per-table properties visible by this table. Note that recently changed properties may
@@ -929,6 +932,8 @@ public interface TableOperations {
    *
    * @param tableName the name of the table
    * @param number the unique number assigned to the constraint
+   * @throws AccumuloException if a general error occurs. Wrapped TableNotFoundException if table
+   *         does not exist.
    * @throws AccumuloSecurityException thrown if the user doesn't have permission to remove the
    *         constraint
    * @since 1.5.0

@@ -24,8 +24,10 @@ import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSec
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.DIRECTORY_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.FLUSH_COLUMN;
 import static org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ServerColumnFamily.TIME_COLUMN;
+import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.DIR;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LAST;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOCATION;
+import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.PREV_ROW;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.SUSPEND;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,12 +35,16 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.Constructor;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
@@ -192,6 +198,13 @@ public class TabletMetadataTest {
         .put(ser1.getHostPort());
     SortedMap<Key,Value> rowMap = toRowMap(mutation);
 
+    // PREV_ROW was not fetched
+    final var missingPrevRow =
+        TabletMetadata.convertRow(rowMap.entrySet().iterator(), colsToFetch, false);
+    assertThrows(IllegalStateException.class, () -> missingPrevRow.getTabletState(tservers));
+
+    // This should now work as PREV_ROW has been included
+    colsToFetch = EnumSet.of(LOCATION, LAST, SUSPEND, PREV_ROW);
     TabletMetadata tm = TabletMetadata.convertRow(rowMap.entrySet().iterator(), colsToFetch, false);
     TabletState state = tm.getTabletState(tservers);
 
@@ -253,6 +266,53 @@ public class TabletMetadataTest {
     assertEquals(ser2.getHostAndPort(), tm.getSuspend().server);
     assertNull(tm.getLocation());
     assertFalse(tm.hasCurrent());
+  }
+
+  @Test
+  public void testTabletsMetadataAutoClose() throws Exception {
+    AtomicBoolean closeCalled = new AtomicBoolean();
+    AutoCloseable autoCloseable = () -> closeCalled.set(true);
+    Constructor<TabletsMetadata> tmConstructor =
+        TabletsMetadata.class.getDeclaredConstructor(AutoCloseable.class, Iterable.class);
+    tmConstructor.setAccessible(true);
+
+    try (TabletsMetadata ignored = tmConstructor.newInstance(autoCloseable, List.of())) {
+      // test autoCloseable used directly on TabletsMetadata
+    }
+    assertTrue(closeCalled.get());
+
+    closeCalled.set(false);
+    try (Stream<TabletMetadata> ignored =
+        tmConstructor.newInstance(autoCloseable, List.of()).stream()) {
+      // test stream delegates to close on TabletsMetadata
+    }
+    assertTrue(closeCalled.get());
+  }
+
+  @Test
+  public void testAbsentPrevRow() {
+    // If the prev row is fetched, then it is expected to be seen. Ensure that if it was not seen
+    // that TabletMetadata fails when attempting to use it. Want to ensure null is not returned for
+    // this case.
+    Mutation mutation =
+        new Mutation(MetadataSchema.TabletsSection.encodeRow(TableId.of("5"), new Text("df")));
+    DIRECTORY_COLUMN.put(mutation, new Value("d1"));
+    SortedMap<Key,Value> rowMap = toRowMap(mutation);
+
+    var tm = TabletMetadata.convertRow(rowMap.entrySet().iterator(),
+        EnumSet.allOf(ColumnType.class), false);
+
+    var msg = assertThrows(IllegalStateException.class, tm::getExtent).getMessage();
+    assertTrue(msg.contains("No prev endrow seen"));
+    msg = assertThrows(IllegalStateException.class, tm::getPrevEndRow).getMessage();
+    assertTrue(msg.contains("No prev endrow seen"));
+
+    // should see a slightly different error message when the prev row is not fetched
+    tm = TabletMetadata.convertRow(rowMap.entrySet().iterator(), EnumSet.of(DIR), false);
+    msg = assertThrows(IllegalStateException.class, tm::getExtent).getMessage();
+    assertTrue(msg.contains("PREV_ROW was not fetched"));
+    msg = assertThrows(IllegalStateException.class, tm::getPrevEndRow).getMessage();
+    assertTrue(msg.contains("PREV_ROW was not fetched"));
   }
 
   private SortedMap<Key,Value> toRowMap(Mutation mutation) {

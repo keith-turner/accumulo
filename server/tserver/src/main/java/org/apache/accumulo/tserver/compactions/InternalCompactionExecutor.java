@@ -18,14 +18,19 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.ACCUMULO_POOL_PREFIX;
+
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -54,10 +59,10 @@ public class InternalCompactionExecutor implements CompactionExecutor {
 
   private static final Logger log = LoggerFactory.getLogger(InternalCompactionExecutor.class);
 
-  private PriorityBlockingQueue<Runnable> queue;
+  private final PriorityBlockingQueue<Runnable> queue;
   private final CompactionExecutorId ceid;
-  private AtomicLong cancelCount = new AtomicLong();
-  private ThreadPoolExecutor threadPool;
+  private final AtomicLong cancelCount = new AtomicLong();
+  private final ThreadPoolExecutor threadPool;
 
   // This set provides an accurate count of queued compactions for metrics. The PriorityQueue is
   // not used because its size may be off due to it containing cancelled compactions. The collection
@@ -69,6 +74,9 @@ public class InternalCompactionExecutor implements CompactionExecutor {
 
   private final RateLimiter readLimiter;
   private final RateLimiter writeLimiter;
+
+  // used to signal if running compactions for this service should keep running
+  private final AtomicBoolean keepRunning = new AtomicBoolean(true);
 
   private class InternalJob extends SubmittedJob implements Runnable {
 
@@ -94,7 +102,8 @@ public class InternalCompactionExecutor implements CompactionExecutor {
       try {
         if (status.compareAndSet(Status.QUEUED, Status.RUNNING)) {
           queuedJob.remove(this);
-          compactable.compact(csid, getJob(), readLimiter, writeLimiter, queuedTime);
+          compactable.compact(csid, getJob(), keepRunning::get, readLimiter, writeLimiter,
+              queuedTime);
           completionCallback.accept(compactable);
         }
       } catch (RuntimeException e) {
@@ -165,9 +174,11 @@ public class InternalCompactionExecutor implements CompactionExecutor {
 
     queue = new PriorityBlockingQueue<>(100, comparator);
 
-    threadPool = ThreadPools.getServerThreadPools().createThreadPool(threads, threads, 60,
-        TimeUnit.SECONDS, "compaction." + ceid, queue, false);
-
+    threadPool = ThreadPools.getServerThreadPools()
+        .getPoolBuilder(
+            ACCUMULO_POOL_PREFIX.poolName + ".compaction.service.internal.compaction." + ceid)
+        .numCoreThreads(threads).numMaxThreads(threads).withTimeOut(60L, SECONDS).withQueue(queue)
+        .build();
     metricCloser =
         ceMetrics.addExecutor(ceid, () -> threadPool.getActiveCount(), () -> queuedJob.size());
 
@@ -182,12 +193,22 @@ public class InternalCompactionExecutor implements CompactionExecutor {
       Consumer<Compactable> completionCallback) {
     Preconditions.checkArgument(job.getExecutor().equals(ceid));
     var internalJob = new InternalJob(job, compactable, csid, completionCallback);
-    threadPool.execute(internalJob);
+    try {
+      threadPool.execute(internalJob);
+    } catch (RejectedExecutionException e) {
+      if (threadPool.isShutdown()) {
+        log.trace("Ignoring rejected execution exception because thread pool is shutdown", e);
+        internalJob.cancel(Status.QUEUED);
+      } else {
+        throw new IllegalStateException(e);
+      }
+    }
     return internalJob;
   }
 
   public void setThreads(int numThreads) {
-    ThreadPools.resizePool(threadPool, () -> numThreads, "compaction." + ceid);
+    ThreadPools.resizePool(threadPool, () -> numThreads,
+        ACCUMULO_POOL_PREFIX.poolName + ".accumulo.pool.compaction." + ceid);
   }
 
   @Override
@@ -208,8 +229,27 @@ public class InternalCompactionExecutor implements CompactionExecutor {
 
   @Override
   public void stop() {
-    threadPool.shutdownNow();
-    log.debug("Stopped compaction executor {}", ceid);
+    // Let compactions that are running keep running, but stop accepting new compactions.
+    threadPool.shutdown();
+
+    int running = threadPool.getActiveCount();
+
+    List<InternalJob> jobToCancel;
+    synchronized (queuedJob) {
+      jobToCancel = new ArrayList<>(queuedJob);
+    }
+
+    // Cancel any compactions queued for the thread pool that have not yet started running.
+    int canceled = 0;
+    for (var job : jobToCancel) {
+      if (job.cancel(Status.QUEUED)) {
+        canceled++;
+      }
+    }
+
+    keepRunning.set(false);
+
+    log.debug("Stopped compaction executor {} running:{} canceled:{}", ceid, running, canceled);
     metricCloser.close();
   }
 

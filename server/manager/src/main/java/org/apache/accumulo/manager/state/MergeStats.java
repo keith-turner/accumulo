@@ -27,6 +27,7 @@ import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
+import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TableId;
@@ -39,6 +40,7 @@ import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.TabletLocationState;
 import org.apache.accumulo.core.metadata.TabletLocationState.BadLocationStateException;
 import org.apache.accumulo.core.metadata.TabletState;
+import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.trace.TraceUtil;
@@ -51,6 +53,9 @@ import org.apache.hadoop.io.DataInputBuffer;
 import org.apache.hadoop.io.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;
@@ -201,11 +206,15 @@ public class MergeStats {
 
   private boolean verifyMergeConsistency(AccumuloClient accumuloClient, CurrentState manager)
       throws TableNotFoundException, IOException {
+    // The only expected state when this method is called is WAITING_FOR_OFFLINE
+    verifyState(info, MergeState.WAITING_FOR_OFFLINE);
+
     MergeStats verify = new MergeStats(info);
     KeyExtent extent = info.getExtent();
     Scanner scanner = accumuloClient
         .createScanner(extent.isMeta() ? RootTable.NAME : MetadataTable.NAME, Authorizations.EMPTY);
-    MetaDataTableScanner.configureScanner(scanner, manager);
+    MetaDataTableScanner.configureScanner(((ClientContext) accumuloClient).getConfiguration(),
+        scanner, manager, DataLevel.of(extent.tableId()));
     Text start = extent.prevEndRow();
     if (start == null) {
       start = new Text();
@@ -230,8 +239,9 @@ public class MergeStats {
         break;
       }
 
-      if (!tls.walogs.isEmpty() && verify.getMergeInfo().needsToBeChopped(tls.extent)) {
-        log.debug("failing consistency: needs to be chopped {}", tls.extent);
+      // Verify that no WALs exist
+      if (!verifyWalogs(tls)) {
+        log.debug("failing consistency: {} has walogs {}", tls.extent, tls.walogs.size());
         return false;
       }
 
@@ -269,6 +279,17 @@ public class MergeStats {
 
     return chopped == verify.chopped && unassigned == verify.unassigned
         && unassigned == verify.total;
+  }
+
+  @VisibleForTesting
+  void verifyState(MergeInfo info, MergeState expectedState) {
+    Preconditions.checkState(info.getState() == expectedState, "Unexpected merge state %s",
+        info.getState());
+  }
+
+  @VisibleForTesting
+  boolean verifyWalogs(TabletLocationState tls) {
+    return tls.walogs.isEmpty();
   }
 
   public static void main(String[] args) throws Exception {

@@ -318,6 +318,11 @@ service TabletClientService {
     1:NoSuchScanIDException nssi
   )
 
+  bool cancelUpdate(
+    1:trace.TInfo tinfo
+    2:data.UpdateID updateID
+  )
+
   //the following call supports making a single update to a tablet
   void update(
     4:trace.TInfo tinfo
@@ -373,6 +378,15 @@ service TabletClientService {
   )
 
   oneway void loadFiles(
+    1:trace.TInfo tinfo
+    2:security.TCredentials credentials
+    3:i64 tid
+    4:string dir
+    5:map<data.TKeyExtent, map<string, data.MapFileInfo>> files
+    6:bool setTime
+  )
+
+  void loadFilesV2(
     1:trace.TInfo tinfo
     2:security.TCredentials credentials
     3:i64 tid

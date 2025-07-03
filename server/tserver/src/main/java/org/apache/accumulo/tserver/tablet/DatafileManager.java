@@ -86,7 +86,7 @@ class DatafileManager {
         new AtomicReference<>(new MetadataUpdateCount(tablet.getExtent(), 0L, 0L));
   }
 
-  private final Set<TabletFile> filesToDeleteAfterScan = new HashSet<>();
+  private final Set<StoredTabletFile> filesToDeleteAfterScan = new HashSet<>();
   private final Map<Long,Set<StoredTabletFile>> scanFileReservations = new HashMap<>();
   private final MapCounter<StoredTabletFile> fileScanReferenceCounts = new MapCounter<>();
   private long nextScanReservationId = 0;
@@ -119,8 +119,6 @@ class DatafileManager {
 
   void returnFilesForScan(Long reservationId) {
 
-    final Set<StoredTabletFile> filesToDelete = new HashSet<>();
-
     synchronized (tablet) {
       Set<StoredTabletFile> absFilePaths = scanFileReservations.remove(reservationId);
 
@@ -129,27 +127,20 @@ class DatafileManager {
       }
 
       boolean notify = false;
-      for (StoredTabletFile path : absFilePaths) {
-        long refCount = fileScanReferenceCounts.decrement(path, 1);
-        if (refCount == 0) {
-          if (filesToDeleteAfterScan.remove(path)) {
-            filesToDelete.add(path);
+      try {
+        for (StoredTabletFile path : absFilePaths) {
+          long refCount = fileScanReferenceCounts.decrement(path, 1);
+          if (refCount == 0) {
+            notify = true;
+          } else if (refCount < 0) {
+            throw new IllegalStateException("Scan ref count for " + path + " is " + refCount);
           }
-          notify = true;
-        } else if (refCount < 0) {
-          throw new IllegalStateException("Scan ref count for " + path + " is " + refCount);
+        }
+      } finally {
+        if (notify) {
+          tablet.notifyAll();
         }
       }
-
-      if (notify) {
-        tablet.notifyAll();
-      }
-    }
-
-    if (!filesToDelete.isEmpty()) {
-      log.debug("Removing scan refs from metadata {} {}", tablet.getExtent(), filesToDelete);
-      MetadataTableUtil.removeScanFiles(tablet.getExtent(), filesToDelete, tablet.getContext(),
-          tablet.getTabletServer().getLock());
     }
   }
 
@@ -174,6 +165,33 @@ class DatafileManager {
       log.debug("Removing scan refs from metadata {} {}", tablet.getExtent(), filesToDelete);
       MetadataTableUtil.removeScanFiles(tablet.getExtent(), filesToDelete, tablet.getContext(),
           tablet.getTabletServer().getLock());
+    }
+  }
+
+  /**
+   * This method will remove any scan references that have been added to filesToDeleteAfterScan.
+   * This is meant to be called periodically as to batch the removal of scan references.
+   */
+  public void removeBatchedScanRefs() {
+    Set<StoredTabletFile> snapshot;
+    synchronized (tablet) {
+      snapshot = new HashSet<>(filesToDeleteAfterScan);
+      filesToDeleteAfterScan.clear();
+    }
+    removeFilesAfterScan(snapshot);
+  }
+
+  /**
+   * @return true if any file is no longer in use by a scan and can be removed, false otherwise.
+   */
+  boolean canScanRefsBeRemoved() {
+    synchronized (tablet) {
+      for (var path : filesToDeleteAfterScan) {
+        if (fileScanReferenceCounts.get(path) == 0) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 
@@ -282,6 +300,12 @@ class DatafileManager {
       for (Entry<StoredTabletFile,DataFileValue> entry : newFiles.entrySet()) {
         TabletLogger.bulkImported(tablet.getExtent(), entry.getKey());
       }
+    } catch (Exception e) {
+      // Any exception in this code is prone to leaving the persisted tablet metadata and the
+      // tablets in memory data structs out of sync. Log the extent and exact files involved as this
+      // may be useful for debugging.
+      log.error("Failure adding bulk import files {} {}", tablet.getExtent(), paths.keySet(), e);
+      throw e;
     } finally {
       // increment finish count after metadata update AND updating in memory map of files
       metadataUpdateCount.updateAndGet(MetadataUpdateCount::incrementFinish);
@@ -331,30 +355,20 @@ class DatafileManager {
 
     long t1, t2;
 
-    Set<String> unusedWalLogs = tablet.beginClearingUnusedLogs();
-    @SuppressWarnings("deprecation")
-    boolean replicate = org.apache.accumulo.core.replication.ReplicationConfigurationUtil
-        .isEnabled(tablet.getExtent(), tablet.getTableConfiguration());
-    Set<String> logFileOnly = null;
-    if (replicate) {
-      // unusedWalLogs is of the form host/fileURI, need to strip off the host portion
-      logFileOnly = new HashSet<>();
-      for (String unusedWalLog : unusedWalLogs) {
-        int index = unusedWalLog.indexOf('/');
-        if (index == -1) {
-          log.warn("Could not find host component to strip from DFSLogger representation of WAL");
-        } else {
-          unusedWalLog = unusedWalLog.substring(index + 1);
-        }
-        logFileOnly.add(unusedWalLog);
-      }
-    }
-
     // increment start count before metadata update AND updating in memory map of files
     metadataUpdateCount.updateAndGet(MetadataUpdateCount::incrementStart);
-    // do not place any code here between above stmt and try{}finally
+    // do not place any code here between above stmt and following try{}finally
     try {
+      // Should not hold the tablet lock while trying to acquire the log lock because this could
+      // lead to deadlock. However there is a path in the code that does this. See #3759
+      tablet.getLogLock().lock();
+      // do not place any code here between lock and try
       try {
+        // The following call pairs with tablet.finishClearingUnusedLogs() later in this block. If
+        // moving where the following method is called, examine it and finishClearingUnusedLogs()
+        // before moving.
+        Set<String> unusedWalLogs = tablet.beginClearingUnusedLogs();
+
         // the order of writing to metadata and walog is important in the face of machine/process
         // failures need to write to metadata before writing to walog, when things are done in the
         // reverse order data could be lost... the minor compaction start even should be written
@@ -370,7 +384,23 @@ class DatafileManager {
         // MinC cannot happen unless the
         // tablet is online and thus these WALs are referenced by that tablet. Therefore, the WAL
         // replication status cannot be 'closed'.
+        @SuppressWarnings("deprecation")
+        boolean replicate = org.apache.accumulo.core.replication.ReplicationConfigurationUtil
+            .isEnabled(tablet.getExtent(), tablet.getTableConfiguration());
         if (replicate) {
+          // unusedWalLogs is of the form host/fileURI, need to strip off the host portion
+          Set<String> logFileOnly = new HashSet<>();
+          for (String unusedWalLog : unusedWalLogs) {
+            int index = unusedWalLog.indexOf('/');
+            if (index == -1) {
+              log.warn(
+                  "Could not find host component to strip from DFSLogger representation of WAL");
+            } else {
+              unusedWalLog = unusedWalLog.substring(index + 1);
+            }
+            logFileOnly.add(unusedWalLog);
+          }
+
           if (log.isDebugEnabled()) {
             log.debug("Recording that data has been ingested into {} using {}", tablet.getExtent(),
                 logFileOnly);
@@ -383,8 +413,10 @@ class DatafileManager {
                 status);
           }
         }
-      } finally {
+
         tablet.finishClearingUnusedLogs();
+      } finally {
+        tablet.getLogLock().unlock();
       }
 
       do {
@@ -416,6 +448,12 @@ class DatafileManager {
 
         t2 = System.currentTimeMillis();
       }
+    } catch (Exception e) {
+      // Any exception in this code is prone to leaving the persisted tablet metadata and the
+      // tablets in memory data structs out of sync. Log the extent and exact file involved as this
+      // may be useful for debugging.
+      log.error("Failure adding minor compacted file {} {}", tablet.getExtent(), newDatafile, e);
+      throw e;
     } finally {
       // increment finish count after metadata update AND updating in memory map of files
       metadataUpdateCount.updateAndGet(MetadataUpdateCount::incrementFinish);
@@ -518,6 +556,13 @@ class DatafileManager {
       tablet.setLastCompactionID(compactionIdToWrite);
       removeFilesAfterScan(filesInUseByScans);
 
+    } catch (Exception e) {
+      // Any exception in this code is prone to leaving the persisted tablet metadata and the
+      // tablets in memory data structs out of sync. Log the extent and exact files involved as this
+      // may be useful for debugging.
+      log.error("Failure updating files after major compaction {} {} {}", tablet.getExtent(),
+          newFile, oldDatafiles, e);
+      throw e;
     } finally {
       // increment finish count after metadata update AND updating in memory map of files
       metadataUpdateCount.updateAndGet(MetadataUpdateCount::incrementFinish);

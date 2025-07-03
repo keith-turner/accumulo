@@ -42,6 +42,7 @@ import java.util.function.Supplier;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.clientImpl.ThriftTransportPool;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -53,6 +54,7 @@ import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.fate.zookeeper.ZooReader;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.core.metadata.schema.Ample;
+import org.apache.accumulo.core.metrics.MetricsInfo;
 import org.apache.accumulo.core.rpc.SslConnectionParams;
 import org.apache.accumulo.core.singletons.SingletonReservation;
 import org.apache.accumulo.core.spi.crypto.CryptoServiceFactory;
@@ -67,6 +69,7 @@ import org.apache.accumulo.server.conf.store.PropStore;
 import org.apache.accumulo.server.conf.store.impl.ZooPropStore;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.metadata.ServerAmpleImpl;
+import org.apache.accumulo.server.metrics.MetricsInfoImpl;
 import org.apache.accumulo.server.rpc.SaslServerConnectionParams;
 import org.apache.accumulo.server.rpc.ThriftServerType;
 import org.apache.accumulo.server.security.AuditedSecurityOperation;
@@ -101,6 +104,7 @@ public class ServerContext extends ClientContext {
   private final Supplier<ScheduledThreadPoolExecutor> sharedScheduledThreadPool;
   private final Supplier<AuditedSecurityOperation> securityOperation;
   private final Supplier<CryptoServiceFactory> cryptoFactorySupplier;
+  private final Supplier<MetricsInfo> metricsInfoSupplier;
 
   public ServerContext(SiteConfiguration siteConfig) {
     this(new ServerInfo(siteConfig));
@@ -125,6 +129,7 @@ public class ServerContext extends ClientContext {
     securityOperation =
         memoize(() -> new AuditedSecurityOperation(this, SecurityOperation.getAuthorizor(this),
             SecurityOperation.getAuthenticator(this), SecurityOperation.getPermHandler(this)));
+    metricsInfoSupplier = memoize(() -> new MetricsInfoImpl(this));
   }
 
   /**
@@ -441,8 +446,22 @@ public class ServerContext extends ClientContext {
     return getClientTimeoutInMillis();
   }
 
+  @Override
+  public synchronized ThriftTransportPool getTransportPool() {
+    return getTransportPoolImpl(true);
+  }
+
   public AuditedSecurityOperation getSecurityOperation() {
     return securityOperation.get();
   }
 
+  public MetricsInfo getMetricsInfo() {
+    return metricsInfoSupplier.get();
+  }
+
+  @Override
+  public void close() {
+    getMetricsInfo().close();
+    super.close();
+  }
 }

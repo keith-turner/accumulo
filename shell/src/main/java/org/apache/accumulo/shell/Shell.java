@@ -39,6 +39,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -174,6 +175,7 @@ import org.jline.reader.impl.LineReaderImpl;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.jline.terminal.TerminalBuilder.SystemOutput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -227,11 +229,14 @@ public class Shell extends ShellOptions implements KeywordExecutable {
   protected String execCommand = null;
   protected boolean verbose = true;
 
+  private boolean canPaginate = false;
   private boolean tabCompletion;
   private boolean disableAuthTimeout;
   private long authTimeout;
   private long lastUserActivity = System.nanoTime();
   private boolean logErrorsToConsole = false;
+  private boolean askAgain = false;
+  private boolean usedClientProps = false;
 
   static {
     // set the JLine output encoding to some reasonable default if it isn't already set
@@ -249,7 +254,7 @@ public class Shell extends ShellOptions implements KeywordExecutable {
     }
   }
 
-  // no arg constructor should do minimal work since its used in Main ServiceLoader
+  // no arg constructor should do minimal work since it's used in Main ServiceLoader
   public Shell() {}
 
   public Shell(LineReader reader) {
@@ -271,8 +276,10 @@ public class Shell extends ShellOptions implements KeywordExecutable {
         && clientProperties.containsKey(ClientProperty.AUTH_TOKEN.getKey())
         && principal.equals(ClientProperty.AUTH_PRINCIPAL.getValue(clientProperties))) {
       token = ClientProperty.getAuthenticationToken(clientProperties);
+      usedClientProps = true;
     }
-    if (token == null) {
+    if (token == null || askAgain) {
+      usedClientProps = false;
       // Read password if the user explicitly asked for it, or didn't specify anything at all
       if (PasswordConverter.STDIN.equals(authenticationString) || authenticationString == null) {
         authenticationString = reader.readLine(passwordPrompt, '*');
@@ -295,7 +302,8 @@ public class Shell extends ShellOptions implements KeywordExecutable {
    */
   public boolean config(String... args) throws IOException {
     if (this.terminal == null) {
-      this.terminal = TerminalBuilder.builder().jansi(false).build();
+      this.terminal =
+          TerminalBuilder.builder().jansi(false).systemOutput(SystemOutput.SysOut).build();
     }
     if (this.reader == null) {
       this.reader = LineReaderBuilder.builder().terminal(this.terminal).build();
@@ -375,6 +383,8 @@ public class Shell extends ShellOptions implements KeywordExecutable {
         return false;
       }
     }
+
+    canPaginate = terminal.getSize().getRows() > 0;
 
     // decide whether to execute commands from a file and quit
     if (options.getExecFile() != null) {
@@ -557,7 +567,7 @@ public class Shell extends ShellOptions implements KeywordExecutable {
 
     String home = System.getProperty("HOME");
     if (home == null) {
-      home = System.getenv("HOME");
+      home = System.getProperty("user.home");
     }
     String configDir = home + "/" + HISTORY_DIR_NAME;
     String historyPath = configDir + "/" + HISTORY_FILE_NAME;
@@ -617,7 +627,7 @@ public class Shell extends ShellOptions implements KeywordExecutable {
         writer.println();
 
         String partialLine = uie.getPartialLine();
-        if (partialLine == null || "".equals(uie.getPartialLine().trim())) {
+        if (partialLine == null || partialLine.trim().isEmpty()) {
           // No content, actually exit
           return exitCode;
         }
@@ -759,6 +769,12 @@ public class Shell extends ShellOptions implements KeywordExecutable {
 
             if (authFailed) {
               writer.print("Invalid password. ");
+              askAgain = true;
+            } else {
+              if (usedClientProps) {
+                writer.println(
+                    "User re-authenticated using value from accumulo-client.properties file");
+              }
             }
           } while (authFailed);
           lastUserActivity = System.nanoTime();
@@ -1053,7 +1069,7 @@ public class Shell extends ShellOptions implements KeywordExecutable {
         if (out == null) {
           if (peek != null) {
             writer.println(peek);
-            if (paginate) {
+            if (canPaginate && paginate) {
               linesPrinted += peek.isEmpty() ? 0 : Math.ceil(peek.length() * 1.0 / termWidth);
 
               // check if displaying the next line would result in
@@ -1263,4 +1279,24 @@ public class Shell extends ShellOptions implements KeywordExecutable {
     return exit;
   }
 
+  /**
+   * Prompt user for yes/no using the shell prompt.
+   *
+   * @param prompt the string printed to user, with (yes|no)? appended as the prompt.
+   * @return true if user enters y | yes, false or null.
+   */
+  public Optional<Boolean> confirm(final String prompt) {
+    getWriter().flush();
+    String line;
+    Optional<Boolean> confirmed = Optional.empty();
+    try {
+      line = getReader().readLine(prompt + " (yes|no)? ");
+    } catch (EndOfFileException ignored) {
+      line = null;
+    }
+    if (line != null) {
+      confirmed = Optional.of(line.equalsIgnoreCase("y") || line.equalsIgnoreCase("yes"));
+    }
+    return confirmed;
+  }
 }
