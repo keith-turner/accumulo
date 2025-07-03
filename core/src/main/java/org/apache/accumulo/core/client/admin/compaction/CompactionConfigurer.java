@@ -18,11 +18,13 @@
  */
 package org.apache.accumulo.core.client.admin.compaction;
 
+import java.net.URI;
 import java.util.Collection;
 import java.util.Map;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.data.TabletId;
 
 /**
  * Enables dynamically overriding of per table properties used to create the output file for a
@@ -34,7 +36,7 @@ public interface CompactionConfigurer {
   /**
    * @since 2.1.0
    */
-  public interface InitParameters {
+  interface InitParameters {
     TableId getTableId();
 
     Map<String,String> getOptions();
@@ -47,10 +49,26 @@ public interface CompactionConfigurer {
   /**
    * @since 2.1.0
    */
-  public interface InputParameters {
+  interface InputParameters {
     TableId getTableId();
 
-    public Collection<CompactableFile> getInputFiles();
+    Collection<CompactableFile> getInputFiles();
+
+    /**
+     * Returns the tablet id for the tablet to compact.
+     *
+     * @since 2.1.4
+     */
+    TabletId getTabletId();
+
+    /**
+     * Returns the file that the tablet will be written to, one use of this is for know what volume
+     * the compaction will write to. The file name in the URI may be a temporary one, compactions
+     * are written to a temporary file in a tablet directory and then renamed after completion.
+     *
+     * @since 2.1.4
+     */
+    URI getOutputFile();
 
     PluginEnvironment getEnvironment();
   }
