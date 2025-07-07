@@ -137,8 +137,6 @@ public class RFileOperations extends FileOperations {
       String file = options.getFilename();
       FileSystem fs = options.getFileSystem();
 
-      // need ecPolicyName and usage flag from the table configuration
-      String ecPolicyName = options.getTableConfiguration().get(Property.TABLE_ERASURE_CODE_POLICY);
       boolean useEC =
           options.getTableConfiguration().getBoolean(Property.TABLE_ENABLE_ERASURE_CODES);
 
@@ -146,16 +144,12 @@ public class RFileOperations extends FileOperations {
 
         EnumSet<CreateFlag> set = EnumSet.of(CreateFlag.SYNC_BLOCK, CreateFlag.CREATE);
         if (useEC && (fs instanceof DistributedFileSystem)) {
-
+          String ecPolicyName =
+              options.getTableConfiguration().get(Property.TABLE_ERASURE_CODE_POLICY);
           outputStream =
               ((DistributedFileSystem) fs).createFile(new Path(file)).bufferSize(bufferSize)
                   .blockSize(block).syncBlock().ecPolicyName(ecPolicyName).build();
-
         } else {
-
-          // outputStream = fs.create(new Path(file), false, bufferSize, (short) rep, block);
-          // }
-
           outputStream = fs.create(new Path(file), FsPermission.getDefault(), set, bufferSize,
               (short) rep, block, null);
         }
@@ -171,13 +165,12 @@ public class RFileOperations extends FileOperations {
               e.getMessage());
         }
       } else {
-
         if (useEC && (fs instanceof DistributedFileSystem)) {
-
+          String ecPolicyName =
+              options.getTableConfiguration().get(Property.TABLE_ERASURE_CODE_POLICY);
           outputStream = ((DistributedFileSystem) fs).createFile(new Path(file))
               .bufferSize(bufferSize).blockSize(block).ecPolicyName(ecPolicyName).build();
         } else {
-
           outputStream = fs.create(new Path(file), false, bufferSize, (short) rep, block);
         }
       }
