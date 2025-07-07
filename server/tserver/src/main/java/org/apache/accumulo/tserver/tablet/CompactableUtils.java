@@ -20,7 +20,6 @@ package org.apache.accumulo.tserver.tablet;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -55,10 +54,8 @@ import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
-import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
-import org.apache.accumulo.core.dataImpl.TabletIdImpl;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
@@ -215,8 +212,7 @@ public class CompactableUtils {
     return result;
   }
 
-  static Map<String,String> computeOverrides(Tablet tablet, Set<CompactableFile> files,
-      TabletFile tmpfile) {
+  static Map<String,String> computeOverrides(Tablet tablet, Set<CompactableFile> files) {
     var tconf = tablet.getTableConfiguration();
 
     var configurorClass = tconf.get(Property.TABLE_COMPACTION_CONFIGURER);
@@ -226,11 +222,11 @@ public class CompactableUtils {
 
     var opts = tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_CONFIGURER_OPTS);
 
-    return computeOverrides(tablet, files, new PluginConfig(configurorClass, opts), tmpfile);
+    return computeOverrides(tablet, files, new PluginConfig(configurorClass, opts));
   }
 
   static Map<String,String> computeOverrides(Tablet tablet, Set<CompactableFile> files,
-      PluginConfig cfg, TabletFile compactTmpName) {
+      PluginConfig cfg) {
     CompactionConfigurer configurer = CompactableUtils.newInstance(tablet.getTableConfiguration(),
         cfg.getClassName(), CompactionConfigurer.class);
 
@@ -257,16 +253,6 @@ public class CompactableUtils {
       @Override
       public Collection<CompactableFile> getInputFiles() {
         return files;
-      }
-
-      @Override
-      public TabletId getTabletId() {
-        return new TabletIdImpl(tablet.getExtent());
-      }
-
-      @Override
-      public URI getOutputFile() {
-        return compactTmpName.getPath().toUri();
       }
 
       @Override
@@ -414,7 +400,7 @@ public class CompactableUtils {
     }
 
     @Override
-    public Map<String,String> getConfigOverrides(Set<CompactableFile> files, TabletFile tmpFile) {
+    public Map<String,String> getConfigOverrides(Set<CompactableFile> files) {
       return computeOverrides(wp);
     }
 
@@ -470,10 +456,9 @@ public class CompactableUtils {
     }
 
     @Override
-    public Map<String,String> getConfigOverrides(Set<CompactableFile> files,
-        TabletFile compactTmpName) {
+    public Map<String,String> getConfigOverrides(Set<CompactableFile> files) {
       if (!UserCompactionUtils.isDefault(compactionConfig.getConfigurer())) {
-        return computeOverrides(tablet, files, compactionConfig.getConfigurer(), compactTmpName);
+        return computeOverrides(tablet, files, compactionConfig.getConfigurer());
       } else if (!CompactionStrategyConfigUtil.isDefault(compactionConfig.getCompactionStrategy())
           && wp != null) {
         return computeOverrides(wp);
@@ -538,16 +523,16 @@ public class CompactableUtils {
   }
 
   public static Map<String,String> getOverrides(CompactionKind kind, Tablet tablet,
-      CompactionHelper driver, Set<CompactableFile> files, TabletFile compactTmpName) {
+      CompactionHelper driver, Set<CompactableFile> files) {
 
     Map<String,String> overrides = null;
 
     if (kind == CompactionKind.USER || kind == CompactionKind.SELECTOR) {
-      overrides = driver.getConfigOverrides(files, compactTmpName);
+      overrides = driver.getConfigOverrides(files);
     }
 
     if (overrides == null) {
-      overrides = computeOverrides(tablet, files, compactTmpName);
+      overrides = computeOverrides(tablet, files);
     }
 
     if (overrides == null) {
@@ -579,7 +564,7 @@ public class CompactableUtils {
     TableConfiguration tableConf = tablet.getTableConfiguration();
 
     AccumuloConfiguration compactionConfig = getCompactionConfig(tableConf,
-        getOverrides(job.getKind(), tablet, cInfo.localHelper, job.getFiles(), tmpFileName));
+        getOverrides(job.getKind(), tablet, cInfo.localHelper, job.getFiles()));
 
     final FileCompactor compactor = new FileCompactor(tablet.getContext(), tablet.getExtent(),
         compactFiles, tmpFileName, cInfo.propagateDeletes, cenv, cInfo.iters, compactionConfig,

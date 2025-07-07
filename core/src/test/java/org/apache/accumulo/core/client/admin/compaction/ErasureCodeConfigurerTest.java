@@ -20,14 +20,12 @@ package org.apache.accumulo.core.client.admin.compaction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.net.URI;
 import java.util.Collection;
 import java.util.Map;
 
 import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.TableId;
-import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.spi.compaction.DefaultCompactionPlannerTest;
 import org.junit.jupiter.api.Test;
 
@@ -77,16 +75,6 @@ public class ErasureCodeConfigurerTest {
       @Override
       public Collection<CompactableFile> getInputFiles() {
         return DefaultCompactionPlannerTest.createCFs(namesSizePairs);
-      }
-
-      @Override
-      public TabletId getTabletId() {
-        return TabletId.of(getTableId(), null, "");
-      }
-
-      @Override
-      public URI getOutputFile() {
-        throw new UnsupportedOperationException();
       }
 
       @Override
