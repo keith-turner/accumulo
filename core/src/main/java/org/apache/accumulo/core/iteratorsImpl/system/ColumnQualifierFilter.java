@@ -18,14 +18,18 @@
  */
 package org.apache.accumulo.core.iteratorsImpl.system;
 
+import java.io.IOException;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
+import com.google.common.base.Preconditions;
 import org.apache.accumulo.core.data.ArrayByteSequence;
 import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Column;
 import org.apache.accumulo.core.data.Key;
+import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.ServerFilter;
@@ -58,6 +62,12 @@ public class ColumnQualifierFilter extends ServerFilter {
     super(iterator);
     this.columnFamilies = columnFamilies;
     this.columnsQualifiers = columnsQualifiers;
+  }
+
+  @Override
+  public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive)
+          throws IOException {
+    super.seek(range, columnFamilies, inclusive);
   }
 
   @Override
