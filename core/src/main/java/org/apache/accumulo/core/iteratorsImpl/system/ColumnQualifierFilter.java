@@ -65,12 +65,6 @@ public class ColumnQualifierFilter extends ServerFilter {
   }
 
   @Override
-  public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive)
-          throws IOException {
-    super.seek(range, columnFamilies, inclusive);
-  }
-
-  @Override
   public boolean accept(Key key, Value v) {
     if (columnFamilies.contains(key.getColumnFamilyData())) {
       return true;

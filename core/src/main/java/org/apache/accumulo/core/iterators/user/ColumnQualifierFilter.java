@@ -10,7 +10,6 @@ import org.apache.accumulo.core.data.Value;
 import java.util.Collection;
 import java.util.NavigableSet;
 import java.util.SortedMap;
-import java.util.SortedSet;
 
 public class ColumnQualifierFilter extends  SeekingFilter {
 
