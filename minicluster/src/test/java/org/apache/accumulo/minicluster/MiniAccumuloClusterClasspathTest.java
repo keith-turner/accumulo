@@ -60,7 +60,7 @@ public class MiniAccumuloClusterClasspathTest extends WithTestNames {
   public static final String ROOT_PASSWORD = "superSecret";
   public static final String ROOT_USER = "root";
 
-  public static File testDir;
+  private static File testDir;
 
   private static MiniAccumuloCluster accumulo;
 
@@ -80,7 +80,6 @@ public class MiniAccumuloClusterClasspathTest extends WithTestNames {
     MiniAccumuloConfig config = new MiniAccumuloConfig(testDir, ROOT_PASSWORD).setJDWPEnabled(true);
     config.setZooKeeperPort(0);
     HashMap<String,String> site = new HashMap<>();
-    site.put(Property.TSERV_WORKQ_THREADS.getKey(), "2");
     site.put(VFS_CONTEXT_CLASSPATH_PROPERTY.getKey() + "cx1", jarFile.toURI().toString());
     config.setSiteConfig(site);
     accumulo = new MiniAccumuloCluster(config);

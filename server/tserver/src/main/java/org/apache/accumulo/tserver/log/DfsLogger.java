@@ -56,7 +56,6 @@ import org.apache.accumulo.core.spi.crypto.CryptoEnvironment.Scope;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
 import org.apache.accumulo.core.spi.crypto.FileDecrypter;
 import org.apache.accumulo.core.spi.crypto.FileEncrypter;
-import org.apache.accumulo.core.spi.crypto.NoCryptoService;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.Threads;
 import org.apache.accumulo.server.ServerContext;
@@ -88,7 +87,7 @@ public class DfsLogger implements Comparable<DfsLogger> {
   /**
    * Simplified encryption technique supported in V4.
    *
-   * @since 2.0
+   * @since 2.0.0
    */
   public static final String LOG_FILE_HEADER_V4 = "--- Log File Header (v4) ---";
 
@@ -362,8 +361,9 @@ public class DfsLogger implements Comparable<DfsLogger> {
         FileDecrypter decrypter =
             CryptoUtils.getFileDecrypter(cryptoService, Scope.WAL, null, input);
         log.debug("Using {} for decrypting WAL", cryptoService.getClass().getSimpleName());
-        decryptingInput = cryptoService instanceof NoCryptoService ? input
-            : new DataInputStream(decrypter.decryptStream(input));
+        var stream = decrypter.decryptStream(input);
+        decryptingInput = stream instanceof DataInputStream ? (DataInputStream) stream
+            : new DataInputStream(stream);
       } else if (Arrays.equals(magicBuffer, magic3)) {
         // Read logs files from Accumulo 1.9 and throw an error if they are encrypted
         String cryptoModuleClassname = input.readUTF();
@@ -462,9 +462,9 @@ public class DfsLogger implements Comparable<DfsLogger> {
       }
 
       LogFileKey key = new LogFileKey();
-      key.event = OPEN;
-      key.tserverSession = filename;
-      key.filename = filename;
+      key.setEvent(OPEN);
+      key.setTserverSession(filename);
+      key.setFilename(filename);
       op = logKeyData(key, Durability.SYNC);
     } catch (Exception ex) {
       if (logFile != null) {
@@ -475,7 +475,8 @@ public class DfsLogger implements Comparable<DfsLogger> {
       throw new IOException(ex);
     }
 
-    syncThread = Threads.createThread("Accumulo WALog thread " + this, new LogSyncingTask());
+    syncThread =
+        Threads.createCriticalThread("Accumulo WALog thread " + this, new LogSyncingTask());
     syncThread.start();
     op.await();
     log.debug("Got new write-ahead log: {}", this);
@@ -566,10 +567,10 @@ public class DfsLogger implements Comparable<DfsLogger> {
   public LoggerOperation defineTablet(CommitSession cs) throws IOException {
     // write this log to the METADATA table
     final LogFileKey key = new LogFileKey();
-    key.event = DEFINE_TABLET;
-    key.seq = cs.getWALogSeq();
-    key.tabletId = cs.getLogId();
-    key.tablet = cs.getExtent();
+    key.setEvent(DEFINE_TABLET);
+    key.setSeq(cs.getWALogSeq());
+    key.setTabletId(cs.getLogId());
+    key.setTablet(cs.getExtent());
     return logKeyData(key, Durability.LOG);
   }
 
@@ -621,11 +622,11 @@ public class DfsLogger implements Comparable<DfsLogger> {
     List<Pair<LogFileKey,LogFileValue>> data = new ArrayList<>();
     for (TabletMutations tabletMutations : mutations) {
       LogFileKey key = new LogFileKey();
-      key.event = MANY_MUTATIONS;
-      key.seq = tabletMutations.getSeq();
-      key.tabletId = tabletMutations.getTid();
+      key.setEvent(MANY_MUTATIONS);
+      key.setSeq(tabletMutations.getSeq());
+      key.setTabletId(tabletMutations.getTid());
       LogFileValue value = new LogFileValue();
-      value.mutations = tabletMutations.getMutations();
+      value.setMutations(tabletMutations.getMutations());
       data.add(new Pair<>(key, value));
       durability = maxDurability(tabletMutations.getDurability(), durability);
     }
@@ -634,11 +635,11 @@ public class DfsLogger implements Comparable<DfsLogger> {
 
   public LoggerOperation log(CommitSession cs, Mutation m, Durability d) throws IOException {
     LogFileKey key = new LogFileKey();
-    key.event = MUTATION;
-    key.seq = cs.getWALogSeq();
-    key.tabletId = cs.getLogId();
+    key.setEvent(MUTATION);
+    key.setSeq(cs.getWALogSeq());
+    key.setTabletId(cs.getLogId());
     LogFileValue value = new LogFileValue();
-    value.mutations = singletonList(m);
+    value.setMutations(singletonList(m));
     return logFileData(singletonList(new Pair<>(key, value)), d);
   }
 
@@ -656,19 +657,19 @@ public class DfsLogger implements Comparable<DfsLogger> {
   public LoggerOperation minorCompactionFinished(long seq, int tid, Durability durability)
       throws IOException {
     LogFileKey key = new LogFileKey();
-    key.event = COMPACTION_FINISH;
-    key.seq = seq;
-    key.tabletId = tid;
+    key.setEvent(COMPACTION_FINISH);
+    key.setSeq(seq);
+    key.setTabletId(tid);
     return logKeyData(key, durability);
   }
 
   public LoggerOperation minorCompactionStarted(long seq, int tid, String fqfn,
       Durability durability) throws IOException {
     LogFileKey key = new LogFileKey();
-    key.event = COMPACTION_START;
-    key.seq = seq;
-    key.tabletId = tid;
-    key.filename = fqfn;
+    key.setEvent(COMPACTION_START);
+    key.setSeq(seq);
+    key.setTabletId(tid);
+    key.setFilename(fqfn);
     return logKeyData(key, durability);
   }
 

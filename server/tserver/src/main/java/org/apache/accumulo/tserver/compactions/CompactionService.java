@@ -18,6 +18,10 @@
  */
 package org.apache.accumulo.tserver.compactions;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.COMPACTION_SERVICE_COMPACTION_PLANNER_POOL;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -33,15 +37,19 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.compaction.CompactableFile;
 import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
+import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.data.NamespaceId;
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.dataImpl.TabletIdImpl;
 import org.apache.accumulo.core.spi.common.ServiceEnvironment;
 import org.apache.accumulo.core.spi.compaction.CompactionExecutorId;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
@@ -65,24 +73,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
 
 public class CompactionService {
   private CompactionPlanner planner;
   private Map<CompactionExecutorId,CompactionExecutor> executors;
   private final CompactionServiceId myId;
-  private Map<KeyExtent,Collection<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
-  private ServerContext context;
+  private final Map<KeyExtent,Collection<SubmittedJob>> submittedJobs = new ConcurrentHashMap<>();
+  private final ServerContext context;
   private String plannerClassName;
   private Map<String,String> plannerOpts;
-  private CompactionExecutorsMetrics ceMetrics;
-  private ExecutorService planningExecutor;
-  private Map<CompactionKind,ConcurrentMap<KeyExtent,Compactable>> queuedForPlanning;
+  private final CompactionExecutorsMetrics ceMetrics;
+  private final ExecutorService planningExecutor;
+  private final Map<CompactionKind,ConcurrentMap<KeyExtent,Compactable>> queuedForPlanning;
 
-  private RateLimiter readLimiter;
-  private RateLimiter writeLimiter;
-  private AtomicLong rateLimit = new AtomicLong(0);
-  private Function<CompactionExecutorId,ExternalCompactionExecutor> externExecutorSupplier;
+  private final RateLimiter readLimiter;
+  private final RateLimiter writeLimiter;
+  private final AtomicLong rateLimit = new AtomicLong(0);
+  private final Function<CompactionExecutorId,ExternalCompactionExecutor> externExecutorSupplier;
+
+  // use to limit logging of max scan files exceeded
+  private final Cache<TableId,Long> maxScanFilesExceededErrorCache;
 
   private static final Logger log = LoggerFactory.getLogger(CompactionService.class);
 
@@ -108,9 +121,9 @@ public class CompactionService {
 
     this.rateLimit.set(maxRate);
 
-    this.readLimiter = SharedRateLimiterFactory.getInstance(this.context.getConfiguration())
+    this.readLimiter = SharedRateLimiterFactory.getInstance(this.context.getScheduledExecutor())
         .create("CS_" + serviceName + "_read", () -> rateLimit.get());
-    this.writeLimiter = SharedRateLimiterFactory.getInstance(this.context.getConfiguration())
+    this.writeLimiter = SharedRateLimiterFactory.getInstance(this.context.getScheduledExecutor())
         .create("CS_" + serviceName + "_write", () -> rateLimit.get());
 
     initParams.getRequestedExecutors().forEach((ceid, numThreads) -> {
@@ -124,13 +137,16 @@ public class CompactionService {
 
     this.executors = Map.copyOf(tmpExecutors);
 
-    this.planningExecutor = ThreadPools.getServerThreadPools().createThreadPool(1, 1, 0L,
-        TimeUnit.MILLISECONDS, "CompactionPlanner", false);
+    this.planningExecutor = ThreadPools.getServerThreadPools()
+        .getPoolBuilder(COMPACTION_SERVICE_COMPACTION_PLANNER_POOL).numCoreThreads(1)
+        .numMaxThreads(1).withTimeOut(0L, MILLISECONDS).build();
 
     this.queuedForPlanning = new EnumMap<>(CompactionKind.class);
     for (CompactionKind kind : CompactionKind.values()) {
       queuedForPlanning.put(kind, new ConcurrentHashMap<KeyExtent,Compactable>());
     }
+
+    maxScanFilesExceededErrorCache = CacheBuilder.newBuilder().expireAfterWrite(5, MINUTES).build();
 
     log.debug("Created new compaction service id:{} rate limit:{} planner:{} planner options:{}",
         myId, maxRate, plannerClass, plannerOptions);
@@ -193,7 +209,8 @@ public class CompactionService {
           try {
             Optional<Compactable.Files> files = compactable.getFiles(myId, kind);
             if (files.isEmpty() || files.orElseThrow().candidates.isEmpty()) {
-              log.trace("Compactable returned no files {} {}", compactable.getExtent(), kind);
+              log.trace("Compactable returned no files {} {} {}", myId, compactable.getExtent(),
+                  kind);
             } else {
               CompactionPlan plan = getCompactionPlan(kind, files.orElseThrow(), compactable);
               submitCompactionJob(plan, files.orElseThrow(), compactable, completionCallback);
@@ -223,8 +240,18 @@ public class CompactionService {
     private final ServiceEnvironment senv = new ServiceEnvironmentImpl(context);
 
     @Override
+    public NamespaceId getNamespaceId() throws TableNotFoundException {
+      return context.getNamespaceId(comp.getTableId());
+    }
+
+    @Override
     public TableId getTableId() {
       return comp.getTableId();
+    }
+
+    @Override
+    public TabletId getTabletId() {
+      return new TabletIdImpl(comp.getExtent());
     }
 
     @Override
@@ -276,15 +303,36 @@ public class CompactionService {
       Compactable compactable) {
     PlanningParameters params = new CpPlanParams(kind, compactable, files);
 
-    log.trace("Planning compactions {} {} {} {}", planner.getClass().getName(),
+    log.trace("Planning compactions {} {} {} {} {}", myId, planner.getClass().getName(),
         compactable.getExtent(), kind, files);
 
     CompactionPlan plan;
     try {
       plan = planner.makePlan(params);
+      var tableId = compactable.getTableId();
+
+      if (plan.getJobs().isEmpty()) {
+        int maxScanFiles =
+            context.getTableConfiguration(tableId).getCount(Property.TSERV_SCAN_MAX_OPENFILES);
+
+        if (files.allFiles.size() >= maxScanFiles && files.compacting.isEmpty()) {
+          var last = maxScanFilesExceededErrorCache.getIfPresent(tableId);
+
+          if (last == null) {
+            log.warn(
+                "The tablet {} has {} files and the max files for scan is {}.  No compactions are "
+                    + "running and none were planned for this tablet by {}, so the files will "
+                    + "not be reduced by compaction which could cause scans to fail.  Please "
+                    + "check your compaction configuration. This log message is temporarily suppressed for the entire table.",
+                compactable.getExtent(), files.allFiles.size(), maxScanFiles, myId);
+            maxScanFilesExceededErrorCache.put(tableId, System.currentTimeMillis());
+          }
+        }
+      }
+
     } catch (RuntimeException e) {
-      log.debug("Planner failed {} {} {} {}", planner.getClass().getName(), compactable.getExtent(),
-          kind, files, e);
+      log.debug("Planner failed {} {} {} {} {}", myId, planner.getClass().getName(),
+          compactable.getExtent(), kind, files, e);
       throw e;
     }
 
@@ -412,6 +460,7 @@ public class CompactionService {
 
   public void stop() {
     executors.values().forEach(CompactionExecutor::stop);
+    log.debug("Stopped compaction service {}", myId);
   }
 
   int getCompactionsRunning(CType ctype) {

@@ -24,6 +24,7 @@ import org.apache.accumulo.core.client.PluginEnvironment;
 import org.apache.accumulo.core.client.SampleNotPresentException;
 import org.apache.accumulo.core.client.sample.SamplerConfiguration;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
@@ -37,51 +38,41 @@ public interface IteratorEnvironment {
    * @deprecated since 2.0.0. This is a legacy method used for internal backwards compatibility.
    */
   @Deprecated(since = "2.0.0")
-  default SortedKeyValueIterator<Key,Value> reserveMapFileReader(String mapFileName)
-      throws IOException {
-    throw new UnsupportedOperationException();
-  }
+  SortedKeyValueIterator<Key,Value> reserveMapFileReader(String mapFileName) throws IOException;
 
   /**
-   * @deprecated since 2.0.0. This method was using an unstable non public type. Use
+   * @deprecated since 2.0.0. This method was using an unstable, non-public type. Use
    *             {@link #getPluginEnv()}
    */
   @Deprecated(since = "2.0.0")
   default AccumuloConfiguration getConfig() {
-    throw new UnsupportedOperationException();
+    return new ConfigurationCopy(getPluginEnv().getConfiguration(getTableId()));
   }
 
   /**
-   * Return the executed scope of the Iterator. Value will be one of the following:
-   * {@link IteratorScope#scan}, {@link IteratorScope#minc}, {@link IteratorScope#majc}
+   * @return the executed scope of the Iterator. Value will be one of the following:
+   *         {@link IteratorScope#scan}, {@link IteratorScope#minc}, {@link IteratorScope#majc}
    */
-  default IteratorScope getIteratorScope() {
-    throw new UnsupportedOperationException();
-  }
+  IteratorScope getIteratorScope();
 
   /**
-   * Return true if the compaction is a full major compaction. Will throw IllegalStateException if
-   * {@link #getIteratorScope()} != {@link IteratorScope#majc}.
+   * @return true if the compaction is a full major compaction.
+   * @throws IllegalStateException if {@link #getIteratorScope()} != {@link IteratorScope#majc}.
    */
-  default boolean isFullMajorCompaction() {
-    throw new UnsupportedOperationException();
-  }
+  boolean isFullMajorCompaction();
 
   /**
    * @deprecated since 2.0.0. This was an experimental feature and was never tested or documented.
    */
   @Deprecated(since = "2.0.0")
-  default void registerSideChannel(SortedKeyValueIterator<Key,Value> iter) {
-    throw new UnsupportedOperationException();
-  }
+  void registerSideChannel(SortedKeyValueIterator<Key,Value> iter);
 
   /**
-   * Return the Scan Authorizations used in this Iterator. Will throw UnsupportedOperationException
-   * if {@link #getIteratorScope()} != {@link IteratorScope#scan}.
+   * @return the Scan Authorizations used in this Iterator.
+   * @throws UnsupportedOperationException if {@link #getIteratorScope()} !=
+   *         {@link IteratorScope#scan}.
    */
-  default Authorizations getAuthorizations() {
-    throw new UnsupportedOperationException();
-  }
+  Authorizations getAuthorizations();
 
   /**
    * Returns a new iterator environment object that can be used to create deep copies over sample
@@ -113,9 +104,7 @@ public interface IteratorEnvironment {
    * @throws SampleNotPresentException when sampling is not configured for table.
    * @since 1.8.0
    */
-  default IteratorEnvironment cloneWithSamplingEnabled() {
-    throw new UnsupportedOperationException();
-  }
+  IteratorEnvironment cloneWithSamplingEnabled();
 
   /**
    * There are at least two conditions under which sampling will be enabled for an environment. One
@@ -126,27 +115,21 @@ public interface IteratorEnvironment {
    * @return true if sampling is enabled for this environment.
    * @since 1.8.0
    */
-  default boolean isSamplingEnabled() {
-    throw new UnsupportedOperationException();
-  }
+  boolean isSamplingEnabled();
 
   /**
    *
-   * @return sampling configuration is sampling is enabled for environment, otherwise returns null.
+   * @return sampling configuration if sampling is enabled for environment, otherwise returns null.
    * @since 1.8.0
    */
-  default SamplerConfiguration getSamplerConfiguration() {
-    throw new UnsupportedOperationException();
-  }
+  SamplerConfiguration getSamplerConfiguration();
 
   /**
-   * True if compaction was user initiated.
+   * @return true if compaction was user initiated.
    *
    * @since 2.0.0
    */
-  default boolean isUserCompaction() {
-    throw new UnsupportedOperationException();
-  }
+  boolean isUserCompaction();
 
   /**
    * Returns an object containing information about the server where this iterator was run. To
@@ -157,13 +140,11 @@ public interface IteratorEnvironment {
    * </pre>
    *
    * @since 2.0.0
-   * @deprecated since 2.1.0. This method was using a non public API type. Use
+   * @deprecated since 2.1.0. This method was using a non-public API type. Use
    *             {@link #getPluginEnv()} instead because it has better stability guarantees.
    */
   @Deprecated(since = "2.1.0")
-  default ServiceEnvironment getServiceEnv() {
-    throw new UnsupportedOperationException();
-  }
+  ServiceEnvironment getServiceEnv();
 
   /**
    * Returns an object containing information about the server where this iterator was run. To
@@ -175,16 +156,13 @@ public interface IteratorEnvironment {
    *
    * @since 2.1.0
    */
-  default PluginEnvironment getPluginEnv() {
-    return getServiceEnv();
-  }
+  PluginEnvironment getPluginEnv();
 
   /**
-   * Return the table Id associated with this iterator.
+   * @return the table id associated with this iterator or null if there is no table id associated
+   *         (e.g., iterator for RFileScanner)
    *
    * @since 2.0.0
    */
-  default TableId getTableId() {
-    throw new UnsupportedOperationException();
-  }
+  TableId getTableId();
 }

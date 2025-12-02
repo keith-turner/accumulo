@@ -18,30 +18,41 @@
  */
 package org.apache.accumulo.compactor;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.easymock.EasyMock.expect;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.net.UnknownHostException;
+import java.time.Duration;
+import java.util.Collection;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
+import org.apache.accumulo.compactor.Compactor.FileCompactorRunnable;
 import org.apache.accumulo.core.compaction.thrift.TCompactionState;
 import org.apache.accumulo.core.compaction.thrift.TCompactionStatusUpdate;
-import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.compaction.thrift.TNextCompactionJob;
 import org.apache.accumulo.core.conf.ConfigurationCopy;
 import org.apache.accumulo.core.conf.DefaultConfiguration;
 import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
+import org.apache.accumulo.core.metrics.MetricsInfo;
+import org.apache.accumulo.core.process.thrift.ServerProcessService;
+import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.tabletserver.thrift.TCompactionStats;
 import org.apache.accumulo.core.tabletserver.thrift.TExternalCompactionJob;
 import org.apache.accumulo.core.util.Halt;
@@ -49,11 +60,13 @@ import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.compaction.FileCompactor;
 import org.apache.accumulo.server.compaction.RetryableThriftCall.RetriesExceededException;
 import org.apache.accumulo.server.fs.VolumeManagerImpl;
 import org.apache.accumulo.server.rpc.ServerAddress;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooKeeper;
+import org.easymock.EasyMock;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -64,6 +77,8 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.micrometer.core.instrument.Tag;
+
 @RunWith(PowerMockRunner.class)
 @PrepareForTest({Compactor.class})
 @SuppressStaticInitializationFor({"org.apache.log4j.LogManager"})
@@ -71,8 +86,7 @@ import org.slf4j.LoggerFactory;
     "org.apache.commons.logging.*", "org.xml.*", "javax.xml.*", "org.w3c.dom.*",
     "com.sun.org.apache.xerces.*"})
 public class CompactorTest {
-
-  public class SuccessfulCompaction implements Runnable {
+  public class SuccessfulCompaction implements FileCompactorRunnable {
 
     protected final Logger LOG = LoggerFactory.getLogger(this.getClass());
 
@@ -81,6 +95,7 @@ public class CompactorTest {
     protected final CountDownLatch started;
     protected final CountDownLatch stopped;
     protected final AtomicReference<Throwable> err;
+    private final FileCompactor compactor = EasyMock.createMock(FileCompactor.class);
 
     public SuccessfulCompaction(LongAdder totalInputEntries, LongAdder totalInputBytes,
         CountDownLatch started, CountDownLatch stopped, AtomicReference<Throwable> err) {
@@ -89,6 +104,19 @@ public class CompactorTest {
       this.err = err;
       this.started = started;
       this.stopped = stopped;
+    }
+
+    @Override
+    public void initialize() throws RetriesExceededException {}
+
+    @Override
+    public AtomicReference<FileCompactor> getFileCompactor() {
+      return new AtomicReference<>(compactor);
+    }
+
+    @Override
+    public Duration getCompactionAge() {
+      return Duration.ZERO;
     }
 
     @Override
@@ -102,6 +130,7 @@ public class CompactorTest {
         stopped.countDown();
       }
     }
+
   }
 
   public class FailedCompaction extends SuccessfulCompaction {
@@ -157,7 +186,7 @@ public class CompactorTest {
 
   }
 
-  public class SuccessfulCompactor extends Compactor {
+  public class SuccessfulCompactor extends Compactor implements ServerProcessService.Iface {
 
     private final Logger LOG = LoggerFactory.getLogger(SuccessfulCompactor.class);
 
@@ -169,10 +198,12 @@ public class CompactorTest {
     private volatile boolean completedCalled = false;
     private volatile boolean failedCalled = false;
     private TCompactionStatusUpdate latestState = null;
+    private final AtomicBoolean shutdown = new AtomicBoolean(false);
+    private final AtomicBoolean shutdownComplete = new AtomicBoolean(false);
 
     SuccessfulCompactor(Supplier<UUID> uuid, ServerAddress address, TExternalCompactionJob job,
-        ServerContext context, ExternalCompactionId eci) {
-      super(new CompactorServerOpts(), new String[] {"-q", "testQ"}, context.getConfiguration());
+        ServerContext context, ExternalCompactionId eci, CompactorServerOpts compactorServerOpts) {
+      super(compactorServerOpts, new String[] {"-q", "testQ"});
       this.uuid = uuid;
       this.address = address;
       this.job = job;
@@ -181,18 +212,7 @@ public class CompactorTest {
     }
 
     @Override
-    public AccumuloConfiguration getConfiguration() {
-      return context.getConfiguration();
-    }
-
-    @Override
-    protected void setupSecurity() {}
-
-    @Override
     protected void startGCLogger(ScheduledThreadPoolExecutor schedExecutor) {}
-
-    @Override
-    protected void printStartupMsg() {}
 
     @Override
     public ServerContext getContext() {
@@ -209,21 +229,34 @@ public class CompactorTest {
     }
 
     @Override
-    protected TExternalCompactionJob getNextJob(Supplier<UUID> uuid)
-        throws RetriesExceededException {
+    protected TNextCompactionJob getNextJob(Supplier<UUID> uuid) throws RetriesExceededException {
       LOG.info("Attempting to get next job, eci = {}", eci);
       currentCompactionId.set(eci);
-      this.shutdown = true;
-      return job;
+      gracefulShutdown(null);
+      return new TNextCompactionJob(job, 1);
+    }
+
+    @Override
+    public void gracefulShutdown(TCredentials creds) {
+      shutdown.set(true);
+    }
+
+    @Override
+    public boolean isShutdownRequested() {
+      return shutdown.get();
+    }
+
+    public AtomicBoolean getShutdownComplete() {
+      return shutdownComplete;
     }
 
     @Override
     protected synchronized void checkIfCanceled() {}
 
     @Override
-    protected Runnable createCompactionJob(TExternalCompactionJob job, LongAdder totalInputEntries,
-        LongAdder totalInputBytes, CountDownLatch started, CountDownLatch stopped,
-        AtomicReference<Throwable> err) {
+    protected FileCompactorRunnable createCompactionJob(TExternalCompactionJob job,
+        LongAdder totalInputEntries, LongAdder totalInputBytes, CountDownLatch started,
+        CountDownLatch stopped, AtomicReference<Throwable> err) {
       return new SuccessfulCompaction(totalInputEntries, totalInputBytes, started, stopped, err);
     }
 
@@ -239,7 +272,7 @@ public class CompactorTest {
     }
 
     @Override
-    protected void updateCompactionFailed(TExternalCompactionJob job)
+    protected void updateCompactionFailed(TExternalCompactionJob job, Throwable exception)
         throws RetriesExceededException {
       failedCalled = true;
     }
@@ -262,34 +295,44 @@ public class CompactorTest {
       return failedCalled;
     }
 
-  }
-
-  public class FailedCompactor extends SuccessfulCompactor {
-
-    FailedCompactor(Supplier<UUID> uuid, ServerAddress address, TExternalCompactionJob job,
-        ServerContext context, ExternalCompactionId eci) {
-      super(uuid, address, job, context, eci);
+    @Override
+    protected Collection<Tag> getServiceTags(HostAndPort clientAddress) {
+      return List.of();
     }
 
     @Override
-    protected Runnable createCompactionJob(TExternalCompactionJob job, LongAdder totalInputEntries,
-        LongAdder totalInputBytes, CountDownLatch started, CountDownLatch stopped,
-        AtomicReference<Throwable> err) {
+    protected void startCancelChecker(ScheduledThreadPoolExecutor schedExecutor,
+        long timeBetweenChecks) {}
+
+  }
+
+  public class FailedCompactor extends SuccessfulCompactor implements ServerProcessService.Iface {
+
+    FailedCompactor(Supplier<UUID> uuid, ServerAddress address, TExternalCompactionJob job,
+        ServerContext context, ExternalCompactionId eci, CompactorServerOpts compactorServerOpts) {
+      super(uuid, address, job, context, eci, compactorServerOpts);
+    }
+
+    @Override
+    protected FileCompactorRunnable createCompactionJob(TExternalCompactionJob job,
+        LongAdder totalInputEntries, LongAdder totalInputBytes, CountDownLatch started,
+        CountDownLatch stopped, AtomicReference<Throwable> err) {
       return new FailedCompaction(totalInputEntries, totalInputBytes, started, stopped, err);
     }
   }
 
-  public class InterruptedCompactor extends SuccessfulCompactor {
+  public class InterruptedCompactor extends SuccessfulCompactor
+      implements ServerProcessService.Iface {
 
     InterruptedCompactor(Supplier<UUID> uuid, ServerAddress address, TExternalCompactionJob job,
-        ServerContext context, ExternalCompactionId eci) {
-      super(uuid, address, job, context, eci);
+        ServerContext context, ExternalCompactionId eci, CompactorServerOpts compactorServerOpts) {
+      super(uuid, address, job, context, eci, compactorServerOpts);
     }
 
     @Override
-    protected Runnable createCompactionJob(TExternalCompactionJob job, LongAdder totalInputEntries,
-        LongAdder totalInputBytes, CountDownLatch started, CountDownLatch stopped,
-        AtomicReference<Throwable> err) {
+    protected FileCompactorRunnable createCompactionJob(TExternalCompactionJob job,
+        LongAdder totalInputEntries, LongAdder totalInputBytes, CountDownLatch started,
+        CountDownLatch stopped, AtomicReference<Throwable> err) {
       return new InterruptedCompaction(totalInputEntries, totalInputBytes, started, stopped, err);
     }
 
@@ -314,6 +357,7 @@ public class CompactorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.methods(Halt.class, "halt"));
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
+    PowerMock.suppress(PowerMock.methods(AbstractServer.class, "updateIdleStatus"));
 
     ServerAddress client = PowerMock.createNiceMock(ServerAddress.class);
     HostAndPort address = HostAndPort.fromString("localhost:10240");
@@ -324,13 +368,20 @@ public class CompactorTest {
     expect(job.isSetExternalCompactionId()).andReturn(true).anyTimes();
     expect(job.getExternalCompactionId()).andReturn(eci.toString()).anyTimes();
     expect(job.getExtent()).andReturn(extent).anyTimes();
-    expect(extent.getTable()).andReturn("testTable".getBytes()).anyTimes();
+    expect(extent.getTable()).andReturn("testTable".getBytes(UTF_8)).anyTimes();
 
     var conf = new ConfigurationCopy(DefaultConfiguration.getInstance());
     conf.set(Property.INSTANCE_ZK_TIMEOUT, "1d");
 
     ServerContext context = PowerMock.createNiceMock(ServerContext.class);
     expect(context.getConfiguration()).andReturn(conf).anyTimes();
+    MetricsInfo metricsInfo = PowerMock.createNiceMock(MetricsInfo.class);
+    expect(context.getMetricsInfo()).andReturn(metricsInfo).anyTimes();
+
+    Compactor.CompactorServerOpts compactorServerOpts =
+        PowerMock.createNiceMock(Compactor.CompactorServerOpts.class);
+    expect(compactorServerOpts.getQueueName()).andReturn("testQ");
+
     ZooReaderWriter zrw = PowerMock.createNiceMock(ZooReaderWriter.class);
     ZooKeeper zk = PowerMock.createNiceMock(ZooKeeper.class);
     expect(context.getZooReaderWriter()).andReturn(zrw).anyTimes();
@@ -341,7 +392,8 @@ public class CompactorTest {
 
     PowerMock.replayAll();
 
-    SuccessfulCompactor c = new SuccessfulCompactor(supplier, client, job, context, eci);
+    SuccessfulCompactor c =
+        new SuccessfulCompactor(supplier, client, job, context, eci, compactorServerOpts);
     c.run();
 
     PowerMock.verifyAll();
@@ -361,14 +413,14 @@ public class CompactorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.methods(Halt.class, "halt"));
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
+    PowerMock.suppress(PowerMock.methods(AbstractServer.class, "updateIdleStatus"));
 
     ServerAddress client = PowerMock.createNiceMock(ServerAddress.class);
     HostAndPort address = HostAndPort.fromString("localhost:10240");
     expect(client.getAddress()).andReturn(address);
 
     TExternalCompactionJob job = PowerMock.createNiceMock(TExternalCompactionJob.class);
-    TKeyExtent extent = PowerMock.createNiceMock(TKeyExtent.class);
-    expect(extent.getTable()).andReturn("testTable".getBytes()).anyTimes();
+    TKeyExtent extent = new KeyExtent(TableId.of("testTable"), null, null).toThrift();
 
     expect(job.isSetExternalCompactionId()).andReturn(true).anyTimes();
     expect(job.getExternalCompactionId()).andReturn(eci.toString()).anyTimes();
@@ -379,6 +431,13 @@ public class CompactorTest {
 
     ServerContext context = PowerMock.createNiceMock(ServerContext.class);
     expect(context.getConfiguration()).andReturn(conf).anyTimes();
+    MetricsInfo metricsInfo = PowerMock.createNiceMock(MetricsInfo.class);
+    expect(context.getMetricsInfo()).andReturn(metricsInfo).anyTimes();
+
+    Compactor.CompactorServerOpts compactorServerOpts =
+        PowerMock.createNiceMock(Compactor.CompactorServerOpts.class);
+    expect(compactorServerOpts.getQueueName()).andReturn("testQ");
+
     ZooReaderWriter zrw = PowerMock.createNiceMock(ZooReaderWriter.class);
     ZooKeeper zk = PowerMock.createNiceMock(ZooKeeper.class);
     expect(context.getZooReaderWriter()).andReturn(zrw).anyTimes();
@@ -389,7 +448,8 @@ public class CompactorTest {
 
     PowerMock.replayAll();
 
-    FailedCompactor c = new FailedCompactor(supplier, client, job, context, eci);
+    FailedCompactor c =
+        new FailedCompactor(supplier, client, job, context, eci, compactorServerOpts);
     c.run();
 
     PowerMock.verifyAll();
@@ -410,6 +470,7 @@ public class CompactorTest {
     PowerMock.resetAll();
     PowerMock.suppress(PowerMock.methods(Halt.class, "halt"));
     PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
+    PowerMock.suppress(PowerMock.methods(AbstractServer.class, "updateIdleStatus"));
 
     ServerAddress client = PowerMock.createNiceMock(ServerAddress.class);
     HostAndPort address = HostAndPort.fromString("localhost:10240");
@@ -420,13 +481,20 @@ public class CompactorTest {
     expect(job.isSetExternalCompactionId()).andReturn(true).anyTimes();
     expect(job.getExternalCompactionId()).andReturn(eci.toString()).anyTimes();
     expect(job.getExtent()).andReturn(extent).anyTimes();
-    expect(extent.getTable()).andReturn("testTable".getBytes()).anyTimes();
+    expect(extent.getTable()).andReturn("testTable".getBytes(UTF_8)).anyTimes();
 
     var conf = new ConfigurationCopy(DefaultConfiguration.getInstance());
     conf.set(Property.INSTANCE_ZK_TIMEOUT, "1d");
 
     ServerContext context = PowerMock.createNiceMock(ServerContext.class);
     expect(context.getConfiguration()).andReturn(conf).anyTimes();
+    MetricsInfo metricsInfo = PowerMock.createNiceMock(MetricsInfo.class);
+    expect(context.getMetricsInfo()).andReturn(metricsInfo).anyTimes();
+
+    Compactor.CompactorServerOpts compactorServerOpts =
+        PowerMock.createNiceMock(Compactor.CompactorServerOpts.class);
+    expect(compactorServerOpts.getQueueName()).andReturn("testQ");
+
     ZooReaderWriter zrw = PowerMock.createNiceMock(ZooReaderWriter.class);
     ZooKeeper zk = PowerMock.createNiceMock(ZooKeeper.class);
     expect(context.getZooReaderWriter()).andReturn(zrw).anyTimes();
@@ -437,7 +505,8 @@ public class CompactorTest {
 
     PowerMock.replayAll();
 
-    InterruptedCompactor c = new InterruptedCompactor(supplier, client, job, context, eci);
+    InterruptedCompactor c =
+        new InterruptedCompactor(supplier, client, job, context, eci, compactorServerOpts);
     c.run();
 
     PowerMock.verifyAll();
@@ -446,6 +515,34 @@ public class CompactorTest {
     assertFalse(c.isCompletedCalled());
     assertTrue(c.isFailedCalled());
     assertEquals(TCompactionState.CANCELLED, c.getLatestState());
+  }
+
+  @Test
+  public void testCompactionWaitProperty() {
+    PowerMock.resetAll();
+    PowerMock.suppress(PowerMock.methods(Halt.class, "halt"));
+    PowerMock.suppress(PowerMock.constructor(AbstractServer.class));
+
+    var conf = new ConfigurationCopy(DefaultConfiguration.getInstance());
+    conf.set(Property.COMPACTOR_MAX_JOB_WAIT_TIME, "800ms");
+
+    ServerContext context = PowerMock.createNiceMock(ServerContext.class);
+    expect(context.getConfiguration()).andReturn(conf).anyTimes();
+
+    Compactor.CompactorServerOpts compactorServerOpts =
+        PowerMock.createNiceMock(Compactor.CompactorServerOpts.class);
+    expect(compactorServerOpts.getQueueName()).andReturn("default");
+
+    PowerMock.replayAll();
+
+    try (var c = new SuccessfulCompactor(null, null, null, context, null, compactorServerOpts)) {
+      Long maxWait = c.getWaitTimeBetweenCompactionChecks(1);
+      // compaction jitter means maxWait is between 0.9 and 1.1 of the desired value.
+      assertTrue(maxWait >= 720L);
+      assertTrue(maxWait <= 968L);
+    }
+
+    PowerMock.verifyAll();
   }
 
 }

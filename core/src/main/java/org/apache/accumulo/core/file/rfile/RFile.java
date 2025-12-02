@@ -50,6 +50,7 @@ import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.file.FileSKVWriter;
 import org.apache.accumulo.core.file.NoSuchMetaStoreException;
@@ -380,15 +381,15 @@ public class RFile {
 
   private static class SampleLocalityGroupWriter {
 
-    private Sampler sampler;
+    private final Sampler sampler;
 
-    private List<SampleEntry> entries = new ArrayList<>();
+    private final List<SampleEntry> entries = new ArrayList<>();
     private long dataSize = 0;
 
-    private LocalityGroupWriter lgr;
+    private final LocalityGroupWriter lgw;
 
-    public SampleLocalityGroupWriter(LocalityGroupWriter lgr, Sampler sampler) {
-      this.lgr = lgr;
+    public SampleLocalityGroupWriter(LocalityGroupWriter lgw, Sampler sampler) {
+      this.lgw = lgw;
       this.sampler = sampler;
     }
 
@@ -401,10 +402,10 @@ public class RFile {
 
     public void close() throws IOException {
       for (SampleEntry se : entries) {
-        lgr.append(se.key, se.val);
+        lgw.append(se.key, se.val);
       }
 
-      lgr.close();
+      lgw.close();
     }
 
     public void flushIfNeeded() throws IOException {
@@ -415,10 +416,10 @@ public class RFile {
 
         if (!subList.isEmpty()) {
           for (SampleEntry se : subList) {
-            lgr.append(se.key, se.val);
+            lgw.append(se.key, se.val);
           }
 
-          lgr.closeBlock(subList.get(subList.size() - 1).key, false);
+          lgw.closeBlock(subList.get(subList.size() - 1).key, false);
 
           subList.clear();
           dataSize = 0;
@@ -429,7 +430,7 @@ public class RFile {
 
   private static class LocalityGroupWriter {
 
-    private BCFile.Writer fileWriter;
+    private final BCFile.Writer fileWriter;
     private BlockAppender blockWriter;
 
     private final long blockSize;
@@ -442,10 +443,10 @@ public class RFile {
 
     private Key prevKey = new Key();
 
-    private SampleLocalityGroupWriter sample;
+    private final SampleLocalityGroupWriter sample;
 
     // Use windowed stats to fix ACCUMULO-4669
-    private RollingStats keyLenStats = new RollingStats(2017);
+    private final RollingStats keyLenStats = new RollingStats(2017);
     private double averageKeySize = 0;
 
     LocalityGroupWriter(BCFile.Writer fileWriter, long blockSize, long maxBlockSize,
@@ -561,14 +562,14 @@ public class RFile {
     public static final int MAX_CF_IN_DLG = 1000;
     private static final double MAX_BLOCK_MULTIPLIER = 1.1;
 
-    private BCFile.Writer fileWriter;
+    private final BCFile.Writer fileWriter;
 
     private final long blockSize;
     private final long maxBlockSize;
     private final int indexBlockSize;
 
-    private ArrayList<LocalityGroupMetadata> localityGroups = new ArrayList<>();
-    private ArrayList<LocalityGroupMetadata> sampleGroups = new ArrayList<>();
+    private final ArrayList<LocalityGroupMetadata> localityGroups = new ArrayList<>();
+    private final ArrayList<LocalityGroupMetadata> sampleGroups = new ArrayList<>();
     private LocalityGroupMetadata currentLocalityGroup = null;
     private LocalityGroupMetadata sampleLocalityGroup = null;
 
@@ -576,13 +577,13 @@ public class RFile {
     private boolean closed = false;
     private boolean startedDefaultLocalityGroup = false;
 
-    private HashSet<ByteSequence> previousColumnFamilies;
+    private final HashSet<ByteSequence> previousColumnFamilies;
     private long length = -1;
 
     private LocalityGroupWriter lgWriter;
 
-    private SamplerConfigurationImpl samplerConfig;
-    private Sampler sampler;
+    private final SamplerConfigurationImpl samplerConfig;
+    private final Sampler sampler;
 
     public Writer(BCFile.Writer bfw, int blockSize) throws IOException {
       this(bfw, blockSize, (int) DefaultConfiguration.getInstance()
@@ -755,13 +756,13 @@ public class RFile {
 
   private static class LocalityGroupReader extends LocalityGroup implements FileSKVIterator {
 
-    private CachableBlockFile.Reader reader;
-    private MultiLevelIndex.Reader index;
-    private int blockCount;
-    private Key firstKey;
-    private int startBlock;
+    private final CachableBlockFile.Reader reader;
+    private final MultiLevelIndex.Reader index;
+    private final int blockCount;
+    private final Key firstKey;
+    private final int startBlock;
     private boolean closed = false;
-    private int version;
+    private final int version;
     private boolean checkRange = true;
 
     private LocalityGroupReader(CachableBlockFile.Reader reader, LocalityGroupMetadata lgm,
@@ -1158,6 +1159,11 @@ public class RFile {
     public void setCacheProvider(CacheProvider cacheProvider) {
       throw new UnsupportedOperationException();
     }
+
+    @Override
+    public long estimateOverlappingEntries(KeyExtent extent) throws IOException {
+      throw new UnsupportedOperationException();
+    }
   }
 
   public static class Reader extends HeapIterator implements FileSKVIterator {
@@ -1173,14 +1179,14 @@ public class RFile {
     private final LocalityGroupContext lgContext;
     private LocalityGroupSeekCache lgCache;
 
-    private List<Reader> deepCopies;
+    private final List<Reader> deepCopies;
     private boolean deepCopy = false;
 
     private AtomicBoolean interruptFlag;
 
     private SamplerConfigurationImpl samplerConfig = null;
 
-    private int rfileVersion;
+    private final int rfileVersion;
 
     public Reader(CachableBlockFile.Reader rdr) throws IOException {
       this.reader = rdr;
@@ -1282,24 +1288,32 @@ public class RFile {
       this(new CachableBlockFile.Reader(b));
     }
 
-    private void closeLocalityGroupReaders() {
+    private void closeLocalityGroupReaders(boolean ignoreIOExceptions) throws IOException {
       for (LocalityGroupReader lgr : currentReaders) {
         try {
           lgr.close();
         } catch (IOException e) {
-          log.warn("Errored out attempting to close LocalityGroupReader.", e);
+          if (ignoreIOExceptions) {
+            log.warn("Errored out attempting to close LocalityGroupReader.", e);
+          } else {
+            throw e;
+          }
         }
       }
     }
 
     @Override
-    public void closeDeepCopies() {
+    public void closeDeepCopies() throws IOException {
+      closeDeepCopies(false);
+    }
+
+    private void closeDeepCopies(boolean ignoreIOExceptions) throws IOException {
       if (deepCopy) {
         throw new RuntimeException("Calling closeDeepCopies on a deep copy is not supported");
       }
 
       for (Reader deepCopy : deepCopies) {
-        deepCopy.closeLocalityGroupReaders();
+        deepCopy.closeLocalityGroupReaders(ignoreIOExceptions);
       }
 
       deepCopies.clear();
@@ -1311,8 +1325,9 @@ public class RFile {
         throw new RuntimeException("Calling close on a deep copy is not supported");
       }
 
-      closeDeepCopies();
-      closeLocalityGroupReaders();
+      // Closes as much as possible igoring and logging exceptions along the way
+      closeDeepCopies(true);
+      closeLocalityGroupReaders(true);
 
       if (sampleReaders != null) {
         for (LocalityGroupReader lgr : sampleReaders) {
@@ -1554,6 +1569,36 @@ public class RFile {
     @Override
     public void setCacheProvider(CacheProvider cacheProvider) {
       reader.setCacheProvider(cacheProvider);
+    }
+
+    @Override
+    public long estimateOverlappingEntries(KeyExtent extent) throws IOException {
+      long totalEntries = 0;
+      Key startKey = extent.toDataRange().getStartKey();
+      IndexEntry indexEntry;
+
+      for (LocalityGroupReader lgr : currentReaders) {
+        boolean prevEntryOverlapped = false;
+        var indexIter = startKey == null ? lgr.getIndex() : lgr.index.lookup(startKey);
+
+        while (indexIter.hasNext()) {
+          indexEntry = indexIter.next();
+          if (extent.contains(indexEntry.getKey().getRow())) {
+            totalEntries += indexEntry.getNumEntries();
+            prevEntryOverlapped = true;
+          } else if (prevEntryOverlapped) {
+            // The last index entry included in the count is the one after the last contained by the
+            // extent. This is because it is possible for the extent to overlap this index entry
+            // but there is no way to check whether it does or not. The index entry only contains
+            // info about the last key, but the extent may overlap but not with the last key.
+            totalEntries += indexEntry.getNumEntries();
+            prevEntryOverlapped = false;
+            break;
+          }
+        }
+      }
+
+      return totalEntries;
     }
   }
 }

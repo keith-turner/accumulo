@@ -48,6 +48,29 @@ package org.apache.accumulo.core.spi.common;
 public interface ContextClassLoaderFactory {
 
   /**
+   * @since 2.1.4
+   */
+  class ContextClassLoaderException extends Exception {
+
+    private static final long serialVersionUID = 1L;
+    private static final String msg = "Error getting classloader for context: ";
+
+    public ContextClassLoaderException(String context, Throwable cause, boolean enableSuppression,
+        boolean writableStackTrace) {
+      super(msg + context, cause, enableSuppression, writableStackTrace);
+    }
+
+    public ContextClassLoaderException(String context, Throwable cause) {
+      super(msg + context, cause);
+    }
+
+    public ContextClassLoaderException(String context) {
+      super(msg + context);
+    }
+
+  }
+
+  /**
    * Pass the service environment to allow for additional class loader configuration
    *
    * @param env the class loader environment
@@ -57,8 +80,8 @@ public interface ContextClassLoaderFactory {
   /**
    * Get the class loader for the given contextName. Callers should not cache the ClassLoader result
    * as it may change if/when the ClassLoader reloads. Implementations should throw a
-   * RuntimeException of some type (such as IllegalArgumentException) if the provided contextName is
-   * not supported or fails to be constructed.
+   * ContextClassLoaderException if the provided contextName is not supported or fails to be
+   * constructed.
    *
    * @param contextName the name of the context that represents a class loader that is managed by
    *        this factory. Currently, Accumulo will only call this method for non-null and non-empty
@@ -66,5 +89,5 @@ public interface ContextClassLoaderFactory {
    *        consulting this plugin.
    * @return the class loader for the given contextName
    */
-  ClassLoader getClassLoader(String contextName);
+  ClassLoader getClassLoader(String contextName) throws ContextClassLoaderException;
 }

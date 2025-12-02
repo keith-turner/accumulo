@@ -31,13 +31,16 @@ import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.ActiveCompaction;
 import org.apache.accumulo.core.client.admin.InstanceOperations;
+import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.util.DurationFormat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.accumulo.core.util.TextUtil;
+import org.apache.accumulo.shell.Shell;
+import org.apache.hadoop.io.Text;
 
 class ActiveCompactionHelper {
 
-  private static final Logger log = LoggerFactory.getLogger(ActiveCompactionHelper.class);
+  private static final Comparator<ActiveCompaction> COMPACTION_AGE_DESCENDING =
+      Comparator.comparingLong(ActiveCompaction::getAge).reversed();
 
   private static String maxDecimal(double count) {
     if (count < 9.995) {
@@ -96,10 +99,60 @@ class ActiveCompactionHelper {
       return String.format(
           "%21s | %9s | %5s | %6s | %5s | %5s | %15s | %-40s | %5s | %35s | %9s | %s", host, dur,
           ac.getType(), ac.getReason(), shortenCount(ac.getEntriesRead()),
-          shortenCount(ac.getEntriesWritten()), ac.getTable(), ac.getTablet(),
+          shortenCount(ac.getEntriesWritten()), ac.getTable(), formatTablet(ac.getTablet()),
           ac.getInputFiles().size(), output, iterList, iterOpts);
     } catch (TableNotFoundException e) {
       return "ERROR " + e.getMessage();
+    }
+  }
+
+  private static String formatTablet(TabletId tabletId) {
+    if (tabletId == null) {
+      return "";
+    }
+    StringBuilder sb = new StringBuilder();
+    appendEscapedTableId(sb, tabletId.getTable().canonical());
+    appendTabletRow(sb, tabletId.getEndRow());
+    appendTabletRow(sb, tabletId.getPrevEndRow());
+    return sb.toString();
+  }
+
+  private static void appendEscapedTableId(StringBuilder sb, String tableId) {
+    for (int i = 0; i < tableId.length(); i++) {
+      char c = tableId.charAt(i);
+      if (c == '\\') {
+        sb.append("\\\\");
+      } else if (c == ';') {
+        sb.append("\\;");
+      } else {
+        sb.append(c);
+      }
+    }
+  }
+
+  private static void appendTabletRow(StringBuilder sb, Text row) {
+    if (row == null) {
+      sb.append("<");
+      return;
+    }
+    sb.append(';');
+    Text truncated = TextUtil.truncate(row);
+    byte[] bytes = TextUtil.getBytes(truncated);
+    appendEscapedBytes(sb, bytes);
+  }
+
+  private static void appendEscapedBytes(StringBuilder sb, byte[] bytes) {
+    for (byte b : bytes) {
+      int c = b & 0xFF;
+      if (c == '\\') {
+        sb.append("\\\\");
+      } else if (c == ';') {
+        sb.append("\\;");
+      } else if (c >= 32 && c <= 126) {
+        sb.append((char) c);
+      } else {
+        sb.append("\\x").append(String.format("%02X", c));
+      }
     }
   }
 
@@ -113,34 +166,25 @@ class ActiveCompactionHelper {
 
   public static Stream<String> activeCompactionsForServer(String tserver,
       InstanceOperations instanceOps) {
-    List<String> compactions = new ArrayList<>();
     try {
-      List<ActiveCompaction> acl = new ArrayList<>(instanceOps.getActiveCompactions(tserver));
-      acl.sort((o1, o2) -> (int) (o2.getAge() - o1.getAge()));
-      for (ActiveCompaction ac : acl) {
-        compactions.add(formatActiveCompactionLine(ac));
-      }
+      return instanceOps.getActiveCompactions(tserver).stream().sorted(COMPACTION_AGE_DESCENDING)
+          .map(ActiveCompactionHelper::formatActiveCompactionLine);
     } catch (Exception e) {
-      log.debug("Failed to list active compactions for server {}", tserver, e);
-      compactions.add(tserver + " ERROR " + e.getMessage());
+      Shell.log.debug("Failed to list active compactions for server {}", tserver, e);
+      return Stream.of(tserver + " ERROR " + e.getMessage());
     }
-    return compactions.stream();
   }
 
-  public static Stream<String> stream(InstanceOperations instanceOps) {
-    List<ActiveCompaction> activeCompactions;
+  public static Stream<String> activeCompactions(InstanceOperations instanceOps) {
+    Comparator<ActiveCompaction> comparator =
+        Comparator.comparing((ActiveCompaction ac) -> ac.getHost().getAddress())
+            .thenComparing(ac -> ac.getHost().getPort()).thenComparing(COMPACTION_AGE_DESCENDING);
     try {
-      activeCompactions = instanceOps.getActiveCompactions();
+      return instanceOps.getActiveCompactions().stream().sorted(comparator)
+          .map(ActiveCompactionHelper::formatActiveCompactionLine);
     } catch (AccumuloException | AccumuloSecurityException e) {
       return Stream.of("ERROR " + e.getMessage());
     }
-    Comparator<ActiveCompaction> comparator = Comparator.comparing(ac -> ac.getHost().getAddress());
-    comparator = comparator.thenComparing(ac -> ac.getHost().getPort())
-        .thenComparing((o1, o2) -> (int) (o2.getAge() - o1.getAge()));
-
-    activeCompactions.sort(comparator);
-
-    return activeCompactions.stream().map(ac -> formatActiveCompactionLine(ac));
   }
 
 }

@@ -39,6 +39,7 @@ import org.apache.accumulo.core.iterators.user.GrepIterator;
 import org.apache.accumulo.core.metadata.MetadataTable;
 import org.apache.accumulo.core.metadata.TabletLocationState;
 import org.apache.accumulo.core.metadata.TabletState;
+import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.DataFileColumnFamily;
 import org.apache.accumulo.core.security.Authorizations;
@@ -59,8 +60,8 @@ class CleanUp extends ManagerRepo {
 
   private static final long serialVersionUID = 1L;
 
-  private TableId tableId;
-  private NamespaceId namespaceId;
+  private final TableId tableId;
+  private final NamespaceId namespaceId;
 
   private long creationTime;
 
@@ -91,7 +92,8 @@ class CleanUp extends ManagerRepo {
     boolean done = true;
     Range tableRange = new KeyExtent(tableId, null, null).toMetaRange();
     Scanner scanner = manager.getContext().createScanner(MetadataTable.NAME, Authorizations.EMPTY);
-    MetaDataTableScanner.configureScanner(scanner, manager);
+    MetaDataTableScanner.configureScanner(manager.getConfiguration(), scanner, manager,
+        DataLevel.of(tableId));
     scanner.setRange(tableRange);
 
     for (Entry<Key,Value> entry : scanner) {

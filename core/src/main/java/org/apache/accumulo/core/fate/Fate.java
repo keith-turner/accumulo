@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.core.fate;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.apache.accumulo.core.fate.ReadOnlyTStore.TStatus.FAILED;
@@ -34,6 +35,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
@@ -43,6 +45,7 @@ import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.fate.ReadOnlyTStore.TStatus;
 import org.apache.accumulo.core.logging.FateLogger;
 import org.apache.accumulo.core.util.ShutdownUtil;
+import org.apache.accumulo.core.util.Timer;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.thrift.TApplicationException;
@@ -59,7 +62,6 @@ public class Fate<T> {
 
   private final TStore<T> store;
   private final T environment;
-  private ScheduledThreadPoolExecutor fatePoolWatcher;
   private ExecutorService executor;
 
   private static final EnumSet<TStatus> FINISHED_STATES = EnumSet.of(FAILED, SUCCESSFUL, UNKNOWN);
@@ -86,7 +88,7 @@ public class Fate<T> {
           } else {
             Repo<T> prevOp = null;
             try {
-              deferTime = op.isReady(tid, environment);
+              deferTime = executeIsReady(tid, op);
 
               // Here, deferTime is only used to determine success (zero) or failure (non-zero),
               // proceeding on success and returning to the while loop on failure.
@@ -96,7 +98,7 @@ public class Fate<T> {
                 if (status == SUBMITTED) {
                   store.setStatus(tid, IN_PROGRESS);
                 }
-                op = op.call(tid, environment);
+                op = executeCall(tid, op);
               } else {
                 continue;
               }
@@ -131,7 +133,7 @@ public class Fate<T> {
           runnerLog.error("Uncaught exception in FATE runner thread.", e);
         } finally {
           if (tid != null) {
-            store.unreserve(tid, deferTime);
+            store.unreserve(tid, deferTime, TimeUnit.MILLISECONDS);
           }
         }
       }
@@ -172,7 +174,8 @@ public class Fate<T> {
       // as a warning. They're a normal, handled failure condition.
       if (e instanceof AcceptableException) {
         var tableOpEx = (AcceptableThriftTableOperationException) e;
-        log.debug(msg + " for {}({}) {}", tableOpEx.getTableName(), tableOpEx.getTableId(),
+        log.debug("{} for {}({}) op:{} exception-type:{} desc:{}", msg, tableOpEx.getTableName(),
+            tableOpEx.getTableId(), tableOpEx.getOp(), tableOpEx.getType(),
             tableOpEx.getDescription());
       } else {
         log.warn(msg, e);
@@ -214,14 +217,35 @@ public class Fate<T> {
         log.warn("Failed to undo Repo, " + FateTxId.formatTid(tid), e);
       }
     }
+  }
 
+  protected long executeIsReady(Long tid, Repo<T> op) throws Exception {
+    var startTime = Timer.startNew();
+    var deferTime = op.isReady(tid, environment);
+    if (log.isTraceEnabled()) {
+      log.trace("Running {}.isReady() {} took {} ms and returned {}", op.getName(),
+          FateTxId.formatTid(tid), startTime.elapsed(MILLISECONDS), deferTime);
+    }
+    return deferTime;
+  }
+
+  protected Repo<T> executeCall(Long tid, Repo<T> op) throws Exception {
+    var startTime = Timer.startNew();
+    var next = op.call(tid, environment);
+    if (log.isTraceEnabled()) {
+      log.trace("Running {}.call() {} took {} ms and returned {}", op.getName(),
+          FateTxId.formatTid(tid), startTime.elapsed(MILLISECONDS),
+          next == null ? "null" : next.getName());
+    }
+    return next;
   }
 
   /**
    * Creates a Fault-tolerant executor.
    * <p>
-   * Note: Users of this class should call {@link #startTransactionRunners(AccumuloConfiguration)}
-   * to launch the worker threads after creating a Fate object.
+   * Note: Users of this class should call
+   * {@link #startTransactionRunners(AccumuloConfiguration, ScheduledThreadPoolExecutor)} to launch
+   * the worker threads after creating a Fate object.
    *
    * @param toLogStrFunc A function that converts Repo to Strings that are suitable for logging
    */
@@ -233,34 +257,34 @@ public class Fate<T> {
   /**
    * Launches the specified number of worker threads.
    */
-  public void startTransactionRunners(AccumuloConfiguration conf) {
+  public void startTransactionRunners(AccumuloConfiguration conf,
+      ScheduledThreadPoolExecutor serverGeneralScheduledThreadPool) {
     final ThreadPoolExecutor pool = ThreadPools.getServerThreadPools().createExecutorService(conf,
         Property.MANAGER_FATE_THREADPOOL_SIZE, true);
-    fatePoolWatcher =
-        ThreadPools.getServerThreadPools().createGeneralScheduledExecutorService(conf);
-    ThreadPools.watchCriticalScheduledTask(fatePoolWatcher.schedule(() -> {
-      // resize the pool if the property changed
-      ThreadPools.resizePool(pool, conf, Property.MANAGER_FATE_THREADPOOL_SIZE);
-      // If the pool grew, then ensure that there is a TransactionRunner for each thread
-      int needed = conf.getCount(Property.MANAGER_FATE_THREADPOOL_SIZE) - pool.getQueue().size();
-      if (needed > 0) {
-        for (int i = 0; i < needed; i++) {
-          try {
-            pool.execute(new TransactionRunner());
-          } catch (RejectedExecutionException e) {
-            // RejectedExecutionException could be shutting down
-            if (pool.isShutdown()) {
-              // The exception is expected in this case, no need to spam the logs.
-              log.trace("Error adding transaction runner to FaTE executor pool.", e);
-            } else {
-              // This is bad, FaTE may no longer work!
-              log.error("Error adding transaction runner to FaTE executor pool.", e);
+    ThreadPools
+        .watchCriticalScheduledTask(serverGeneralScheduledThreadPool.scheduleWithFixedDelay(() -> {
+          // resize the pool if the property changed
+          ThreadPools.resizePool(pool, conf, Property.MANAGER_FATE_THREADPOOL_SIZE);
+          // If the pool grew, then ensure that there is a TransactionRunner for each thread
+          int needed = conf.getCount(Property.MANAGER_FATE_THREADPOOL_SIZE) - pool.getActiveCount();
+          if (needed > 0) {
+            for (int i = 0; i < needed; i++) {
+              try {
+                pool.execute(new TransactionRunner());
+              } catch (RejectedExecutionException e) {
+                // RejectedExecutionException could be shutting down
+                if (pool.isShutdown()) {
+                  // The exception is expected in this case, no need to spam the logs.
+                  log.trace("Error adding transaction runner to FaTE executor pool.", e);
+                } else {
+                  // This is bad, FaTE may no longer work!
+                  log.error("Error adding transaction runner to FaTE executor pool.", e);
+                }
+                break;
+              }
             }
-            break;
           }
-        }
-      }
-    }, 3, SECONDS));
+        }, 3, 30, SECONDS));
     executor = pool;
   }
 
@@ -295,7 +319,7 @@ public class Fate<T> {
         store.setStatus(tid, SUBMITTED);
       }
     } finally {
-      store.unreserve(tid, 0);
+      store.unreserve(tid, 0, TimeUnit.MILLISECONDS);
     }
 
   }
@@ -331,7 +355,7 @@ public class Fate<T> {
             return false;
           }
         } finally {
-          store.unreserve(tid, 0);
+          store.unreserve(tid, 0, TimeUnit.MILLISECONDS);
         }
       } else {
         // reserved, lets retry.
@@ -362,7 +386,7 @@ public class Fate<T> {
           break;
       }
     } finally {
-      store.unreserve(tid, 0);
+      store.unreserve(tid, 0, TimeUnit.MILLISECONDS);
     }
   }
 
@@ -375,7 +399,7 @@ public class Fate<T> {
       }
       return (String) store.getTransactionInfo(tid, TxInfo.RETURN_VALUE);
     } finally {
-      store.unreserve(tid, 0);
+      store.unreserve(tid, 0, TimeUnit.MILLISECONDS);
     }
   }
 
@@ -389,17 +413,27 @@ public class Fate<T> {
       }
       return (Exception) store.getTransactionInfo(tid, TxInfo.EXCEPTION);
     } finally {
-      store.unreserve(tid, 0);
+      store.unreserve(tid, 0, TimeUnit.MILLISECONDS);
     }
   }
 
   /**
    * Flags that FATE threadpool to clear out and end. Does not actively stop running FATE processes.
    */
-  public void shutdown() {
+  public void shutdown(boolean wait) {
     keepRunning.set(false);
-    fatePoolWatcher.shutdown();
-    executor.shutdown();
+    if (executor == null) {
+      return;
+    }
+    executor.shutdownNow();
+    if (wait) {
+      while (!executor.isTerminated()) {
+        try {
+          executor.awaitTermination(1, SECONDS);
+        } catch (InterruptedException e) {
+          throw new IllegalStateException(e);
+        }
+      }
+    }
   }
-
 }

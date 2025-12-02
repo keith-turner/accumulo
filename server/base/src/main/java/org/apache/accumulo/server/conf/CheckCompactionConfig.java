@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.server.conf;
 
+import static org.apache.accumulo.core.Constants.DEFAULT_COMPACTION_SERVICE_NAME;
+
 import java.io.FileNotFoundException;
 import java.nio.file.Path;
 import java.util.Set;
@@ -53,7 +55,7 @@ public class CheckCompactionConfig implements KeywordExecutable {
 
   private final static Logger log = LoggerFactory.getLogger(CheckCompactionConfig.class);
 
-  final static String DEFAULT = "default";
+  final static String DEFAULT = DEFAULT_COMPACTION_SERVICE_NAME;
   final static String META = "meta";
   final static String ROOT = "root";
 
@@ -92,6 +94,11 @@ public class CheckCompactionConfig implements KeywordExecutable {
     }
 
     AccumuloConfiguration config = SiteConfiguration.fromFile(path.toFile()).build();
+    validate(config);
+  }
+
+  public static void validate(AccumuloConfiguration config)
+      throws ReflectiveOperationException, SecurityException, IllegalArgumentException {
     var servicesConfig = new CompactionServicesConfig(config, log::warn);
     ServiceEnvironment senv = createServiceEnvironment(config);
 
@@ -129,9 +136,10 @@ public class CheckCompactionConfig implements KeywordExecutable {
     }
 
     log.info("Properties file has passed all checks.");
+
   }
 
-  private ServiceEnvironment createServiceEnvironment(AccumuloConfiguration config) {
+  private static ServiceEnvironment createServiceEnvironment(AccumuloConfiguration config) {
     return new ServiceEnvironment() {
 
       @Override
@@ -160,4 +168,5 @@ public class CheckCompactionConfig implements KeywordExecutable {
       }
     };
   }
+
 }

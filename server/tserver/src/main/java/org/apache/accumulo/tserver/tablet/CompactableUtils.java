@@ -20,6 +20,7 @@ package org.apache.accumulo.tserver.tablet;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -29,6 +30,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -52,8 +55,10 @@ import org.apache.accumulo.core.conf.ConfigurationTypeHelper;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.data.TabletId;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.dataImpl.TabletIdImpl;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVIterator;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
@@ -210,7 +215,8 @@ public class CompactableUtils {
     return result;
   }
 
-  static Map<String,String> computeOverrides(Tablet tablet, Set<CompactableFile> files) {
+  static Map<String,String> computeOverrides(Tablet tablet, Set<CompactableFile> files,
+      TabletFile tmpfile) {
     var tconf = tablet.getTableConfiguration();
 
     var configurorClass = tconf.get(Property.TABLE_COMPACTION_CONFIGURER);
@@ -220,11 +226,11 @@ public class CompactableUtils {
 
     var opts = tconf.getAllPropertiesWithPrefixStripped(Property.TABLE_COMPACTION_CONFIGURER_OPTS);
 
-    return computeOverrides(tablet, files, new PluginConfig(configurorClass, opts));
+    return computeOverrides(tablet, files, new PluginConfig(configurorClass, opts), tmpfile);
   }
 
   static Map<String,String> computeOverrides(Tablet tablet, Set<CompactableFile> files,
-      PluginConfig cfg) {
+      PluginConfig cfg, TabletFile compactTmpName) {
     CompactionConfigurer configurer = CompactableUtils.newInstance(tablet.getTableConfiguration(),
         cfg.getClassName(), CompactionConfigurer.class);
 
@@ -254,6 +260,16 @@ public class CompactableUtils {
       }
 
       @Override
+      public TabletId getTabletId() {
+        return new TabletIdImpl(tablet.getExtent());
+      }
+
+      @Override
+      public URI getOutputFile() {
+        return computeCompactionFileDest(compactTmpName).getPath().toUri();
+      }
+
+      @Override
       public PluginEnvironment getEnvironment() {
         return senv;
       }
@@ -276,7 +292,7 @@ public class CompactableUtils {
     String context = ClassLoaderUtil.tableContext(tableConfig);
     try {
       return ConfigurationTypeHelper.getClassInstance(context, className, baseClass);
-    } catch (IOException | ReflectiveOperationException e) {
+    } catch (ReflectiveOperationException e) {
       throw new RuntimeException(e);
     }
   }
@@ -398,7 +414,7 @@ public class CompactableUtils {
     }
 
     @Override
-    public Map<String,String> getConfigOverrides(Set<CompactableFile> files) {
+    public Map<String,String> getConfigOverrides(Set<CompactableFile> files, TabletFile tmpFile) {
       return computeOverrides(wp);
     }
 
@@ -454,9 +470,10 @@ public class CompactableUtils {
     }
 
     @Override
-    public Map<String,String> getConfigOverrides(Set<CompactableFile> files) {
+    public Map<String,String> getConfigOverrides(Set<CompactableFile> files,
+        TabletFile compactTmpName) {
       if (!UserCompactionUtils.isDefault(compactionConfig.getConfigurer())) {
-        return computeOverrides(tablet, files, compactionConfig.getConfigurer());
+        return computeOverrides(tablet, files, compactionConfig.getConfigurer(), compactTmpName);
       } else if (!CompactionStrategyConfigUtil.isDefault(compactionConfig.getCompactionStrategy())
           && wp != null) {
         return computeOverrides(wp);
@@ -490,9 +507,9 @@ public class CompactableUtils {
 
       CompactionStrategyConfig stratCfg = null;
 
-      if (cselCfg == null && tconf.isPropertySet(Property.TABLE_COMPACTION_STRATEGY)) {
-        var stratClassName = tconf.get(Property.TABLE_COMPACTION_STRATEGY);
-
+      var stratClassName = tconf.get(Property.TABLE_COMPACTION_STRATEGY);
+      if (cselCfg == null && tconf.isPropertySet(Property.TABLE_COMPACTION_STRATEGY)
+          && stratClassName != null && !stratClassName.isBlank()) {
         try {
           strategyWarningsCache.get(tablet.getExtent().tableId(), () -> {
             log.warn(
@@ -521,16 +538,16 @@ public class CompactableUtils {
   }
 
   public static Map<String,String> getOverrides(CompactionKind kind, Tablet tablet,
-      CompactionHelper driver, Set<CompactableFile> files) {
+      CompactionHelper driver, Set<CompactableFile> files, TabletFile compactTmpName) {
 
     Map<String,String> overrides = null;
 
     if (kind == CompactionKind.USER || kind == CompactionKind.SELECTOR) {
-      overrides = driver.getConfigOverrides(files);
+      overrides = driver.getConfigOverrides(files, compactTmpName);
     }
 
     if (overrides == null) {
-      overrides = computeOverrides(tablet, files);
+      overrides = computeOverrides(tablet, files, compactTmpName);
     }
 
     if (overrides == null) {
@@ -557,18 +574,29 @@ public class CompactableUtils {
    */
   static CompactionStats compact(Tablet tablet, CompactionJob job,
       CompactableImpl.CompactionInfo cInfo, CompactionEnv cenv,
-      Map<StoredTabletFile,DataFileValue> compactFiles, TabletFile tmpFileName)
-      throws IOException, CompactionCanceledException {
+      Map<StoredTabletFile,DataFileValue> compactFiles, TabletFile tmpFileName) throws IOException,
+      CompactionCanceledException, InterruptedException, ReflectiveOperationException {
     TableConfiguration tableConf = tablet.getTableConfiguration();
 
     AccumuloConfiguration compactionConfig = getCompactionConfig(tableConf,
-        getOverrides(job.getKind(), tablet, cInfo.localHelper, job.getFiles()));
+        getOverrides(job.getKind(), tablet, cInfo.localHelper, job.getFiles(), tmpFileName));
 
-    FileCompactor compactor = new FileCompactor(tablet.getContext(), tablet.getExtent(),
+    final FileCompactor compactor = new FileCompactor(tablet.getContext(), tablet.getExtent(),
         compactFiles, tmpFileName, cInfo.propagateDeletes, cenv, cInfo.iters, compactionConfig,
         tableConf.getCryptoService());
 
-    return compactor.call();
+    final Runnable compactionCancellerTask = () -> {
+      if (!cenv.isCompactionEnabled()) {
+        compactor.interrupt();
+      }
+    };
+    final ScheduledFuture<?> future = tablet.getContext().getScheduledExecutor()
+        .scheduleWithFixedDelay(compactionCancellerTask, 3, 3, TimeUnit.SECONDS);
+    try {
+      return compactor.call();
+    } finally {
+      future.cancel(true);
+    }
   }
 
   /**

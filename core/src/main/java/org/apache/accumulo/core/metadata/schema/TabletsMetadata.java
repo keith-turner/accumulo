@@ -578,7 +578,8 @@ public class TabletsMetadata implements Iterable<TabletMetadata>, AutoCloseable 
     this.tablets = Collections.singleton(tm);
   }
 
-  private TabletsMetadata(AutoCloseable closeable, Iterable<TabletMetadata> tmi) {
+  // visible for testing
+  public TabletsMetadata(AutoCloseable closeable, Iterable<TabletMetadata> tmi) {
     this.closeable = closeable;
     this.tablets = tmi;
   }
@@ -603,6 +604,6 @@ public class TabletsMetadata implements Iterable<TabletMetadata>, AutoCloseable 
   }
 
   public Stream<TabletMetadata> stream() {
-    return StreamSupport.stream(tablets.spliterator(), false);
+    return StreamSupport.stream(tablets.spliterator(), false).onClose(this::close);
   }
 }

@@ -86,7 +86,7 @@ class DatafileManager {
         new AtomicReference<>(new MetadataUpdateCount(tablet.getExtent(), 0L, 0L));
   }
 
-  private final Set<TabletFile> filesToDeleteAfterScan = new HashSet<>();
+  private final Set<StoredTabletFile> filesToDeleteAfterScan = new HashSet<>();
   private final Map<Long,Set<StoredTabletFile>> scanFileReservations = new HashMap<>();
   private final MapCounter<StoredTabletFile> fileScanReferenceCounts = new MapCounter<>();
   private long nextScanReservationId = 0;
@@ -119,43 +119,27 @@ class DatafileManager {
 
   void returnFilesForScan(Long reservationId) {
 
-    final Set<StoredTabletFile> filesToDelete = new HashSet<>();
+    synchronized (tablet) {
+      Set<StoredTabletFile> absFilePaths = scanFileReservations.remove(reservationId);
 
-    try {
-      synchronized (tablet) {
-        Set<StoredTabletFile> absFilePaths = scanFileReservations.remove(reservationId);
-
-        if (absFilePaths == null) {
-          throw new IllegalArgumentException("Unknown scan reservation id " + reservationId);
-        }
-
-        boolean notify = false;
-        try {
-          for (StoredTabletFile path : absFilePaths) {
-            long refCount = fileScanReferenceCounts.decrement(path, 1);
-            if (refCount == 0) {
-              if (filesToDeleteAfterScan.remove(path)) {
-                filesToDelete.add(path);
-              }
-              notify = true;
-            } else if (refCount < 0) {
-              throw new IllegalStateException("Scan ref count for " + path + " is " + refCount);
-            }
-          }
-        } finally {
-          if (notify) {
-            tablet.notifyAll();
-          }
-        }
+      if (absFilePaths == null) {
+        throw new IllegalArgumentException("Unknown scan reservation id " + reservationId);
       }
-    } finally {
-      // Remove scan files even if the loop above did not fully complete because once a
-      // file is in the set filesToDelete that means it was removed from filesToDeleteAfterScan
-      // and would never be added back.
-      if (!filesToDelete.isEmpty()) {
-        log.debug("Removing scan refs from metadata {} {}", tablet.getExtent(), filesToDelete);
-        MetadataTableUtil.removeScanFiles(tablet.getExtent(), filesToDelete, tablet.getContext(),
-            tablet.getTabletServer().getLock());
+
+      boolean notify = false;
+      try {
+        for (StoredTabletFile path : absFilePaths) {
+          long refCount = fileScanReferenceCounts.decrement(path, 1);
+          if (refCount == 0) {
+            notify = true;
+          } else if (refCount < 0) {
+            throw new IllegalStateException("Scan ref count for " + path + " is " + refCount);
+          }
+        }
+      } finally {
+        if (notify) {
+          tablet.notifyAll();
+        }
       }
     }
   }
@@ -181,6 +165,33 @@ class DatafileManager {
       log.debug("Removing scan refs from metadata {} {}", tablet.getExtent(), filesToDelete);
       MetadataTableUtil.removeScanFiles(tablet.getExtent(), filesToDelete, tablet.getContext(),
           tablet.getTabletServer().getLock());
+    }
+  }
+
+  /**
+   * This method will remove any scan references that have been added to filesToDeleteAfterScan.
+   * This is meant to be called periodically as to batch the removal of scan references.
+   */
+  public void removeBatchedScanRefs() {
+    Set<StoredTabletFile> snapshot;
+    synchronized (tablet) {
+      snapshot = new HashSet<>(filesToDeleteAfterScan);
+      filesToDeleteAfterScan.clear();
+    }
+    removeFilesAfterScan(snapshot);
+  }
+
+  /**
+   * @return true if any file is no longer in use by a scan and can be removed, false otherwise.
+   */
+  boolean canScanRefsBeRemoved() {
+    synchronized (tablet) {
+      for (var path : filesToDeleteAfterScan) {
+        if (fileScanReferenceCounts.get(path) == 0) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 
@@ -333,6 +344,7 @@ class DatafileManager {
           }
           attemptedRename = true;
           rename(vm, tmpDatafile.getPath(), newDatafile.getPath());
+          TabletLogger.renamed(tablet.getExtent(), tmpDatafile, newDatafile);
         }
         break;
       } catch (IOException ioe) {
@@ -473,7 +485,7 @@ class DatafileManager {
     TabletFile newDatafile = CompactableUtils.computeCompactionFileDest(tmpDatafile);
 
     if (vm.exists(newDatafile.getPath())) {
-      log.error("Target map file already exist " + newDatafile, new Exception());
+      log.error("Target map file already exists {}", newDatafile, new Exception());
       throw new IllegalStateException("Target map file already exist " + newDatafile);
     }
 
@@ -483,6 +495,7 @@ class DatafileManager {
       // rename before putting in metadata table, so files in metadata table should
       // always exist
       rename(vm, tmpDatafile.getPath(), newDatafile.getPath());
+      TabletLogger.renamed(tablet.getExtent(), tmpDatafile, newDatafile);
     }
 
     Location lastLocation = null;

@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.test.functional;
 
+import static org.apache.accumulo.harness.AccumuloITBase.MINI_CLUSTER_ONLY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.time.Duration;
@@ -47,6 +48,7 @@ import org.apache.accumulo.core.client.TableExistsException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.TableId;
@@ -57,17 +59,23 @@ import org.apache.accumulo.core.fate.zookeeper.ZooUtil;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.manager.thrift.ManagerState;
 import org.apache.accumulo.core.metadata.MetadataTable;
+import org.apache.accumulo.core.metadata.RootTable;
 import org.apache.accumulo.core.metadata.TServerInstance;
+import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CurrentLocationColumnFamily;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.harness.AccumuloClusterHarness;
+import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.server.manager.state.CurrentState;
 import org.apache.accumulo.server.manager.state.MergeInfo;
 import org.apache.accumulo.server.manager.state.MetaDataTableScanner;
 import org.apache.accumulo.server.manager.state.TabletStateChangeIterator;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Text;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,17 +85,33 @@ import com.google.common.collect.Sets;
  * Test to ensure that the {@link TabletStateChangeIterator} properly skips over tablet information
  * in the metadata table when there is no work to be done on the tablet (see ACCUMULO-3580)
  */
+@Tag(MINI_CLUSTER_ONLY)
 public class TabletStateChangeIteratorIT extends AccumuloClusterHarness {
   private final static Logger log = LoggerFactory.getLogger(TabletStateChangeIteratorIT.class);
+
+  private String cType = null;
 
   @Override
   protected Duration defaultTimeout() {
     return Duration.ofMinutes(3);
   }
 
-  @Test
-  public void test() throws AccumuloException, AccumuloSecurityException, TableExistsException,
-      TableNotFoundException {
+  @Override
+  public void setupCluster() throws Exception {
+    // Overriding to *not* start cluster before test, we are going to do it manually
+  }
+
+  @Override
+  public void configureMiniCluster(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
+    cfg.setProperty(Property.GENERAL_SERVER_ITERATOR_OPTIONS_COMPRESSION_ALGO, cType);
+  }
+
+  @ParameterizedTest()
+  @ValueSource(strings = {"none", "gz", "snappy"})
+  public void test(String compressionType) throws Exception {
+
+    cType = compressionType;
+    super.setupCluster();
 
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
 
@@ -153,6 +177,8 @@ public class TabletStateChangeIteratorIT extends AccumuloClusterHarness {
 
       // clean up
       dropTables(client, t1, t2, t3, metaCopy1, metaCopy2, metaCopy3);
+    } finally {
+      super.teardownCluster();
     }
   }
 
@@ -203,7 +229,12 @@ public class TabletStateChangeIteratorIT extends AccumuloClusterHarness {
     int results = 0;
     List<Key> resultList = new ArrayList<>();
     try (Scanner scanner = client.createScanner(table, Authorizations.EMPTY)) {
-      MetaDataTableScanner.configureScanner(scanner, state);
+      DataLevel currentDataLevel = DataLevel.USER;
+      if (table.equals(RootTable.NAME)) {
+        currentDataLevel = DataLevel.METADATA;
+      }
+      MetaDataTableScanner.configureScanner(((ClientContext) client).getConfiguration(), scanner,
+          state, currentDataLevel);
       log.debug("Current state = {}", state);
       scanner.updateScanIteratorOption("tabletChange", "debug", "1");
       for (Entry<Key,Value> e : scanner) {
@@ -331,7 +362,7 @@ public class TabletStateChangeIteratorIT extends AccumuloClusterHarness {
     }
 
     @Override
-    public Set<KeyExtent> migrationsSnapshot() {
+    public Set<KeyExtent> migrationsSnapshot(DataLevel dataLevel) {
       return Collections.emptySet();
     }
 

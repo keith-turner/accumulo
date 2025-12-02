@@ -19,6 +19,7 @@
 package org.apache.accumulo.tserver.log;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.TSERVER_WAL_SORT_CONCURRENT_POOL;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
@@ -45,6 +46,7 @@ import org.apache.accumulo.core.spi.crypto.CryptoEnvironment;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.accumulo.core.util.threads.ThreadPools;
+import org.apache.accumulo.server.AbstractServer;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.log.SortedLogState;
@@ -65,7 +67,6 @@ import com.google.common.annotations.VisibleForTesting;
 public class LogSorter {
 
   private static final Logger log = LoggerFactory.getLogger(LogSorter.class);
-  AccumuloConfiguration sortedLogConf;
 
   private final Map<String,LogProcessor> currentWork = Collections.synchronizedMap(new HashMap<>());
 
@@ -223,22 +224,20 @@ public class LogSorter {
     }
   }
 
-  ThreadPoolExecutor threadPool;
   private final ServerContext context;
+  private final AccumuloConfiguration conf;
   private final double walBlockSize;
   private final CryptoService cryptoService;
+  private final AccumuloConfiguration sortedLogConf;
 
   public LogSorter(ServerContext context, AccumuloConfiguration conf) {
     this.context = context;
-    this.sortedLogConf = extractSortedLogConfig(conf);
-    @SuppressWarnings("deprecation")
-    int threadPoolSize = conf.getCount(conf.resolve(Property.TSERV_WAL_SORT_MAX_CONCURRENT,
-        Property.TSERV_RECOVERY_MAX_CONCURRENT));
-    this.threadPool = ThreadPools.getServerThreadPools().createFixedThreadPool(threadPoolSize,
-        this.getClass().getName(), true);
-    this.walBlockSize = DfsLogger.getWalBlockSize(conf);
+    this.conf = conf;
+    this.sortedLogConf = extractSortedLogConfig(this.conf);
+    this.walBlockSize = DfsLogger.getWalBlockSize(this.conf);
     CryptoEnvironment env = new CryptoEnvironmentImpl(CryptoEnvironment.Scope.RECOVERY);
-    this.cryptoService = context.getCryptoFactory().getService(env, conf.getAllCryptoProperties());
+    this.cryptoService =
+        context.getCryptoFactory().getService(env, this.conf.getAllCryptoProperties());
   }
 
   /**
@@ -275,12 +274,7 @@ public class LogSorter {
       var logFileKey = pair.getFirst();
       var logFileValue = pair.getSecond();
       Key k = logFileKey.toKey();
-      var list = keyListMap.putIfAbsent(k, logFileValue.mutations);
-      if (list != null) {
-        var muts = new ArrayList<>(list);
-        muts.addAll(logFileValue.mutations);
-        keyListMap.put(logFileKey.toKey(), muts);
-      }
+      keyListMap.computeIfAbsent(k, (key) -> new ArrayList<>()).addAll(logFileValue.getMutations());
     }
 
     try (var writer = FileOperations.getInstance().newWriterBuilder()
@@ -289,17 +283,22 @@ public class LogSorter {
       writer.startDefaultLocalityGroup();
       for (var entry : keyListMap.entrySet()) {
         LogFileValue val = new LogFileValue();
-        val.mutations = entry.getValue();
+        val.setMutations(entry.getValue());
         writer.append(entry.getKey(), val.toValue());
       }
     }
   }
 
-  public void startWatchingForRecoveryLogs(ThreadPoolExecutor distWorkQThreadPool)
+  public void startWatchingForRecoveryLogs(AbstractServer server)
       throws KeeperException, InterruptedException {
-    this.threadPool = distWorkQThreadPool;
+    @SuppressWarnings("deprecation")
+    int threadPoolSize = this.conf.getCount(this.conf
+        .resolve(Property.TSERV_WAL_SORT_MAX_CONCURRENT, Property.TSERV_RECOVERY_MAX_CONCURRENT));
+    ThreadPoolExecutor threadPool =
+        ThreadPools.getServerThreadPools().getPoolBuilder(TSERVER_WAL_SORT_CONCURRENT_POOL)
+            .numCoreThreads(threadPoolSize).enableThreadPoolMetrics().build();
     new DistributedWorkQueue(context.getZooKeeperRoot() + Constants.ZRECOVERY, sortedLogConf,
-        context).startProcessing(new LogProcessor(), this.threadPool);
+        server).startProcessing(new LogProcessor(), threadPool);
   }
 
   public List<RecoveryStatus> getLogSorts() {

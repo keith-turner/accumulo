@@ -31,6 +31,8 @@ import org.apache.accumulo.core.clientImpl.thrift.TableOperationExceptionType;
 import org.apache.accumulo.core.data.InstanceId;
 import org.apache.accumulo.core.data.NamespaceId;
 import org.apache.accumulo.core.data.TableId;
+import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.fate.FateTxId;
 import org.apache.accumulo.core.fate.Repo;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.core.manager.state.tables.TableState;
@@ -44,7 +46,9 @@ import org.apache.accumulo.manager.tableOps.ManagerRepo;
 import org.apache.accumulo.manager.tableOps.Utils;
 import org.apache.accumulo.manager.tableOps.delete.PreDeleteTable;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
+import org.apache.hadoop.io.Text;
 import org.apache.thrift.TException;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 class CompactionDriver extends ManagerRepo {
@@ -56,11 +60,13 @@ class CompactionDriver extends ManagerRepo {
 
   private static final long serialVersionUID = 1L;
 
-  private long compactId;
+  private final long compactId;
   private final TableId tableId;
   private final NamespaceId namespaceId;
-  private byte[] startRow;
-  private byte[] endRow;
+  private final byte[] startRow;
+  private final byte[] endRow;
+
+  private static final Logger log = LoggerFactory.getLogger(CompactionDriver.class);
 
   public CompactionDriver(long compactId, NamespaceId namespaceId, TableId tableId, byte[] startRow,
       byte[] endRow) {
@@ -123,16 +129,24 @@ class CompactionDriver extends ManagerRepo {
     manager.getContext().clearTableListCache();
     if (tabletCount == 0 && !manager.getContext().tableNodeExists(tableId)) {
       throw new AcceptableThriftTableOperationException(tableId.canonical(), null,
-          TableOperation.COMPACT, TableOperationExceptionType.NOTFOUND, null);
+          TableOperation.COMPACT, TableOperationExceptionType.NOTFOUND, "Table not found");
     }
 
     if (serversToFlush.size() == 0
         && manager.getContext().getTableState(tableId) == TableState.OFFLINE) {
       throw new AcceptableThriftTableOperationException(tableId.canonical(), null,
-          TableOperation.COMPACT, TableOperationExceptionType.OFFLINE, null);
+          TableOperation.COMPACT, TableOperationExceptionType.OFFLINE, "Table is offline");
     }
 
     if (tabletsToWaitFor == 0) {
+      if (log.isTraceEnabled()) {
+        KeyExtent extent = new KeyExtent(tableId, endRow == null ? null : new Text(endRow),
+            startRow == null ? null : new Text(startRow));
+        log.trace(
+            "{} tablets compacted:{}/{} servers contacted:{} expected id:{} compaction extent:{} sleepTime:{}",
+            FateTxId.formatTid(tid), tabletCount - tabletsToWaitFor, tabletCount,
+            serversToFlush.size(), compactId, extent, 0);
+      }
       return 0;
     }
 
@@ -157,6 +171,15 @@ class CompactionDriver extends ManagerRepo {
     sleepTime = Math.max(2 * scanTime, sleepTime);
 
     sleepTime = Math.min(sleepTime, 30000);
+
+    if (log.isTraceEnabled()) {
+      KeyExtent extent = new KeyExtent(tableId, endRow == null ? null : new Text(endRow),
+          startRow == null ? null : new Text(startRow));
+      log.trace(
+          "{} tablets compacted:{}/{} servers contacted:{} expected id:{} compaction extent:{} sleepTime:{}",
+          FateTxId.formatTid(tid), tabletCount - tabletsToWaitFor, tabletCount,
+          serversToFlush.size(), compactId, extent, sleepTime);
+    }
 
     return sleepTime;
   }

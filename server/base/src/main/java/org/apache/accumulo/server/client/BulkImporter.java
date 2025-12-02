@@ -134,8 +134,9 @@ public class BulkImporter {
           Collections.synchronizedSortedMap(new TreeMap<>());
 
       timer.start(Timers.EXAMINE_MAP_FILES);
-      ExecutorService threadPool = ThreadPools.getServerThreadPools()
-          .createFixedThreadPool(numThreads, "findOverlapping", false);
+      ExecutorService threadPool =
+          ThreadPools.getServerThreadPools().getPoolBuilder("bulk.import.find.overlapping")
+              .numCoreThreads(numThreads).enableThreadPoolMetrics().build();
 
       for (Path path : paths) {
         final Path mapFile = path;
@@ -363,7 +364,7 @@ public class BulkImporter {
     final Map<Path,List<AssignmentInfo>> ais = Collections.synchronizedMap(new TreeMap<>());
 
     ExecutorService threadPool = ThreadPools.getServerThreadPools()
-        .createFixedThreadPool(numThreads, "estimateSizes", false);
+        .getPoolBuilder("bulk.import.size.estimate").numCoreThreads(numThreads).build();
 
     for (final Entry<Path,List<TabletLocation>> entry : assignments.entrySet()) {
       if (entry.getValue().size() == 1) {
@@ -552,8 +553,8 @@ public class BulkImporter {
       }
     });
 
-    ExecutorService threadPool =
-        ThreadPools.getServerThreadPools().createFixedThreadPool(numThreads, "submit", false);
+    ExecutorService threadPool = ThreadPools.getServerThreadPools()
+        .getPoolBuilder("bulk.import.submit").numCoreThreads(numThreads).build();
 
     for (Entry<String,Map<KeyExtent,List<PathSize>>> entry : assignmentsPerTabletServer
         .entrySet()) {
@@ -612,7 +613,8 @@ public class BulkImporter {
     } catch (ThriftSecurityException e) {
       throw new AccumuloSecurityException(e.user, e.code, e);
     } catch (Exception t) {
-      log.error("Encountered unknown exception in assignMapFiles.", t);
+      log.error("Encountered unknown exception in assignMapFiles asking {} to bulk import.",
+          location, t);
       throw new AccumuloException(t);
     }
   }

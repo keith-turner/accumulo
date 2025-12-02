@@ -24,6 +24,8 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.stream.Collectors.groupingBy;
 import static org.apache.accumulo.core.file.blockfile.impl.CachableBlockFile.pathToCacheId;
 import static org.apache.accumulo.core.util.Validators.EXISTING_TABLE_NAME;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.BULK_IMPORT_CLIENT_BULK_THREADS_POOL;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.BULK_IMPORT_CLIENT_LOAD_POOL;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -46,6 +48,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.apache.accumulo.core.Constants;
@@ -322,19 +325,25 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     KeyExtent lookup(Text row);
   }
 
-  public static List<KeyExtent> findOverlappingTablets(KeyExtentCache extentCache,
-      FileSKVIterator reader) throws IOException {
+  /**
+   * Function that will find a row in a file being bulk imported that is >= the row passed to the
+   * function. If there is no row then it should return null.
+   */
+  public interface NextRowFunction {
+    Text apply(Text row) throws IOException;
+  }
+
+  public static List<KeyExtent> findOverlappingTablets(Function<Text,KeyExtent> rowToExtentResolver,
+      NextRowFunction nextRowFunction) throws IOException {
 
     List<KeyExtent> result = new ArrayList<>();
-    Collection<ByteSequence> columnFamilies = Collections.emptyList();
     Text row = new Text();
     while (true) {
-      reader.seek(new Range(row, null), columnFamilies, false);
-      if (!reader.hasTop()) {
+      row = nextRowFunction.apply(row);
+      if (row == null) {
         break;
       }
-      row = reader.getTopKey().getRow();
-      KeyExtent extent = extentCache.lookup(row);
+      KeyExtent extent = rowToExtentResolver.apply(row);
       result.add(extent);
       row = extent.endRow();
       if (row != null) {
@@ -354,13 +363,23 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
   }
 
   public static List<KeyExtent> findOverlappingTablets(ClientContext context,
-      KeyExtentCache extentCache, Path file, FileSystem fs, Cache<String,Long> fileLenCache,
+      KeyExtentCache keyExtentCache, Path file, FileSystem fs, Cache<String,Long> fileLenCache,
       CryptoService cs) throws IOException {
     try (FileSKVIterator reader = FileOperations.getInstance().newReaderBuilder()
         .forFile(file.toString(), fs, fs.getConf(), cs)
         .withTableConfiguration(context.getConfiguration()).withFileLenCache(fileLenCache)
         .seekToBeginning().build()) {
-      return findOverlappingTablets(extentCache, reader);
+
+      Collection<ByteSequence> columnFamilies = Collections.emptyList();
+      NextRowFunction nextRowFunction = row -> {
+        reader.seek(new Range(row, null), columnFamilies, false);
+        if (!reader.hasTop()) {
+          return null;
+        }
+        return reader.getTopKey().getRow();
+      };
+
+      return findOverlappingTablets(keyExtentCache::lookup, nextRowFunction);
     }
   }
 
@@ -482,12 +501,14 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
     if (this.executor != null) {
       executor = this.executor;
     } else if (numThreads > 0) {
-      executor = service =
-          context.threadPools().createFixedThreadPool(numThreads, "BulkImportThread", false);
+      executor = service = context.threadPools().getPoolBuilder(BULK_IMPORT_CLIENT_LOAD_POOL)
+          .numCoreThreads(numThreads).enableThreadPoolMetrics().build();
     } else {
       String threads = context.getConfiguration().get(ClientProperty.BULK_LOAD_THREADS.getKey());
-      executor = service = context.threadPools().createFixedThreadPool(
-          ConfigurationTypeHelper.getNumThreads(threads), "BulkImportThread", false);
+      executor =
+          service = context.threadPools().getPoolBuilder(BULK_IMPORT_CLIENT_BULK_THREADS_POOL)
+              .numCoreThreads(ConfigurationTypeHelper.getNumThreads(threads))
+              .enableThreadPoolMetrics().build();
     }
 
     try {
@@ -513,8 +534,8 @@ public class BulkImport implements ImportDestinationArguments, ImportMappingOpti
         continue;
       }
 
-      if (FileOperations.getBulkWorkingFiles().contains(fname)) {
-        log.debug("{} is an internal working file, ignoring.", fileStatus.getPath());
+      if (FileOperations.isBulkWorkingFile(fname)) {
+        log.trace("{} is an internal working file, ignoring.", fileStatus.getPath());
         continue;
       }
 

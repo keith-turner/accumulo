@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.configuration2.AbstractConfiguration;
@@ -39,6 +40,7 @@ import org.apache.commons.configuration2.CompositeConfiguration;
 import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.commons.configuration2.PropertiesConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.commons.configuration2.io.FileHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -212,7 +214,15 @@ public class SiteConfiguration extends AccumuloConfiguration {
   private final Map<String,String> config;
 
   private SiteConfiguration(Map<String,String> config) {
-    ConfigCheckUtil.validate(config.entrySet());
+    ConfigCheckUtil.validate(config.entrySet(), "site config");
+    var tableProps =
+        config.keySet().stream().filter(prop -> prop.startsWith(Property.TABLE_PREFIX.getKey()))
+            .collect(Collectors.toSet());
+    if (!tableProps.isEmpty()) {
+      log.warn(
+          "Setting table properties in accumulo.properties file or with -o option is deprecated, saw: {}",
+          tableProps);
+    }
     this.config = config;
   }
 
@@ -222,8 +232,9 @@ public class SiteConfiguration extends AccumuloConfiguration {
   private static AbstractConfiguration getPropsFileConfig(URL accumuloPropsLocation) {
     var config = new PropertiesConfiguration();
     if (accumuloPropsLocation != null) {
+      var fileHandler = new FileHandler(config);
       try (var reader = new InputStreamReader(accumuloPropsLocation.openStream(), UTF_8)) {
-        config.read(reader);
+        fileHandler.load(reader);
       } catch (ConfigurationException | IOException e) {
         throw new IllegalArgumentException(e);
       }

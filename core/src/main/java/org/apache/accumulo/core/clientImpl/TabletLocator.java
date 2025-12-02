@@ -141,13 +141,13 @@ public abstract class TabletLocator {
       MetadataLocationObtainer mlo = new MetadataLocationObtainer();
 
       if (RootTable.ID.equals(tableId)) {
-        tl = new RootTabletLocator(new ZookeeperLockChecker(context));
+        tl = new RootTabletLocator(context.getTServerLockChecker());
       } else if (MetadataTable.ID.equals(tableId)) {
         tl = new TabletLocatorImpl(MetadataTable.ID, getLocator(context, RootTable.ID), mlo,
-            new ZookeeperLockChecker(context));
+            context.getTServerLockChecker());
       } else {
         tl = new TabletLocatorImpl(tableId, getLocator(context, MetadataTable.ID), mlo,
-            new ZookeeperLockChecker(context));
+            context.getTServerLockChecker());
       }
       locators.put(key, tl);
     }
@@ -246,8 +246,8 @@ public abstract class TabletLocator {
   }
 
   public static class TabletServerMutations<T extends Mutation> {
-    private Map<KeyExtent,List<T>> mutations;
-    private String tserverSession;
+    private final Map<KeyExtent,List<T>> mutations;
+    private final String tserverSession;
 
     public TabletServerMutations(String tserverSession) {
       this.tserverSession = tserverSession;

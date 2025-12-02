@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,8 @@ import org.apache.accumulo.core.util.ComparablePair;
 import org.apache.accumulo.core.util.MapCounter;
 import org.apache.accumulo.core.util.Pair;
 import org.apache.commons.lang3.mutable.MutableInt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.HashMultimap;
@@ -66,9 +69,12 @@ import com.google.common.collect.Multimap;
  */
 public abstract class GroupBalancer implements TabletBalancer {
 
+  private final Logger log = LoggerFactory.getLogger(GroupBalancer.class);
+
   protected BalancerEnvironment environment;
   private final TableId tableId;
-  private long lastRun = 0;
+
+  protected final Map<String,Long> lastRunTimes = new HashMap<>();
 
   @Override
   public void init(BalancerEnvironment balancerEnvironment) {
@@ -79,6 +85,19 @@ public abstract class GroupBalancer implements TabletBalancer {
    * @return A function that groups tablets into named groups.
    */
   protected abstract Function<TabletId,String> getPartitioner();
+
+  private Function<TabletId,String> getLoggingPartitioner() {
+    Function<TabletId,String> partitioner = getPartitioner();
+    if (log.isTraceEnabled()) {
+      return tabletId -> {
+        String group = partitioner.apply(tabletId);
+        log.trace("Extracted group {} from tablet {}", group, tabletId);
+        return group;
+      };
+    } else {
+      return partitioner;
+    }
+  }
 
   public GroupBalancer(TableId tableId) {
     this.tableId = tableId;
@@ -122,7 +141,7 @@ public abstract class GroupBalancer implements TabletBalancer {
       return;
     }
 
-    Function<TabletId,String> partitioner = getPartitioner();
+    Function<TabletId,String> partitioner = getLoggingPartitioner();
 
     List<ComparablePair<String,TabletId>> tabletsByGroup = new ArrayList<>();
     for (Entry<TabletId,TabletServerId> entry : params.unassignedTablets().entrySet()) {
@@ -211,7 +230,8 @@ public abstract class GroupBalancer implements TabletBalancer {
       return 5000;
     }
 
-    if (System.currentTimeMillis() - lastRun < getWaitTime()) {
+    if (System.currentTimeMillis() - lastRunTimes.getOrDefault(params.partitionName(), 0L)
+        < getWaitTime()) {
       return 5000;
     }
 
@@ -222,7 +242,7 @@ public abstract class GroupBalancer implements TabletBalancer {
       tservers.put(tsi, new TserverGroupInfo(tsi));
     }
 
-    Function<TabletId,String> partitioner = getPartitioner();
+    Function<TabletId,String> partitioner = getLoggingPartitioner();
 
     // collect stats about current state
     for (var tablet : getLocationProvider().entrySet()) {
@@ -275,7 +295,7 @@ public abstract class GroupBalancer implements TabletBalancer {
 
     populateMigrations(tservers.keySet(), params.migrationsOut(), moves);
 
-    lastRun = System.currentTimeMillis();
+    lastRunTimes.put(params.partitionName(), System.currentTimeMillis());
 
     return 5000;
   }
@@ -485,7 +505,7 @@ public abstract class GroupBalancer implements TabletBalancer {
     }
 
     ArrayList<Pair<String,TabletServerId>> serversGroupsToRemove = new ArrayList<>();
-    ArrayList<TabletServerId> serversToRemove = new ArrayList<>();
+    HashSet<TabletServerId> serversToRemove = new HashSet<>();
 
     for (TserverGroupInfo destTgi : tservers.values()) {
       if (surplusExtra.isEmpty()) {
@@ -609,7 +629,7 @@ public abstract class GroupBalancer implements TabletBalancer {
       }
     }
 
-    ArrayList<TabletServerId> emptyServers = new ArrayList<>();
+    HashSet<TabletServerId> emptyServers = new HashSet<>();
     ArrayList<Pair<String,TabletServerId>> emptyServerGroups = new ArrayList<>();
     for (TserverGroupInfo destTgi : tservers.values()) {
       if (extraSurplus.isEmpty()) {
@@ -710,7 +730,7 @@ public abstract class GroupBalancer implements TabletBalancer {
       return;
     }
 
-    Function<TabletId,String> partitioner = getPartitioner();
+    Function<TabletId,String> partitioner = getLoggingPartitioner();
 
     for (var tablet : getLocationProvider().entrySet()) {
       String group = partitioner.apply(tablet.getKey());

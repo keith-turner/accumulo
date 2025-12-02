@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -62,6 +63,7 @@ import org.apache.accumulo.core.fate.zookeeper.ZooCache;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.core.manager.thrift.FateService;
 import org.apache.accumulo.core.metadata.MetadataTable;
+import org.apache.accumulo.core.process.thrift.ServerProcessService;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
 import org.apache.accumulo.core.security.Authorizations;
@@ -79,6 +81,7 @@ import org.apache.accumulo.server.cli.ServerUtilOpts;
 import org.apache.accumulo.server.security.SecurityUtil;
 import org.apache.accumulo.server.util.fateCommand.FateSummaryReport;
 import org.apache.accumulo.start.spi.KeywordExecutable;
+import org.apache.thrift.TException;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,26 +99,31 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 public class Admin implements KeywordExecutable {
   private static final Logger log = LoggerFactory.getLogger(Admin.class);
 
-  static class AdminOpts extends ServerUtilOpts {
-    @Parameter(names = {"-f", "--force"},
-        description = "force the given server to stop by removing its lock")
-    boolean force = false;
+  private static class SubCommandOpts {
+    @Parameter(names = {"-h", "-?", "--help", "-help"}, help = true)
+    public boolean help = false;
   }
 
-  @Parameters(commandDescription = "stop the tablet server on the given hosts")
-  static class StopCommand {
-    @Parameter(description = "<host> {<host> ... }")
+  @Parameters(commandNames = "stop",
+      commandDescription = "Stop the servers at the given addresses allowing them to complete current task but not start new task.  When no port is specified uses ports from tserver.port.client property.")
+  static class StopCommand extends SubCommandOpts {
+    @Parameter(names = {"-f", "--force"},
+        description = "force the given server to stop immediately by removing its lock.  Does not wait for any task the server is currently working.")
+    boolean force = false;
+    @Parameter(description = "<host[:port]> {<host[:port]> ... }")
     List<String> args = new ArrayList<>();
   }
 
-  @Parameters(commandDescription = "Ping tablet servers.  If no arguments, pings all.")
-  static class PingCommand {
+  @Parameters(commandNames = "ping",
+      commandDescription = "Ping tablet servers.  If no arguments, pings all.")
+  static class PingCommand extends SubCommandOpts {
     @Parameter(description = "{<host> ... }")
     List<String> args = new ArrayList<>();
   }
 
-  @Parameters(commandDescription = "print tablets that are offline in online tables")
-  static class CheckTabletsCommand {
+  @Parameters(commandNames = "checkTablets",
+      commandDescription = "print tablets that are offline in online tables")
+  static class CheckTabletsCommand extends SubCommandOpts {
     @Parameter(names = "--fixFiles", description = "Remove dangling file pointers")
     boolean fixFiles = false;
 
@@ -124,18 +132,21 @@ public class Admin implements KeywordExecutable {
     String tableName = null;
   }
 
-  @Parameters(commandDescription = "stop the manager")
-  static class StopManagerCommand {}
+  @Parameters(commandNames = "stopManager", commandDescription = "stop the manager")
+  static class StopManagerCommand extends SubCommandOpts {}
 
   @Deprecated(since = "2.1.0")
-  @Parameters(commandDescription = "stop the master (DEPRECATED -- use stopManager instead)")
+  @Parameters(commandNames = "stopMaster",
+      commandDescription = "stop the master (DEPRECATED -- use stopManager instead)")
   static class StopMasterCommand {}
 
-  @Parameters(commandDescription = "stop all tablet servers and the manager")
-  static class StopAllCommand {}
+  @Parameters(commandNames = "stopAll",
+      commandDescription = "stop all tablet servers and the manager")
+  static class StopAllCommand extends SubCommandOpts {}
 
-  @Parameters(commandDescription = "list Accumulo instances in zookeeper")
-  static class ListInstancesCommand {
+  @Parameters(commandNames = "listInstances",
+      commandDescription = "list Accumulo instances in zookeeper")
+  static class ListInstancesCommand extends SubCommandOpts {
     @Parameter(names = "--print-errors", description = "display errors while listing instances")
     boolean printErrors = false;
     @Parameter(names = "--print-all",
@@ -143,14 +154,15 @@ public class Admin implements KeywordExecutable {
     boolean printAll = false;
   }
 
-  @Parameters(commandDescription = "Accumulo volume utility")
-  static class VolumesCommand {
+  @Parameters(commandNames = "volumes", commandDescription = "Accumulo volume utility")
+  static class VolumesCommand extends SubCommandOpts {
     @Parameter(names = {"-l", "--list"}, description = "list volumes currently in use")
     boolean printErrors = false;
   }
 
-  @Parameters(commandDescription = "print out non-default configuration settings")
-  static class DumpConfigCommand {
+  @Parameters(commandNames = "dumpConfig",
+      commandDescription = "print out non-default configuration settings")
+  static class DumpConfigCommand extends SubCommandOpts {
     @Parameter(names = {"-a", "--all"},
         description = "print the system and all table configurations")
     boolean allConfiguration = false;
@@ -172,14 +184,15 @@ public class Admin implements KeywordExecutable {
           + " calls the volume chooser for each file created by a tablet, so its no longer "
           + "necessary.";
 
-  @Parameters(commandDescription = RV_DEPRECATION_MSG)
-  static class RandomizeVolumesCommand {
+  @Parameters(commandNames = "randomizeVolumes", commandDescription = RV_DEPRECATION_MSG)
+  static class RandomizeVolumesCommand extends SubCommandOpts {
     @Parameter(names = {"-t"}, description = "table to update", required = true)
     String tableName = null;
   }
 
-  @Parameters(commandDescription = "Verify all Tablets are assigned to tablet servers")
-  static class VerifyTabletAssignmentsCommand {
+  @Parameters(commandNames = "verifyTabletAssigns",
+      commandDescription = "Verify all Tablets are assigned to tablet servers")
+  static class VerifyTabletAssignmentsCommand extends SubCommandOpts {
     @Parameter(names = {"-v", "--verbose"},
         description = "verbose mode (prints locations of tablets)")
     boolean verbose = false;
@@ -188,20 +201,20 @@ public class Admin implements KeywordExecutable {
   /**
    * @since 2.1.0
    */
-  @Parameters(
+  @Parameters(commandNames = "changeSecret",
       commandDescription = "Changes the unique secret given to the instance that all servers must know.")
   static class ChangeSecretCommand {}
 
-  @Parameters(
+  @Parameters(commandNames = "locks",
       commandDescription = "List or delete Tablet Server locks. Default with no arguments is to list the locks.")
-  static class TabletServerLocksCommand {
+  static class TabletServerLocksCommand extends SubCommandOpts {
     @Parameter(names = "-delete", description = "specify a tablet server lock to delete")
     String delete = null;
   }
 
-  @Parameters(
+  @Parameters(commandNames = "deleteZooInstance",
       commandDescription = "Deletes specific instance name or id from zookeeper or cleans up all old instances.")
-  static class DeleteZooInstanceCommand {
+  static class DeleteZooInstanceCommand extends SubCommandOpts {
     @Parameter(names = {"-i", "--instance"}, description = "the instance name or id to delete")
     String instance;
     @Parameter(names = {"-c", "--clean"},
@@ -213,8 +226,9 @@ public class Admin implements KeywordExecutable {
     String auth;
   }
 
-  @Parameters(commandDescription = "Restore Zookeeper data from a file.")
-  static class RestoreZooCommand {
+  @Parameters(commandNames = "restoreZoo",
+      commandDescription = "Restore Zookeeper data from a file.")
+  static class RestoreZooCommand extends SubCommandOpts {
     @Parameter(names = "--overwrite")
     boolean overwrite = false;
 
@@ -224,7 +238,7 @@ public class Admin implements KeywordExecutable {
 
   @Parameters(commandNames = "fate",
       commandDescription = "Operations performed on the Manager FaTE system.")
-  static class FateOpsCommand {
+  static class FateOpsCommand extends SubCommandOpts {
     @Parameter(description = "[<txId>...]")
     List<String> txList = new ArrayList<>();
 
@@ -237,7 +251,7 @@ public class Admin implements KeywordExecutable {
     boolean fail;
 
     @Parameter(names = {"-d", "--delete"},
-        description = "<txId>... Delete locks associated with transactions (Requires Manager to be down)")
+        description = "<txId>... Delete FaTE transaction and its associated table locks (requires Manager to be down)")
     boolean delete;
 
     @Parameter(names = {"-p", "--print", "-print", "-l", "--list", "-list"},
@@ -253,6 +267,15 @@ public class Admin implements KeywordExecutable {
     @Parameter(names = {"-s", "--state"},
         description = "<state>... Print transactions in the state(s) {NEW, IN_PROGRESS, FAILED_IN_PROGRESS, FAILED, SUCCESSFUL}")
     List<String> states = new ArrayList<>();
+  }
+
+  @Parameters(commandNames = "serviceStatus", commandDescription = "show service status")
+  public static class ServiceStatusCmdOpts extends SubCommandOpts {
+    @Parameter(names = "--json", description = "provide output in json format")
+    boolean json = false;
+    @Parameter(names = "--showHosts",
+        description = "provide a summary of service counts with host details")
+    boolean showHosts = false;
   }
 
   public static void main(String[] args) {
@@ -277,66 +300,78 @@ public class Admin implements KeywordExecutable {
   @SuppressFBWarnings(value = "DM_EXIT", justification = "System.exit okay for CLI tool")
   @Override
   public void execute(final String[] args) {
-    boolean everything;
 
-    AdminOpts opts = new AdminOpts();
+    ServerUtilOpts opts = new ServerUtilOpts();
     JCommander cl = new JCommander(opts);
     cl.setProgramName("accumulo admin");
 
+    ServiceStatusCmdOpts serviceStatusCommandOpts = new ServiceStatusCmdOpts();
+    cl.addCommand(serviceStatusCommandOpts);
+
     ChangeSecretCommand changeSecretCommand = new ChangeSecretCommand();
-    cl.addCommand("changeSecret", changeSecretCommand);
+    cl.addCommand(changeSecretCommand);
 
     CheckTabletsCommand checkTabletsCommand = new CheckTabletsCommand();
-    cl.addCommand("checkTablets", checkTabletsCommand);
+    cl.addCommand(checkTabletsCommand);
 
     DeleteZooInstanceCommand deleteZooInstOpts = new DeleteZooInstanceCommand();
-    cl.addCommand("deleteZooInstance", deleteZooInstOpts);
+    cl.addCommand(deleteZooInstOpts);
 
     DumpConfigCommand dumpConfigCommand = new DumpConfigCommand();
-    cl.addCommand("dumpConfig", dumpConfigCommand);
+    cl.addCommand(dumpConfigCommand);
 
     FateOpsCommand fateOpsCommand = new FateOpsCommand();
-    cl.addCommand("fate", fateOpsCommand);
+    cl.addCommand(fateOpsCommand);
 
     ListInstancesCommand listInstancesOpts = new ListInstancesCommand();
-    cl.addCommand("listInstances", listInstancesOpts);
+    cl.addCommand(listInstancesOpts);
 
     TabletServerLocksCommand tServerLocksOpts = new TabletServerLocksCommand();
-    cl.addCommand("locks", tServerLocksOpts);
+    cl.addCommand(tServerLocksOpts);
 
     PingCommand pingCommand = new PingCommand();
-    cl.addCommand("ping", pingCommand);
+    cl.addCommand(pingCommand);
 
     RestoreZooCommand restoreZooOpts = new RestoreZooCommand();
-    cl.addCommand("restoreZoo", restoreZooOpts);
+    cl.addCommand(restoreZooOpts);
 
     RandomizeVolumesCommand randomizeVolumesOpts = new RandomizeVolumesCommand();
-    cl.addCommand("randomizeVolumes", randomizeVolumesOpts);
+    cl.addCommand(randomizeVolumesOpts);
 
     StopCommand stopOpts = new StopCommand();
-    cl.addCommand("stop", stopOpts);
+    cl.addCommand(stopOpts);
 
     StopAllCommand stopAllOpts = new StopAllCommand();
-    cl.addCommand("stopAll", stopAllOpts);
+    cl.addCommand(stopAllOpts);
 
     StopManagerCommand stopManagerOpts = new StopManagerCommand();
-    cl.addCommand("stopManager", stopManagerOpts);
+    cl.addCommand(stopManagerOpts);
 
     StopMasterCommand stopMasterOpts = new StopMasterCommand();
-    cl.addCommand("stopMaster", stopMasterOpts);
+    cl.addCommand(stopMasterOpts);
 
     VerifyTabletAssignmentsCommand verifyTabletAssignmentsOpts =
         new VerifyTabletAssignmentsCommand();
-    cl.addCommand("verifyTabletAssigns", verifyTabletAssignmentsOpts);
+    cl.addCommand(verifyTabletAssignmentsOpts);
 
     VolumesCommand volumesCommand = new VolumesCommand();
-    cl.addCommand("volumes", volumesCommand);
+    cl.addCommand(volumesCommand);
 
     cl.parse(args);
 
-    if (opts.help || cl.getParsedCommand() == null) {
+    if (cl.getParsedCommand() == null) {
       cl.usage();
       return;
+    }
+
+    for (var command : cl.getCommands().entrySet()) {
+      var objects = command.getValue().getObjects();
+      for (var obj : objects) {
+        if (obj instanceof SubCommandOpts && ((SubCommandOpts) obj).help) {
+          command.getValue().usage();
+          return;
+        }
+      }
     }
 
     ServerContext context = opts.getServerContext();
@@ -377,7 +412,7 @@ public class Admin implements KeywordExecutable {
         }
 
       } else if (cl.getParsedCommand().equals("stop")) {
-        stopTabletServer(context, stopOpts.args, opts.force);
+        stopServers(context, stopOpts.args, stopOpts.force);
       } else if (cl.getParsedCommand().equals("dumpConfig")) {
         printConfig(context, dumpConfigCommand);
       } else if (cl.getParsedCommand().equals("volumes")) {
@@ -398,14 +433,20 @@ public class Admin implements KeywordExecutable {
             tServerLocksOpts.delete);
       } else if (cl.getParsedCommand().equals("fate")) {
         executeFateOpsCommand(context, fateOpsCommand);
-      } else {
-        everything = cl.getParsedCommand().equals("stopAll");
+      } else if (cl.getParsedCommand().equals("serviceStatus")) {
+        ServiceStatusCmd ssc = new ServiceStatusCmd();
+        ssc.execute(context, serviceStatusCommandOpts.json, serviceStatusCommandOpts.showHosts);
+      } else if (cl.getParsedCommand().equals("stopManager")
+          || cl.getParsedCommand().equals("stopAll")) {
+        boolean everything = cl.getParsedCommand().equals("stopAll");
 
         if (everything) {
           flushAll(context);
         }
 
         stopServer(context, everything);
+      } else {
+        cl.usage();
       }
 
       if (rc != 0) {
@@ -484,7 +525,8 @@ public class Admin implements KeywordExecutable {
     try {
       flusher.join(3000);
     } catch (InterruptedException e) {
-      // ignore
+      Thread.currentThread().interrupt();
+      log.warn("Interrupted while waiting to join Flush thread", e);
     }
 
     while (flusher.isAlive() && System.currentTimeMillis() - start < 15000) {
@@ -492,13 +534,22 @@ public class Admin implements KeywordExecutable {
       try {
         flusher.join(1000);
       } catch (InterruptedException e) {
-        // ignore
+        Thread.currentThread().interrupt();
+        log.warn("Interrupted while waiting to join Flush thread", e);
       }
 
       if (flushCount == flushesStarted.get()) {
         // no progress was made while waiting for join... maybe its stuck, stop waiting on it
         break;
       }
+    }
+
+    flusher.interrupt();
+    try {
+      flusher.join();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      log.warn("Interrupted while waiting to join Flush thread", e);
     }
   }
 
@@ -507,6 +558,76 @@ public class Admin implements KeywordExecutable {
 
     ThriftClientTypes.MANAGER.executeVoid(context,
         client -> client.shutdown(TraceUtil.traceInfo(), context.rpcCreds(), tabletServersToo));
+  }
+
+  private static void stopServers(final ServerContext context, List<String> servers,
+      final boolean force)
+      throws AccumuloException, AccumuloSecurityException, InterruptedException, KeeperException {
+    List<String> hostOnly = new ArrayList<>();
+    Set<HostAndPort> hostAndPort = new TreeSet<>();
+
+    for (var server : servers) {
+      if (server.contains(":")) {
+        hostAndPort.add(HostAndPort.fromString(server));
+      } else {
+        hostOnly.add(server);
+      }
+    }
+
+    if (!hostOnly.isEmpty()) {
+      // The old impl of this command with the old behavior
+      stopTabletServer(context, hostOnly, force);
+    }
+
+    if (!hostAndPort.isEmpty()) {
+      // New behavior for this command when ports are present, supports more than just tservers. Is
+      // also async.
+      if (force) {
+        ZooZap.Opts opts = new ZooZap.Opts();
+        var zk = context.getZooReaderWriter();
+        var iid = context.getInstanceID();
+
+        String tserversPath = Constants.ZROOT + "/" + iid + Constants.ZTSERVERS;
+        ZooZap.removeLocks(zk, tserversPath, hostAndPort::contains, opts);
+        String compactorsBasepath = Constants.ZROOT + "/" + iid + Constants.ZCOMPACTORS;
+        ZooZap.removeGroupedLocks(zk, compactorsBasepath, rg -> true, hostAndPort::contains, opts);
+        String sserversPath = Constants.ZROOT + "/" + iid + Constants.ZSSERVERS;
+        ZooZap.removeGroupedLocks(zk, sserversPath, rg -> true, hostAndPort::contains, opts);
+
+        String managerLockPath = Constants.ZROOT + "/" + iid + Constants.ZMANAGER_LOCK;
+        ZooZap.removeSingletonLock(zk, managerLockPath, hostAndPort::contains, opts);
+        String gcLockPath = Constants.ZROOT + "/" + iid + Constants.ZGC_LOCK;
+        ZooZap.removeSingletonLock(zk, gcLockPath, hostAndPort::contains, opts);
+        String monitorLockPath = Constants.ZROOT + "/" + iid + Constants.ZMONITOR_LOCK;
+        ZooZap.removeSingletonLock(zk, monitorLockPath, hostAndPort::contains, opts);
+      } else {
+        for (var server : hostAndPort) {
+          signalGracefulShutdown(context, server);
+        }
+      }
+    }
+  }
+
+  // Visible for tests
+  public static void signalGracefulShutdown(final ClientContext context, HostAndPort hp) {
+    Objects.requireNonNull(hp, "address not set");
+    ServerProcessService.Client client = null;
+    try {
+      client = ThriftClientTypes.SERVER_PROCESS.getServerProcessConnection(context, log,
+          hp.getHost(), hp.getPort());
+      if (client == null) {
+        log.warn("Failed to initiate shutdown for {}", hp);
+        return;
+      }
+      client.gracefulShutdown(context.rpcCreds());
+      log.info("Initiated shutdown for {}", hp);
+    } catch (TException e) {
+      log.warn("Failed to initiate shutdown for {}", hp, e);
+    } finally {
+      if (client != null) {
+        ThriftUtil.returnClient(client, context);
+      }
+    }
   }
 
   private static void stopTabletServer(final ClientContext context, List<String> servers,
@@ -590,21 +711,11 @@ public class Admin implements KeywordExecutable {
   private Map<String,String> siteConfig, systemConfig;
   private List<String> localUsers;
 
-  @SuppressFBWarnings(value = "PATH_TRAVERSAL_IN",
-      justification = "code runs in same security context as user who provided input")
   public void printConfig(ClientContext context, DumpConfigCommand opts) throws Exception {
 
-    File outputDirectory = null;
-    if (opts.directory != null) {
-      outputDirectory = new File(opts.directory);
-      if (!outputDirectory.isDirectory()) {
-        throw new IllegalArgumentException(
-            opts.directory + " does not exist on the local filesystem.");
-      }
-      if (!outputDirectory.canWrite()) {
-        throw new IllegalArgumentException(opts.directory + " is not writable");
-      }
-    }
+    @SuppressFBWarnings(value = "PATH_TRAVERSAL_IN",
+        justification = "app is run in same security context as user providing the filename")
+    File outputDirectory = getOutputDirectory(opts.directory);
     defaultConfig = DefaultConfiguration.getInstance();
     siteConfig = context.instanceOperations().getSiteConfiguration();
     systemConfig = context.instanceOperations().getSystemConfiguration();
@@ -649,6 +760,22 @@ public class Admin implements KeywordExecutable {
         }
       }
     }
+  }
+
+  @SuppressFBWarnings(value = "PATH_TRAVERSAL_IN",
+      justification = "app is run in same security context as user providing the filename")
+  private static File getOutputDirectory(final String directory) {
+    File outputDirectory = null;
+    if (directory != null) {
+      outputDirectory = new File(directory);
+      if (!outputDirectory.isDirectory()) {
+        throw new IllegalArgumentException(directory + " does not exist on the local filesystem.");
+      }
+      if (!outputDirectory.canWrite()) {
+        throw new IllegalArgumentException(directory + " is not writable");
+      }
+    }
+    return outputDirectory;
   }
 
   private String getDefaultConfigValue(String key) {
@@ -784,7 +911,7 @@ public class Admin implements KeywordExecutable {
     var zTableLocksPath = ServiceLock.path(zkRoot + Constants.ZTABLE_LOCKS);
     String fateZkPath = zkRoot + Constants.ZFATE;
     ZooReaderWriter zk = context.getZooReaderWriter();
-    ZooStore<Admin> zs = new ZooStore<>(fateZkPath, zk);
+    ZooStore<Admin> zs = new ZooStore<>(fateZkPath, zk, context.getZooCache());
 
     if (fateOpsCommand.cancel) {
       cancelSubmittedFateTxs(context, fateOpsCommand.txList);

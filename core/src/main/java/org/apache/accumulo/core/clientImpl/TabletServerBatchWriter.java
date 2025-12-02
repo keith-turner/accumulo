@@ -24,6 +24,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.BATCH_WRITER_BIN_MUTATIONS_POOL;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.BATCH_WRITER_SEND_POOL;
 
 import java.io.IOException;
 import java.lang.management.CompilationMXBean;
@@ -49,7 +51,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchWriterConfig;
@@ -71,7 +72,6 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.TabletIdImpl;
 import org.apache.accumulo.core.dataImpl.thrift.TMutation;
 import org.apache.accumulo.core.dataImpl.thrift.UpdateErrors;
-import org.apache.accumulo.core.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.core.rpc.ThriftUtil;
 import org.apache.accumulo.core.rpc.clients.ThriftClientTypes;
 import org.apache.accumulo.core.tabletserver.thrift.NoSuchScanIDException;
@@ -117,6 +117,7 @@ import io.opentelemetry.context.Scope;
 public class TabletServerBatchWriter implements AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(TabletServerBatchWriter.class);
+  private static final AtomicInteger numWritersCreated = new AtomicInteger(0);
 
   // basic configuration
   private final ClientContext context;
@@ -153,13 +154,13 @@ public class TabletServerBatchWriter implements AutoCloseable {
   private long initialCompileTimes;
   private double initialSystemLoad;
 
-  private AtomicInteger tabletServersBatchSum = new AtomicInteger(0);
-  private AtomicInteger tabletBatchSum = new AtomicInteger(0);
-  private AtomicInteger numBatches = new AtomicInteger(0);
-  private AtomicInteger maxTabletBatch = new AtomicInteger(Integer.MIN_VALUE);
-  private AtomicInteger minTabletBatch = new AtomicInteger(Integer.MAX_VALUE);
-  private AtomicInteger minTabletServersBatch = new AtomicInteger(Integer.MAX_VALUE);
-  private AtomicInteger maxTabletServersBatch = new AtomicInteger(Integer.MIN_VALUE);
+  private final AtomicInteger tabletServersBatchSum = new AtomicInteger(0);
+  private final AtomicInteger tabletBatchSum = new AtomicInteger(0);
+  private final AtomicInteger numBatches = new AtomicInteger(0);
+  private final AtomicInteger maxTabletBatch = new AtomicInteger(Integer.MIN_VALUE);
+  private final AtomicInteger minTabletBatch = new AtomicInteger(Integer.MAX_VALUE);
+  private final AtomicInteger minTabletServersBatch = new AtomicInteger(Integer.MAX_VALUE);
+  private final AtomicInteger maxTabletServersBatch = new AtomicInteger(Integer.MIN_VALUE);
 
   // error handling
   private final Violations violations = new Violations();
@@ -210,8 +211,8 @@ public class TabletServerBatchWriter implements AutoCloseable {
 
   public TabletServerBatchWriter(ClientContext context, BatchWriterConfig config) {
     this.context = context;
-    this.executor = context.threadPools()
-        .createGeneralScheduledExecutorService(this.context.getConfiguration());
+    this.executor = context.threadPools().createScheduledExecutorService(2,
+        "BatchWriterThreads-" + numWritersCreated.incrementAndGet(), false);
     this.failedMutations = new FailedMutations();
     this.maxMem = config.getMaxMemory();
     this.maxLatency = config.getMaxLatency(MILLISECONDS) <= 0 ? Long.MAX_VALUE
@@ -672,11 +673,11 @@ public class TabletServerBatchWriter implements AutoCloseable {
     public MutationWriter(int numSendThreads) {
       serversMutations = new HashMap<>();
       queued = new HashSet<>();
-      sendThreadPool = context.threadPools().createFixedThreadPool(numSendThreads,
-          this.getClass().getName(), false);
+      sendThreadPool = context.threadPools().getPoolBuilder(BATCH_WRITER_SEND_POOL)
+          .numCoreThreads(numSendThreads).build();
       locators = new HashMap<>();
-      binningThreadPool = context.threadPools().createFixedThreadPool(1, "BinMutations",
-          new SynchronousQueue<>(), false);
+      binningThreadPool = context.threadPools().getPoolBuilder(BATCH_WRITER_BIN_MUTATIONS_POOL)
+          .numCoreThreads(1).withQueue(new SynchronousQueue<>()).build();
       binningThreadPool.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
     }
 
@@ -1086,9 +1087,7 @@ public class TabletServerBatchWriter implements AutoCloseable {
        * Checks if there is a lock held by a tserver at a specific host and port.
        */
       private boolean isALockHeld(String tserver) {
-        var root = context.getZooKeeperRoot() + Constants.ZTSERVERS;
-        var zLockPath = ServiceLock.path(root + "/" + tserver);
-        return ServiceLock.getSessionId(context.getZooCache(), zLockPath) != 0;
+        return context.getTServerLockChecker().doesTabletServerLockExist(tserver);
       }
 
       private void cancelSession() throws InterruptedException, ThriftSecurityException {

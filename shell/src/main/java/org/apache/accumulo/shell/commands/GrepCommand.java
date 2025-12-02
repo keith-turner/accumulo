@@ -65,7 +65,7 @@ public class GrepCommand extends ScanCommand {
       }
       final Class<? extends Formatter> formatter = getFormatter(cl, tableName, shellState);
       @SuppressWarnings("deprecation")
-      final org.apache.accumulo.core.util.interpret.ScanInterpreter interpeter =
+      final org.apache.accumulo.core.util.interpret.ScanInterpreter interpreter =
           getInterpreter(cl, tableName, shellState);
 
       // handle first argument, if present, the authorizations list to
@@ -83,7 +83,7 @@ public class GrepCommand extends ScanCommand {
       final Authorizations auths = getAuths(cl, shellState);
       final BatchScanner scanner =
           shellState.getAccumuloClient().createBatchScanner(tableName, auths, numThreads);
-      scanner.setRanges(Collections.singletonList(getRange(cl, interpeter)));
+      scanner.setRanges(Collections.singletonList(getRange(cl, interpreter)));
 
       scanner.setTimeout(getTimeout(cl), TimeUnit.MILLISECONDS);
 
@@ -98,7 +98,7 @@ public class GrepCommand extends ScanCommand {
       }
       try {
         // handle columns
-        fetchColumns(cl, scanner, interpeter);
+        fetchColumns(cl, scanner, interpreter);
 
         // output the records
         printRecords(cl, shellState, config, scanner, formatter, printFile);
@@ -119,13 +119,15 @@ public class GrepCommand extends ScanCommand {
     final IteratorSetting grep = new IteratorSetting(prio, name, GrepIterator.class);
     GrepIterator.setTerm(grep, term);
     GrepIterator.setNegate(grep, negate);
+    GrepIterator.matchColumnVisibility(grep, true); // override GrepIterator default
     scanner.addScanIterator(grep);
   }
 
   @Override
   public String description() {
-    return "searches each row, column family, column qualifier and value in a"
-        + " table for a substring (not a regular expression), in parallel, on the server side";
+    return "searches each row, column family, column qualifier, visibility (since 2.1.3),"
+        + " and value in a table for a substring (not a regular expression), in parallel,"
+        + " on the server side";
   }
 
   @Override

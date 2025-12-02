@@ -19,6 +19,7 @@
 package org.apache.accumulo.shell.commands;
 
 import static org.apache.accumulo.core.util.Validators.NEW_TABLE_NAME;
+import static org.apache.accumulo.shell.ShellUtil.readPropertiesFromFile;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -66,6 +67,7 @@ public class CreateTableCommand extends Command {
   private Option base64Opt;
   private Option createTableOptFormatter;
   private Option createTableOptInitProp;
+  private Option createTableOptInitPropFile;
   private Option createTableOptLocalityProps;
   private Option createTableOptIteratorProps;
   private Option createTableOptOffline;
@@ -97,8 +99,10 @@ public class CreateTableCommand extends Command {
       if (!shellState.getAccumuloClient().tableOperations().exists(oldTable)) {
         throw new TableNotFoundException(null, oldTable, null);
       }
-      ntc.withSplits(
-          new TreeSet<>(shellState.getAccumuloClient().tableOperations().listSplits(oldTable)));
+      var splits = shellState.getAccumuloClient().tableOperations().listSplits(oldTable);
+      if (!splits.isEmpty()) {
+        ntc.withSplits(new TreeSet<>(splits));
+      }
     }
 
     // exclude parent properties; only valid with copy config
@@ -120,8 +124,15 @@ public class CreateTableCommand extends Command {
       timeType = TimeType.LOGICAL;
     }
 
-    Map<String,String> initProperties =
-        new HashMap<>(ShellUtil.parseMapOpt(cl, createTableOptInitProp));
+    Map<String,String> initProperties;
+    String filename = cl.getOptionValue(createTableOptInitPropFile.getOpt());
+    if (filename != null) {
+      initProperties = readPropertiesFromFile(filename);
+    } else {
+      initProperties = new HashMap<>();
+    }
+
+    initProperties.putAll(ShellUtil.parseMapOpt(cl, createTableOptInitProp));
 
     // Set iterator if supplied
     if (cl.hasOption(createTableOptIteratorProps.getOpt())) {
@@ -325,13 +336,16 @@ public class CreateTableCommand extends Command {
         "prevent users from writing data they cannot read. When enabling this,"
             + " consider disabling bulk import and alter table.");
     createTableOptFormatter = new Option("f", "formatter", true, "default formatter to set");
-    createTableOptInitProp =
-        new Option("prop", "init-properties", true, "user defined initial properties");
+    createTableOptInitProp = new Option("prop", "init-properties", true,
+        "comma-separated user-defined initial key=value pairs");
+    createTableOptInitPropFile =
+        new Option("pf", "propFile", true, "user-defined initial properties file");
     createTableOptCopyConfig.setArgName("table");
     createTableOptCopySplits.setArgName("table");
     createTableOptSplit.setArgName("filename");
     createTableOptFormatter.setArgName("className");
     createTableOptInitProp.setArgName("properties");
+    createTableOptInitPropFile.setArgName("properties-file");
 
     createTableOptLocalityProps =
         new Option("l", "locality", true, "create locality groups at table creation");
@@ -368,6 +382,7 @@ public class CreateTableCommand extends Command {
     o.addOption(createTableOptEVC);
     o.addOption(createTableOptFormatter);
     o.addOption(createTableOptInitProp);
+    o.addOption(createTableOptInitPropFile);
     o.addOption(createTableOptLocalityProps);
     o.addOption(createTableOptIteratorProps);
     o.addOption(createTableOptOffline);

@@ -24,14 +24,13 @@ import org.apache.accumulo.core.security.TablePermission;
 import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.manager.tableOps.ManagerRepo;
 import org.apache.accumulo.manager.tableOps.TableInfo;
-import org.apache.accumulo.server.security.SecurityOperation;
 import org.slf4j.LoggerFactory;
 
 class SetupPermissions extends ManagerRepo {
 
   private static final long serialVersionUID = 1L;
 
-  private TableInfo tableInfo;
+  private final TableInfo tableInfo;
 
   SetupPermissions(TableInfo ti) {
     this.tableInfo = ti;
@@ -40,12 +39,13 @@ class SetupPermissions extends ManagerRepo {
   @Override
   public Repo<Manager> call(long tid, Manager env) throws Exception {
     // give all table permissions to the creator
-    SecurityOperation security = env.getContext().getSecurityOperation();
+    var security = env.getContext().getSecurityOperation();
     if (!tableInfo.getUser().equals(env.getContext().getCredentials().getPrincipal())) {
       for (TablePermission permission : TablePermission.values()) {
         try {
           security.grantTablePermission(env.getContext().rpcCreds(), tableInfo.getUser(),
-              tableInfo.getTableId(), permission, tableInfo.getNamespaceId());
+              tableInfo.getTableId(), tableInfo.getTableName(), permission,
+              tableInfo.getNamespaceId());
         } catch (ThriftSecurityException e) {
           LoggerFactory.getLogger(SetupPermissions.class).error("{}", e.getMessage(), e);
           throw e;

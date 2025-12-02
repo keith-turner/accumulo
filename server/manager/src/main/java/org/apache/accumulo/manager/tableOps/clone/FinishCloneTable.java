@@ -18,6 +18,8 @@
  */
 package org.apache.accumulo.manager.tableOps.clone;
 
+import java.util.EnumSet;
+
 import org.apache.accumulo.core.fate.Repo;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.manager.Manager;
@@ -28,7 +30,7 @@ import org.slf4j.LoggerFactory;
 class FinishCloneTable extends ManagerRepo {
 
   private static final long serialVersionUID = 1L;
-  private CloneInfo cloneInfo;
+  private final CloneInfo cloneInfo;
 
   public FinishCloneTable(CloneInfo cloneInfo) {
     this.cloneInfo = cloneInfo;
@@ -47,24 +49,24 @@ class FinishCloneTable extends ManagerRepo {
     // may never create files.. therefore there is no need to consume namenode space w/ directories
     // that are not used... tablet will create directories as needed
 
-    if (cloneInfo.keepOffline) {
-      environment.getTableManager().transitionTableState(cloneInfo.tableId, TableState.OFFLINE);
+    final EnumSet<TableState> expectedCurrStates = EnumSet.of(TableState.NEW);
+    if (cloneInfo.isKeepOffline()) {
+      environment.getTableManager().transitionTableState(cloneInfo.getTableId(), TableState.OFFLINE,
+          expectedCurrStates);
     } else {
-      environment.getTableManager().transitionTableState(cloneInfo.tableId, TableState.ONLINE);
+      environment.getTableManager().transitionTableState(cloneInfo.getTableId(), TableState.ONLINE,
+          expectedCurrStates);
     }
+    Utils.unreserveTable(environment, cloneInfo.getTableId(), tid, true);
+    Utils.unreserveNamespace(environment, cloneInfo.getNamespaceId(), tid, false);
+    Utils.unreserveTable(environment, cloneInfo.getSrcTableId(), tid, false);
 
-    Utils.unreserveNamespace(environment, cloneInfo.srcNamespaceId, tid, false);
-    if (!cloneInfo.srcNamespaceId.equals(cloneInfo.namespaceId)) {
-      Utils.unreserveNamespace(environment, cloneInfo.namespaceId, tid, false);
-    }
-    Utils.unreserveTable(environment, cloneInfo.srcTableId, tid, false);
-    Utils.unreserveTable(environment, cloneInfo.tableId, tid, true);
+    environment.getEventCoordinator().event("Cloned table %s from %s", cloneInfo.getTableName(),
+        cloneInfo.getSrcTableId());
 
-    environment.getEventCoordinator().event("Cloned table %s from %s", cloneInfo.tableName,
-        cloneInfo.srcTableId);
-
-    LoggerFactory.getLogger(FinishCloneTable.class).debug("Cloned table " + cloneInfo.srcTableId
-        + " " + cloneInfo.tableId + " " + cloneInfo.tableName);
+    LoggerFactory.getLogger(FinishCloneTable.class)
+        .debug("Cloned table " + cloneInfo.getSrcTableId() + " " + cloneInfo.getTableId() + " "
+            + cloneInfo.getTableName());
 
     return null;
   }

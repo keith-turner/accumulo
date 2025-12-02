@@ -35,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
@@ -73,6 +74,7 @@ public class ClusterConfigParserTest {
     assertFalse(contents.containsKey("compaction.compactor.q2"));
     assertFalse(contents.containsKey("tservers_per_host"));
     assertFalse(contents.containsKey("sservers_per_host"));
+    assertFalse(contents.containsKey("compactors_per_host"));
   }
 
   @Test
@@ -84,7 +86,7 @@ public class ClusterConfigParserTest {
     Map<String,String> contents =
         ClusterConfigParser.parseConfiguration(new File(configFile.toURI()).getAbsolutePath());
 
-    assertEquals(12, contents.size());
+    assertEquals(16, contents.size());
     assertTrue(contents.containsKey("manager"));
     assertEquals("localhost1 localhost2", contents.get("manager"));
     assertTrue(contents.containsKey("monitor"));
@@ -110,8 +112,16 @@ public class ClusterConfigParserTest {
     assertEquals("burstyvm1 burstyvm2", contents.get("sserver.cheap"));
     assertTrue(contents.containsKey("tservers_per_host"));
     assertEquals("2", contents.get("tservers_per_host"));
-    assertTrue(contents.containsKey("sservers_per_host"));
-    assertEquals("1", contents.get("sservers_per_host"));
+    assertTrue(contents.containsKey("sservers_per_host.default"));
+    assertEquals("1", contents.get("sservers_per_host.default"));
+    assertTrue(contents.containsKey("sservers_per_host.highmem"));
+    assertEquals("2", contents.get("sservers_per_host.highmem"));
+    assertTrue(contents.containsKey("sservers_per_host.cheap"));
+    assertEquals("3", contents.get("sservers_per_host.cheap"));
+    assertTrue(contents.containsKey("compactors_per_host.q1"));
+    assertEquals("3", contents.get("compactors_per_host.q1"));
+    assertTrue(contents.containsKey("compactors_per_host.q2"));
+    assertEquals("1", contents.get("compactors_per_host.q2"));
   }
 
   @Test
@@ -169,7 +179,6 @@ public class ClusterConfigParserTest {
     expected.put("GC_HOSTS", "localhost");
     expected.put("TSERVER_HOSTS", "localhost1 localhost2 localhost3 localhost4");
     expected.put("NUM_TSERVERS", "${NUM_TSERVERS:=1}");
-    expected.put("NUM_SSERVERS", "${NUM_SSERVERS:=1}");
 
     expected.replaceAll((k, v) -> '"' + v + '"');
 
@@ -227,7 +236,11 @@ public class ClusterConfigParserTest {
     expected.put("SSERVER_HOSTS_highmem", "hmvm1 hmvm2 hmvm3");
     expected.put("SSERVER_HOSTS_cheap", "burstyvm1 burstyvm2");
     expected.put("NUM_TSERVERS", "${NUM_TSERVERS:=2}");
-    expected.put("NUM_SSERVERS", "${NUM_SSERVERS:=1}");
+    expected.put("NUM_COMPACTORS_q1", "3");
+    expected.put("NUM_COMPACTORS_q2", "1");
+    expected.put("NUM_SSERVERS_default", "1");
+    expected.put("NUM_SSERVERS_highmem", "2");
+    expected.put("NUM_SSERVERS_cheap", "3");
 
     expected.replaceAll((k, v) -> {
       return '"' + v + '"';
@@ -258,5 +271,21 @@ public class ClusterConfigParserTest {
           () -> ClusterConfigParser.outputShellVariables(contents, ps));
       assertTrue(exception.getMessage().contains("vserver"));
     }
+  }
+
+  @Test
+  public void testGroupNamePattern() {
+    ClusterConfigParser.validateGroupNames(Set.of("a"));
+    ClusterConfigParser.validateGroupNames(Set.of("a", "b"));
+    ClusterConfigParser.validateGroupNames(Set.of("default", "reg_ular"));
+    ClusterConfigParser.validateGroupNames(Set.of("a1b2c3d4__"));
+    assertThrows(RuntimeException.class,
+        () -> ClusterConfigParser.validateGroupNames(Set.of("0abcde")));
+    assertThrows(RuntimeException.class,
+        () -> ClusterConfigParser.validateGroupNames(Set.of("a-b")));
+    assertThrows(RuntimeException.class,
+        () -> ClusterConfigParser.validateGroupNames(Set.of("a*b")));
+    assertThrows(RuntimeException.class,
+        () -> ClusterConfigParser.validateGroupNames(Set.of("a?b")));
   }
 }

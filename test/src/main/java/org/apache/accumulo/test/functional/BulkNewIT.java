@@ -18,37 +18,53 @@
  */
 package org.apache.accumulo.test.functional;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.FILES;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOADED;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.PREV_ROW;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
+import org.apache.accumulo.core.client.AccumuloSecurityException;
+import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.client.admin.TimeType;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
@@ -56,20 +72,31 @@ import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.LoadPlan;
 import org.apache.accumulo.core.data.LoadPlan.RangeType;
+import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.data.constraints.Constraint;
 import org.apache.accumulo.core.file.FileOperations;
 import org.apache.accumulo.core.file.FileSKVWriter;
 import org.apache.accumulo.core.file.rfile.RFile;
+import org.apache.accumulo.core.metadata.MetadataTable;
+import org.apache.accumulo.core.metadata.StoredTabletFile;
+import org.apache.accumulo.core.metadata.schema.MetadataSchema;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletsMetadata;
 import org.apache.accumulo.core.security.Authorizations;
+import org.apache.accumulo.core.security.TablePermission;
 import org.apache.accumulo.core.spi.crypto.NoCryptoServiceFactory;
 import org.apache.accumulo.harness.MiniClusterConfigurationCallback;
 import org.apache.accumulo.harness.SharedMiniClusterBase;
 import org.apache.accumulo.minicluster.MemoryUnit;
 import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
+import org.apache.accumulo.server.ServerContext;
+import org.apache.accumulo.server.constraints.MetadataConstraints;
+import org.apache.accumulo.server.constraints.SystemEnvironment;
+import org.apache.accumulo.test.util.Wait;
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -77,19 +104,24 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.io.Text;
+import org.easymock.EasyMock;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * Tests new bulk import technique. For the old technique see {@link BulkOldIT}
  *
- * @since 2.0
+ * @since 2.0.0
  */
 public class BulkNewIT extends SharedMiniClusterBase {
+
+  private static final Logger LOG = LoggerFactory.getLogger(BulkNewIT.class);
 
   @Override
   protected Duration defaultTimeout() {
@@ -148,7 +180,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
     String dir = getDir("/testSingleTabletSingleFileNoSplits-");
 
-    String h1 = writeData(dir + "/f1.", aconf, 0, 332);
+    String h1 = writeData(fs, dir + "/f1.", aconf, 0, 332);
 
     c.tableOperations().importDirectory(dir).to(tableName).tableTime(setTime).load();
     // running again with ignoreEmptyDir set to true will not throw an exception
@@ -181,6 +213,84 @@ public class BulkNewIT extends SharedMiniClusterBase {
   public void testSingleTabletSingleFile() throws Exception {
     try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
       testSingleTabletSingleFile(client, false, false);
+    }
+  }
+
+  @Test
+  public void testConcurrentImportSameDirectory() throws Exception {
+    try (AccumuloClient client = Accumulo.newClient().from(getClientProps()).build()) {
+      final int numTasks = 16;
+      final int iterations = 3;
+      final int startRow = 0;
+      final int endRow = 199;
+
+      ExecutorService pool = Executors.newFixedThreadPool(numTasks);
+
+      try {
+        for (int i = 0; i < iterations; i++) {
+          LOG.debug("Running concurrent import iteration {}/{}", i + 1, iterations);
+          final String table = getUniqueNames(1)[0] + i;
+          client.tableOperations().create(table);
+
+          Path sourceDir = new Path(rootPath + "/concurrent/" + table + "_sourceDir");
+          assertTrue(fs.mkdirs(sourceDir), "Failed to create " + sourceDir);
+
+          writeData(fs, sourceDir + "/f.", aconf, startRow, endRow);
+
+          CountDownLatch startSignal = new CountDownLatch(numTasks);
+          List<Future<Boolean>> futures = new ArrayList<>(numTasks);
+          Predicate<Throwable> expectedConcurrentFailure = throwable -> {
+            if (throwable instanceof IOException || throwable instanceof AccumuloException) {
+              LOG.debug("Concurrent import attempt ({}) failed as expected with {}: {}",
+                  Thread.currentThread().getName(), throwable.getClass().getSimpleName(),
+                  throwable.getMessage());
+              return true;
+            }
+            return false;
+          };
+
+          for (int task = 0; task < numTasks; task++) {
+            futures.add(pool.submit(() -> {
+              final var importMappingOptions =
+                  client.tableOperations().importDirectory(sourceDir.toString()).to(table);
+              try {
+                startSignal.countDown();
+                startSignal.await();
+                importMappingOptions.load();
+                return true;
+              } catch (Exception e) {
+                if (expectedConcurrentFailure.test(e)) {
+                  return false;
+                }
+                throw e;
+              }
+            }));
+          }
+          assertEquals(numTasks, futures.size());
+
+          int success = 0;
+          int failures = 0;
+          for (Future<Boolean> future : futures) {
+            if (future.get()) {
+              success++;
+            } else {
+              failures++;
+            }
+          }
+          assertEquals(1, success, "Expected exactly one successful bulk import");
+          assertEquals(numTasks - 1, failures,
+              "Expected all other attempts to fail with a concurrency related exception");
+
+          try (var scanner = client.createScanner(table, Authorizations.EMPTY)) {
+            long count = scanner.stream().count();
+            assertEquals(endRow - startRow + 1, count);
+          }
+          client.tableOperations().delete(table);
+        }
+      } finally {
+        pool.shutdownNow();
+        pool.awaitTermination(30, TimeUnit.SECONDS);
+      }
     }
   }
 
@@ -237,7 +347,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
     String dir = getDir("/testSingleTabletSingleFileNoSplits-");
 
-    String h1 = writeData(dir + "/f1.", aconf, 0, 333);
+    String h1 = writeData(fs, dir + "/f1.", aconf, 0, 333);
 
     c.tableOperations().importDirectory(dir).to(tableName).load();
 
@@ -270,7 +380,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
       String dir = getDir("/testBadPermissions-");
 
-      writeData(dir + "/f1.", aconf, 0, 333);
+      writeData(fs, dir + "/f1.", aconf, 0, 333);
 
       Path rFilePath = new Path(dir, "f1." + RFile.EXTENSION);
       FsPermission originalPerms = fs.getFileStatus(rFilePath).getPermission();
@@ -318,21 +428,21 @@ public class BulkNewIT extends SharedMiniClusterBase {
       out.close();
 
       // 1 Tablet 0333-null
-      String h1 = writeData(dir + "/f1.", aconf, 0, 333);
+      String h1 = writeData(fs, dir + "/f1.", aconf, 0, 333);
       hashes.get("0333").add(h1);
 
       // 2 Tablets 0666-0334, 0999-0667
-      String h2 = writeData(dir + "/f2.", aconf, 334, 999);
+      String h2 = writeData(fs, dir + "/f2.", aconf, 334, 999);
       hashes.get("0666").add(h2);
       hashes.get("0999").add(h2);
 
       // 2 Tablets 1333-1000, 1666-1334
-      String h3 = writeData(dir + "/f3.", aconf, 1000, 1499);
+      String h3 = writeData(fs, dir + "/f3.", aconf, 1000, 1499);
       hashes.get("1333").add(h3);
       hashes.get("1666").add(h3);
 
       // 2 Tablets 1666-1334, >1666
-      String h4 = writeData(dir + "/f4.", aconf, 1500, 1999);
+      String h4 = writeData(fs, dir + "/f4.", aconf, 1500, 1999);
       hashes.get("1666").add(h4);
       hashes.get("null").add(h4);
 
@@ -372,21 +482,21 @@ public class BulkNewIT extends SharedMiniClusterBase {
       out.close();
 
       // 1 Tablet 0333-null
-      String h1 = writeData(dir + "/f1.", aconf, 0, 333);
+      String h1 = writeData(fs, dir + "/f1.", aconf, 0, 333);
       hashes.get("0333").add(h1);
 
       // 3 Tablets 0666-0334, 0999-0667, 1333-1000
-      String h2 = writeData(dir + "/bad-file.", aconf, 334, 1333);
+      String h2 = writeData(fs, dir + "/bad-file.", aconf, 334, 1333);
       hashes.get("0666").add(h2);
       hashes.get("0999").add(h2);
       hashes.get("1333").add(h2);
 
       // 1 Tablet 1666-1334
-      String h3 = writeData(dir + "/f3.", aconf, 1334, 1499);
+      String h3 = writeData(fs, dir + "/f3.", aconf, 1334, 1499);
       hashes.get("1666").add(h3);
 
       // 2 Tablets 1666-1334, >1666
-      String h4 = writeData(dir + "/f4.", aconf, 1500, 1999);
+      String h4 = writeData(fs, dir + "/f4.", aconf, 1500, 1999);
       hashes.get("1666").add(h4);
       hashes.get("null").add(h4);
 
@@ -432,8 +542,8 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
       String dir = getDir("/testBulkFile-");
 
-      writeData(dir + "/f1.", aconf, 0, 333);
-      writeData(dir + "/f2.", aconf, 0, 666);
+      writeData(fs, dir + "/f1.", aconf, 0, 333);
+      writeData(fs, dir + "/f2.", aconf, 0, 666);
 
       final var importMappingOptions = c.tableOperations().importDirectory(dir).to(tableName);
 
@@ -454,6 +564,68 @@ public class BulkNewIT extends SharedMiniClusterBase {
           .loadFileTo("f2.rf", RangeType.TABLE, null, row(555)).build();
       final var nonExistentBoundary = importMappingOptions.plan(loadPlan);
       assertThrows(AccumuloException.class, nonExistentBoundary::load);
+
+      // Create an empty load plan
+      loadPlan = LoadPlan.builder().build();
+      final var emptyLoadPlan = importMappingOptions.plan(loadPlan);
+      assertThrows(IllegalArgumentException.class, emptyLoadPlan::load);
+    }
+  }
+
+  @Test
+  public void testComputeLoadPlan() throws Exception {
+
+    try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
+      addSplits(c, tableName, "0333 0666 0999 1333 1666");
+
+      String dir = getDir("/testBulkFile-");
+
+      Map<String,Set<String>> hashes = new HashMap<>();
+      String h1 = writeData(fs, dir + "/f1.", aconf, 0, 333);
+      hashes.put("0333", new HashSet<>(List.of(h1)));
+      String h2 = writeData(fs, dir + "/f2.", aconf, 0, 666);
+      hashes.get("0333").add(h2);
+      hashes.put("0666", new HashSet<>(List.of(h2)));
+      String h3 = writeData(fs, dir + "/f3.", aconf, 334, 700);
+      hashes.get("0666").add(h3);
+      hashes.put("0999", new HashSet<>(List.of(h3)));
+      hashes.put("1333", Set.of());
+      hashes.put("1666", Set.of());
+      hashes.put("null", Set.of());
+
+      SortedSet<Text> splits = new TreeSet<>(c.tableOperations().listSplits(tableName));
+
+      for (String filename : List.of("f1.rf", "f2.rf", "f3.rf")) {
+        // The body of this loop simulates what each reducer would do
+        Path path = new Path(dir + "/" + filename);
+
+        // compute the load plan for the rfile
+        URI file = path.toUri();
+        String lpJson = LoadPlan.compute(file, LoadPlan.SplitResolver.from(splits)).toJson();
+
+        // save the load plan to a file
+        Path lpPath = new Path(path.getParent(), path.getName().replace(".rf", ".lp"));
+        try (var output = getCluster().getFileSystem().create(lpPath, false)) {
+          IOUtils.write(lpJson, output, UTF_8);
+        }
+      }
+
+      // This simulates the code that would run after the map reduce job and bulk import the files
+      var builder = LoadPlan.builder();
+      for (var status : getCluster().getFileSystem().listStatus(new Path(dir),
+          p -> p.getName().endsWith(".lp"))) {
+        try (var input = getCluster().getFileSystem().open(status.getPath())) {
+          String lpJson = IOUtils.toString(input, UTF_8);
+          builder.addPlan(LoadPlan.fromJson(lpJson));
+        }
+      }
+
+      LoadPlan lpAll = builder.build();
+
+      c.tableOperations().importDirectory(dir).to(tableName).plan(lpAll).load();
+
+      verifyData(c, tableName, 0, 700, false);
+      verifyMetadata(c, tableName, hashes);
     }
   }
 
@@ -493,7 +665,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
       addSplits(c, tableName, "0333");
 
-      var h1 = writeData(dir + "/f1.", aconf, 333, 333);
+      var h1 = writeData(fs, dir + "/f1.", aconf, 333, 333);
 
       c.tableOperations().importDirectory(dir).to(tableName).load();
 
@@ -506,6 +678,84 @@ public class BulkNewIT extends SharedMiniClusterBase {
     }
   }
 
+  @Test
+  public void testExceptionInMetadataUpdate() throws Exception {
+    try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
+
+      // after setting this up, bulk imports should never succeed on a tablet server
+      setupBulkConstraint(getPrincipal(), c);
+
+      String dir = getDir("/testExceptionInMetadataUpdate-");
+
+      String h1 = writeData(fs, dir + "/f1.", aconf, 0, 333);
+
+      var executor = Executors.newSingleThreadExecutor();
+      // With the constraint configured that makes tservers throw an exception on bulk import, the
+      // bulk import should never succeed. So run the bulk import in another thread.
+      var future = executor.submit(() -> {
+        c.tableOperations().importDirectory(dir).to(tableName).load();
+        return null;
+      });
+
+      Thread.sleep(10000);
+
+      // the bulk import should not be done
+      assertFalse(future.isDone());
+
+      // remove the constraint which should allow the bulk import running in the background thread
+      // to complete
+      removeBulkConstraint(getPrincipal(), c);
+
+      // wait for the future to complete and ensure it had no exceptions
+      future.get();
+
+      // verifty the data was bulk imported
+      verifyData(c, tableName, 0, 333, false);
+      verifyMetadata(c, tableName, Map.of("null", Set.of(h1)));
+    }
+  }
+
+  @Test
+  public void testManyTablets() throws Exception {
+
+    try (AccumuloClient c = Accumulo.newClient().from(getClientProps()).build()) {
+      String dir = getDir("/testManyTablets-");
+      writeData(fs, dir + "/f1.", aconf, 0, 199);
+      writeData(fs, dir + "/f2.", aconf, 200, 399);
+      writeData(fs, dir + "/f3.", aconf, 400, 599);
+      writeData(fs, dir + "/f4.", aconf, 600, 799);
+      writeData(fs, dir + "/f5.", aconf, 800, 999);
+
+      var splits = IntStream.range(1, 1000).mapToObj(BulkNewIT::row).map(Text::new)
+          .collect(Collectors.toCollection(TreeSet::new));
+
+      // faster to create a table w/ lots of splits
+      c.tableOperations().delete(tableName);
+      c.tableOperations().create(tableName, new NewTableConfiguration().withSplits(splits));
+
+      var lpBuilder = LoadPlan.builder();
+      lpBuilder.loadFileTo("f1.rf", RangeType.TABLE, null, row(1));
+      IntStream.range(2, 200)
+          .forEach(i -> lpBuilder.loadFileTo("f1.rf", RangeType.TABLE, row(i - 1), row(i)));
+      IntStream.range(200, 400)
+          .forEach(i -> lpBuilder.loadFileTo("f2.rf", RangeType.TABLE, row(i - 1), row(i)));
+      IntStream.range(400, 600)
+          .forEach(i -> lpBuilder.loadFileTo("f3.rf", RangeType.TABLE, row(i - 1), row(i)));
+      IntStream.range(600, 800)
+          .forEach(i -> lpBuilder.loadFileTo("f4.rf", RangeType.TABLE, row(i - 1), row(i)));
+      IntStream.range(800, 1000)
+          .forEach(i -> lpBuilder.loadFileTo("f5.rf", RangeType.TABLE, row(i - 1), row(i)));
+
+      var loadPlan = lpBuilder.build();
+
+      c.tableOperations().importDirectory(dir).to(tableName).plan(loadPlan).load();
+
+      verifyData(c, tableName, 0, 999, false);
+
+    }
+
+  }
+
   private void addSplits(AccumuloClient client, String tableName, String splitString)
       throws Exception {
     SortedSet<Text> splits = new TreeSet<>();
@@ -515,8 +765,8 @@ public class BulkNewIT extends SharedMiniClusterBase {
     client.tableOperations().addSplits(tableName, splits);
   }
 
-  private void verifyData(AccumuloClient client, String table, int start, int end, boolean setTime)
-      throws Exception {
+  private static void verifyData(AccumuloClient client, String table, int start, int end,
+      boolean setTime) throws Exception {
     try (Scanner scanner = client.createScanner(table, Authorizations.EMPTY)) {
 
       Iterator<Entry<Key,Value>> iter = scanner.iterator();
@@ -549,7 +799,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
     }
   }
 
-  private void verifyMetadata(AccumuloClient client, String tableName,
+  public static void verifyMetadata(AccumuloClient client, String tableName,
       Map<String,Set<String>> expectedHashes) {
 
     Set<String> endRowsSeen = new HashSet<>();
@@ -565,7 +815,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
         String endRow = tablet.getEndRow() == null ? "null" : tablet.getEndRow().toString();
 
-        assertEquals(expectedHashes.get(endRow), fileHashes);
+        assertEquals(expectedHashes.get(endRow), fileHashes, "endRow " + endRow);
 
         endRowsSeen.add(endRow);
       }
@@ -576,7 +826,7 @@ public class BulkNewIT extends SharedMiniClusterBase {
 
   @SuppressFBWarnings(value = {"PATH_TRAVERSAL_IN", "WEAK_MESSAGE_DIGEST_SHA1"},
       justification = "path provided by test; sha-1 is okay for test")
-  private String hash(String filename) {
+  public static String hash(String filename) {
     try {
       byte[] data = Files.readAllBytes(Paths.get(filename.replaceFirst("^file:", "")));
       byte[] hash = MessageDigest.getInstance("SHA1").digest(data);
@@ -586,13 +836,12 @@ public class BulkNewIT extends SharedMiniClusterBase {
     }
   }
 
-  private static String row(int r) {
+  public static String row(int r) {
     return String.format("%04d", r);
   }
 
-  private String writeData(String file, AccumuloConfiguration aconf, int s, int e)
-      throws Exception {
-    FileSystem fs = getCluster().getFileSystem();
+  public static String writeData(FileSystem fs, String file, AccumuloConfiguration aconf, int s,
+      int e) throws Exception {
     String filename = file + RFile.EXTENSION;
     try (FileSKVWriter writer = FileOperations.getInstance().newWriterBuilder()
         .forFile(filename, fs, fs.getConf(), NoCryptoServiceFactory.NONE)
@@ -604,5 +853,96 @@ public class BulkNewIT extends SharedMiniClusterBase {
     }
 
     return hash(filename);
+  }
+
+  /**
+   * This constraint is used to simulate an error in the metadata write for a bulk import.
+   */
+  public static class NoBulkConstratint implements Constraint {
+
+    public static final String CANARY_VALUE = "a!p@a#c$h%e^&*()";
+    public static final short CANARY_CODE = 31234;
+
+    @Override
+    public String getViolationDescription(short violationCode) {
+      if (violationCode == 1) {
+        return "Bulk import files are not allowed in this test";
+      } else if (violationCode == CANARY_CODE) {
+        return "Check used to see if constraint is active";
+      }
+
+      return null;
+    }
+
+    @Override
+    public List<Short> check(Environment env, Mutation mutation) {
+      for (var colUpdate : mutation.getUpdates()) {
+        var fam = new Text(colUpdate.getColumnFamily());
+        if (fam.equals(MetadataSchema.TabletsSection.DataFileColumnFamily.NAME)) {
+          var stf = new StoredTabletFile(new String(colUpdate.getColumnQualifier(), UTF_8));
+          if (stf.getFileName().startsWith("I")) {
+            return List.of((short) 1);
+          }
+        }
+
+        if (new String(colUpdate.getValue(), UTF_8).equals(CANARY_VALUE)) {
+          return List.of(CANARY_CODE);
+        }
+
+      }
+
+      return null;
+    }
+  }
+
+  static void setupBulkConstraint(String principal, AccumuloClient c)
+      throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
+    // add a constraint to the metadata table that disallows bulk import files to be added
+    c.securityOperations().grantTablePermission(principal, MetadataTable.NAME,
+        TablePermission.WRITE);
+    c.securityOperations().grantTablePermission(principal, MetadataTable.NAME,
+        TablePermission.ALTER_TABLE);
+
+    c.tableOperations().addConstraint(MetadataTable.NAME, NoBulkConstratint.class.getName());
+
+    var metaConstraints = new MetadataConstraints();
+    SystemEnvironment env = EasyMock.createMock(SystemEnvironment.class);
+    ServerContext context = EasyMock.createMock(ServerContext.class);
+    EasyMock.expect(env.getServerContext()).andReturn(context);
+    EasyMock.replay(env);
+
+    // wait for the constraint to be active on the metadata table
+    Wait.waitFor(() -> {
+      try (var bw = c.createBatchWriter(MetadataTable.NAME)) {
+        Mutation m = new Mutation("~garbage");
+        m.put("", "", NoBulkConstratint.CANARY_VALUE);
+        // This test assume the metadata constraint check will not flag this mutation, the following
+        // validates this assumption.
+        assertNull(metaConstraints.check(env, m));
+        bw.addMutation(m);
+        return false;
+      } catch (MutationsRejectedException e) {
+        return e.getConstraintViolationSummaries().stream()
+            .anyMatch(cvs -> cvs.violationCode == NoBulkConstratint.CANARY_CODE);
+      }
+    });
+
+    // delete the junk added to the metadata table
+    try (var bw = c.createBatchWriter(MetadataTable.NAME)) {
+      Mutation m = new Mutation("~garbage");
+      m.putDelete("", "");
+      bw.addMutation(m);
+    }
+  }
+
+  static void removeBulkConstraint(String principal, AccumuloClient c)
+      throws AccumuloException, TableNotFoundException, AccumuloSecurityException {
+    int constraintNum = c.tableOperations().listConstraints(MetadataTable.NAME)
+        .get(NoBulkConstratint.class.getName());
+    c.tableOperations().removeConstraint(MetadataTable.NAME, constraintNum);
+    c.securityOperations().revokeTablePermission(principal, MetadataTable.NAME,
+        TablePermission.WRITE);
+    c.securityOperations().revokeTablePermission(principal, MetadataTable.NAME,
+        TablePermission.ALTER_TABLE);
   }
 }

@@ -39,6 +39,7 @@ import org.apache.accumulo.core.dataImpl.thrift.IterInfo;
 import org.apache.accumulo.core.dataImpl.thrift.TCMResult;
 import org.apache.accumulo.core.dataImpl.thrift.TCMStatus;
 import org.apache.accumulo.core.dataImpl.thrift.TCondition;
+import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.IteratorUtil.IteratorScope;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 import org.apache.accumulo.core.iteratorsImpl.IteratorBuilder;
@@ -46,17 +47,17 @@ import org.apache.accumulo.core.iteratorsImpl.IteratorConfigUtil;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.conf.TableConfiguration;
 import org.apache.accumulo.server.conf.TableConfiguration.ParsedIteratorConfig;
-import org.apache.accumulo.server.iterators.TabletIteratorEnvironment;
+import org.apache.accumulo.server.iterators.SystemIteratorEnvironmentImpl;
 import org.apache.accumulo.tserver.data.ServerConditionalMutation;
 import org.apache.hadoop.io.Text;
 
 public class ConditionCheckerContext {
-  private CompressedIterators compressedIters;
+  private final CompressedIterators compressedIters;
 
-  private List<IterInfo> tableIters;
-  private Map<String,Map<String,String>> tableIterOpts;
-  private TabletIteratorEnvironment tie;
-  private String context;
+  private final List<IterInfo> tableIters;
+  private final Map<String,Map<String,String>> tableIterOpts;
+  private final IteratorEnvironment ie;
+  private final String context;
 
   private static class MergedIterConfig {
     List<IterInfo> mergedIters;
@@ -68,7 +69,7 @@ public class ConditionCheckerContext {
     }
   }
 
-  private Map<ByteSequence,MergedIterConfig> mergedIterCache = new HashMap<>();
+  private final Map<ByteSequence,MergedIterConfig> mergedIterCache = new HashMap<>();
 
   ConditionCheckerContext(ServerContext context, CompressedIterators compressedIters,
       TableConfiguration tableConf) {
@@ -80,12 +81,12 @@ public class ConditionCheckerContext {
     tableIterOpts = pic.getOpts();
     this.context = pic.getServiceEnv();
 
-    tie = new TabletIteratorEnvironment(context, IteratorScope.scan, tableConf,
-        tableConf.getTableId());
+    ie = new SystemIteratorEnvironmentImpl.Builder(context).withScope(IteratorScope.scan)
+        .withTableId(tableConf.getTableId()).build();
   }
 
   SortedKeyValueIterator<Key,Value> buildIterator(SortedKeyValueIterator<Key,Value> systemIter,
-      TCondition tc) throws IOException {
+      TCondition tc) throws IOException, ReflectiveOperationException {
 
     ArrayByteSequence key = new ArrayByteSequence(tc.iterators);
     MergedIterConfig mic = mergedIterCache.get(key);
@@ -104,13 +105,13 @@ public class ConditionCheckerContext {
       mergedIterCache.put(key, mic);
     }
 
-    var iteratorBuilder = IteratorBuilder.builder(mic.mergedIters).opts(mic.mergedItersOpts)
-        .env(tie).useClassLoader(context).useClassCache(true).build();
+    var iteratorBuilder = IteratorBuilder.builder(mic.mergedIters).opts(mic.mergedItersOpts).env(ie)
+        .useClassLoader(context).useClassCache(true).build();
     return IteratorConfigUtil.loadIterators(systemIter, iteratorBuilder);
   }
 
   boolean checkConditions(SortedKeyValueIterator<Key,Value> systemIter,
-      ServerConditionalMutation scm) throws IOException {
+      ServerConditionalMutation scm) throws IOException, ReflectiveOperationException {
     boolean add = true;
 
     for (TCondition tc : scm.getConditions()) {
@@ -144,9 +145,9 @@ public class ConditionCheckerContext {
 
   public class ConditionChecker {
 
-    private List<ServerConditionalMutation> conditionsToCheck;
-    private List<ServerConditionalMutation> okMutations;
-    private List<TCMResult> results;
+    private final List<ServerConditionalMutation> conditionsToCheck;
+    private final List<ServerConditionalMutation> okMutations;
+    private final List<TCMResult> results;
     private boolean checked = false;
 
     public ConditionChecker(List<ServerConditionalMutation> conditionsToCheck,
@@ -156,7 +157,8 @@ public class ConditionCheckerContext {
       this.results = results;
     }
 
-    public void check(SortedKeyValueIterator<Key,Value> systemIter) throws IOException {
+    public void check(SortedKeyValueIterator<Key,Value> systemIter)
+        throws IOException, ReflectiveOperationException {
       checkArgument(!checked, "check() method should only be called once");
       checked = true;
 

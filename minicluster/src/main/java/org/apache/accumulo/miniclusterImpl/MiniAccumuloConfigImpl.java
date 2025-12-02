@@ -18,28 +18,46 @@
  */
 package org.apache.accumulo.miniclusterImpl;
 
+import static org.apache.accumulo.minicluster.ServerType.COMPACTOR;
+import static org.apache.accumulo.minicluster.ServerType.GARBAGE_COLLECTOR;
+import static org.apache.accumulo.minicluster.ServerType.MANAGER;
+import static org.apache.accumulo.minicluster.ServerType.MONITOR;
+import static org.apache.accumulo.minicluster.ServerType.SCAN_SERVER;
+import static org.apache.accumulo.minicluster.ServerType.TABLET_SERVER;
+import static org.apache.accumulo.minicluster.ServerType.ZOOKEEPER;
+
 import java.io.File;
 import java.io.IOException;
-import java.net.MalformedURLException;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.function.Consumer;
 
-import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.compactor.Compactor;
 import org.apache.accumulo.core.conf.ClientProperty;
 import org.apache.accumulo.core.conf.HadoopCredentialProvider;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.conf.SiteConfiguration;
+import org.apache.accumulo.gc.SimpleGarbageCollector;
+import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.minicluster.MemoryUnit;
 import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.apache.accumulo.minicluster.ServerType;
+import org.apache.accumulo.monitor.Monitor;
 import org.apache.accumulo.server.util.PortUtils;
+import org.apache.accumulo.tserver.ScanServer;
+import org.apache.accumulo.tserver.TabletServer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.zookeeper.server.ZooKeeperServerMain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
 
 /**
  * Holds configuration for {@link MiniAccumuloClusterImpl}. Required configurations must be passed
@@ -51,6 +69,7 @@ public class MiniAccumuloConfigImpl {
 
   private static final Logger log = LoggerFactory.getLogger(MiniAccumuloConfigImpl.class);
   private static final String DEFAULT_INSTANCE_SECRET = "DONTTELL";
+  static final String DEFAULT_ZOOKEEPER_HOST = "127.0.0.1";
 
   private File dir = null;
   private String rootPassword = null;
@@ -62,6 +81,10 @@ public class MiniAccumuloConfigImpl {
   private int numScanServers = 0;
   private int numCompactors = 1;
   private Map<ServerType,Long> memoryConfig = new HashMap<>();
+  private final EnumMap<ServerType,Class<?>> serverTypeClasses =
+      new EnumMap<>(Map.of(MANAGER, Manager.class, GARBAGE_COLLECTOR, SimpleGarbageCollector.class,
+          MONITOR, Monitor.class, ZOOKEEPER, ZooKeeperServerMain.class, TABLET_SERVER,
+          TabletServer.class, SCAN_SERVER, ScanServer.class, COMPACTOR, Compactor.class));
   private boolean jdwpEnabled = false;
   private Map<String,String> systemProperties = new HashMap<>();
 
@@ -89,16 +112,13 @@ public class MiniAccumuloConfigImpl {
   private Boolean existingInstance = null;
 
   private boolean useMiniDFS = false;
+  private int numMiniDFSDataNodes = 1;
 
   private boolean useCredentialProvider = false;
 
   private String[] classpathItems = null;
 
   private String[] nativePathItems = null;
-
-  // These are only used on top of existing instances
-  private Configuration hadoopConf;
-  private SiteConfiguration accumuloConf;
 
   private Consumer<MiniAccumuloConfigImpl> preStartConfigProcessor;
 
@@ -147,6 +167,9 @@ public class MiniAccumuloConfigImpl {
         mergeProp(Property.INSTANCE_SECRET.getKey(), DEFAULT_INSTANCE_SECRET);
       }
 
+      // enable metrics reporting - by default will appear in standard log files.
+      mergeProp(Property.GENERAL_MICROMETER_ENABLED.getKey(), "true");
+
       mergeProp(Property.TSERV_PORTSEARCH.getKey(), "true");
       mergeProp(Property.TSERV_DATACACHE_SIZE.getKey(), "10M");
       mergeProp(Property.TSERV_INDEXCACHE_SIZE.getKey(), "10M");
@@ -191,7 +214,7 @@ public class MiniAccumuloConfigImpl {
             zooKeeperPort = PortUtils.getRandomFreePort();
           }
 
-          zkHost = "localhost:" + zooKeeperPort;
+          zkHost = DEFAULT_ZOOKEEPER_HOST + ":" + zooKeeperPort;
         }
         siteConfig.put(Property.INSTANCE_ZK_HOST.getKey(), zkHost);
       }
@@ -210,7 +233,7 @@ public class MiniAccumuloConfigImpl {
 
     File keystoreFile = new File(getConfDir(), "credential-provider.jks");
     String keystoreUri = "jceks://file" + keystoreFile.getAbsolutePath();
-    Configuration conf = getHadoopConfiguration();
+    Configuration conf = buildHadoopConfiguration();
     HadoopCredentialProvider.setPath(conf, keystoreUri);
 
     // Set the URI on the siteCfg
@@ -236,6 +259,18 @@ public class MiniAccumuloConfigImpl {
       // Only remove it from the siteCfg if we succeeded in adding it to the CredentialProvider
       entries.remove();
     }
+  }
+
+  Configuration buildHadoopConfiguration() {
+    Configuration conf = new Configuration(false);
+    if (hadoopConfDir != null) {
+      File coreSite = new File(hadoopConfDir, "core-site.xml");
+      File hdfsSite = new File(hadoopConfDir, "hdfs-site.xml");
+
+      conf.addResource(new Path(coreSite.toURI()));
+      conf.addResource(new Path(hdfsSite.toURI()));
+    }
+    return conf;
   }
 
   /**
@@ -412,6 +447,25 @@ public class MiniAccumuloConfigImpl {
   }
 
   /**
+   * Sets the class that will be used to instantiate this server type.
+   */
+  public MiniAccumuloConfigImpl setServerClass(ServerType type, Class<?> serverClass) {
+    serverTypeClasses.put(type, Objects.requireNonNull(serverClass));
+    return this;
+  }
+
+  /**
+   * @return the class to use to instantiate this server type.
+   */
+  public Class<?> getServerClass(ServerType type) {
+    var clazz = serverTypeClasses.get(type);
+    if (clazz == null) {
+      throw new IllegalStateException("Server type " + type + " has no class");
+    }
+    return clazz;
+  }
+
+  /**
    * @return a copy of the site config
    */
   public Map<String,String> getSiteConfig() {
@@ -564,7 +618,7 @@ public class MiniAccumuloConfigImpl {
     return this;
   }
 
-  public boolean useMiniDFS() {
+  public boolean getUseMiniDFS() {
     return useMiniDFS;
   }
 
@@ -575,7 +629,17 @@ public class MiniAccumuloConfigImpl {
    * underlying miniDFS cannot be restarted.
    */
   public void useMiniDFS(boolean useMiniDFS) {
+    useMiniDFS(useMiniDFS, 1);
+  }
+
+  public void useMiniDFS(boolean useMiniDFS, int numDataNodes) {
+    Preconditions.checkArgument(numDataNodes > 0);
     this.useMiniDFS = useMiniDFS;
+    this.numMiniDFSDataNodes = numDataNodes;
+  }
+
+  public int getNumDataNodes() {
+    return numMiniDFSDataNodes;
   }
 
   /**
@@ -724,22 +788,10 @@ public class MiniAccumuloConfigImpl {
 
     System.setProperty("accumulo.properties", "accumulo.properties");
     this.hadoopConfDir = hadoopConfDir;
-    hadoopConf = new Configuration(false);
-    accumuloConf = SiteConfiguration.fromFile(accumuloProps).build();
-    File coreSite = new File(hadoopConfDir, "core-site.xml");
-    File hdfsSite = new File(hadoopConfDir, "hdfs-site.xml");
-
-    try {
-      hadoopConf.addResource(coreSite.toURI().toURL());
-      hadoopConf.addResource(hdfsSite.toURI().toURL());
-    } catch (MalformedURLException e1) {
-      throw e1;
-    }
+    var siteConfiguration = SiteConfiguration.fromFile(accumuloProps).build();
 
     Map<String,String> siteConfigMap = new HashMap<>();
-    for (Entry<String,String> e : accumuloConf) {
-      siteConfigMap.put(e.getKey(), e.getValue());
-    }
+    siteConfiguration.getProperties(siteConfigMap, key -> true, false);
     _setSiteConfig(siteConfigMap);
 
     return this;
@@ -761,24 +813,6 @@ public class MiniAccumuloConfigImpl {
    */
   public File getHadoopConfDir() {
     return this.hadoopConfDir;
-  }
-
-  /**
-   * @return accumulo Configuration being used
-   *
-   * @since 1.6.2
-   */
-  public AccumuloConfiguration getAccumuloConfiguration() {
-    return accumuloConf;
-  }
-
-  /**
-   * @return hadoop Configuration being used
-   *
-   * @since 1.6.2
-   */
-  public Configuration getHadoopConfiguration() {
-    return hadoopConf;
   }
 
   /**

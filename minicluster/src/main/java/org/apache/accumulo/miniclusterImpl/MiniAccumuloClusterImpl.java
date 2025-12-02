@@ -56,6 +56,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -90,6 +91,7 @@ import org.apache.accumulo.server.fs.VolumeManager;
 import org.apache.accumulo.server.init.Initialize;
 import org.apache.accumulo.server.util.AccumuloStatus;
 import org.apache.accumulo.server.util.PortUtils;
+import org.apache.accumulo.server.util.ZooZap;
 import org.apache.accumulo.start.Main;
 import org.apache.accumulo.start.classloader.vfs.MiniDFSUtil;
 import org.apache.accumulo.start.spi.KeywordExecutable;
@@ -180,7 +182,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
       mkdirs(config.getAccumuloDir());
     }
 
-    if (config.useMiniDFS()) {
+    if (config.getUseMiniDFS()) {
       File nn = new File(config.getAccumuloDir(), "nn");
       mkdirs(nn);
       File dn = new File(config.getAccumuloDir(), "dn");
@@ -197,7 +199,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
       conf.set("dfs.datanode.data.dir.perm", MiniDFSUtil.computeDatanodeDirectoryPermission());
       config.getHadoopConfOverrides().forEach((k, v) -> conf.set(k, v));
       String oldTestBuildData = System.setProperty("test.build.data", dfs.getAbsolutePath());
-      miniDFS.set(new MiniDFSCluster.Builder(conf).build());
+      miniDFS.set(new MiniDFSCluster.Builder(conf).numDataNodes(config.getNumDataNodes()).build());
       if (oldTestBuildData == null) {
         System.clearProperty("test.build.data");
       } else {
@@ -215,7 +217,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
       siteConfig.put(Property.INSTANCE_VOLUMES.getKey(), dfsUri + "/accumulo");
       config.setSiteConfig(siteConfig);
     } else if (config.useExistingInstance()) {
-      dfsUri = config.getHadoopConfiguration().get(CommonConfigurationKeys.FS_DEFAULT_NAME_KEY);
+      dfsUri = loadExistingHadoopConfiguration().get(CommonConfigurationKeys.FS_DEFAULT_NAME_KEY);
     } else {
       dfsUri = "file:///";
     }
@@ -259,7 +261,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
       zooCfg.setProperty("tickTime", "2000");
       zooCfg.setProperty("initLimit", "10");
       zooCfg.setProperty("syncLimit", "5");
-      zooCfg.setProperty("clientPortAddress", "127.0.0.1");
+      zooCfg.setProperty("clientPortAddress", MiniAccumuloConfigImpl.DEFAULT_ZOOKEEPER_HOST);
       zooCfg.setProperty("clientPort", config.getZooKeeperPort() + "");
       zooCfg.setProperty("maxClientCnxns", "1000");
       zooCfg.setProperty("dataDir", config.getZooKeeperDir().getAbsolutePath());
@@ -471,6 +473,14 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
     fileWriter.close();
   }
 
+  private Configuration loadExistingHadoopConfiguration() {
+    if (config.getHadoopConfDir() == null) {
+      throw new IllegalStateException(
+          "Hadoop configuration directory is required for existing instances");
+    }
+    return config.buildHadoopConfiguration();
+  }
+
   /**
    * Starts Accumulo and Zookeeper processes. Can only be called once.
    */
@@ -478,15 +488,15 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
       justification = "insecure socket used for reservation")
   @Override
   public synchronized void start() throws IOException, InterruptedException {
-    if (config.useMiniDFS() && miniDFS.get() == null) {
+    if (config.getUseMiniDFS() && miniDFS.get() == null) {
       throw new IllegalStateException("Cannot restart mini when using miniDFS");
     }
 
     MiniAccumuloClusterControl control = getClusterControl();
 
     if (config.useExistingInstance()) {
-      AccumuloConfiguration acuConf = config.getAccumuloConfiguration();
-      Configuration hadoopConf = config.getHadoopConfiguration();
+      AccumuloConfiguration acuConf = getSiteConfiguration();
+      Configuration hadoopConf = loadExistingHadoopConfiguration();
       ServerDirs serverDirs = new ServerDirs(acuConf, hadoopConf);
 
       Path instanceIdPath;
@@ -547,13 +557,14 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
           // sleep a little bit to let zookeeper come up before calling init, seems to work better
           long startTime = System.currentTimeMillis();
           while (true) {
-            try (Socket s = new Socket("localhost", config.getZooKeeperPort())) {
+            try (Socket s = new Socket(MiniAccumuloConfigImpl.DEFAULT_ZOOKEEPER_HOST,
+                config.getZooKeeperPort())) {
               s.setReuseAddress(true);
               s.getOutputStream().write("ruok\n".getBytes(UTF_8));
               s.getOutputStream().flush();
               byte[] buffer = new byte[100];
               int n = s.getInputStream().read(buffer);
-              if (n >= 4 && new String(buffer, 0, 4).equals("imok")) {
+              if (n >= 4 && new String(buffer, 0, 4, UTF_8).equals("imok")) {
                 break;
               }
             } catch (IOException | RuntimeException e) {
@@ -824,8 +835,46 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
 
     control.stop(ServerType.GARBAGE_COLLECTOR, null);
     control.stop(ServerType.MANAGER, null);
+    control.stop(ServerType.COMPACTION_COORDINATOR);
     control.stop(ServerType.TABLET_SERVER, null);
+    control.stop(ServerType.COMPACTOR, null);
+    control.stop(ServerType.SCAN_SERVER, null);
+
+    // The method calls above kill the server
+    // Clean up the locks in ZooKeeper fo that if the cluster
+    // is restarted, then the processes will start right away
+    // and not wait for the old locks to be cleaned up.
+    try {
+      new ZooZap().zap(getServerContext().getSiteConfiguration(), "-manager",
+          "-compaction-coordinators", "-tservers", "-compactors", "-sservers", "--gc");
+    } catch (RuntimeException e) {
+      log.error("Error zapping zookeeper locks", e);
+    }
     control.stop(ServerType.ZOOKEEPER, null);
+
+    // Clear the location of the servers in ZooCache.
+    // When ZooKeeper was stopped in the previous method call,
+    // the local ZooKeeper watcher did not fire. If MAC is
+    // restarted, then ZooKeeper will start on the same port with
+    // the same data, but no Watchers will fire.
+    boolean startCalled = true;
+    try {
+      getServerContext();
+    } catch (RuntimeException e) {
+      if (e.getMessage().startsWith("Accumulo not initialized")) {
+        startCalled = false;
+      }
+    }
+    if (startCalled) {
+      final ServerContext ctx = getServerContext();
+      final String zRoot = getServerContext().getZooKeeperRoot();
+      Predicate<String> pred = path -> false;
+      for (String lockPath : Set.of(Constants.ZMANAGER_LOCK, Constants.ZGC_LOCK,
+          Constants.ZCOMPACTORS, Constants.ZSSERVERS, Constants.ZTSERVERS)) {
+        pred = pred.or(path -> path.startsWith(zRoot + lockPath));
+      }
+      ctx.getZooCache().clear(pred);
+    }
 
     // ACCUMULO-2985 stop the ExecutorService after we finished using it to stop accumulo procs
     if (executor != null) {
@@ -842,7 +891,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
     }
 
     var miniDFSActual = miniDFS.get();
-    if (config.useMiniDFS() && miniDFSActual != null) {
+    if (config.getUseMiniDFS() && miniDFSActual != null) {
       miniDFSActual.shutdown();
     }
     for (Process p : cleanup) {
@@ -938,7 +987,7 @@ public class MiniAccumuloClusterImpl implements AccumuloCluster {
   @Override
   public Path getTemporaryPath() {
     String p;
-    if (config.useMiniDFS()) {
+    if (config.getUseMiniDFS()) {
       p = "/tmp/";
     } else {
       File tmp = new File(config.getDir(), "tmp");

@@ -31,7 +31,6 @@ import org.apache.accumulo.core.data.InstanceId;
 import org.apache.accumulo.core.fate.zookeeper.ZooReader;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
 import org.apache.accumulo.core.fate.zookeeper.ZooUtil;
-import org.apache.accumulo.core.metrics.MetricsUtil;
 import org.apache.accumulo.server.conf.codec.VersionedPropCodec;
 import org.apache.accumulo.server.conf.codec.VersionedProperties;
 import org.apache.accumulo.server.conf.store.PropCache;
@@ -49,8 +48,6 @@ import org.slf4j.LoggerFactory;
 
 import com.github.benmanes.caffeine.cache.Ticker;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-
 public class ZooPropStore implements PropStore, PropChangeListener {
 
   private final static Logger log = LoggerFactory.getLogger(ZooPropStore.class);
@@ -59,7 +56,6 @@ public class ZooPropStore implements PropStore, PropChangeListener {
   private final ZooReaderWriter zrw;
   private final PropStoreWatcher propStoreWatcher;
   private final PropCacheCaffeineImpl cache;
-  private final PropStoreMetrics cacheMetrics = new PropStoreMetrics();
   private final ReadyMonitor zkReadyMon;
 
   /**
@@ -83,8 +79,6 @@ public class ZooPropStore implements PropStore, PropChangeListener {
    * @param watcher a watcher. Optional, if null, one is created.
    * @param ticker a synthetic clock used for testing. Optional, if null, one is created.
    */
-  @SuppressFBWarnings(value = "PREDICTABLE_RANDOM",
-      justification = "random number not used in secure context")
   ZooPropStore(final InstanceId instanceId, final ZooReaderWriter zrw, final ReadyMonitor monitor,
       final PropStoreWatcher watcher, final Ticker ticker) {
 
@@ -95,16 +89,13 @@ public class ZooPropStore implements PropStore, PropChangeListener {
 
     this.propStoreWatcher = requireNonNullElseGet(watcher, () -> new PropStoreWatcher(zkReadyMon));
 
-    ZooPropLoader propLoader = new ZooPropLoader(zrw, codec, this.propStoreWatcher, cacheMetrics);
+    ZooPropLoader propLoader = new ZooPropLoader(zrw, codec, this.propStoreWatcher);
 
     if (ticker == null) {
-      this.cache = new PropCacheCaffeineImpl.Builder(propLoader, cacheMetrics).build();
+      this.cache = new PropCacheCaffeineImpl.Builder(propLoader).build();
     } else {
-      this.cache =
-          new PropCacheCaffeineImpl.Builder(propLoader, cacheMetrics).forTests(ticker).build();
+      this.cache = new PropCacheCaffeineImpl.Builder(propLoader).forTests(ticker).build();
     }
-
-    MetricsUtil.initializeProducers(cacheMetrics);
 
     try {
       var path = ZooUtil.getRoot(instanceId);
@@ -143,10 +134,6 @@ public class ZooPropStore implements PropStore, PropChangeListener {
       throw new IllegalStateException("Interrupted testing if node exists", ex);
     }
     return false;
-  }
-
-  public PropStoreMetrics getMetrics() {
-    return cacheMetrics;
   }
 
   @Override
@@ -461,6 +448,11 @@ public class ZooPropStore implements PropStore, PropChangeListener {
       return false;
     }
     return true;
+  }
+
+  @Override
+  public void invalidate(PropStoreKey<?> storeKey) {
+    cache.remove(storeKey);
   }
 
 }

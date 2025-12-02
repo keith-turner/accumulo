@@ -97,7 +97,8 @@ public class BulkImport extends ManagerRepo {
     }
 
     manager.getContext().clearTableListCache();
-    if (manager.getContext().getTableState(tableId) == TableState.ONLINE) {
+    var tableState = manager.getContext().getTableState(tableId);
+    if (tableState == TableState.ONLINE) {
       long reserve1, reserve2;
       reserve1 = reserve2 = Utils.reserveHdfsDirectory(manager, sourceDir, tid);
       if (reserve1 == 0) {
@@ -106,7 +107,8 @@ public class BulkImport extends ManagerRepo {
       return reserve2;
     } else {
       throw new AcceptableThriftTableOperationException(tableId.canonical(), null,
-          TableOperation.BULK_IMPORT, TableOperationExceptionType.OFFLINE, null);
+          TableOperation.BULK_IMPORT, TableOperationExceptionType.OFFLINE,
+          "Table is " + tableState.name().toLowerCase());
     }
   }
 
@@ -208,9 +210,9 @@ public class BulkImport extends ManagerRepo {
 
     AccumuloConfiguration serverConfig = manager.getConfiguration();
     @SuppressWarnings("deprecation")
-    ExecutorService workers = ThreadPools.getServerThreadPools().createExecutorService(serverConfig,
-        serverConfig.resolve(Property.MANAGER_RENAME_THREADS, Property.MANAGER_BULK_RENAME_THREADS),
-        false);
+    ExecutorService workers =
+        ThreadPools.getServerThreadPools().createExecutorService(serverConfig, serverConfig
+            .resolve(Property.MANAGER_RENAME_THREADS, Property.MANAGER_BULK_RENAME_THREADS));
     List<Future<Exception>> results = new ArrayList<>();
 
     for (FileStatus file : mapFiles) {

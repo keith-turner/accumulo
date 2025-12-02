@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.SortedMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.accumulo.core.client.BatchScanner;
@@ -36,6 +37,8 @@ import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.ScannerBase;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.clientImpl.ClientContext;
+import org.apache.accumulo.core.conf.AccumuloConfiguration;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
@@ -45,6 +48,7 @@ import org.apache.accumulo.core.metadata.SuspendingTServer;
 import org.apache.accumulo.core.metadata.TServerInstance;
 import org.apache.accumulo.core.metadata.TabletLocationState;
 import org.apache.accumulo.core.metadata.TabletLocationState.BadLocationStateException;
+import org.apache.accumulo.core.metadata.schema.Ample.DataLevel;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.ChoppedColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.CurrentLocationColumnFamily;
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.FutureLocationColumnFamily;
@@ -54,6 +58,7 @@ import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.Su
 import org.apache.accumulo.core.metadata.schema.MetadataSchema.TabletsSection.TabletColumnFamily;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.Location;
 import org.apache.accumulo.core.security.Authorizations;
+import org.apache.accumulo.core.util.Timer;
 import org.apache.accumulo.core.util.cleaner.CleanerUtil;
 import org.apache.hadoop.io.Text;
 import org.slf4j.Logger;
@@ -67,21 +72,31 @@ public class MetaDataTableScanner implements ClosableIterator<TabletLocationStat
   private final Iterator<Entry<Key,Value>> iter;
   private final AtomicBoolean closed = new AtomicBoolean(false);
 
-  MetaDataTableScanner(ClientContext context, Range range, CurrentState state, String tableName) {
+  MetaDataTableScanner(ClientContext context, Range range, CurrentState state, DataLevel level) {
     // scan over metadata table, looking for tablets in the wrong state based on the live servers
     // and online tables
+    String tableName = level.metaTable();
+    int numThreads;
     try {
-      mdScanner = context.createBatchScanner(tableName, Authorizations.EMPTY, 8);
+      numThreads =
+          context.getConfiguration().getCount(Property.MANAGER_TABLET_GROUP_WATCHER_SCAN_THREADS);
+      mdScanner = context.createBatchScanner(tableName, Authorizations.EMPTY, numThreads);
     } catch (TableNotFoundException e) {
       throw new IllegalStateException("Metadata table " + tableName + " should exist", e);
     }
     cleanable = CleanerUtil.unclosed(this, MetaDataTableScanner.class, closed, log, mdScanner);
-    configureScanner(mdScanner, state);
+    configureScanner(context.getConfiguration(), mdScanner, state, level, numThreads);
     mdScanner.setRanges(Collections.singletonList(range));
     iter = mdScanner.iterator();
   }
 
-  public static void configureScanner(ScannerBase scanner, CurrentState state) {
+  public static void configureScanner(AccumuloConfiguration aconf, ScannerBase scanner,
+      CurrentState state, DataLevel dataLevel) {
+    configureScanner(aconf, scanner, state, dataLevel, 1);
+  }
+
+  public static void configureScanner(AccumuloConfiguration aconf, ScannerBase scanner,
+      CurrentState state, DataLevel dataLevel, int numThreads) {
     TabletColumnFamily.PREV_ROW_COLUMN.fetch(scanner);
     scanner.fetchColumnFamily(CurrentLocationColumnFamily.NAME);
     scanner.fetchColumnFamily(FutureLocationColumnFamily.NAME);
@@ -93,18 +108,28 @@ public class MetaDataTableScanner implements ClosableIterator<TabletLocationStat
     IteratorSetting tabletChange =
         new IteratorSetting(1001, "tabletChange", TabletStateChangeIterator.class);
     if (state != null) {
-      TabletStateChangeIterator.setCurrentServers(tabletChange, state.onlineTabletServers());
-      TabletStateChangeIterator.setOnlineTables(tabletChange, state.onlineTables());
+      var timer = Timer.startNew();
+      var servers = state.onlineTabletServers();
+      var tables = state.onlineTables();
+      var migrations = state.migrationsSnapshot(dataLevel);
+      TabletStateChangeIterator.setCurrentServers(aconf, tabletChange, servers);
+      TabletStateChangeIterator.setOnlineTables(aconf, tabletChange, tables);
       TabletStateChangeIterator.setMerges(tabletChange, state.merges());
-      TabletStateChangeIterator.setMigrations(tabletChange, state.migrationsSnapshot());
+      TabletStateChangeIterator.setMigrations(aconf, tabletChange, migrations);
       TabletStateChangeIterator.setManagerState(tabletChange, state.getManagerState());
-      TabletStateChangeIterator.setShuttingDown(tabletChange, state.shutdownServers());
+      TabletStateChangeIterator.setShuttingDown(aconf, tabletChange, state.shutdownServers());
+      log.debug(
+          "{} configured meta scanner opts, online servers:{} tables:{} migrations:{} options_size:{} scanner threads:{} create_time:{}ms",
+          dataLevel, servers.size(), tables.size(), migrations.size(),
+          tabletChange.getOptions().entrySet().stream()
+              .mapToLong(e -> e.getKey().length() + e.getValue().length()).sum(),
+          numThreads, timer.elapsed(TimeUnit.MILLISECONDS));
     }
     scanner.addScanIterator(tabletChange);
   }
 
-  public MetaDataTableScanner(ClientContext context, Range range, String tableName) {
-    this(context, range, null, tableName);
+  public MetaDataTableScanner(ClientContext context, Range range, DataLevel level) {
+    this(context, range, null, level);
   }
 
   @Override

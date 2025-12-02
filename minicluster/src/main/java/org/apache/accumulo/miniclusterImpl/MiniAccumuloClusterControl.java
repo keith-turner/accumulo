@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -44,17 +45,13 @@ import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.HostAndPort;
 import org.apache.accumulo.core.util.UtilWaitThread;
 import org.apache.accumulo.core.util.compaction.ExternalCompactionUtil;
-import org.apache.accumulo.gc.SimpleGarbageCollector;
-import org.apache.accumulo.manager.Manager;
 import org.apache.accumulo.minicluster.ServerType;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl.ProcessInfo;
-import org.apache.accumulo.monitor.Monitor;
 import org.apache.accumulo.server.util.Admin;
+import org.apache.accumulo.server.util.ZooZap;
 import org.apache.accumulo.tserver.ScanServer;
-import org.apache.accumulo.tserver.TabletServer;
 import org.apache.thrift.TException;
 import org.apache.thrift.transport.TTransportException;
-import org.apache.zookeeper.server.ZooKeeperServerMain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -179,6 +176,18 @@ public class MiniAccumuloClusterControl implements ClusterControl {
   }
 
   @Override
+  public synchronized void startScanServer(Class<? extends ScanServer> scanServer, int limit,
+      String groupName) throws IOException {
+    synchronized (scanServerProcesses) {
+      int count =
+          Math.min(limit, cluster.getConfig().getNumScanServers() - scanServerProcesses.size());
+      for (int i = 0; i < count; i++) {
+        scanServerProcesses.add(cluster.exec(scanServer, "-g", groupName).getProcess());
+      }
+    }
+  }
+
+  @Override
   public synchronized void startAllServers(ServerType server) throws IOException {
     start(server, null);
   }
@@ -188,12 +197,19 @@ public class MiniAccumuloClusterControl implements ClusterControl {
     start(server, Collections.emptyMap(), Integer.MAX_VALUE);
   }
 
-  @SuppressWarnings("removal")
   public synchronized void start(ServerType server, Map<String,String> configOverrides, int limit)
       throws IOException {
+    start(server, configOverrides, limit, new String[] {});
+  }
+
+  @SuppressWarnings("removal")
+  public synchronized void start(ServerType server, Map<String,String> configOverrides, int limit,
+      String... args) throws IOException {
     if (limit <= 0) {
       return;
     }
+
+    Class<?> classToUse = cluster.getConfig().getServerClass(server);
 
     switch (server) {
       case TABLET_SERVER:
@@ -202,31 +218,31 @@ public class MiniAccumuloClusterControl implements ClusterControl {
           for (int i = tabletServerProcesses.size();
               count < limit && i < cluster.getConfig().getNumTservers(); i++, ++count) {
             tabletServerProcesses
-                .add(cluster._exec(TabletServer.class, server, configOverrides).getProcess());
+                .add(cluster._exec(classToUse, server, configOverrides, args).getProcess());
           }
         }
         break;
       case MASTER:
       case MANAGER:
         if (managerProcess == null) {
-          managerProcess = cluster._exec(Manager.class, server, configOverrides).getProcess();
+          managerProcess = cluster._exec(classToUse, server, configOverrides, args).getProcess();
         }
         break;
       case ZOOKEEPER:
         if (zooKeeperProcess == null) {
-          zooKeeperProcess = cluster._exec(ZooKeeperServerMain.class, server, configOverrides,
-              cluster.getZooCfgFile().getAbsolutePath()).getProcess();
+          zooKeeperProcess = cluster
+              ._exec(classToUse, server, configOverrides, cluster.getZooCfgFile().getAbsolutePath())
+              .getProcess();
         }
         break;
       case GARBAGE_COLLECTOR:
         if (gcProcess == null) {
-          gcProcess =
-              cluster._exec(SimpleGarbageCollector.class, server, configOverrides).getProcess();
+          gcProcess = cluster._exec(classToUse, server, configOverrides, args).getProcess();
         }
         break;
       case MONITOR:
         if (monitor == null) {
-          monitor = cluster._exec(Monitor.class, server, configOverrides).getProcess();
+          monitor = cluster._exec(classToUse, server, configOverrides, args).getProcess();
         }
         break;
       case SCAN_SERVER:
@@ -235,16 +251,37 @@ public class MiniAccumuloClusterControl implements ClusterControl {
           for (int i = scanServerProcesses.size();
               count < limit && i < cluster.getConfig().getNumScanServers(); i++, ++count) {
             scanServerProcesses
-                .add(cluster._exec(ScanServer.class, server, configOverrides).getProcess());
+                .add(cluster._exec(classToUse, server, configOverrides, args).getProcess());
           }
         }
         break;
       case COMPACTION_COORDINATOR:
-        startCoordinator(CompactionCoordinator.class);
+        if (coordinatorProcess == null) {
+          coordinatorProcess =
+              cluster._exec(classToUse, ServerType.COMPACTION_COORDINATOR, configOverrides, args)
+                  .getProcess();
+          // Wait for coordinator to start
+          TExternalCompactionList metrics = null;
+          while (metrics == null) {
+            try {
+              metrics = getRunningCompactions(cluster.getServerContext());
+            } catch (TException e) {
+              log.debug(
+                  "Error getting running compactions from coordinator, message: " + e.getMessage());
+              UtilWaitThread.sleep(250);
+            }
+          }
+        }
         break;
       case COMPACTOR:
-        startCompactors(Compactor.class, cluster.getConfig().getNumCompactors(),
-            configOverrides.get("QUEUE_NAME"));
+        synchronized (compactorProcesses) {
+          int count =
+              Math.min(limit, cluster.getConfig().getNumCompactors() - compactorProcesses.size());
+          for (int i = 0; i < count; i++) {
+            compactorProcesses
+                .add(cluster._exec(classToUse, server, configOverrides, args).getProcess());
+          }
+        }
         break;
       default:
         throw new UnsupportedOperationException("Cannot start process for " + server);
@@ -269,6 +306,11 @@ public class MiniAccumuloClusterControl implements ClusterControl {
         if (managerProcess != null) {
           try {
             cluster.stopProcessWithTimeout(managerProcess, 30, TimeUnit.SECONDS);
+            try {
+              new ZooZap().zap(cluster.getServerContext().getSiteConfiguration(), "-manager");
+            } catch (RuntimeException e) {
+              log.error("Error zapping Manager zookeeper lock", e);
+            }
           } catch (ExecutionException | TimeoutException e) {
             log.warn("Manager did not fully stop after 30 seconds", e);
           } catch (InterruptedException e) {
@@ -513,4 +555,71 @@ public class MiniAccumuloClusterControl implements ClusterControl {
     stop(server, hostname);
   }
 
+  @SuppressWarnings("removal")
+  public void refreshProcesses(ServerType type) {
+    switch (type) {
+      case COMPACTION_COORDINATOR:
+        if (!coordinatorProcess.isAlive()) {
+          coordinatorProcess = null;
+        }
+        break;
+      case COMPACTOR:
+        compactorProcesses.removeIf(process -> !process.isAlive());
+        break;
+      case GARBAGE_COLLECTOR:
+        if (!gcProcess.isAlive()) {
+          gcProcess = null;
+        }
+        break;
+      case MANAGER:
+      case MASTER:
+        if (!managerProcess.isAlive()) {
+          managerProcess = null;
+        }
+        break;
+      case MONITOR:
+        if (!monitor.isAlive()) {
+          monitor = null;
+        }
+        break;
+      case SCAN_SERVER:
+        scanServerProcesses.removeIf(process -> !process.isAlive());
+        break;
+      case TABLET_SERVER:
+        tabletServerProcesses.removeIf(process -> !process.isAlive());
+        break;
+      case ZOOKEEPER:
+        if (!zooKeeperProcess.isAlive()) {
+          zooKeeperProcess = null;
+        }
+        break;
+      default:
+        throw new IllegalArgumentException("Unhandled type: " + type);
+    }
+  }
+
+  @SuppressWarnings("removal")
+  public Set<Process> getProcesses(ServerType type) {
+    switch (type) {
+      case COMPACTION_COORDINATOR:
+        return coordinatorProcess == null ? Set.of() : Set.of(coordinatorProcess);
+      case COMPACTOR:
+        return Set.copyOf(compactorProcesses);
+      case GARBAGE_COLLECTOR:
+        return gcProcess == null ? Set.of() : Set.of(gcProcess);
+      case MANAGER:
+      case MASTER:
+        return managerProcess == null ? Set.of() : Set.of(managerProcess);
+      case MONITOR:
+        return monitor == null ? Set.of() : Set.of(monitor);
+      case SCAN_SERVER:
+        return Set.copyOf(scanServerProcesses);
+      case TABLET_SERVER:
+        return Set.copyOf(tabletServerProcesses);
+      case ZOOKEEPER:
+        return zooKeeperProcess == null ? Set.of() : Set.of(zooKeeperProcess);
+      default:
+        throw new IllegalArgumentException("Unhandled type: " + type);
+    }
+  }
 }

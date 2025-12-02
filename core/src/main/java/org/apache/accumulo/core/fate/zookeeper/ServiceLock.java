@@ -18,7 +18,6 @@
  */
 package org.apache.accumulo.core.fate.zookeeper;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 
 import java.util.ArrayList;
@@ -102,7 +101,7 @@ public class ServiceLock implements Watcher {
   private LockWatcher lockWatcher;
   private String lockNodeName;
   private volatile boolean lockWasAcquired;
-  private volatile boolean watchingParent = false;
+  private volatile boolean watchingParent;
 
   private String createdNodeName;
   private String watchingNodeName;
@@ -190,14 +189,18 @@ public class ServiceLock implements Watcher {
     children.forEach(c -> {
       LOG.trace("Validating {}", c);
       if (c.startsWith(ZLOCK_PREFIX)) {
-        String candidate = c.substring(ZLOCK_PREFIX.length() + 1);
+        String candidate = c.substring(ZLOCK_PREFIX.length());
         if (candidate.contains("#")) {
           int idx = candidate.indexOf('#');
-          String uuid = candidate.substring(0, idx - 1);
+          String uuid = candidate.substring(0, idx);
           String sequenceNum = candidate.substring(idx + 1);
           try {
             LOG.trace("Testing uuid format of {}", uuid);
-            UUID.fromString(uuid);
+            // string check guards uuids like "1-1-1-1-1" that parse to
+            // "00000001-0001-0001-0001-000000000001"
+            if (!uuid.equals(UUID.fromString(uuid).toString())) {
+              throw new IllegalArgumentException(uuid + " is an invalid UUID");
+            }
             if (sequenceNum.length() == 10) {
               try {
                 LOG.trace("Testing number format of {}", sequenceNum);
@@ -277,7 +280,7 @@ public class ServiceLock implements Watcher {
 
     List<String> children = validateAndSort(path, zooKeeper.getChildren(path.toString(), null));
 
-    if (null == children || !children.contains(createdEphemeralNode)) {
+    if (!children.contains(createdEphemeralNode)) {
       LOG.error("Expected ephemeral node {} to be in the list of children {}", createdEphemeralNode,
           children);
       throw new RuntimeException(
@@ -405,8 +408,7 @@ public class ServiceLock implements Watcher {
       // were created but the client missed the response for some reason. Find the ephemeral nodes
       // with this ZLOCK_UUID and lowest sequential number.
       List<String> children = validateAndSort(path, zooKeeper.getChildren(path.toString(), null));
-      if (null == children
-          || !children.contains(createPath.substring(path.toString().length() + 1))) {
+      if (!children.contains(createPath.substring(path.toString().length() + 1))) {
         LOG.error("Expected ephemeral node {} to be in the list of children {}", createPath,
             children);
         throw new RuntimeException("Lock attempt ephemeral node no longer exist " + createPath);
@@ -442,6 +444,9 @@ public class ServiceLock implements Watcher {
             }
           }
         }
+      }
+      if (lowestSequentialPath == null) {
+        throw new IllegalStateException("Could not find lowest sequential path under " + path);
       }
       final String pathForWatcher = lowestSequentialPath;
 
@@ -633,7 +638,7 @@ public class ServiceLock implements Watcher {
     var zLockPath = path(lid.path);
     List<String> children = validateAndSort(zLockPath, zc.getChildren(zLockPath.toString()));
 
-    if (children == null || children.isEmpty()) {
+    if (children.isEmpty()) {
       return false;
     }
 
@@ -651,7 +656,7 @@ public class ServiceLock implements Watcher {
 
     List<String> children = validateAndSort(path, zk.getChildren(path.toString(), null));
 
-    if (children == null || children.isEmpty()) {
+    if (children.isEmpty()) {
       return null;
     }
 
@@ -665,7 +670,7 @@ public class ServiceLock implements Watcher {
 
     List<String> children = validateAndSort(path, zc.getChildren(path.toString()));
 
-    if (children == null || children.isEmpty()) {
+    if (children.isEmpty()) {
       return null;
     }
 
@@ -682,7 +687,7 @@ public class ServiceLock implements Watcher {
 
     List<String> children = validateAndSort(path, zc.getChildren(path.toString()));
 
-    if (children == null || children.isEmpty()) {
+    if (children.isEmpty()) {
       return 0;
     }
 
@@ -714,7 +719,7 @@ public class ServiceLock implements Watcher {
 
     List<String> children = validateAndSort(path, zk.getChildren(path.toString()));
 
-    if (children == null || children.isEmpty()) {
+    if (children.isEmpty()) {
       throw new IllegalStateException("No lock is held at " + path);
     }
 
@@ -730,30 +735,26 @@ public class ServiceLock implements Watcher {
 
   }
 
-  public static boolean deleteLock(ZooReaderWriter zk, ServiceLockPath path, String lockData)
-      throws InterruptedException, KeeperException {
-
-    List<String> children = validateAndSort(path, zk.getChildren(path.toString()));
-
-    if (children == null || children.isEmpty()) {
-      throw new IllegalStateException("No lock is held at " + path);
+  /**
+   * Checks that the lock still exists in ZooKeeper. The typical mechanism for determining if a lock
+   * is lost depends on a Watcher set on the lock node. There exists a case where the Watcher may
+   * not get called if another Watcher is stuck waiting on I/O or otherwise hung. In the case where
+   * this method returns false, then the typical action is to exit the server process.
+   *
+   * @return true if lock path still exists, false otherwise and on error
+   */
+  public boolean verifyLockAtSource() {
+    final String lockPath = getLockPath();
+    if (lockPath == null) {
+      // lock not set yet or lock was lost
+      return false;
     }
-
-    String lockNode = children.get(0);
-
-    if (!lockNode.startsWith(ZLOCK_PREFIX)) {
-      throw new RuntimeException("Node " + lockNode + " at " + path + " is not a lock node");
+    try {
+      return null != this.zooKeeper.exists(lockPath, false);
+    } catch (KeeperException | InterruptedException | RuntimeException e) {
+      LOG.error("Error verfiying lock at {}", lockPath, e);
+      return false;
     }
-
-    byte[] data = zk.getData(path + "/" + lockNode);
-
-    if (lockData.equals(new String(data, UTF_8))) {
-      String pathToDelete = path + "/" + lockNode;
-      LOG.debug("Deleting all at path {} due to lock deletion", pathToDelete);
-      zk.recursiveDelete(pathToDelete, NodeMissingPolicy.FAIL);
-      return true;
-    }
-
-    return false;
   }
+
 }

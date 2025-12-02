@@ -194,12 +194,8 @@ public class AccumuloVFSClassLoader {
     return new AccumuloReloadingVFSClassLoader(dynamicCPath, generateVfs(), wrapper, 1000, true);
   }
 
-  public static ClassLoader getClassLoader() {
-    try {
-      return getClassLoader_Internal();
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
+  public static ClassLoader getClassLoader() throws IOException {
+    return getClassLoader_Internal();
   }
 
   private static ClassLoader getClassLoader_Internal() throws IOException {
@@ -248,6 +244,8 @@ public class AccumuloVFSClassLoader {
             }
           }
 
+        } else {
+          localLoader = loader;
         }
       }
     }
@@ -398,8 +396,10 @@ public class AccumuloVFSClassLoader {
     }
   }
 
-  public static void setContextConfig(Supplier<Map<String,String>> contextConfigSupplier) {
-    var config = new ContextManager.DefaultContextsConfig(contextConfigSupplier);
+  public static void setContextConfig(Supplier<Map<String,String>> contextConfigSupplier,
+      Runnable contextConfigInvalidator) {
+    var config =
+        new ContextManager.DefaultContextsConfig(contextConfigSupplier, contextConfigInvalidator);
     try {
       getContextManager().setContextConfig(config);
     } catch (IOException e) {
@@ -415,19 +415,25 @@ public class AccumuloVFSClassLoader {
     }
   }
 
-  public static ClassLoader getContextClassLoader(String contextName) {
-    try {
-      return getContextManager().getClassLoader(contextName);
-    } catch (IOException e) {
-      throw new UncheckedIOException(
-          "Error getting context class loader for context: " + contextName, e);
-    }
+  public static ClassLoader getContextClassLoader(String contextName) throws IOException {
+    return getContextManager().getClassLoader(contextName);
   }
 
   public static synchronized ContextManager getContextManager() throws IOException {
     if (contextManager == null) {
       getClassLoader();
-      contextManager = new ContextManager(generateVfs(), AccumuloVFSClassLoader::getClassLoader);
+      try {
+        contextManager = new ContextManager(generateVfs(), () -> {
+          try {
+            return getClassLoader();
+          } catch (IOException e) {
+            // throw runtime, then unwrap it.
+            throw new UncheckedIOException(e);
+          }
+        });
+      } catch (UncheckedIOException uioe) {
+        throw uioe.getCause();
+      }
     }
 
     return contextManager;

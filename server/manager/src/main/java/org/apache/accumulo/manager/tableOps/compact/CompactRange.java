@@ -51,8 +51,8 @@ public class CompactRange extends ManagerRepo {
   private static final long serialVersionUID = 1L;
   private final TableId tableId;
   private final NamespaceId namespaceId;
-  private byte[] startRow;
-  private byte[] endRow;
+  private final byte[] startRow;
+  private final byte[] endRow;
   private byte[] config;
 
   public CompactRange(NamespaceId namespaceId, TableId tableId, CompactionConfig compactionConfig)
@@ -140,7 +140,7 @@ public class CompactRange extends ManagerRepo {
           tableId, startRow, endRow);
     } catch (NoNodeException nne) {
       throw new AcceptableThriftTableOperationException(tableId.canonical(), null,
-          TableOperation.COMPACT, TableOperationExceptionType.NOTFOUND, null);
+          TableOperation.COMPACT, TableOperationExceptionType.NOTFOUND, "Table not found");
     }
 
   }

@@ -27,6 +27,7 @@ import static org.apache.accumulo.core.util.Validators.NEW_TABLE_NAME;
 import static org.apache.accumulo.core.util.Validators.NOT_BUILTIN_NAMESPACE;
 import static org.apache.accumulo.core.util.Validators.NOT_BUILTIN_TABLE;
 import static org.apache.accumulo.core.util.Validators.NOT_METADATA_TABLE;
+import static org.apache.accumulo.core.util.Validators.NOT_METADATA_TABLE_ID;
 import static org.apache.accumulo.core.util.Validators.NOT_ROOT_TABLE_ID;
 import static org.apache.accumulo.core.util.Validators.VALID_TABLE_ID;
 import static org.apache.accumulo.core.util.Validators.sameNamespaceAs;
@@ -34,6 +35,7 @@ import static org.apache.accumulo.core.util.Validators.sameNamespaceAs;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -61,6 +63,7 @@ import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.NamespaceId;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.fate.ReadOnlyTStore.TStatus;
+import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.manager.thrift.FateOperation;
 import org.apache.accumulo.core.manager.thrift.FateService;
 import org.apache.accumulo.core.manager.thrift.ThriftPropertyException;
@@ -284,12 +287,21 @@ class FateServiceHandler implements FateService.Iface {
           keepOffline = Boolean.parseBoolean(ByteBufferUtil.toString(arguments.get(2)));
         }
 
+        NamespaceId srcNamespaceId;
+        try {
+          srcNamespaceId = manager.getContext().getNamespaceId(srcTableId);
+        } catch (TableNotFoundException e) {
+          // could happen if the table was deleted while processing this request
+          throw new ThriftTableOperationException(srcTableId.canonical(), null, tableOp,
+              TableOperationExceptionType.NOTFOUND, "");
+        }
+
         NamespaceId namespaceId;
         try {
           namespaceId = Namespaces.getNamespaceId(manager.getContext(),
               TableNameUtil.qualify(tableName).getFirst());
         } catch (NamespaceNotFoundException e) {
-          // shouldn't happen, but possible once cloning between namespaces is supported
+          // dest namespace does not exist yet, needs to be created
           throw new ThriftTableOperationException(null, tableName, tableOp,
               TableOperationExceptionType.NAMESPACE_NOTFOUND, "");
         }
@@ -297,7 +309,7 @@ class FateServiceHandler implements FateService.Iface {
         final boolean canCloneTable;
         try {
           canCloneTable =
-              manager.security.canCloneTable(c, srcTableId, tableName, namespaceId, namespaceId);
+              manager.security.canCloneTable(c, srcTableId, tableName, namespaceId, srcNamespaceId);
         } catch (ThriftSecurityException e) {
           throwIfTableMissingSecurityException(e, srcTableId, null, TableOperation.CLONE);
           throw e;
@@ -334,9 +346,9 @@ class FateServiceHandler implements FateService.Iface {
           goalMessage += " and keep offline.";
         }
 
-        manager.fate().seedTransaction(
-            op.toString(), opid, new TraceRepo<>(new CloneTable(c.getPrincipal(), namespaceId,
-                srcTableId, tableName, propertiesToSet, propertiesToExclude, keepOffline)),
+        manager.fate().seedTransaction(op.toString(), opid,
+            new TraceRepo<>(new CloneTable(c.getPrincipal(), srcNamespaceId, srcTableId,
+                namespaceId, tableName, propertiesToSet, propertiesToExclude, keepOffline)),
             autoCleanup, goalMessage);
 
         break;
@@ -371,7 +383,9 @@ class FateServiceHandler implements FateService.Iface {
       case TABLE_ONLINE: {
         TableOperation tableOp = TableOperation.ONLINE;
         validateArgumentCount(arguments, tableOp, 1);
-        final var tableId = validateTableIdArgument(arguments.get(0), tableOp, NOT_ROOT_TABLE_ID);
+        final var tableId = validateTableIdArgument(arguments.get(0), tableOp,
+            NOT_ROOT_TABLE_ID.and(NOT_METADATA_TABLE_ID));
+
         NamespaceId namespaceId = getNamespaceIdFromTableId(tableOp, tableId);
 
         final boolean canOnlineOfflineTable;
@@ -388,15 +402,20 @@ class FateServiceHandler implements FateService.Iface {
         }
 
         goalMessage += "Online table " + tableId;
+        final EnumSet<TableState> expectedCurrStates =
+            EnumSet.of(TableState.ONLINE, TableState.OFFLINE);
         manager.fate().seedTransaction(op.toString(), opid,
-            new TraceRepo<>(new ChangeTableState(namespaceId, tableId, tableOp)), autoCleanup,
-            goalMessage);
+            new TraceRepo<>(
+                new ChangeTableState(namespaceId, tableId, tableOp, expectedCurrStates)),
+            autoCleanup, goalMessage);
         break;
       }
       case TABLE_OFFLINE: {
         TableOperation tableOp = TableOperation.OFFLINE;
         validateArgumentCount(arguments, tableOp, 1);
-        final var tableId = validateTableIdArgument(arguments.get(0), tableOp, NOT_ROOT_TABLE_ID);
+        final var tableId = validateTableIdArgument(arguments.get(0), tableOp,
+            NOT_ROOT_TABLE_ID.and(NOT_METADATA_TABLE_ID));
+
         NamespaceId namespaceId = getNamespaceIdFromTableId(tableOp, tableId);
 
         final boolean canOnlineOfflineTable;
@@ -413,9 +432,12 @@ class FateServiceHandler implements FateService.Iface {
         }
 
         goalMessage += "Offline table " + tableId;
+        final EnumSet<TableState> expectedCurrStates =
+            EnumSet.of(TableState.ONLINE, TableState.OFFLINE);
         manager.fate().seedTransaction(op.toString(), opid,
-            new TraceRepo<>(new ChangeTableState(namespaceId, tableId, tableOp)), autoCleanup,
-            goalMessage);
+            new TraceRepo<>(
+                new ChangeTableState(namespaceId, tableId, tableOp, expectedCurrStates)),
+            autoCleanup, goalMessage);
         break;
       }
       case TABLE_MERGE: {
@@ -607,10 +629,9 @@ class FateServiceHandler implements FateService.Iface {
 
         goalMessage += "Import table with new name: " + tableName + " from " + exportDirs;
         manager.fate()
-            .seedTransaction(
-                op.toString(), opid, new TraceRepo<>(new ImportTable(c.getPrincipal(), tableName,
-                    exportDirs, namespaceId, keepMappings, !keepOffline)),
-                autoCleanup, goalMessage);
+            .seedTransaction(op.toString(), opid, new TraceRepo<>(new ImportTable(c.getPrincipal(),
+                tableName, exportDirs, namespaceId, keepMappings, keepOffline)), autoCleanup,
+                goalMessage);
         break;
       }
       case TABLE_EXPORT: {

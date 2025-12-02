@@ -20,6 +20,8 @@ package org.apache.accumulo.manager.tableOps.tableImport;
 
 import static org.apache.accumulo.core.Constants.IMPORT_MAPPINGS_FILE;
 
+import java.util.EnumSet;
+
 import org.apache.accumulo.core.fate.Repo;
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.manager.Manager;
@@ -32,7 +34,7 @@ class FinishImportTable extends ManagerRepo {
 
   private static final long serialVersionUID = 1L;
 
-  private ImportedTableInfo tableInfo;
+  private final ImportedTableInfo tableInfo;
 
   public FinishImportTable(ImportedTableInfo ti) {
     this.tableInfo = ti;
@@ -52,9 +54,9 @@ class FinishImportTable extends ManagerRepo {
       }
     }
 
-    if (tableInfo.onlineTable) {
-      env.getTableManager().transitionTableState(tableInfo.tableId, TableState.ONLINE);
-    }
+    final EnumSet<TableState> expectedCurrStates = EnumSet.of(TableState.NEW);
+    final TableState newState = tableInfo.keepOffline ? TableState.OFFLINE : TableState.ONLINE;
+    env.getTableManager().transitionTableState(tableInfo.tableId, newState, expectedCurrStates);
 
     Utils.unreserveNamespace(env, tableInfo.namespaceId, tid, false);
     Utils.unreserveTable(env, tableInfo.tableId, tid, true);

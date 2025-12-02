@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.test.functional;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.core.util.UtilWaitThread.sleepUninterruptibly;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -70,6 +71,7 @@ import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl.ProcessInfo;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.miniclusterImpl.ProcessNotFoundException;
 import org.apache.accumulo.miniclusterImpl.ProcessReference;
+import org.apache.accumulo.server.ServerOpts;
 import org.apache.accumulo.test.TestIngest;
 import org.apache.accumulo.test.VerifyIngest;
 import org.apache.accumulo.test.VerifyIngest.VerifyParams;
@@ -285,6 +287,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
       log.info("User GcCandidate Deletion test of table: {}", table);
       log.info("GcCandidates will be added/removed from table: {}", DataLevel.USER.metaTable());
       createAndDeleteUniqueMutation(TableId.of(table), Ample.GcCandidateType.INUSE);
+      createAndDeleteUniqueMutation(TableId.of(table), Ample.GcCandidateType.VALID);
     }
   }
 
@@ -295,6 +298,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
     log.info("Metadata GcCandidate Deletion test");
     log.info("GcCandidates will be added/removed from table: {}", DataLevel.METADATA.metaTable());
     createAndDeleteUniqueMutation(tableId, Ample.GcCandidateType.INUSE);
+    createAndDeleteUniqueMutation(tableId, Ample.GcCandidateType.VALID);
   }
 
   /**
@@ -420,7 +424,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
         if (locks != null && !locks.isEmpty()) {
           String lockPath = path + "/" + locks.get(0);
 
-          String gcLoc = new String(zk.getData(lockPath));
+          String gcLoc = new String(zk.getData(lockPath), UTF_8);
 
           assertTrue(gcLoc.startsWith(Service.GC_CLIENT.name()),
               "Found unexpected data in zookeeper for GC location: " + gcLoc);
@@ -433,7 +437,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
 
           String host = addr.substring(0, addrSplit), port = addr.substring(addrSplit + 1);
           // We shouldn't have the "bindall" address in zk
-          assertNotEquals("0.0.0.0", host);
+          assertNotEquals(ServerOpts.BIND_ALL_ADDRESSES, host);
           // Nor should we have the "random port" in zk
           assertNotEquals(0, Integer.parseInt(port));
           return;
@@ -467,6 +471,13 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
   }
 
   private void createAndDeleteUniqueMutation(TableId tableId, Ample.GcCandidateType type) {
+    int totalCandidates = 2;
+    boolean inUseDelete = true;
+
+    if (type == Ample.GcCandidateType.VALID) {
+      totalCandidates = 1;
+      inUseDelete = false;
+    }
     Ample ample = cluster.getServerContext().getAmple();
     DataLevel datalevel = Ample.DataLevel.of(tableId);
 
@@ -504,7 +515,7 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
     ample.putGcCandidates(tableId, List.of(new StoredTabletFile(deleteCandidate.getPath())));
 
     log.debug("Deleting Candidate {}", deleteCandidate);
-    ample.deleteGcCandidates(datalevel, List.of(deleteCandidate), Ample.GcCandidateType.INUSE);
+    ample.deleteGcCandidates(datalevel, List.of(deleteCandidate), type);
 
     candidate = ample.getGcCandidates(datalevel);
 
@@ -519,7 +530,10 @@ public class GarbageCollectorIT extends ConfigurableMacBase {
       }
       counter++;
     }
-    assertEquals(2, counter);
-    assertTrue(foundNewCandidate);
+    assertEquals(totalCandidates, counter);
+    assertEquals(inUseDelete, foundNewCandidate);
+
+    // Cleanup from test
+    ample.deleteGcCandidates(datalevel, candidates, Ample.GcCandidateType.VALID);
   }
 }

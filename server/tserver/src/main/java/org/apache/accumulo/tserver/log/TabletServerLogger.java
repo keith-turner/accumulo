@@ -19,6 +19,7 @@
 package org.apache.accumulo.tserver.log;
 
 import static java.util.Collections.singletonList;
+import static org.apache.accumulo.core.util.threads.ThreadPoolNames.TSERVER_WAL_CREATOR_POOL;
 
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
@@ -38,6 +39,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.accumulo.core.client.Durability;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.dataImpl.KeyExtent;
+import org.apache.accumulo.core.fate.zookeeper.ServiceLock;
 import org.apache.accumulo.core.protobuf.ProtobufUtil;
 import org.apache.accumulo.core.util.Halt;
 import org.apache.accumulo.core.util.Retry;
@@ -248,9 +250,8 @@ public class TabletServerLogger {
           throw new RuntimeException(e);
         }
       } else {
-        log.error("Repeatedly failed to create WAL. Going to exit tabletserver.", t);
         // We didn't have retries or we failed too many times.
-        Halt.halt("Experienced too many errors creating WALs, giving up", 1);
+        Halt.halt(1, "Experienced too many errors creating WALs, giving up", t);
       }
 
       // The exception will trigger the log creation to be re-attempted.
@@ -262,8 +263,8 @@ public class TabletServerLogger {
     if (nextLogMaker != null) {
       return;
     }
-    nextLogMaker =
-        ThreadPools.getServerThreadPools().createFixedThreadPool(1, "WALog creator", true);
+    nextLogMaker = ThreadPools.getServerThreadPools().getPoolBuilder(TSERVER_WAL_CREATOR_POOL)
+        .numCoreThreads(1).build();
     nextLogMaker.execute(new Runnable() {
       @Override
       public void run() {
@@ -299,7 +300,9 @@ public class TabletServerLogger {
             try {
               nextLog.offer(t, 12, TimeUnit.HOURS);
             } catch (InterruptedException ex) {
-              // ignore
+              // Throw an Error, not an Exception, so the AccumuloUncaughtExceptionHandler
+              // will log this then halt the VM.
+              throw new Error("Next log maker thread interrupted", ex);
             }
 
             continue;
@@ -335,7 +338,9 @@ public class TabletServerLogger {
             try {
               nextLog.offer(t, 12, TimeUnit.HOURS);
             } catch (InterruptedException ex) {
-              // ignore
+              // Throw an Error, not an Exception, so the AccumuloUncaughtExceptionHandler
+              // will log this then halt the VM.
+              throw new Error("Next log maker thread interrupted", ex);
             }
 
             continue;
@@ -346,7 +351,9 @@ public class TabletServerLogger {
               log.info("Our WAL was not used for 12 hours: {}", fileName);
             }
           } catch (InterruptedException e) {
-            // ignore - server is shutting down
+            // Throw an Error, not an Exception, so the AccumuloUncaughtExceptionHandler
+            // will log this then halt the VM.
+            throw new Error("Next log maker thread interrupted", e);
           }
         }
       }
@@ -387,6 +394,7 @@ public class TabletServerLogger {
 
     boolean success = false;
     while (!success) {
+      Throwable sawWriteFailure = null;
       try {
         // get a reference to the loggers that no other thread can touch
         AtomicInteger currentId = new AtomicInteger(-1);
@@ -441,7 +449,7 @@ public class TabletServerLogger {
         writeRetry.logRetry(log, "Logs closed while writing", ex);
       } catch (Exception t) {
         writeRetry.logRetry(log, "Failed to write to WAL", t);
-
+        sawWriteFailure = t;
         try {
           // Backoff
           writeRetry.waitForNextAttempt(log, "write to WAL");
@@ -457,6 +465,15 @@ public class TabletServerLogger {
       // the logs haven't changed.
       final int finalCurrent = currentLogId;
       if (!success) {
+        final ServiceLock tabletServerLock = tserver.getLock();
+        if (sawWriteFailure != null) {
+          log.info("WAL write failure, validating server lock in ZooKeeper", sawWriteFailure);
+          if (tabletServerLock == null || !tabletServerLock.verifyLockAtSource()) {
+            Halt.halt(-1, "Writing to WAL has failed and TabletServer lock does not exist",
+                sawWriteFailure);
+          }
+        }
+
         testLockAndRun(logIdLock, new TestCallWithWriteLock() {
 
           @Override

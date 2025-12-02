@@ -18,53 +18,214 @@
  */
 package org.apache.accumulo.server;
 
-import java.util.Objects;
+import java.util.OptionalInt;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.accumulo.core.Constants;
 import org.apache.accumulo.core.classloader.ClassLoaderUtil;
+import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
-import org.apache.accumulo.core.metrics.MetricsUtil;
+import org.apache.accumulo.core.conf.Property;
+import org.apache.accumulo.core.fate.zookeeper.ServiceLock;
+import org.apache.accumulo.core.metrics.MetricsProducer;
+import org.apache.accumulo.core.process.thrift.ServerProcessService;
+import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.trace.TraceUtil;
+import org.apache.accumulo.core.util.Halt;
+import org.apache.accumulo.core.util.HostAndPort;
+import org.apache.accumulo.core.util.threads.Threads;
+import org.apache.accumulo.server.metrics.ProcessMetrics;
 import org.apache.accumulo.server.security.SecurityUtil;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public abstract class AbstractServer implements AutoCloseable, Runnable {
+import com.google.common.base.Preconditions;
+
+import io.micrometer.core.instrument.MeterRegistry;
+
+public abstract class AbstractServer
+    implements AutoCloseable, MetricsProducer, Runnable, ServerProcessService.Iface {
 
   private final ServerContext context;
   protected final String applicationName;
-  private final String hostname;
+  private HostAndPort advertiseAddress; // used for everything but the Thrift server (e.g. ZK,
+                                        // metadata, etc).
+  private final String bindAddress; // used for the Thrift server
   private final Logger log;
+  private final ProcessMetrics processMetrics;
+  protected final long idleReportingPeriodNanos;
+  private volatile long idlePeriodStartNanos = 0L;
+  private volatile Thread serverThread;
+  private volatile Thread verificationThread;
+  private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
+  private final AtomicBoolean shutdownComplete = new AtomicBoolean(false);
 
   protected AbstractServer(String appName, ServerOpts opts, String[] args) {
     this.log = LoggerFactory.getLogger(getClass().getName());
     this.applicationName = appName;
     opts.parseArgs(appName, args);
-    this.hostname = Objects.requireNonNull(opts.getAddress());
     var siteConfig = opts.getSiteConfiguration();
+    boolean oldBindParameterSpecifiedOnCmdLine = false;
+    boolean newBindParameterSpecified = false;
+    for (String arg : args) {
+      if (arg.equals("-a") || arg.equals("--address")) {
+        oldBindParameterSpecifiedOnCmdLine = true;
+      } else if (siteConfig.isPropertySet(Property.RPC_PROCESS_BIND_ADDRESS)) {
+        newBindParameterSpecified = true;
+      }
+    }
+    if (oldBindParameterSpecifiedOnCmdLine && newBindParameterSpecified) {
+      throw new IllegalStateException("Argument '-a' cannot be used with property 'rpc.bind.addr'");
+    }
+    final String newBindParameter = siteConfig.get(Property.RPC_PROCESS_BIND_ADDRESS);
+    // If new bind parameter passed on command line or in file, then use it.
+    if (newBindParameterSpecified
+        || !newBindParameter.equals(Property.RPC_PROCESS_BIND_ADDRESS.getDefaultValue())) {
+      this.bindAddress = newBindParameter;
+    } else if (oldBindParameterSpecifiedOnCmdLine) {
+      this.bindAddress = opts.getAddress();
+    } else {
+      this.bindAddress = ServerOpts.BIND_ALL_ADDRESSES;
+    }
+    String advertAddr = siteConfig.get(Property.RPC_PROCESS_ADVERTISE_ADDRESS);
+    if (advertAddr != null && !advertAddr.isBlank()) {
+      HostAndPort advertHP = HostAndPort.fromString(advertAddr);
+      if (advertHP.getHost().equals(ServerOpts.BIND_ALL_ADDRESSES)) {
+        throw new IllegalArgumentException("Advertise address cannot be 0.0.0.0");
+      }
+      advertiseAddress = advertHP;
+    } else {
+      advertiseAddress = null;
+    }
+    log.info("Bind address: {}, advertise address: {}", bindAddress, advertiseAddress);
     SecurityUtil.serverLogin(siteConfig);
     context = new ServerContext(siteConfig);
+    final String upgradePrepNode = context.getZooKeeperRoot() + Constants.ZPREPARE_FOR_UPGRADE;
+    try {
+      if (context.getZooReader().exists(upgradePrepNode)) {
+        throw new IllegalStateException(
+            "Instance has been prepared for upgrade to a minor or major version greater than "
+                + Constants.VERSION + ", no servers can be started."
+                + " To undo this state and abort upgrade preparations delete the zookeeper node: "
+                + upgradePrepNode);
+      }
+    } catch (KeeperException | InterruptedException e) {
+      throw new IllegalStateException(
+          "Error checking for upgrade preparation node (" + upgradePrepNode + ") in zookeeper", e);
+    }
     log.info("Version " + Constants.VERSION);
     log.info("Instance " + context.getInstanceID());
     context.init(appName);
     ClassLoaderUtil.initContextFactory(context.getConfiguration());
-    TraceUtil.initializeTracer(context.getConfiguration());
+    TraceUtil.setProcessTracing(
+        context.getConfiguration().getBoolean(Property.GENERAL_OPENTELEMETRY_ENABLED));
     if (context.getSaslParams() != null) {
       // Server-side "client" check to make sure we're logged in as a user we expect to be
       context.enforceKerberosLogin();
     }
+    processMetrics = new ProcessMetrics();
+    idleReportingPeriodNanos = TimeUnit.MILLISECONDS.toNanos(
+        context.getConfiguration().getTimeInMillis(Property.GENERAL_IDLE_PROCESS_INTERVAL));
   }
 
   /**
-   * Run this server in a main thread
+   * Updates the idle status of the server to set the idle process metric. The server must be idle
+   * for multiple calls over a specified period for the metric to reflect the idle state. If the
+   * server is busy or the idle period hasn't started, it resets the idle tracking.
+   *
+   * @param isIdle whether the server is idle
+   */
+  protected void updateIdleStatus(boolean isIdle) {
+    boolean shouldResetIdlePeriod = !isIdle || idleReportingPeriodNanos == 0;
+    boolean isIdlePeriodNotStarted = idlePeriodStartNanos == 0;
+    boolean hasExceededIdlePeriod =
+        (System.nanoTime() - idlePeriodStartNanos) > idleReportingPeriodNanos;
+
+    if (shouldResetIdlePeriod) {
+      // Reset idle period and set idle metric to false
+      idlePeriodStartNanos = 0;
+      processMetrics.setIdleValue(false);
+    } else if (isIdlePeriodNotStarted) {
+      // Start tracking idle period
+      idlePeriodStartNanos = System.nanoTime();
+    } else if (hasExceededIdlePeriod) {
+      // Set idle metric to true and reset the start of the idle period
+      processMetrics.setIdleValue(true);
+      idlePeriodStartNanos = 0;
+    }
+  }
+
+  @Override
+  public void gracefulShutdown(TCredentials credentials) {
+
+    try {
+      if (!context.getSecurityOperation().canPerformSystemActions(credentials)) {
+        log.warn("Ignoring shutdown request, user " + credentials.getPrincipal()
+            + " does not have the appropriate permissions.");
+      }
+    } catch (ThriftSecurityException e) {
+      log.error(
+          "Error trying to determine if user has permissions to shutdown server, ignoring request",
+          e);
+      return;
+    }
+
+    if (shutdownRequested.compareAndSet(false, true)) {
+      // Don't interrupt the server thread, that will cause
+      // IO operations to fail as the servers are finishing
+      // their work.
+      log.info("Graceful shutdown initiated.");
+    } else {
+      log.warn("Graceful shutdown previously requested.");
+    }
+  }
+
+  public boolean isShutdownRequested() {
+    return shutdownRequested.get();
+  }
+
+  public AtomicBoolean getShutdownComplete() {
+    return shutdownComplete;
+  }
+
+  /**
+   * Run this server in a main thread. The server's run method should set up the server, then wait
+   * on isShutdownRequested() to return false, like so:
+   *
+   * <pre>
+   * public void run() {
+   *   // setup server and start threads
+   *   while (!isShutdownRequested()) {
+   *     if (Thread.currentThread().isInterrupted()) {
+   *       LOG.info("Server process thread has been interrupted, shutting down");
+   *       break;
+   *     }
+   *     try {
+   *       // sleep or other things
+   *     } catch (InterruptedException e) {
+   *       gracefulShutdown();
+   *     }
+   *   }
+   *   // shut down server
+   *   getShutdownComplete().set(true);
+   *   ServiceLock.unlock(serverLock);
+   * }
+   * </pre>
    */
   public void runServer() throws Exception {
     final AtomicReference<Throwable> err = new AtomicReference<>();
-    Thread service = new Thread(TraceUtil.wrap(this), applicationName);
-    service.setUncaughtExceptionHandler((thread, exception) -> err.set(exception));
-    service.start();
-    service.join();
+    serverThread = new Thread(TraceUtil.wrap(this), applicationName);
+    serverThread.setUncaughtExceptionHandler((thread, exception) -> err.set(exception));
+    serverThread.start();
+    serverThread.join();
+    if (verificationThread != null) {
+      verificationThread.interrupt();
+      verificationThread.join();
+    }
+    log.info(getClass().getSimpleName() + " process shut down.");
     Throwable thrown = err.get();
     if (thrown != null) {
       if (thrown instanceof Error) {
@@ -77,8 +238,29 @@ public abstract class AbstractServer implements AutoCloseable, Runnable {
     }
   }
 
-  public String getHostname() {
-    return hostname;
+  @Override
+  public void registerMetrics(MeterRegistry registry) {
+    // makes mocking subclasses easier
+    if (processMetrics != null) {
+      processMetrics.registerMetrics(registry);
+    }
+  }
+
+  public HostAndPort getAdvertiseAddress() {
+    return advertiseAddress;
+  }
+
+  public String getBindAddress() {
+    return bindAddress;
+  }
+
+  protected void updateAdvertiseAddress(HostAndPort thriftBindAddress) {
+    if (advertiseAddress == null) {
+      advertiseAddress = thriftBindAddress;
+    } else if (!advertiseAddress.hasPort()) {
+      advertiseAddress =
+          HostAndPort.fromParts(advertiseAddress.getHost(), thriftBindAddress.getPort());
+    }
   }
 
   public ServerContext getContext() {
@@ -89,9 +271,69 @@ public abstract class AbstractServer implements AutoCloseable, Runnable {
     return getContext().getConfiguration();
   }
 
+  public String getApplicationName() {
+    return applicationName;
+  }
+
+  /**
+   * Get the ServiceLock for this server process. May return null if called before the lock is
+   * acquired.
+   *
+   * @return lock ServiceLock or null
+   */
+  public abstract ServiceLock getLock();
+
+  public void startServiceLockVerificationThread() {
+    Preconditions.checkState(verificationThread == null,
+        "verification thread not null, startServiceLockVerificationThread likely called twice");
+    Preconditions.checkState(serverThread != null,
+        "server thread is null, no server process is running");
+    final long interval =
+        getConfiguration().getTimeInMillis(Property.GENERAL_SERVER_LOCK_VERIFICATION_INTERVAL);
+    if (interval > 0) {
+      verificationThread = Threads.createCriticalThread("service-lock-verification-thread",
+          OptionalInt.of(Thread.NORM_PRIORITY + 1), () -> {
+            while (serverThread.isAlive()) {
+              ServiceLock lock = getLock();
+              try {
+                log.trace(
+                    "ServiceLockVerificationThread - checking ServiceLock existence in ZooKeeper");
+                if (lock != null && !lock.verifyLockAtSource()) {
+                  Halt.halt(-1, "Lock verification thread could not find lock");
+                }
+                // Need to sleep, not yield when the thread priority is greater than NORM_PRIORITY
+                // so that this thread does not get immediately rescheduled.
+                log.trace(
+                    "ServiceLockVerificationThread - ServiceLock exists in ZooKeeper, sleeping for {}ms",
+                    interval);
+                Thread.sleep(interval);
+              } catch (InterruptedException e) {
+                if (serverThread.isAlive()) {
+                  // throw an Error, which will cause this process to be terminated
+                  throw new Error("Sleep interrupted in ServiceLock verification thread");
+                }
+              }
+            }
+          });
+      verificationThread.start();
+    } else {
+      log.info("ServiceLockVerificationThread not started as "
+          + Property.GENERAL_SERVER_LOCK_VERIFICATION_INTERVAL.getKey() + " is zero");
+    }
+  }
+
   @Override
   public void close() {
-    MetricsUtil.close();
+    if (context != null) {
+      context.close();
+    }
+  }
+
+  protected void waitForUpgrade() throws InterruptedException {
+    while (AccumuloDataVersion.getCurrentVersion(getContext()) < AccumuloDataVersion.get()) {
+      LOG.info("Waiting for upgrade to complete.");
+      Thread.sleep(1000);
+    }
   }
 
 }

@@ -18,6 +18,7 @@
  */
 package org.apache.accumulo.monitor.it;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.accumulo.monitor.it.TagNameConstants.MONITOR;
 import static org.easymock.EasyMock.createMock;
 import static org.easymock.EasyMock.expect;
@@ -83,6 +84,8 @@ public class WebViewsIT extends JerseyTest {
 
   @BeforeAll
   public static void createMocks() throws TableNotFoundException {
+    System.setProperty(TestProperties.CONTAINER_PORT, "0");
+
     ServerContext contextMock = createMock(ServerContext.class);
     expect(contextMock.getConfiguration()).andReturn(DefaultConfiguration.getInstance()).anyTimes();
     expect(contextMock.getInstanceID()).andReturn(InstanceId.of("foo")).atLeastOnce();
@@ -158,7 +161,7 @@ public class WebViewsIT extends JerseyTest {
         Annotation[] annotations, MediaType mediaType, MultivaluedMap<String,Object> httpHeaders,
         OutputStream entityStream) throws IOException, WebApplicationException {
       String s = hashMap.toString();
-      entityStream.write(s.getBytes());
+      entityStream.write(s.getBytes(UTF_8));
     }
   }
 }

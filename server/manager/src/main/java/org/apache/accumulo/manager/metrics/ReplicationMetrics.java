@@ -32,11 +32,11 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.accumulo.core.manager.state.tables.TableState;
 import org.apache.accumulo.core.metrics.MetricsProducer;
-import org.apache.accumulo.core.metrics.MetricsUtil;
 import org.apache.accumulo.core.replication.ReplicationTable;
 import org.apache.accumulo.core.replication.ReplicationTarget;
 import org.apache.accumulo.core.util.threads.ThreadPools;
 import org.apache.accumulo.manager.Manager;
+import org.apache.accumulo.server.metrics.NoopMetrics;
 import org.apache.accumulo.server.replication.ReplicationUtil;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
@@ -54,7 +54,7 @@ public class ReplicationMetrics implements MetricsProducer {
   private final ReplicationUtil replicationUtil;
   private final Map<Path,Long> pathModTimes;
 
-  private Timer replicationQueueTimer;
+  private Timer replicationQueueTimer = NoopMetrics.useNoopTimer();
   private AtomicLong pendingFiles;
   private AtomicInteger numPeers;
   private AtomicInteger maxReplicationThreads;
@@ -154,16 +154,13 @@ public class ReplicationMetrics implements MetricsProducer {
 
   @Override
   public void registerMetrics(MeterRegistry registry) {
-    replicationQueueTimer = registry.timer(METRICS_REPLICATION_QUEUE, MetricsUtil.getCommonTags());
-    pendingFiles = registry.gauge(METRICS_REPLICATION_PENDING_FILES, MetricsUtil.getCommonTags(),
-        new AtomicLong(0));
-    numPeers = registry.gauge(METRICS_REPLICATION_PEERS, MetricsUtil.getCommonTags(),
-        new AtomicInteger(0));
-    maxReplicationThreads = registry.gauge(METRICS_REPLICATION_THREADS, MetricsUtil.getCommonTags(),
-        new AtomicInteger(0));
+    replicationQueueTimer = registry.timer(METRICS_REPLICATION_QUEUE);
+    pendingFiles = registry.gauge(METRICS_REPLICATION_PENDING_FILES, new AtomicLong(0));
+    numPeers = registry.gauge(METRICS_REPLICATION_PEERS, new AtomicInteger(0));
+    maxReplicationThreads = registry.gauge(METRICS_REPLICATION_THREADS, new AtomicInteger(0));
 
     ScheduledExecutorService scheduler = ThreadPools.getServerThreadPools()
-        .createScheduledExecutorService(1, "replicationMetricsPoller", false);
+        .createScheduledExecutorService(1, "replicationMetricsPoller");
     Runtime.getRuntime().addShutdownHook(new Thread(scheduler::shutdownNow));
     long minimumRefreshDelay = TimeUnit.SECONDS.toMillis(5);
     ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(this::update, minimumRefreshDelay,
