@@ -442,6 +442,7 @@ public class CachableBlockFile {
         }
       }
 
+      // TODO need to instrument these reads and other reads that happen outside the cache
       BlockReader _currBlock = getBCFile().getDataBlock(blockIndex);
       return new CachedBlockRead(_currBlock);
     }
