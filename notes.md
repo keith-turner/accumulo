@@ -24,14 +24,14 @@ These are notes from testing the changes in this branch.  These changes count en
 Followed this [blog post](https://accumulo.apache.org/blog/2022/06/22/2.1.0-metrics-and-tracing.html). Ran the following the accumulo lib dir, used the same version as other opentelemetry jars already in the lib dir.
 
 ```
-wget -O opentelemetry-javaagent-1.27.0.jar https://search.maven.org/remotecontent?filepath=io/opentelemetry/javaagent/opentelemetry-javaagent/1.27.0/opentelemetry-javaagent-1.27.0.jar
+wget -O opentelemetry-javaagent-2.14.0.jar https://search.maven.org/remotecontent?filepath=io/opentelemetry/javaagent/opentelemetry-javaagent/1.27.0/opentelemetry-javaagent-2.14.0.jar
 ```
 
 In `accumulo-env.sh` set the following.  Set the traces exporter to `logging`.  This differs from the blog post which used jaeger.
 
 ```
 JAVA_OPTS=('-Dotel.traces.exporter=logging' '-Dotel.metrics.exporter=none' '-Dotel.logs.exporter=none' "${JAVA_OPTS[@]}")
-JAVA_OPTS=('-javaagent:<ACCUMULO_HOME>/lib/opentelemetry-javaagent-1.27.0.jar' "${JAVA_OPTS[@]}")
+JAVA_OPTS=("-javaagent:${ACCUMULO_HOME}/lib/opentelemetry-javaagent-2.14.0.jar" "${JAVA_OPTS[@]}")
 ```
 
 Set `general.opentelemetry.enabled=true` in `accumulo.properties` and `accumulo-client.properties`

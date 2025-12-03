@@ -57,6 +57,10 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.compress.Compressor;
 import org.apache.hadoop.io.compress.Decompressor;
 
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.Span;
+
 /**
  * Block Compressed file, the underlying physical storage layer for TFile. BCFile provides the basic
  * block level compression for the data block and meta blocks. It is separated from TFile as it may
@@ -696,6 +700,16 @@ public final class BCFile {
       }
 
       BlockRegion region = imeBCIndex.getRegion();
+
+      var span = Span.current();
+      if (span.isRecording()) {
+        // TODO this captures how much could be read, but not how much is actually read. It is
+        // useful to know the compressed size and raw size though.
+        span.addEvent("begin-rfile-meta-block-read",
+            Attributes.of(META_NAME_KEY, name, OFFSET_KEY, region.offset, COMPRESSED_SIZE_KEY,
+                region.compressedSize, RAW_SIZE_KEY, region.rawSize));
+      }
+
       return createReader(imeBCIndex.getCompressionAlgorithm(), region);
     }
 
@@ -715,6 +729,7 @@ public final class BCFile {
      * @return BlockReader input stream for reading the data block.
      */
     public BlockReader getDataBlock(int blockIndex) throws IOException {
+      // TODO trace? This old way
       if (blockIndex < 0 || blockIndex >= getBlockCount()) {
         throw new IndexOutOfBoundsException(
             String.format("blockIndex=%d, numBlocks=%d", blockIndex, getBlockCount()));
@@ -724,8 +739,23 @@ public final class BCFile {
       return createReader(dataIndex.getDefaultCompressionAlgorithm(), region);
     }
 
+    private static final AttributeKey<String> META_NAME_KEY = AttributeKey.stringKey("meta-name");
+    private static final AttributeKey<Long> OFFSET_KEY = AttributeKey.longKey("offset");
+    private static final AttributeKey<Long> COMPRESSED_SIZE_KEY =
+        AttributeKey.longKey("compressed-size");
+    private static final AttributeKey<Long> RAW_SIZE_KEY = AttributeKey.longKey("raw-size");
+
     public BlockReader getDataBlock(long offset, long compressedSize, long rawSize)
         throws IOException {
+      var span = Span.current();
+      // TODO does this work like log4j isTraceEnabled? Do not want this doing uneeded work to
+      // create attributes obj and an event.
+      if (span.isRecording()) {
+        // TODO this captures how much could be read, but not how much is actually read. It is
+        // useful to know the compressed size and raw size though.
+        span.addEvent("begin-rfile-data-block-read", Attributes.of(OFFSET_KEY, offset,
+            COMPRESSED_SIZE_KEY, compressedSize, RAW_SIZE_KEY, rawSize));
+      }
       BlockRegion region = new BlockRegion(offset, compressedSize, rawSize);
       return createReader(dataIndex.getDefaultCompressionAlgorithm(), region);
     }
