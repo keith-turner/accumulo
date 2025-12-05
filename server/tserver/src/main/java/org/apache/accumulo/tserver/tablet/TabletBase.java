@@ -48,6 +48,7 @@ import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.security.ColumnVisibility;
+import org.apache.accumulo.core.trace.ScanInstrumentation;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
 import org.apache.accumulo.core.util.Pair;
@@ -59,6 +60,7 @@ import org.apache.accumulo.tserver.InMemoryMap;
 import org.apache.accumulo.tserver.TabletHostingServer;
 import org.apache.accumulo.tserver.TabletServerResourceManager;
 import org.apache.accumulo.tserver.metrics.TabletServerScanMetrics;
+import org.apache.accumulo.tserver.scan.NextBatchTask;
 import org.apache.accumulo.tserver.scan.ScanParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -213,15 +215,21 @@ public abstract class TabletBase {
     boolean sawException = false;
     var span = TraceUtil.startSpan(TabletBase.class, "BatchScanner batch"); // TODO scope??
     try {
+      if (span.isRecording()) {
+        ScanInstrumentation.enable();
+      }
       SortedKeyValueIterator<Key,Value> iter = new SourceSwitchingIterator(dataSource);
       this.lookupCount.incrementAndGet();
       this.server.getScanMetrics().incrementLookupCount(1);
       result = lookup(iter, ranges, results, scanParams, maxResultSize);
+      // TODO this may keep adding to results
+      NextBatchTask.recordScanTrace(span, results, extent, scanParams);
       return result;
     } catch (IOException | RuntimeException e) {
       sawException = true;
       throw e;
     } finally {
+      ScanInstrumentation.disable();
       // code in finally block because always want
       // to return mapfiles, even when exception is thrown
       dataSource.close(sawException);

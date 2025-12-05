@@ -39,6 +39,7 @@ import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.cache.BlockCache.Loader;
 import org.apache.accumulo.core.spi.cache.CacheEntry;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
+import org.apache.accumulo.core.trace.ScanInstrumentation;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -49,6 +50,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.Cache;
+import com.google.common.io.CountingInputStream;
+
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 
 /**
  * This is a wrapper class for BCFile that includes a cache for independent caches for datablocks
@@ -410,6 +415,7 @@ public class CachableBlockFile {
 
     public CachedBlockRead getMetaBlock(long offset, long compressedSize, long rawSize)
         throws IOException {
+      GlobalOpenTelemetry.get();
       BlockCache _iCache = cacheProvider.getIndexCache();
       if (_iCache != null) {
         String _lookup = this.cacheId + "R" + offset;
@@ -492,12 +498,23 @@ public class CachableBlockFile {
   }
 
   public static class CachedBlockRead extends DataInputStream {
+
+    private static InputStream wrapForTrace(InputStream inputStream) {
+      if (ScanInstrumentation.get() != null) {
+        return new CountingInputStream(inputStream);
+      } else {
+        return inputStream;
+      }
+    }
+
     private final SeekableByteArrayInputStream seekableInput;
     private final CacheEntry cb;
     boolean indexable;
 
+    private volatile long reported = 0;
+
     public CachedBlockRead(InputStream in) {
-      super(in);
+      super(wrapForTrace(in));
       cb = null;
       seekableInput = null;
       indexable = false;
@@ -508,7 +525,7 @@ public class CachableBlockFile {
     }
 
     private CachedBlockRead(SeekableByteArrayInputStream seekableInput, CacheEntry cb) {
-      super(seekableInput);
+      super(wrapForTrace(seekableInput));
       this.seekableInput = seekableInput;
       this.cb = cb;
       indexable = true;
@@ -536,6 +553,32 @@ public class CachableBlockFile {
 
     public void indexWeightChanged() {
       cb.indexWeightChanged();
+    }
+
+    private final AttributeKey<Long> BYTES_READ_KEY = AttributeKey.longKey("bytes-read");
+    private final AttributeKey<Boolean> CACHED_KEY = AttributeKey.booleanKey("cached");
+
+    public void flushStats() {
+      if (in instanceof CountingInputStream) {
+        var cin = ((CountingInputStream) in);
+        long count = cin.getCount();
+        var si = ScanInstrumentation.get();
+        if (si != null) {
+          si.addUncompressedBytesRead(count - reported);
+          if (cb == null) {
+            // cache is not in use, so mark this read as a miss
+            // TODO this may not be the best place to put this in the code
+            si.addCacheMiss();
+          }
+        }
+        reported = count;
+      }
+    }
+
+    @Override
+    public void close() throws IOException {
+      flushStats();
+      super.close();
     }
   }
 }

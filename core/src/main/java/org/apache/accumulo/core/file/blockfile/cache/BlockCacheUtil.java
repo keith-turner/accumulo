@@ -28,11 +28,11 @@ public class BlockCacheUtil {
       return null;
     }
 
-    if (cache instanceof TracingBlockCache || cache instanceof LoggingBlockCache) {
+    if (cache instanceof InstrumentedBlockCache || cache instanceof LoggingBlockCache) {
       // its already instrumented
       return cache;
     }
 
-    return LoggingBlockCache.wrap(type, TracingBlockCache.wrap(type, cache));
+    return LoggingBlockCache.wrap(type, InstrumentedBlockCache.wrap(cache));
   }
 }

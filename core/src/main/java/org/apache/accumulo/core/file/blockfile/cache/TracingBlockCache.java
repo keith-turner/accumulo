@@ -111,7 +111,8 @@ public class TracingBlockCache implements BlockCache {
   }
 
   public static BlockCache wrap(CacheType type, BlockCache cache) {
-    if (cache != null && TraceUtil.getProcessTracing()) {
+    // TODO
+    if (cache != null /* && TraceUtil.isTracingPossible() */) {
       return new TracingBlockCache(type, cache);
     } else {
       return cache;

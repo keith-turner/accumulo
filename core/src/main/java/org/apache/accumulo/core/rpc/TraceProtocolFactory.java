@@ -48,6 +48,7 @@ public class TraceProtocolFactory extends TCompactProtocol.Factory {
     public void writeMessageBegin(TMessage message) throws TException {
       span = TraceUtil.startClientRpcSpan(this.getClass(), message.name);
       scope = span.makeCurrent();
+      span.recordException(new RuntimeException());
       super.writeMessageBegin(message);
     }
 

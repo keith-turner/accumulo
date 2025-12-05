@@ -47,6 +47,7 @@ import org.apache.accumulo.core.spi.crypto.FileDecrypter;
 import org.apache.accumulo.core.spi.crypto.FileEncrypter;
 import org.apache.accumulo.core.spi.crypto.NoFileDecrypter;
 import org.apache.accumulo.core.spi.crypto.NoFileEncrypter;
+import org.apache.accumulo.core.trace.ScanInstrumentation;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -57,8 +58,9 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.compress.Compressor;
 import org.apache.hadoop.io.compress.Decompressor;
 
+import com.google.common.io.CountingInputStream;
+
 import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 
 /**
@@ -472,6 +474,7 @@ public final class BCFile {
       private final CompressionAlgorithm compressAlgo;
       private Decompressor decompressor;
       private final BlockRegion region;
+      private final InputStream rawInputStream;
       private final InputStream in;
       private volatile boolean closed;
 
@@ -485,9 +488,15 @@ public final class BCFile {
         BoundedRangeFileInputStream boundedRangeFileInputStream = new BoundedRangeFileInputStream(
             fsin, this.region.getOffset(), this.region.getCompressedSize());
 
+        var si = ScanInstrumentation.get();
+        if (si != null) {
+          rawInputStream = new CountingInputStream(boundedRangeFileInputStream);
+        } else {
+          rawInputStream = boundedRangeFileInputStream;
+        }
+
         try {
-          InputStream inputStreamToBeCompressed =
-              decrypter.decryptStream(boundedRangeFileInputStream);
+          InputStream inputStreamToBeCompressed = decrypter.decryptStream(rawInputStream);
           this.in = compressAlgo.createDecompressionStream(inputStreamToBeCompressed, decompressor,
               getFSInputBufferSize(conf));
         } catch (IOException e) {
@@ -510,11 +519,20 @@ public final class BCFile {
         return region;
       }
 
+      // TODO need to flush stats
+
       public void finish() throws IOException {
         synchronized (in) {
           if (!closed) {
             try {
               in.close();
+              if (rawInputStream instanceof CountingInputStream) {
+                var si = ScanInstrumentation.get();
+                if (si != null) {
+                  var ci = (CountingInputStream) rawInputStream;
+                  si.addFileBytesRead(ci.getCount());
+                }
+              }
             } finally {
               closed = true;
               if (decompressor != null) {
@@ -533,6 +551,7 @@ public final class BCFile {
     /**
      * Access point to read a block.
      */
+    // TODO this does not need to extend DataInputStream, does doing so cause any pref issues?
     public static class BlockReader extends DataInputStream {
       private final RBlockState rBlkState;
       private boolean closed = false;
@@ -701,14 +720,14 @@ public final class BCFile {
 
       BlockRegion region = imeBCIndex.getRegion();
 
-      var span = Span.current();
-      if (span.isRecording()) {
-        // TODO this captures how much could be read, but not how much is actually read. It is
-        // useful to know the compressed size and raw size though.
-        span.addEvent("begin-rfile-meta-block-read",
-            Attributes.of(META_NAME_KEY, name, OFFSET_KEY, region.offset, COMPRESSED_SIZE_KEY,
-                region.compressedSize, RAW_SIZE_KEY, region.rawSize));
-      }
+      // var span = Span.current();
+      // if (span.isRecording()) {
+      // TODO this captures how much could be read, but not how much is actually read. It is
+      // useful to know the compressed size and raw size though.
+      // span.addEvent("begin-rfile-meta-block-read",
+      // Attributes.of(META_NAME_KEY, name, OFFSET_KEY, region.offset, COMPRESSED_SIZE_KEY,
+      // region.compressedSize, RAW_SIZE_KEY, region.rawSize));
+      // }
 
       return createReader(imeBCIndex.getCompressionAlgorithm(), region);
     }
@@ -750,12 +769,12 @@ public final class BCFile {
       var span = Span.current();
       // TODO does this work like log4j isTraceEnabled? Do not want this doing uneeded work to
       // create attributes obj and an event.
-      if (span.isRecording()) {
-        // TODO this captures how much could be read, but not how much is actually read. It is
-        // useful to know the compressed size and raw size though.
-        span.addEvent("begin-rfile-data-block-read", Attributes.of(OFFSET_KEY, offset,
-            COMPRESSED_SIZE_KEY, compressedSize, RAW_SIZE_KEY, rawSize));
-      }
+      // if (span.isRecording()) {
+      // TODO this captures how much could be read, but not how much is actually read. It is
+      // useful to know the compressed size and raw size though.
+      // span.addEvent("begin-rfile-data-block-read", Attributes.of(OFFSET_KEY, offset,
+      // COMPRESSED_SIZE_KEY, compressedSize, RAW_SIZE_KEY, rawSize));
+      // }
       BlockRegion region = new BlockRegion(offset, compressedSize, rawSize);
       return createReader(dataIndex.getDefaultCompressionAlgorithm(), region);
     }
