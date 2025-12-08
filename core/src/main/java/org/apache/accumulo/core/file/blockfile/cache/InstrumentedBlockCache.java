@@ -22,16 +22,20 @@ import java.util.Map;
 
 import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.cache.CacheEntry;
+import org.apache.accumulo.core.spi.cache.CacheType;
 import org.apache.accumulo.core.trace.ScanInstrumentation;
 
 public class InstrumentedBlockCache implements BlockCache {
 
   private final BlockCache blockCache;
   private final ScanInstrumentation scanInstrumentation;
+  private final CacheType cacheType;
 
-  public InstrumentedBlockCache(BlockCache blockCache, ScanInstrumentation scanInstrumentation) {
+  public InstrumentedBlockCache(CacheType cacheType, BlockCache blockCache,
+      ScanInstrumentation scanInstrumentation) {
     this.blockCache = blockCache;
     this.scanInstrumentation = scanInstrumentation;
+    this.cacheType = cacheType;
   }
 
   @Override
@@ -69,10 +73,10 @@ public class InstrumentedBlockCache implements BlockCache {
   public CacheEntry getBlock(String blockName, Loader loader) {
     var cl = new CountingLoader(loader);
     var ce = blockCache.getBlock(blockName, cl);
-    if (cl.loadCount == 0) {
-      scanInstrumentation.addCacheHit();
+    if (cl.loadCount == 0 && ce != null) {
+      scanInstrumentation.incrementCacheHit(cacheType);
     } else {
-      scanInstrumentation.addCacheMiss();
+      scanInstrumentation.incrementCacheMiss(cacheType);
     }
     return ce;
   }
@@ -92,10 +96,10 @@ public class InstrumentedBlockCache implements BlockCache {
     return blockCache.getStats();
   }
 
-  public static BlockCache wrap(BlockCache cache) {
+  public static BlockCache wrap(CacheType cacheType, BlockCache cache) {
     var si = ScanInstrumentation.get();
     if (cache != null && si != null) {
-      return new InstrumentedBlockCache(cache, si);
+      return new InstrumentedBlockCache(cacheType, cache, si);
     } else {
       return cache;
     }

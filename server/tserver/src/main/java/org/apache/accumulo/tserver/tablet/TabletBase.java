@@ -31,6 +31,7 @@ import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
@@ -48,6 +49,7 @@ import org.apache.accumulo.core.metadata.TabletFile;
 import org.apache.accumulo.core.metadata.schema.DataFileValue;
 import org.apache.accumulo.core.sample.impl.SamplerConfigurationImpl;
 import org.apache.accumulo.core.security.ColumnVisibility;
+import org.apache.accumulo.core.spi.cache.CacheType;
 import org.apache.accumulo.core.trace.ScanInstrumentation;
 import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.core.util.LocalityGroupUtil;
@@ -64,6 +66,9 @@ import org.apache.accumulo.tserver.scan.NextBatchTask;
 import org.apache.accumulo.tserver.scan.ScanParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.Span;
 
 /**
  * This class exists to share code for scanning a tablet between {@link Tablet} and
@@ -82,7 +87,7 @@ public abstract class TabletBase {
   protected AtomicLong lookupCount = new AtomicLong(0);
   protected AtomicLong queryResultCount = new AtomicLong(0);
   protected AtomicLong queryResultBytes = new AtomicLong(0);
-  protected final AtomicLong scannedCount = new AtomicLong(0);
+  protected final LongAdder scannedCount = new LongAdder();
 
   protected final Set<ScanDataSource> activeScans = new HashSet<>();
 
@@ -157,7 +162,7 @@ public abstract class TabletBase {
     return new Scanner(this, range, scanParams, interruptFlag);
   }
 
-  public AtomicLong getScannedCounter() {
+  public LongAdder getScannedCounter() {
     return this.scannedCount;
   }
 
@@ -213,8 +218,8 @@ public abstract class TabletBase {
     Tablet.LookupResult result = null;
 
     boolean sawException = false;
-    var span = TraceUtil.startSpan(TabletBase.class, "BatchScanner batch"); // TODO scope??
-    try {
+    var span = TraceUtil.startSpan(TabletBase.class, "multiscan-batch");
+    try (var scope = span.makeCurrent()) {
       if (span.isRecording()) {
         ScanInstrumentation.enable();
       }
@@ -222,20 +227,17 @@ public abstract class TabletBase {
       this.lookupCount.incrementAndGet();
       this.server.getScanMetrics().incrementLookupCount(1);
       result = lookup(iter, ranges, results, scanParams, maxResultSize);
-      // TODO this may keep adding to results
-      NextBatchTask.recordScanTrace(span, results, extent, scanParams);
+      recordScanTrace(span, results, scanParams, dataSource);
       return result;
     } catch (IOException | RuntimeException e) {
       sawException = true;
+      span.recordException(e);
       throw e;
     } finally {
       ScanInstrumentation.disable();
       // code in finally block because always want
       // to return mapfiles, even when exception is thrown
       dataSource.close(sawException);
-
-      dataSource.setAttributes(span);
-      span.setAttribute("post-iterator-reads", results.size());
       span.end();
 
       synchronized (this) {
@@ -246,6 +248,86 @@ public abstract class TabletBase {
           this.server.getScanMetrics().incrementQueryResultBytes(result.dataSize);
         }
       }
+    }
+  }
+
+  private static final AttributeKey<Long> ENTRIES_RETURNED_KEY =
+      AttributeKey.longKey("accumulo.entries.returned");
+  private static final AttributeKey<Long> BYTES_RETURNED_KEY =
+      AttributeKey.longKey("accumulo.bytes.returned");
+  private static final AttributeKey<Long> BYTES_READ_KEY =
+      AttributeKey.longKey("accumulo.bytes.read");
+  private static final AttributeKey<Long> BYTES_READ_FILE_KEY =
+      AttributeKey.longKey("accumulo.bytes.read.file");
+  private static final AttributeKey<String> EXECUTOR_KEY =
+      AttributeKey.stringKey("accumulo.executor");
+  private static final AttributeKey<String> TABLE_ID_KEY =
+      AttributeKey.stringKey("accumulo.table.id");
+  private static final AttributeKey<String> EXTENT_KEY = AttributeKey.stringKey("accumulo.extent");
+  private static final AttributeKey<Long> INDEX_HITS_KEY =
+      AttributeKey.longKey("accumulo.cache.index.hits");
+  private static final AttributeKey<Long> INDEX_MISSES_KEY =
+      AttributeKey.longKey("accumulo.cache.index.misses");
+  private static final AttributeKey<Long> INDEX_BYPASSES_KEY =
+      AttributeKey.longKey("accumulo.cache.index.bypasses");
+  private static final AttributeKey<Long> DATA_HITS_KEY =
+      AttributeKey.longKey("accumulo.cache.data.hits");
+  private static final AttributeKey<Long> DATA_MISSES_KEY =
+      AttributeKey.longKey("accumulo.cache.data.misses");
+  private static final AttributeKey<Long> DATA_BYPASSES_KEY =
+      AttributeKey.longKey("accumulo.cache.data.bypasses");;
+  private static final AttributeKey<String> SERVER_KEY = AttributeKey.stringKey("accumulo.server");
+
+  private void recordScanTrace(Span span, List<KVEntry> batch, ScanParameters scanParameters,
+      ScanDataSource dataSource) {
+    if (span.isRecording()) {
+      // TODO in testing could not get really large batches, even when increasing table and
+      // client settings
+      span.setAttribute(ENTRIES_RETURNED_KEY, batch.size());
+      long bytesReturned = 0;
+      for (var e : batch) {
+        bytesReturned += e.getKey().getLength() + e.getValue().get().length;
+      }
+      span.setAttribute(BYTES_RETURNED_KEY, bytesReturned);
+      span.setAttribute(EXECUTOR_KEY, scanParameters.getScanDispatch().getExecutorName());
+      span.setAttribute(TABLE_ID_KEY, getExtent().tableId().canonical());
+      // TODO the extent is usually in the thread name attached to the span
+      // TODO should this be obscured?
+      span.setAttribute(EXTENT_KEY, getExtent().obscured());
+      var si = ScanInstrumentation.get();
+      span.setAttribute(BYTES_READ_FILE_KEY, si.getFileBytesRead());
+      span.setAttribute(BYTES_READ_KEY, si.getUncompressedBytesRead());
+      span.setAttribute(INDEX_HITS_KEY, si.getCacheHits(CacheType.INDEX));
+      span.setAttribute(INDEX_MISSES_KEY, si.getCacheMisses(CacheType.INDEX));
+      span.setAttribute(INDEX_BYPASSES_KEY, si.getCacheBypasses(CacheType.INDEX));
+
+      span.setAttribute(DATA_HITS_KEY, si.getCacheHits(CacheType.DATA));
+      span.setAttribute(DATA_MISSES_KEY, si.getCacheMisses(CacheType.DATA));
+      span.setAttribute(DATA_BYPASSES_KEY, si.getCacheBypasses(CacheType.DATA));
+
+      span.setAttribute(SERVER_KEY, server.getAdvertiseAddress().toString());
+
+      dataSource.setAttributes(span);
+    }
+  }
+
+  Batch nextBatch(SortedKeyValueIterator<Key,Value> iter, Range range, ScanParameters scanParams,
+      ScanDataSource dataSource) throws IOException {
+    // TODO what is the fastest way to short circuit and do nothing is there is no trace?
+    var span = TraceUtil.startSpan(NextBatchTask.class, "scan-batch");
+    try (var scope = span.makeCurrent()) {
+      if (span.isRecording()) {
+        ScanInstrumentation.enable();
+      }
+
+      var batch = nextBatch(iter, range, scanParams);
+      recordScanTrace(span, batch.getResults(), scanParams, dataSource);
+      return batch;
+    } catch (IOException | RuntimeException e) {
+      span.recordException(e);
+      throw e;
+    } finally {
+      ScanInstrumentation.disable();
     }
   }
 

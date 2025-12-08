@@ -33,18 +33,21 @@ import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
 
 public class StatsIterator extends ServerWrappingIterator {
 
-  private int numRead = 0; // TODO same thread reading as writing?
-  private int totalRead = 0;
-  private int totalSeeked = 0;
-  private final AtomicLong seekCounter;
+  private int numRead = 0;
+  private final AtomicLong scanSeekCounter;
+  private final LongAdder serverSeekCounter;
   private final AtomicLong scanCounter;
+  private final LongAdder tabletScanCounter;
   private final LongAdder serverScanCounter;
 
-  public StatsIterator(SortedKeyValueIterator<Key,Value> source, AtomicLong seekCounter,
-      AtomicLong tabletScanCounter, LongAdder serverScanCounter) {
+  public StatsIterator(SortedKeyValueIterator<Key,Value> source, AtomicLong scanSeekCounter,
+      LongAdder serverSeekCounter, AtomicLong scanCounter, LongAdder tabletScanCounter,
+      LongAdder serverScanCounter) {
     super(source);
-    this.seekCounter = seekCounter;
-    this.scanCounter = tabletScanCounter;
+    this.scanSeekCounter = scanSeekCounter;
+    this.serverSeekCounter = serverSeekCounter;
+    this.scanCounter = scanCounter;
+    this.tabletScanCounter = tabletScanCounter;
     this.serverScanCounter = serverScanCounter;
   }
 
@@ -53,43 +56,32 @@ public class StatsIterator extends ServerWrappingIterator {
     source.next();
     numRead++;
 
-    if (numRead % 23 == 0) {
-      scanCounter.addAndGet(numRead);
-      serverScanCounter.add(numRead);
-      totalRead += numRead;
-      numRead = 0;
+    if (numRead % 1009 == 0) {
+      report();
     }
   }
 
   @Override
   public SortedKeyValueIterator<Key,Value> deepCopy(IteratorEnvironment env) {
-    return new StatsIterator(source.deepCopy(env), seekCounter, scanCounter, serverScanCounter);
+    return new StatsIterator(source.deepCopy(env), scanSeekCounter, serverSeekCounter, scanCounter,
+        tabletScanCounter, serverScanCounter);
   }
 
   @Override
   public void seek(Range range, Collection<ByteSequence> columnFamilies, boolean inclusive)
       throws IOException {
     source.seek(range, columnFamilies, inclusive);
-    seekCounter.incrementAndGet();
-    scanCounter.addAndGet(numRead);
-    serverScanCounter.add(numRead);
-    totalRead += numRead;
-    totalSeeked++;
-    numRead = 0;
+    serverSeekCounter.increment();
+    scanSeekCounter.incrementAndGet();
+    report();
   }
 
   public void report() {
-    scanCounter.addAndGet(numRead);
-    serverScanCounter.add(numRead);
-    totalRead += numRead;
-    numRead = 0;
-  }
-
-  public int getReads() {
-    return totalRead;
-  }
-
-  public int getSeeks() {
-    return totalSeeked;
+    if (numRead > 0) {
+      scanCounter.addAndGet(numRead);
+      tabletScanCounter.add(numRead);
+      serverScanCounter.add(numRead);
+      numRead = 0;
+    }
   }
 }

@@ -493,7 +493,6 @@ public class KeyExtent implements Comparable<KeyExtent> {
     if (endRow() != null && endRow().getLength() > 0) {
       digester.update(endRow().getBytes(), 0, endRow().getLength());
     }
-    // TODO this should include the table id outside the hash
     return Base64.getEncoder().encodeToString(digester.digest());
   }
 

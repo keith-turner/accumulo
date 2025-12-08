@@ -33,6 +33,6 @@ public class BlockCacheUtil {
       return cache;
     }
 
-    return LoggingBlockCache.wrap(type, InstrumentedBlockCache.wrap(cache));
+    return LoggingBlockCache.wrap(type, InstrumentedBlockCache.wrap(type, cache));
   }
 }

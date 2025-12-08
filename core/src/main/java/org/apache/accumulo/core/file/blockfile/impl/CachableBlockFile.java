@@ -38,8 +38,10 @@ import org.apache.accumulo.core.file.streams.RateLimitedInputStream;
 import org.apache.accumulo.core.spi.cache.BlockCache;
 import org.apache.accumulo.core.spi.cache.BlockCache.Loader;
 import org.apache.accumulo.core.spi.cache.CacheEntry;
+import org.apache.accumulo.core.spi.cache.CacheType;
 import org.apache.accumulo.core.spi.crypto.CryptoService;
 import org.apache.accumulo.core.trace.ScanInstrumentation;
+import org.apache.accumulo.core.util.CountingInputStream;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -50,10 +52,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.Cache;
-import com.google.common.io.CountingInputStream;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
 
 /**
  * This is a wrapper class for BCFile that includes a cache for independent caches for datablocks
@@ -410,6 +410,7 @@ public class CachableBlockFile {
       }
 
       BlockReader _currBlock = getBCFile(null).getMetaBlock(blockName);
+      incrementCacheBypass(CacheType.INDEX);
       return new CachedBlockRead(_currBlock);
     }
 
@@ -427,6 +428,7 @@ public class CachableBlockFile {
       }
 
       BlockReader _currBlock = getBCFile(null).getDataBlock(offset, compressedSize, rawSize);
+      incrementCacheBypass(CacheType.INDEX);
       return new CachedBlockRead(_currBlock);
     }
 
@@ -448,8 +450,8 @@ public class CachableBlockFile {
         }
       }
 
-      // TODO need to instrument these reads and other reads that happen outside the cache
       BlockReader _currBlock = getBCFile().getDataBlock(blockIndex);
+      incrementCacheBypass(CacheType.DATA);
       return new CachedBlockRead(_currBlock);
     }
 
@@ -466,7 +468,15 @@ public class CachableBlockFile {
       }
 
       BlockReader _currBlock = getBCFile().getDataBlock(offset, compressedSize, rawSize);
+      incrementCacheBypass(CacheType.DATA);
       return new CachedBlockRead(_currBlock);
+    }
+
+    private void incrementCacheBypass(CacheType cacheType) {
+      var si = ScanInstrumentation.get();
+      if (si != null) {
+        si.incrementCacheBypass(cacheType);
+      }
     }
 
     @Override
@@ -500,7 +510,8 @@ public class CachableBlockFile {
   public static class CachedBlockRead extends DataInputStream {
 
     private static InputStream wrapForTrace(InputStream inputStream) {
-      if (ScanInstrumentation.get() != null) {
+      var scanInstrumentation = ScanInstrumentation.get();
+      if (scanInstrumentation != null) {
         return new CountingInputStream(inputStream);
       } else {
         return inputStream;
@@ -510,8 +521,6 @@ public class CachableBlockFile {
     private final SeekableByteArrayInputStream seekableInput;
     private final CacheEntry cb;
     boolean indexable;
-
-    private volatile long reported = 0;
 
     public CachedBlockRead(InputStream in) {
       super(wrapForTrace(in));
@@ -555,23 +564,20 @@ public class CachableBlockFile {
       cb.indexWeightChanged();
     }
 
-    private final AttributeKey<Long> BYTES_READ_KEY = AttributeKey.longKey("bytes-read");
-    private final AttributeKey<Boolean> CACHED_KEY = AttributeKey.booleanKey("cached");
-
     public void flushStats() {
       if (in instanceof CountingInputStream) {
         var cin = ((CountingInputStream) in);
-        long count = cin.getCount();
         var si = ScanInstrumentation.get();
         if (si != null) {
-          si.addUncompressedBytesRead(count - reported);
-          if (cb == null) {
-            // cache is not in use, so mark this read as a miss
-            // TODO this may not be the best place to put this in the code
-            si.addCacheMiss();
-          }
+          si.incrementUncompressedBytesRead(cin.getCount());
         }
-        reported = count;
+        cin.resetCount();
+        var src = cin.getWrappedStream();
+        if (src instanceof BlockReader) {
+          var br = (BlockReader) src;
+          br.flushStats();
+        }
+
       }
     }
 

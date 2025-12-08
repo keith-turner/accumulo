@@ -19,25 +19,18 @@
 package org.apache.accumulo.tserver.scan;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.accumulo.core.client.SampleNotPresentException;
-import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.iteratorsImpl.system.IterationInterruptedException;
-import org.apache.accumulo.core.trace.ScanInstrumentation;
-import org.apache.accumulo.core.trace.TraceUtil;
 import org.apache.accumulo.server.fs.TooManyFilesException;
 import org.apache.accumulo.tserver.TabletHostingServer;
 import org.apache.accumulo.tserver.session.SingleScanSession;
-import org.apache.accumulo.tserver.tablet.KVEntry;
 import org.apache.accumulo.tserver.tablet.ScanBatch;
 import org.apache.accumulo.tserver.tablet.TabletBase;
 import org.apache.accumulo.tserver.tablet.TabletClosedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.opentelemetry.api.trace.Span;
 
 public class NextBatchTask extends ScanTask<ScanBatch> {
 
@@ -83,26 +76,14 @@ public class NextBatchTask extends ScanTask<ScanBatch> {
         return;
       }
 
-      // TODO want to capture exceptions on the span, or is that already done for all RPCs?
-      // TODO is this the best place to put this?
-      var span = TraceUtil.startSpan(NextBatchTask.class, "read-scan-batch");
-      try (var scope = span.makeCurrent()) {
-        if (span.isRecording()) {
-          ScanInstrumentation.enable();
-        }
+      ScanBatch batch = scanSession.scanner.read();
 
-        ScanBatch batch = scanSession.scanner.read();
-        // there should only be one thing on the queue at a time, so
-        // it should be ok to call add()
-        // instead of put()... if add() fails because queue is at
-        // capacity it means there is code
-        // problem somewhere
-        addResult(batch);
-        recordScanTrace(span, batch.getResults(), scanSession.extent, scanSession.scanParams);
-      } finally {
-        ScanInstrumentation.disable();
-        span.end();
-      }
+      // there should only be one thing on the queue at a time, so
+      // it should be ok to call add()
+      // instead of put()... if add() fails because queue is at
+      // capacity it means there is code
+      // problem somewhere
+      addResult(batch);
     } catch (TabletClosedException e) {
       addResult(new org.apache.accumulo.core.tabletserver.thrift.NotServingTabletException(
           scanSession.extent.toThrift()));
@@ -122,32 +103,5 @@ public class NextBatchTask extends ScanTask<ScanBatch> {
       Thread.currentThread().setName(oldThreadName);
     }
 
-  }
-
-  public static void recordScanTrace(Span span, List<KVEntry> batch, KeyExtent extent,
-      ScanParameters scanParameters) {
-    if (span.isRecording()) {
-      // TODO in testing could not get really large batches, even when increasing table and
-      // client settings
-      // TODO pre create attribute key
-      span.setAttribute("batch-entries", batch.size());
-      // TODO avoid stream... in lower level code it computes this as it goes
-      span.setAttribute("batch-byte",
-          batch.stream().mapToLong(e -> e.getKey().getLength() + e.getValue().get().length).sum());
-      span.setAttribute("executor", scanParameters.getScanDispatch().getExecutorName());
-      span.setAttribute("table-id", extent.tableId().canonical());
-      span.setAttribute("extent", extent.obscured());
-      var si = ScanInstrumentation.get();
-      span.setAttribute("file-bytes-read", si.getFileBytesRead());
-      span.setAttribute("uncompressed-bytes-read", si.getUncompressedBytesRead()); // TODO does
-                                                                                   // this
-                                                                                   // increment
-                                                                                   // when not
-                                                                                   // using
-                                                                                   // cache?
-      span.setAttribute("cache-hits", si.getCacheHits());
-      span.setAttribute("cache-misses", si.getCacheMisses()); // TODO need to increment this
-                                                              // when not using cache
-    }
   }
 }

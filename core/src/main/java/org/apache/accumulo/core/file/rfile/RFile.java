@@ -1309,7 +1309,6 @@ public class RFile {
 
     @Override
     public void closeDeepCopies() throws IOException {
-      // TODO flush stats
       for (LocalityGroupReader lgr : currentReaders) {
         lgr.flushStats();
       }

@@ -48,6 +48,7 @@ import org.apache.accumulo.core.spi.crypto.FileEncrypter;
 import org.apache.accumulo.core.spi.crypto.NoFileDecrypter;
 import org.apache.accumulo.core.spi.crypto.NoFileEncrypter;
 import org.apache.accumulo.core.trace.ScanInstrumentation;
+import org.apache.accumulo.core.util.CountingInputStream;
 import org.apache.accumulo.core.util.ratelimit.RateLimiter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -57,11 +58,6 @@ import org.apache.hadoop.fs.Seekable;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.compress.Compressor;
 import org.apache.hadoop.io.compress.Decompressor;
-
-import com.google.common.io.CountingInputStream;
-
-import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.trace.Span;
 
 /**
  * Block Compressed file, the underlying physical storage layer for TFile. BCFile provides the basic
@@ -519,20 +515,23 @@ public final class BCFile {
         return region;
       }
 
-      // TODO need to flush stats
+      public void flushStats() {
+        if (rawInputStream instanceof CountingInputStream) {
+          var ci = (CountingInputStream) rawInputStream;
+          var si = ScanInstrumentation.get();
+          if (si != null) {
+            si.incrementFileBytesRead(ci.getCount());
+          }
+          ci.resetCount();
+        }
+      }
 
       public void finish() throws IOException {
         synchronized (in) {
           if (!closed) {
             try {
               in.close();
-              if (rawInputStream instanceof CountingInputStream) {
-                var si = ScanInstrumentation.get();
-                if (si != null) {
-                  var ci = (CountingInputStream) rawInputStream;
-                  si.addFileBytesRead(ci.getCount());
-                }
-              }
+              flushStats();
             } finally {
               closed = true;
               if (decompressor != null) {
@@ -551,7 +550,6 @@ public final class BCFile {
     /**
      * Access point to read a block.
      */
-    // TODO this does not need to extend DataInputStream, does doing so cause any pref issues?
     public static class BlockReader extends DataInputStream {
       private final RBlockState rBlkState;
       private boolean closed = false;
@@ -559,6 +557,10 @@ public final class BCFile {
       BlockReader(RBlockState rbs) {
         super(rbs.getInputStream());
         rBlkState = rbs;
+      }
+
+      public void flushStats() {
+        rBlkState.flushStats();
       }
 
       /**
@@ -719,16 +721,6 @@ public final class BCFile {
       }
 
       BlockRegion region = imeBCIndex.getRegion();
-
-      // var span = Span.current();
-      // if (span.isRecording()) {
-      // TODO this captures how much could be read, but not how much is actually read. It is
-      // useful to know the compressed size and raw size though.
-      // span.addEvent("begin-rfile-meta-block-read",
-      // Attributes.of(META_NAME_KEY, name, OFFSET_KEY, region.offset, COMPRESSED_SIZE_KEY,
-      // region.compressedSize, RAW_SIZE_KEY, region.rawSize));
-      // }
-
       return createReader(imeBCIndex.getCompressionAlgorithm(), region);
     }
 
@@ -748,7 +740,6 @@ public final class BCFile {
      * @return BlockReader input stream for reading the data block.
      */
     public BlockReader getDataBlock(int blockIndex) throws IOException {
-      // TODO trace? This old way
       if (blockIndex < 0 || blockIndex >= getBlockCount()) {
         throw new IndexOutOfBoundsException(
             String.format("blockIndex=%d, numBlocks=%d", blockIndex, getBlockCount()));
@@ -758,23 +749,8 @@ public final class BCFile {
       return createReader(dataIndex.getDefaultCompressionAlgorithm(), region);
     }
 
-    private static final AttributeKey<String> META_NAME_KEY = AttributeKey.stringKey("meta-name");
-    private static final AttributeKey<Long> OFFSET_KEY = AttributeKey.longKey("offset");
-    private static final AttributeKey<Long> COMPRESSED_SIZE_KEY =
-        AttributeKey.longKey("compressed-size");
-    private static final AttributeKey<Long> RAW_SIZE_KEY = AttributeKey.longKey("raw-size");
-
     public BlockReader getDataBlock(long offset, long compressedSize, long rawSize)
         throws IOException {
-      var span = Span.current();
-      // TODO does this work like log4j isTraceEnabled? Do not want this doing uneeded work to
-      // create attributes obj and an event.
-      // if (span.isRecording()) {
-      // TODO this captures how much could be read, but not how much is actually read. It is
-      // useful to know the compressed size and raw size though.
-      // span.addEvent("begin-rfile-data-block-read", Attributes.of(OFFSET_KEY, offset,
-      // COMPRESSED_SIZE_KEY, compressedSize, RAW_SIZE_KEY, rawSize));
-      // }
       BlockRegion region = new BlockRegion(offset, compressedSize, rawSize);
       return createReader(dataIndex.getDefaultCompressionAlgorithm(), region);
     }
