@@ -18,22 +18,35 @@
  */
 package org.apache.accumulo.core.trace;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.apache.accumulo.core.spi.cache.CacheType;
+
+import io.opentelemetry.api.trace.Span;
 
 /**
  * This class helps collect per scan information for the purposes of tracing.
  */
 public class ScanInstrumentation {
+  private final AtomicLong fileBytesRead = new AtomicLong();
+  private final AtomicLong uncompressedBytesRead = new AtomicLong();
+  private final AtomicInteger[] cacheHits = new AtomicInteger[CacheType.values().length];
+  private final AtomicInteger[] cacheMisses = new AtomicInteger[CacheType.values().length];
+  private final AtomicInteger[] cacheBypasses = new AtomicInteger[CacheType.values().length];
 
-  // TODO this assumes a single thread will read and write
-  private long fileBytesRead;
-  private long uncompressedBytesRead;
-  private final int[] cacheHits = new int[CacheType.values().length];
-  private final int[] cacheMisses = new int[CacheType.values().length];
-  private final int[] cacheBypasses = new int[CacheType.values().length];
+  private static final Map<String,ScanInstrumentation> INSTRUMENTED_SCANS =
+      new ConcurrentHashMap<>();
 
-  // TODO pass this around instead of using a thread local?
-  private static final ThreadLocal<ScanInstrumentation> INSTRUMENTED_THREADS = new ThreadLocal<>();
+  private ScanInstrumentation() {
+    for (int i = 0; i < CacheType.values().length; i++) {
+      cacheHits[i] = new AtomicInteger();
+      cacheMisses[i] = new AtomicInteger();
+      cacheBypasses[i] = new AtomicInteger();
+    }
+  }
 
   /**
    * Increments the raw bytes read directly from DFS by a scan.
@@ -41,7 +54,7 @@ public class ScanInstrumentation {
    * @param amount the amount of bytes read
    */
   public void incrementFileBytesRead(long amount) {
-    fileBytesRead += amount;
+    fileBytesRead.addAndGet(amount);
   }
 
   // TODO should it be an option to cache compressed data?
@@ -52,59 +65,67 @@ public class ScanInstrumentation {
    * @param amount
    */
   public void incrementUncompressedBytesRead(long amount) {
-    uncompressedBytesRead += amount;
+    uncompressedBytesRead.addAndGet(amount);
   }
 
   /**
    * Increments the count of rfile blocks that were not already in the cache.
    */
   public void incrementCacheMiss(CacheType cacheType) {
-    cacheMisses[cacheType.ordinal()]++;
+    cacheMisses[cacheType.ordinal()].incrementAndGet();
   }
 
   /**
    * Increments the count of rfile blocks that were already in the cache.
    */
   public void incrementCacheHit(CacheType cacheType) {
-    cacheHits[cacheType.ordinal()]++;
+    cacheHits[cacheType.ordinal()].incrementAndGet();
   }
 
   /**
    * Increments the count of rfile blocks that were directly read from DFS bypassing the cache.
    */
   public void incrementCacheBypass(CacheType cacheType) {
-    cacheBypasses[cacheType.ordinal()]++;
+    cacheBypasses[cacheType.ordinal()].incrementAndGet();
   }
 
   public long getFileBytesRead() {
-    return fileBytesRead;
+    return fileBytesRead.get();
   }
 
   public long getUncompressedBytesRead() {
-    return uncompressedBytesRead;
+    return uncompressedBytesRead.get();
   }
 
   public int getCacheHits(CacheType cacheType) {
-    return cacheHits[cacheType.ordinal()];
+    return cacheHits[cacheType.ordinal()].get();
   }
 
   public int getCacheMisses(CacheType cacheType) {
-    return cacheMisses[cacheType.ordinal()];
+    return cacheMisses[cacheType.ordinal()].get();
   }
 
   public int getCacheBypasses(CacheType cacheType) {
-    return cacheBypasses[cacheType.ordinal()];
+    return cacheBypasses[cacheType.ordinal()].get();
   }
 
-  public static void enable() {
-    INSTRUMENTED_THREADS.set(new ScanInstrumentation());
+  public static void enable(Span span) {
+    if (span.isRecording()) {
+      INSTRUMENTED_SCANS.put(span.getSpanContext().getTraceId(), new ScanInstrumentation());
+    }
   }
 
   public static ScanInstrumentation get() {
-    return INSTRUMENTED_THREADS.get();
+    var span = Span.current();
+    if (span.isRecording()) {
+      return INSTRUMENTED_SCANS.get(span.getSpanContext().getTraceId());
+    }
+    return null;
   }
 
-  public static void disable() {
-    INSTRUMENTED_THREADS.remove();
+  public static void disable(Span span) {
+    if (span.isRecording()) {
+      INSTRUMENTED_SCANS.remove(span.getSpanContext().getTraceId());
+    }
   }
 }

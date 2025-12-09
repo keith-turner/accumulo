@@ -220,9 +220,7 @@ public abstract class TabletBase {
     boolean sawException = false;
     var span = TraceUtil.startSpan(TabletBase.class, "multiscan-batch");
     try (var scope = span.makeCurrent()) {
-      if (span.isRecording()) {
-        ScanInstrumentation.enable();
-      }
+      ScanInstrumentation.enable(span);
       SortedKeyValueIterator<Key,Value> iter = new SourceSwitchingIterator(dataSource);
       this.lookupCount.incrementAndGet();
       this.server.getScanMetrics().incrementLookupCount(1);
@@ -234,7 +232,7 @@ public abstract class TabletBase {
       span.recordException(e);
       throw e;
     } finally {
-      ScanInstrumentation.disable();
+      ScanInstrumentation.disable(span);
       // code in finally block because always want
       // to return mapfiles, even when exception is thrown
       dataSource.close(sawException);
@@ -291,20 +289,18 @@ public abstract class TabletBase {
       span.setAttribute(BYTES_RETURNED_KEY, bytesReturned);
       span.setAttribute(EXECUTOR_KEY, scanParameters.getScanDispatch().getExecutorName());
       span.setAttribute(TABLE_ID_KEY, getExtent().tableId().canonical());
-      // TODO the extent is usually in the thread name attached to the span
-      // TODO should this be obscured?
-      span.setAttribute(EXTENT_KEY, getExtent().obscured());
+      span.setAttribute(EXTENT_KEY, getExtent().toString());
       var si = ScanInstrumentation.get();
-      span.setAttribute(BYTES_READ_FILE_KEY, si.getFileBytesRead());
-      span.setAttribute(BYTES_READ_KEY, si.getUncompressedBytesRead());
-      span.setAttribute(INDEX_HITS_KEY, si.getCacheHits(CacheType.INDEX));
-      span.setAttribute(INDEX_MISSES_KEY, si.getCacheMisses(CacheType.INDEX));
-      span.setAttribute(INDEX_BYPASSES_KEY, si.getCacheBypasses(CacheType.INDEX));
-
-      span.setAttribute(DATA_HITS_KEY, si.getCacheHits(CacheType.DATA));
-      span.setAttribute(DATA_MISSES_KEY, si.getCacheMisses(CacheType.DATA));
-      span.setAttribute(DATA_BYPASSES_KEY, si.getCacheBypasses(CacheType.DATA));
-
+      if (si != null) {
+        span.setAttribute(BYTES_READ_FILE_KEY, si.getFileBytesRead());
+        span.setAttribute(BYTES_READ_KEY, si.getUncompressedBytesRead());
+        span.setAttribute(INDEX_HITS_KEY, si.getCacheHits(CacheType.INDEX));
+        span.setAttribute(INDEX_MISSES_KEY, si.getCacheMisses(CacheType.INDEX));
+        span.setAttribute(INDEX_BYPASSES_KEY, si.getCacheBypasses(CacheType.INDEX));
+        span.setAttribute(DATA_HITS_KEY, si.getCacheHits(CacheType.DATA));
+        span.setAttribute(DATA_MISSES_KEY, si.getCacheMisses(CacheType.DATA));
+        span.setAttribute(DATA_BYPASSES_KEY, si.getCacheBypasses(CacheType.DATA));
+      }
       span.setAttribute(SERVER_KEY, server.getAdvertiseAddress().toString());
 
       dataSource.setAttributes(span);
@@ -316,9 +312,7 @@ public abstract class TabletBase {
     // TODO what is the fastest way to short circuit and do nothing is there is no trace?
     var span = TraceUtil.startSpan(NextBatchTask.class, "scan-batch");
     try (var scope = span.makeCurrent()) {
-      if (span.isRecording()) {
-        ScanInstrumentation.enable();
-      }
+      ScanInstrumentation.enable(span);
 
       var batch = nextBatch(iter, range, scanParams);
       recordScanTrace(span, batch.getResults(), scanParams, dataSource);
@@ -327,7 +321,7 @@ public abstract class TabletBase {
       span.recordException(e);
       throw e;
     } finally {
-      ScanInstrumentation.disable();
+      ScanInstrumentation.disable(span);
     }
   }
 
