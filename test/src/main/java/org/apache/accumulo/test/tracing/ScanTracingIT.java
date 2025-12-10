@@ -18,26 +18,16 @@
  */
 package org.apache.accumulo.test.tracing;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.client.Accumulo;
-import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.test.functional.ConfigurableMacBase;
-import org.apache.commons.codec.binary.Hex;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
 
 public class ScanTracingIT extends ConfigurableMacBase {
 
@@ -67,53 +57,8 @@ public class ScanTracingIT extends ConfigurableMacBase {
 
   @Test
   public void test() throws Exception {
-    HttpServer server = HttpServer.create();
-    server.bind(new InetSocketAddress("localhost", 12345), 100);
-    HttpHandler handler = new HttpHandler() {
-      @Override
-      public void handle(HttpExchange exchange) throws IOException {
-        System.out.println("headers : " + exchange.getRequestHeaders().keySet());
-        System.out.println("method  : " + exchange.getRequestMethod());
-        // TODO check for /v1/traces
-        System.out.println("uri     : " + exchange.getRequestURI());
 
-        var body = exchange.getRequestBody().readAllBytes();
-        System.out.println("body len : " + body.length);
-        try {
-          var etsr = io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest.parseFrom(body);
-          var spans = etsr.getResourceSpansList().stream()
-                  .flatMap(r -> r.getScopeSpansList().stream())
-                  .flatMap(r -> r.getSpansList().stream())
-                  .collect(Collectors.toList());
-
-          spans.forEach(s->{
-            System.out.println("trace id: "+Hex.encodeHexString(s.getTraceId().toByteArray(), true)+" "+s.getName());
-            s.getAttributesList().forEach(kv->{
-              if(kv.getValue().hasIntValue()){
-                System.out.println("  "+kv.getKey()+" "+kv.getValue().getIntValue());
-              }else if(kv.getValue().hasStringValue()) {
-                System.out.println("  "+kv.getKey()+" "+kv.getValue().getStringValue());
-              }
-
-            });
-          });
-
-
-        } catch (Throwable e) {
-          e.printStackTrace();
-          System.out.println("here2");
-        }
-
-        System.out.println("here");
-        exchange.sendResponseHeaders(200, 0);
-        exchange.getResponseBody().close();
-      }
-    };
-    server.createContext("/", handler);
-    server.start();
-    System.out.println(server.getAddress());
-
-
+    TraceCollector collector = new TraceCollector("localhost", 12345);
 
     try (var client = Accumulo.newClient().from(getClientProperties()).build()) {
       client.tableOperations().create("test");
@@ -124,6 +69,7 @@ public class ScanTracingIT extends ConfigurableMacBase {
           writer.addMutation(m);
         }
       }
+      client.tableOperations().flush("test", null, null, true);
     }
 
 
@@ -131,9 +77,15 @@ public class ScanTracingIT extends ConfigurableMacBase {
     Assertions.assertEquals(0, proc.getProcess().waitFor());
     System.out.println("stdout:"+proc.readStdOut());
 
+    int count  = 0;
+    while(count < 2) {
+      var span = collector.take();
+      if((span.name.contains("scan-batch") || span.name.contains("multiscan-batch")) && "1<<".equals(span.stringAttributes.get("accumulo.extent"))){
+        System.out.println(span);
+        count++;
+      }
+    }
+
     Thread.sleep(60000);
-
-
-
   }
 }

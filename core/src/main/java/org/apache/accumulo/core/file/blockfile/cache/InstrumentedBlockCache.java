@@ -71,6 +71,7 @@ public class InstrumentedBlockCache implements BlockCache {
 
   @Override
   public CacheEntry getBlock(String blockName, Loader loader) {
+    System.out.println("STT getting block "+blockName);
     var cl = new CountingLoader(loader);
     var ce = blockCache.getBlock(blockName, cl);
     if (cl.loadCount == 0 && ce != null) {
@@ -99,6 +100,7 @@ public class InstrumentedBlockCache implements BlockCache {
   public static BlockCache wrap(CacheType cacheType, BlockCache cache) {
     var si = ScanInstrumentation.get();
     if (cache != null && si != null) {
+      System.out.println("STT instrumenting block cache");
       return new InstrumentedBlockCache(cacheType, cache, si);
     } else {
       return cache;
