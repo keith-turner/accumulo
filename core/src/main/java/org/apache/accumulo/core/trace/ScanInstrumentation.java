@@ -18,12 +18,12 @@
  */
 package org.apache.accumulo.core.trace;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.accumulo.core.spi.cache.CacheType;
+
+import com.google.common.base.Preconditions;
 
 import io.opentelemetry.api.trace.Span;
 
@@ -113,10 +113,13 @@ public class ScanInstrumentation {
 
   public static ScanScope enable(Span span) {
     if (span.isRecording()) {
-      var traceId = span.getSpanContext().getTraceId();
-      System.out.println("STT putting new scan inst "+traceId);
       INSTRUMENTED_SCANS.set(new ScanInstrumentation());
-      return INSTRUMENTED_SCANS::remove; // TODO could check that same thread
+        System.out.println("STT putting new scan inst "+span.getSpanContext().getTraceId());
+      var id = Thread.currentThread().getId();
+      return () -> {
+        Preconditions.checkState(id == Thread.currentThread().getId());
+        INSTRUMENTED_SCANS.remove();
+      };
     } else {
       return () -> {};
     }
