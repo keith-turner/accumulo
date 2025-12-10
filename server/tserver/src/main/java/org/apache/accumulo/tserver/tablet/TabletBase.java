@@ -218,7 +218,7 @@ public abstract class TabletBase {
 
     boolean sawException = false;
     var span = TraceUtil.startSpan(TabletBase.class, "multiscan-batch");
-    System.out.println("STT multi span "+span.getSpanContext().getTraceId()+" "+extent);
+    System.out.println("STT multi span " + span.getSpanContext().getTraceId() + " " + extent);
     try (var scope = span.makeCurrent(); var scanScope = ScanInstrumentation.enable(span)) {
       SortedKeyValueIterator<Key,Value> iter = new SourceSwitchingIterator(dataSource);
       this.lookupCount.incrementAndGet();
@@ -227,7 +227,8 @@ public abstract class TabletBase {
       // must close data source before recording scan trace in order to flush all file read stats
       dataSource.close(false);
       recordScanTrace(span, results, scanParams, dataSource);
-      System.out.println("STT recorded multiscan span "+span.getSpanContext().getTraceId()+" "+span.isRecording()+" "+extent);
+      System.out.println("STT recorded multiscan span " + span.getSpanContext().getTraceId() + " "
+          + span.isRecording() + " " + extent);
       return result;
     } catch (IOException | RuntimeException e) {
       sawException = true;

@@ -74,14 +74,16 @@ public class Scanner {
   public ScanBatch read() throws IOException, TabletClosedException {
     // TODO what is the fastest way to short circuit and do nothing is there is no trace?
     var span = TraceUtil.startSpan(NextBatchTask.class, "scan-batch");
-    System.out.println("STT starting scan span "+span.getSpanContext().getTraceId()+" "+span.isRecording()+" "+tablet.extent);
+    System.out.println("STT starting scan span " + span.getSpanContext().getTraceId() + " "
+        + span.isRecording() + " " + tablet.extent);
     try (var scope = span.makeCurrent(); var scanScope = ScanInstrumentation.enable(span)) {
       var batchAndSource = readInternal();
       // This needs to be called after the ScanDataSource was closed inorder to make sure all
       // statistics related to files reads are seen.
       tablet.recordScanTrace(span, batchAndSource.getFirst().getResults(), scanParams,
           batchAndSource.getSecond());
-      System.out.println("STT recorded scan span "+span.getSpanContext().getTraceId()+" "+span.isRecording()+" "+tablet.extent);
+      System.out.println("STT recorded scan span " + span.getSpanContext().getTraceId() + " "
+          + span.isRecording() + " " + tablet.extent);
       return batchAndSource.getFirst();
     } catch (IOException | RuntimeException e) {
       span.recordException(e);

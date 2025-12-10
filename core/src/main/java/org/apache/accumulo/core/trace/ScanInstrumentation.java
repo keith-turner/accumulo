@@ -114,7 +114,7 @@ public class ScanInstrumentation {
   public static ScanScope enable(Span span) {
     if (span.isRecording()) {
       INSTRUMENTED_SCANS.set(new ScanInstrumentation());
-        System.out.println("STT putting new scan inst "+span.getSpanContext().getTraceId());
+      System.out.println("STT putting new scan inst " + span.getSpanContext().getTraceId());
       var id = Thread.currentThread().getId();
       return () -> {
         Preconditions.checkState(id == Thread.currentThread().getId());

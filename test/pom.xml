@@ -90,6 +90,7 @@
     <dependency>
       <groupId>io.opentelemetry.proto</groupId>
       <artifactId>opentelemetry-proto</artifactId>
+      <!-- This version was selected because it aligns with the version of protocol buffers that Accumulo 2.1 is using. -->
       <version>1.3.2-alpha</version>
     </dependency>
     <dependency>
