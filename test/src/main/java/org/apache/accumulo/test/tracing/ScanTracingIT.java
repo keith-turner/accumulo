@@ -28,9 +28,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.apache.accumulo.core.client.Accumulo;
+import org.apache.accumulo.core.client.ScannerBase;
 import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
@@ -70,6 +72,8 @@ class ScanTracingIT extends ConfigurableMacBase {
 
   protected void configure(MiniAccumuloConfigImpl cfg, Configuration hadoopCoreSite) {
     getJvmArgs().forEach(cfg::addJvmOption);
+    // sized such that full table scans will not fit in the cache
+    cfg.setProperty(Property.TSERV_DATACACHE_SIZE.getKey(), "8M");
   }
 
   private TraceCollector collector;
@@ -86,19 +90,24 @@ class ScanTracingIT extends ConfigurableMacBase {
 
   @Test
   public void test() throws Exception{
-    var names = getUniqueNames(3);
-    runTest(names[0], 0, false);
-    runTest(names[1], 10, false);
-    runTest(names[2], 0, true);
+    var names = getUniqueNames(7);
+    runTest(names[0], 0, false, false, -1, -1, -1);
+    runTest(names[1], 10, false, false, -1, -1, -1);
+    runTest(names[2], 0, true, false, -1, -1, -1);
+    runTest(names[3], 0, false, false, -1, -1, 2);
+    runTest(names[4], 0, false, false, 32, 256, -1);
+    runTest(names[5], 0, true, true,32, 256, -1);
+    runTest(names[6], 0, true, false, -1, -1, 2);
   }
 
-  private void runTest(String tableName, int numSplits, boolean cacheData) throws Exception {
-    try (var client = Accumulo.newClient().from(getClientProperties()).build()) {
-      var ingestParams = new TestIngest.IngestParams(getClientProperties(), tableName);
-      ingestParams.createTable=false;
-      ingestParams.rows = 1000;
-      ingestParams.cols = 10;
+  private void runTest(String tableName, int numSplits, boolean cacheData, boolean secondScanFitsInCache, int startRow, int endRow, int column) throws Exception {
 
+    var ingestParams = new TestIngest.IngestParams(getClientProperties(), tableName);
+    ingestParams.createTable=false;
+    ingestParams.rows = 1000;
+    ingestParams.cols = 10;
+
+    try (var client = Accumulo.newClient().from(getClientProperties()).build()) {
       var ntc = new NewTableConfiguration();
       if(numSplits > 0){
         var splits = TestIngest.getSplitPoints(0, 1000, numSplits);
@@ -115,7 +124,25 @@ class ScanTracingIT extends ConfigurableMacBase {
       client.tableOperations().flush(tableName, null, null, true);
     }
 
-    var results = run(ScanTraceClient.class, tableName);
+    long expectedRows = ingestParams.rows;
+
+    var options = new ScanTraceClient.Options(tableName);
+    if(startRow != -1 && endRow != -1) {
+      options.startRow = TestIngest.generateRow(startRow, 0).toString();
+      options.endRow = TestIngest.generateRow(endRow, 0).toString();
+      expectedRows = IntStream.range(startRow, endRow).count();
+    }
+
+    int expectedColumns = ingestParams.cols;
+
+    if(column != -1) {
+      var col = TestIngest.generateColumn(ingestParams, column);
+      options.family = col.getColumnFamily().toString();
+      options.qualifier = col.getColumnQualifier().toString();
+      expectedColumns = 1;
+    }
+
+    var results = run(ScanTraceClient.class, options);
     System.out.println(results);
 
     var tableId = getServerContext().getTableId(tableName).canonical();
@@ -125,7 +152,7 @@ class ScanTracingIT extends ConfigurableMacBase {
     Set<String> extents1 = new TreeSet<>();
     Set<String> extents2 = new TreeSet<>();
 
-    while (scanStats.getOrDefault("accumulo.entries.returned",0L) < 10_000 || batchScanStats.getOrDefault("accumulo.entries.returned",0L) < 10_000) {
+    while (scanStats.getOrDefault("accumulo.entries.returned",0L) < expectedRows * expectedColumns || batchScanStats.getOrDefault("accumulo.entries.returned",0L) < expectedRows * expectedColumns) {
       var span = collector.take();
       if (span.name.contains("scan-batch") && span.stringAttributes.get("accumulo.table.id").equals(tableId) && (results.get("traceId1").equals(span.traceId) || results.get("traceId2").equals(span.traceId))){
         assertEquals("default", span.stringAttributes.get("accumulo.executor"));
@@ -168,23 +195,39 @@ class ScanTracingIT extends ConfigurableMacBase {
     System.out.println("scanStats "+scanStats);
     System.out.println("batchScanStats "+batchScanStats);
 
-    for(var statsMap : List.of(scanStats, batchScanStats)){
-      assertEquals(10_000, statsMap.get("accumulo.entries.read"));
-      assertEquals(Long.parseLong(results.get("scanCount")), statsMap.get("accumulo.entries.returned"));
-      assertClose(Long.parseLong(results.get("scanSize")), statsMap.get("accumulo.bytes.read"), .05);
+    assertEquals( expectedRows * expectedColumns,Long.parseLong(results.get("scanCount")), results::toString);
+
+    var statsList = List.of(batchScanStats, scanStats);
+    for(int i = 0; i<statsList.size(); i++){
+      var statsMap = statsList.get(i);
+      assertEquals(expectedRows * 10, statsMap.get("accumulo.entries.read"), statsMap::toString);
+      assertEquals(Long.parseLong(results.get("scanCount")), statsMap.get("accumulo.entries.returned"), statsMap::toString);
+      // When filtering on columns will read more data than we return
+      double colMultiplier = 10.0/expectedColumns;
+      assertClose((long)(Long.parseLong(results.get("scanSize")) * colMultiplier), statsMap.get("accumulo.bytes.read"), .05);
       assertClose(Long.parseLong(results.get("scanSize")), statsMap.get("accumulo.bytes.returned"), .05);
-      assertClose(50000, statsMap.get("accumulo.bytes.read.file"), .05);
-      if(cacheData){
-        assertEquals(0, statsMap.get("accumulo.cache.data.bypasses"));
-        assertTrue(statsMap.get("accumulo.cache.data.hits") > statsMap.get("accumulo.cache.data.misses"));
-        assertTrue(statsMap.get("accumulo.cache.data.misses") > 0);
+      if(secondScanFitsInCache && i == 1){
+        assertEquals(0,  statsMap.get("accumulo.bytes.read.file"), statsMap::toString);
       }else {
-        assertEquals(0, statsMap.get("accumulo.cache.data.hits"));
-        assertEquals(0, statsMap.get("accumulo.cache.data.misses"));
-        assertTrue(statsMap.get("accumulo.cache.data.bypasses") > statsMap.get("accumulo.seeks"));
+        assertClose((long) (statsMap.get("accumulo.bytes.read") * .005), statsMap.get("accumulo.bytes.read.file"), .2);
       }
-      assertEquals(0,  statsMap.get("accumulo.cache.index.bypasses"));
-      assertTrue(statsMap.get("accumulo.cache.index.hits") > statsMap.get("accumulo.cache.index.misses"));
+      if(cacheData) {
+        assertEquals(0, statsMap.get("accumulo.cache.data.bypasses"), statsMap::toString);
+        assertTrue(statsMap.get("accumulo.cache.data.hits") + statsMap.get("accumulo.cache.data.misses") > 0, statsMap::toString);
+        if(statsMap.get("accumulo.bytes.read.file") == 0){
+            assertEquals(0L,  statsMap.get("accumulo.cache.data.misses"), statsMap::toString);
+        }
+        // When caching data, does not seem to hit the cache much
+        var cacheSum = statsMap.get("accumulo.cache.index.hits") + statsMap.get("accumulo.cache.index.misses");
+        assertTrue(cacheSum == 0 || cacheSum == 1, statsMap::toString);
+      } else {
+        assertEquals(0, statsMap.get("accumulo.cache.data.hits"), statsMap::toString);
+        assertEquals(0, statsMap.get("accumulo.cache.data.misses"), statsMap::toString);
+        assertTrue(statsMap.get("accumulo.cache.data.bypasses") > statsMap.get("accumulo.seeks"), statsMap::toString);
+        // When not caching data, will go to the index cache each time a block location is looked up.  TODO why is this happening? keeps getting the RootData metablock for every data block.
+        assertClose(statsMap.get("accumulo.cache.data.bypasses"),  statsMap.get("accumulo.cache.index.hits"), .05);
+      }
+      assertEquals(0,  statsMap.get("accumulo.cache.index.bypasses"), statsMap::toString);
     }
 
     // TODO test scan across multiple tablet servers
@@ -196,6 +239,7 @@ class ScanTracingIT extends ConfigurableMacBase {
     // TODO test concurrent scans of the same table w/ diff trace ids
     // TODO test scan of multiple tables (check table id, etc)
     // TODO test w/ filtering
+    // TODO test multi-level rfile
 
   }
 
@@ -208,11 +252,11 @@ class ScanTracingIT extends ConfigurableMacBase {
     System.out.println("RESULT:" + gson.toJson(result));
   }
 
-  public Map<String,String> run(Class<?> clazz, String... args)
+  public Map<String,String> run(Class<?> clazz, ScanTraceClient.Options opts)
       throws IOException, InterruptedException {
-    var allArgs = Stream.concat(Stream.of(getCluster().getClientPropsPath()), Stream.of(args))
-        .toArray(String[]::new);
-    var proc = getCluster().exec(ScanTraceClient.class, getJvmArgs(), allArgs);
+    opts.clientPropsPath = getCluster().getClientPropsPath();
+    new Gson().toJson(opts);
+    var proc = getCluster().exec(ScanTraceClient.class, getJvmArgs(), new Gson().toJson(opts));
     assertEquals(0, proc.getProcess().waitFor());
     var out = proc.readStdOut();
     var result = Arrays.stream(out.split("\\n")).filter(line -> line.startsWith("RESULT:"))

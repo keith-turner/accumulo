@@ -21,7 +21,11 @@ package org.apache.accumulo.test.tracing;
 import java.util.List;
 import java.util.Map;
 
+import com.google.gson.GsonBuilder;
 import org.apache.accumulo.core.client.Accumulo;
+import org.apache.accumulo.core.client.BatchScanner;
+import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.ScannerBase;
 import org.apache.accumulo.core.data.Range;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
@@ -35,9 +39,52 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 
 public class ScanTraceClient {
+
+  public static class Options {
+    String clientPropsPath;
+    String table;
+    String startRow;
+    String endRow;
+    String family;
+    String qualifier;
+
+    Options(){}
+
+    Options(String table){
+      this.table = table;
+    }
+
+    void conigureScanner(Scanner scanner){
+      if(startRow != null || endRow != null) {
+        scanner.setRange(new Range(startRow, true, endRow, false));
+      }
+      setColumn(scanner);
+    }
+
+    void conigureScanner(BatchScanner scanner){
+      if(startRow != null || endRow != null) {
+        scanner.setRanges(List.of(new Range(startRow, true, endRow, false)));
+      } else {
+        scanner.setRanges(List.of(new Range()));
+      }
+      setColumn(scanner);
+    }
+
+    void setColumn(ScannerBase scanner){
+      System.out.println(scanner.getClass().getName()+" fam "+family);
+      if(family != null){
+        scanner.fetchColumn(family, qualifier);
+      }
+    }
+
+  }
+
   public static void main(String[] args) throws Exception {
-    String clientPropsPath = args[0];
-    String table = args[1];
+
+    Options opts = new GsonBuilder().create().fromJson(args[0], Options.class);
+
+    String clientPropsPath = opts.clientPropsPath;
+    String table = opts.table;
 
     Tracer tracer = GlobalOpenTelemetry.get().getTracer(ScanTraceClient.class.getName());
     try (var client = Accumulo.newClient().from(clientPropsPath).build()) {
@@ -48,7 +95,7 @@ public class ScanTraceClient {
 
       Span span = tracer.spanBuilder("batch-scan").startSpan();
       try (var scanner = client.createBatchScanner(table);  var scope = span.makeCurrent()) {
-        scanner.setRanges(List.of(new Range()));
+        opts.conigureScanner(scanner);
         for (var entry : scanner) {
           batchScancount++;
           batchScanSize += entry.getKey().getSize() + entry.getValue().getSize();
@@ -61,6 +108,7 @@ public class ScanTraceClient {
       // start a second trace
       span = tracer.spanBuilder("seq-scan").startSpan();
       try (var scanner = client.createScanner(table);  var scope = span.makeCurrent()) {
+        opts.conigureScanner(scanner);
         scanner.setBatchSize(10_000);
         for (var entry : scanner) {
           scanCount++;
