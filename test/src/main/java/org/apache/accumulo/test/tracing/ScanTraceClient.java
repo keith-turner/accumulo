@@ -27,6 +27,12 @@ import org.apache.accumulo.core.data.Range;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import org.apache.accumulo.core.security.ColumnVisibility;
+import org.junit.jupiter.api.Assertions;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
 
 public class ScanTraceClient {
   public static void main(String[] args) throws Exception {
@@ -34,26 +40,44 @@ public class ScanTraceClient {
     String table = args[1];
 
     Tracer tracer = GlobalOpenTelemetry.get().getTracer(ScanTraceClient.class.getName());
-    Span span = tracer.spanBuilder("test-scan").startSpan();
+    try (var client = Accumulo.newClient().from(clientPropsPath).build()) {
+      long scanCount = 0;
+      long scanSize = 0;
+      long batchScancount = 0;
+      long batchScanSize = 0;
 
-    long scanCount = 0;
-    long batchScancount = 0;
-
-    try (var client = Accumulo.newClient().from(clientPropsPath).build();
-        var scope = span.makeCurrent()) {
-      try (var scanner = client.createBatchScanner(table)) {
+      Span span = tracer.spanBuilder("batch-scan").startSpan();
+      try (var scanner = client.createBatchScanner(table);  var scope = span.makeCurrent()) {
         scanner.setRanges(List.of(new Range()));
-        batchScancount = scanner.stream().count();
+        for (var entry : scanner) {
+          batchScancount++;
+          batchScanSize += entry.getKey().getSize() + entry.getValue().getSize();
+        }
+      }finally {
+        span.end();
       }
-      try (var scanner = client.createScanner(table)) {
-        scanner.setBatchSize(10_000);
-        scanCount = scanner.stream().count();
-      }
-    } finally {
-      span.end();
-    }
+      var traceId1 = span.getSpanContext().getTraceId();
 
-    ScanTracingIT
-        .printResult(Map.of("traceId",span.getSpanContext().getTraceId(), "scanCount", scanCount + "", "batchScanCount", batchScancount + ""));
+      // start a second trace
+      span = tracer.spanBuilder("seq-scan").startSpan();
+      try (var scanner = client.createScanner(table);  var scope = span.makeCurrent()) {
+        scanner.setBatchSize(10_000);
+        for (var entry : scanner) {
+          scanCount++;
+          scanSize += entry.getKey().getSize() + entry.getValue().getSize();
+        }
+      }finally {
+        span.end();
+      }
+      var traceId2 = span.getSpanContext().getTraceId();
+
+      assertEquals(scanCount, batchScancount);
+      assertEquals(scanSize, batchScanSize);
+      assertNotEquals(traceId1, traceId2);
+
+      ScanTracingIT
+              .printResult(Map.of("traceId1",traceId1, "traceId2", traceId2, "scanCount",
+                      scanCount + "","scanSize",scanSize+""));
+    }
   }
 }
