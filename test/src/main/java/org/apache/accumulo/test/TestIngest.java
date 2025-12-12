@@ -248,7 +248,7 @@ public class TestIngest {
   }
 
   public static IteratorSetting.Column generateColumn(IngestParams params, int column) {
-      return new IteratorSetting.Column(new Text(params.columnFamily), generateQualifier(column));
+    return new IteratorSetting.Column(new Text(params.columnFamily), generateQualifier(column));
   }
 
   public static void main(String[] args) throws Exception {
@@ -414,7 +414,6 @@ public class TestIngest {
     Text colq = new Text(FastFormat.toZeroPaddedString(j, 7, 10, COL_PREFIX));
     return colq;
   }
-
 
   public static void ingest(AccumuloClient c, IngestParams params)
       throws MutationsRejectedException, IOException, AccumuloException, AccumuloSecurityException,

@@ -18,25 +18,23 @@
  */
 package org.apache.accumulo.test.tracing;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
 import java.util.List;
 import java.util.Map;
 
-import com.google.gson.GsonBuilder;
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.BatchScanner;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.ScannerBase;
 import org.apache.accumulo.core.data.Range;
 
+import com.google.gson.GsonBuilder;
+
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
-import org.apache.accumulo.core.security.ColumnVisibility;
-import org.junit.jupiter.api.Assertions;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-
 
 public class ScanTraceClient {
 
@@ -48,21 +46,21 @@ public class ScanTraceClient {
     String family;
     String qualifier;
 
-    Options(){}
+    Options() {}
 
-    Options(String table){
+    Options(String table) {
       this.table = table;
     }
 
-    void conigureScanner(Scanner scanner){
-      if(startRow != null || endRow != null) {
+    void conigureScanner(Scanner scanner) {
+      if (startRow != null || endRow != null) {
         scanner.setRange(new Range(startRow, true, endRow, false));
       }
       setColumn(scanner);
     }
 
-    void conigureScanner(BatchScanner scanner){
-      if(startRow != null || endRow != null) {
+    void conigureScanner(BatchScanner scanner) {
+      if (startRow != null || endRow != null) {
         scanner.setRanges(List.of(new Range(startRow, true, endRow, false)));
       } else {
         scanner.setRanges(List.of(new Range()));
@@ -70,9 +68,9 @@ public class ScanTraceClient {
       setColumn(scanner);
     }
 
-    void setColumn(ScannerBase scanner){
-      System.out.println(scanner.getClass().getName()+" fam "+family);
-      if(family != null){
+    void setColumn(ScannerBase scanner) {
+      System.out.println(scanner.getClass().getName() + " fam " + family);
+      if (family != null) {
         scanner.fetchColumn(family, qualifier);
       }
     }
@@ -94,27 +92,27 @@ public class ScanTraceClient {
       long batchScanSize = 0;
 
       Span span = tracer.spanBuilder("batch-scan").startSpan();
-      try (var scanner = client.createBatchScanner(table);  var scope = span.makeCurrent()) {
+      try (var scanner = client.createBatchScanner(table); var scope = span.makeCurrent()) {
         opts.conigureScanner(scanner);
         for (var entry : scanner) {
           batchScancount++;
           batchScanSize += entry.getKey().getSize() + entry.getValue().getSize();
         }
-      }finally {
+      } finally {
         span.end();
       }
       var traceId1 = span.getSpanContext().getTraceId();
 
       // start a second trace
       span = tracer.spanBuilder("seq-scan").startSpan();
-      try (var scanner = client.createScanner(table);  var scope = span.makeCurrent()) {
+      try (var scanner = client.createScanner(table); var scope = span.makeCurrent()) {
         opts.conigureScanner(scanner);
         scanner.setBatchSize(10_000);
         for (var entry : scanner) {
           scanCount++;
           scanSize += entry.getKey().getSize() + entry.getValue().getSize();
         }
-      }finally {
+      } finally {
         span.end();
       }
       var traceId2 = span.getSpanContext().getTraceId();
@@ -123,9 +121,8 @@ public class ScanTraceClient {
       assertEquals(scanSize, batchScanSize);
       assertNotEquals(traceId1, traceId2);
 
-      ScanTracingIT
-              .printResult(Map.of("traceId1",traceId1, "traceId2", traceId2, "scanCount",
-                      scanCount + "","scanSize",scanSize+""));
+      ScanTracingIT.printResult(Map.of("traceId1", traceId1, "traceId2", traceId2, "scanCount",
+          scanCount + "", "scanSize", scanSize + ""));
     }
   }
 }
