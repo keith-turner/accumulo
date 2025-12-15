@@ -76,12 +76,12 @@ class ScanTracingIT extends ConfigurableMacBase {
   private TraceCollector collector;
 
   @BeforeEach
-  public void startCollector() throws IOException {
+  public void startCollector() throws Exception {
     collector = new TraceCollector("localhost", OTLP_PORT);
   }
 
   @AfterEach
-  public void stopCollector() throws IOException {
+  public void stopCollector() throws Exception {
     collector.stop();
   }
 

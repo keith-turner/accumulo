@@ -25,22 +25,33 @@ import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 
-import org.apache.commons.codec.binary.Hex;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
+import org.apache.commons.codec.binary.Hex;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.handler.AbstractHandler;
 
 public class TraceCollector {
-  // TODO use jetty
-  private final HttpServer server;
+  private final Server server;
 
   private final LinkedBlockingQueue<SpanData> spanQueue = new LinkedBlockingQueue<>();
 
-  private class TraceHandler implements HttpHandler {
+  private class TraceHandler extends AbstractHandler {
     @Override
-    public void handle(HttpExchange exchange) throws IOException {
-      var body = exchange.getRequestBody().readAllBytes();
+    public void handle(String target, Request baseRequest, HttpServletRequest request,
+        HttpServletResponse response) throws IOException, ServletException {
+
+      if (!target.equals("/v1/traces")) {
+        System.err.println("unexpected target : " + target);
+        response.setStatus(404);
+        response.getOutputStream().close();
+        return;
+      }
+
+      var body = request.getInputStream().readAllBytes();
       try {
         var etsr =
             io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest.parseFrom(body);
@@ -69,16 +80,17 @@ public class TraceCollector {
       } catch (Throwable e) {
         // TODO need to fail test
         e.printStackTrace();
+        throw e;
       }
-      exchange.sendResponseHeaders(200, 0);
-      exchange.getResponseBody().close();
+
+      response.setStatus(200);
+      response.getOutputStream().close();
     }
   };
 
-  TraceCollector(String host, int port) throws IOException {
-    server = HttpServer.create();
-    server.bind(new InetSocketAddress("localhost", 12345), 100);
-    server.createContext("/v1/traces", new TraceHandler());
+  TraceCollector(String host, int port) throws Exception {
+    server = new Server(new InetSocketAddress("localhost", 12345));
+    server.setHandler(new TraceHandler());
     server.start();
   }
 
@@ -86,7 +98,7 @@ public class TraceCollector {
     return spanQueue.take();
   }
 
-  void stop() {
-    server.stop(0);
+  void stop() throws Exception {
+    server.stop();
   }
 }
