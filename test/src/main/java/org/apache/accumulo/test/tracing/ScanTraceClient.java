@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import java.util.List;
-import java.util.Map;
 
 import org.apache.accumulo.core.client.Accumulo;
 import org.apache.accumulo.core.client.BatchScanner;
@@ -30,6 +29,7 @@ import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.ScannerBase;
 import org.apache.accumulo.core.data.Range;
 
+import com.google.gson.FormattingStyle;
 import com.google.gson.GsonBuilder;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
@@ -73,6 +73,24 @@ public class ScanTraceClient {
       if (family != null) {
         scanner.fetchColumn(family, qualifier);
       }
+    }
+
+  }
+
+  public static class Results {
+    // trace id for the batch scan
+    String traceId1;
+    // trace id for the normal scan
+    String traceId2;
+    // The number of entries returned by both scans
+    long scanCount;
+    // The number of bytes returned by both scans
+    long scanSize;
+
+    @Override
+    public String toString() {
+      return "Results{" + "scanCount=" + scanCount + ", traceId1='" + traceId1 + '\''
+          + ", traceId2='" + traceId2 + '\'' + ", scanSize=" + scanSize + '}';
     }
 
   }
@@ -121,8 +139,14 @@ public class ScanTraceClient {
       assertEquals(scanSize, batchScanSize);
       assertNotEquals(traceId1, traceId2);
 
-      ScanTracingIT.printResult(Map.of("traceId1", traceId1, "traceId2", traceId2, "scanCount",
-          scanCount + "", "scanSize", scanSize + ""));
+      Results results = new Results();
+      results.traceId1 = traceId1;
+      results.traceId2 = traceId2;
+      results.scanCount = scanCount;
+      results.scanSize = scanSize;
+
+      var gson = new GsonBuilder().setFormattingStyle(FormattingStyle.COMPACT).create();
+      System.out.println("RESULT:" + gson.toJson(results));
     }
   }
 }

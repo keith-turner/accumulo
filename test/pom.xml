@@ -85,6 +85,7 @@
     <dependency>
       <groupId>io.opentelemetry.javaagent</groupId>
       <artifactId>opentelemetry-javaagent</artifactId>
+      <!-- This version was selected because it aligns with the version of open telemetry that Accumulo 2.1 is using. -->
       <version>2.14.0</version>
     </dependency>
     <dependency>

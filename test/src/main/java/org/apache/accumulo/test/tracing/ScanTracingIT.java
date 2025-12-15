@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -43,10 +42,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.google.gson.FormattingStyle;
+import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
 
 class ScanTracingIT extends ConfigurableMacBase {
 
@@ -140,24 +137,22 @@ class ScanTracingIT extends ConfigurableMacBase {
       expectedColumns = 1;
     }
 
-    var results = run(ScanTraceClient.class, options);
+    var results = run(options);
     System.out.println(results);
 
     var tableId = getServerContext().getTableId(tableName).canonical();
 
-    Map<String,Long> scanStats = new TreeMap<>();
-    Map<String,Long> batchScanStats = new TreeMap<>();
+    ScanTraceStats scanStats = new ScanTraceStats(false);
+    ScanTraceStats batchScanStats = new ScanTraceStats(true);
     Set<String> extents1 = new TreeSet<>();
     Set<String> extents2 = new TreeSet<>();
 
-    while (scanStats.getOrDefault("accumulo.entries.returned", 0L) < expectedRows * expectedColumns
-        || batchScanStats.getOrDefault("accumulo.entries.returned", 0L)
-            < expectedRows * expectedColumns) {
+    while (scanStats.getEntriesReturned() < expectedRows * expectedColumns
+        || batchScanStats.getEntriesReturned() < expectedRows * expectedColumns) {
       var span = collector.take();
-      if (span.name.contains("scan-batch")
-          && span.stringAttributes.get("accumulo.table.id").equals(tableId)
-          && (results.get("traceId1").equals(span.traceId)
-              || results.get("traceId2").equals(span.traceId))) {
+      var stats = ScanTraceStats.create(span);
+      if (stats != null && span.stringAttributes.get("accumulo.table.id").equals(tableId)
+          && (results.traceId1.equals(span.traceId) || results.traceId2.equals(span.traceId))) {
         assertEquals("default", span.stringAttributes.get("accumulo.executor"));
         if (numSplits == 0) {
           assertEquals(tableId + "<<", span.stringAttributes.get("accumulo.extent"));
@@ -165,26 +160,22 @@ class ScanTracingIT extends ConfigurableMacBase {
           var extent = span.stringAttributes.get("accumulo.extent");
           assertTrue(extent.startsWith(tableId + ";") || extent.startsWith(tableId + "<"));
         }
-        assertEquals(1, span.integerAttributes.get("accumulo.seeks"));
-        if (span.name.contains("multiscan-batch")) {
-          assertEquals(results.get("traceId1"), span.traceId);
+        assertEquals(1, stats.getSeeks());
+        if (stats.isBatchScan()) {
+          assertEquals(results.traceId1, span.traceId);
           extents1.add(span.stringAttributes.get("accumulo.extent"));
         } else {
-          assertEquals(results.get("traceId2"), span.traceId);
+          assertEquals(results.traceId2, span.traceId);
           extents2.add(span.stringAttributes.get("accumulo.extent"));
         }
       } else {
         continue;
       }
 
-      if (span.name.contains("multiscan-batch")) {
-        span.integerAttributes.forEach((k, v) -> {
-          batchScanStats.merge(k, v, Long::sum);
-        });
+      if (stats.isBatchScan()) {
+        batchScanStats.merge(stats);
       } else {
-        span.integerAttributes.forEach((k, v) -> {
-          scanStats.merge(k, v, Long::sum);
-        });
+        scanStats.merge(stats);
       }
     }
 
@@ -193,69 +184,45 @@ class ScanTracingIT extends ConfigurableMacBase {
       assertEquals(numSplits, extents2.size());
     }
 
-    // TODO count the blocks in the rfile to know what cache counts should be
+    System.out.println(scanStats);
+    System.out.println(batchScanStats);
 
-    System.out.println("scanStats " + scanStats);
-    System.out.println("batchScanStats " + batchScanStats);
-
-    assertEquals(expectedRows * expectedColumns, Long.parseLong(results.get("scanCount")),
-        results::toString);
+    assertEquals(expectedRows * expectedColumns, results.scanCount, results::toString);
 
     var statsList = List.of(batchScanStats, scanStats);
     for (int i = 0; i < statsList.size(); i++) {
-      var statsMap = statsList.get(i);
-      assertEquals(expectedRows * 10, statsMap.get("accumulo.entries.read"), statsMap::toString);
-      assertEquals(Long.parseLong(results.get("scanCount")),
-          statsMap.get("accumulo.entries.returned"), statsMap::toString);
+      var stats = statsList.get(i);
+      assertEquals(expectedRows * 10, stats.getEntriesRead(), stats::toString);
+      assertEquals(results.scanCount, stats.getEntriesReturned(), stats::toString);
       // When filtering on columns will read more data than we return
       double colMultiplier = 10.0 / expectedColumns;
-      assertClose((long) (Long.parseLong(results.get("scanSize")) * colMultiplier),
-          statsMap.get("accumulo.bytes.read"), .05);
-      assertClose(Long.parseLong(results.get("scanSize")), statsMap.get("accumulo.bytes.returned"),
-          .05);
+      assertClose((long) (results.scanSize * colMultiplier), stats.getBytesRead(), .05);
+      assertClose(results.scanSize, stats.getBytesReturned(), .05);
       if (secondScanFitsInCache && i == 1) {
-        assertEquals(0, statsMap.get("accumulo.bytes.read.file"), statsMap::toString);
+        assertEquals(0, stats.getFileBytesRead(), stats::toString);
       } else {
-        assertClose((long) (statsMap.get("accumulo.bytes.read") * .005),
-            statsMap.get("accumulo.bytes.read.file"), .2);
+        assertClose((long) (stats.getBytesRead() * .005), stats.getFileBytesRead(), .2);
       }
       if (cacheData) {
-        assertEquals(0, statsMap.get("accumulo.cache.data.bypasses"), statsMap::toString);
-        assertTrue(
-            statsMap.get("accumulo.cache.data.hits") + statsMap.get("accumulo.cache.data.misses")
-                > 0,
-            statsMap::toString);
-        if (statsMap.get("accumulo.bytes.read.file") == 0) {
-          assertEquals(0L, statsMap.get("accumulo.cache.data.misses"), statsMap::toString);
+        assertEquals(0, stats.getDataCacheBypasses(), stats::toString);
+        assertTrue(stats.getDataCacheHits() + stats.getDataCacheMisses() > 0, stats::toString);
+        if (stats.getFileBytesRead() == 0) {
+          assertEquals(0L, stats.getDataCacheMisses(), stats::toString);
         }
         // When caching data, does not seem to hit the cache much
-        var cacheSum =
-            statsMap.get("accumulo.cache.index.hits") + statsMap.get("accumulo.cache.index.misses");
-        assertTrue(cacheSum == 0 || cacheSum == 1, statsMap::toString);
+        var cacheSum = stats.getIndexCacheHits() + stats.getIndexCacheMisses();
+        assertTrue(cacheSum == 0 || cacheSum == 1, stats::toString);
       } else {
-        assertEquals(0, statsMap.get("accumulo.cache.data.hits"), statsMap::toString);
-        assertEquals(0, statsMap.get("accumulo.cache.data.misses"), statsMap::toString);
-        assertTrue(statsMap.get("accumulo.cache.data.bypasses") > statsMap.get("accumulo.seeks"),
-            statsMap::toString);
+        assertEquals(0, stats.getDataCacheHits(), stats::toString);
+        assertEquals(0, stats.getDataCacheMisses(), stats::toString);
+        assertTrue(stats.getDataCacheBypasses() > stats.getSeeks(), stats::toString);
         // When not caching data, will go to the index cache each time a block location is looked
         // up. TODO why is this happening? keeps getting the RootData metablock for every data
         // block.
-        assertClose(statsMap.get("accumulo.cache.data.bypasses"),
-            statsMap.get("accumulo.cache.index.hits"), .05);
+        assertClose(stats.getDataCacheBypasses(), stats.getIndexCacheHits(), .05);
       }
-      assertEquals(0, statsMap.get("accumulo.cache.index.bypasses"), statsMap::toString);
+      assertEquals(0, stats.getIndexCacheBypasses(), stats::toString);
     }
-
-    // TODO test scan across multiple tablet servers
-    // TODO test scan with a range
-    // TODO test batch scan the spins up multiple threads on a single tserver w/ the same trace id
-    // TODO test isolated scans
-    // TODO test scan w/ large batch size
-    // TODO test scan w/ table data cache enabled
-    // TODO test concurrent scans of the same table w/ diff trace ids
-    // TODO test scan of multiple tables (check table id, etc)
-    // TODO test w/ filtering
-    // TODO test multi-level rfile
 
   }
 
@@ -264,12 +231,11 @@ class ScanTracingIT extends ConfigurableMacBase {
         () -> expected + " " + value + " " + e);
   };
 
-  public static void printResult(Map<String,String> result) {
-    var gson = new GsonBuilder().setFormattingStyle(FormattingStyle.COMPACT).create();
-    System.out.println("RESULT:" + gson.toJson(result));
-  }
-
-  public Map<String,String> run(Class<?> clazz, ScanTraceClient.Options opts)
+  /**
+   * Runs ScanTraceClient in an external process so it can be instrumented with the open telemetry
+   * java agent. Use json to get data to/from external process.
+   */
+  public ScanTraceClient.Results run(ScanTraceClient.Options opts)
       throws IOException, InterruptedException {
     opts.clientPropsPath = getCluster().getClientPropsPath();
     new Gson().toJson(opts);
@@ -279,8 +245,100 @@ class ScanTracingIT extends ConfigurableMacBase {
     var result = Arrays.stream(out.split("\\n")).filter(line -> line.startsWith("RESULT:"))
         .findFirst().orElse("RESULT:{}");
     result = result.substring("RESULT:".length());
-    Type typeOfHashMap = new TypeToken<Map<String,String>>() {}.getType();
-    Map<String,String> newMap = new Gson().fromJson(result, typeOfHashMap);
-    return newMap;
+    return new Gson().fromJson(result, ScanTraceClient.Results.class);
+  }
+
+  /**
+   * Helper class that encapsulates data from a scan trace making it easier to access and
+   * centralizing the code for accessing data from a span.
+   */
+  static class ScanTraceStats {
+    final Map<String,Long> scanStats;
+    final boolean isBatchScan;
+
+    ScanTraceStats(SpanData spanData) {
+      this.scanStats = spanData.integerAttributes;
+      this.isBatchScan = spanData.name.contains("multiscan-batch");
+    }
+
+    ScanTraceStats(boolean isBatchScan) {
+      scanStats = new TreeMap<>();
+      this.isBatchScan = isBatchScan;
+    }
+
+    void merge(ScanTraceStats other) {
+      Preconditions.checkArgument(isBatchScan == other.isBatchScan);
+      other.scanStats.forEach((k, v) -> {
+        scanStats.merge(k, v, Long::sum);
+      });
+    }
+
+    /**
+     * @return a ScanTrace if span is from a scan batch, otherwise return null
+     */
+    static ScanTraceStats create(SpanData data) {
+      if (data.name.contains("scan-batch")) {
+        return new ScanTraceStats(data);
+      }
+      return null;
+    }
+
+    boolean isBatchScan() {
+      return isBatchScan;
+    }
+
+    long getEntriesRead() {
+      return scanStats.getOrDefault("accumulo.entries.read", 0L);
+    }
+
+    long getEntriesReturned() {
+      return scanStats.getOrDefault("accumulo.entries.returned", 0L);
+
+    }
+
+    long getFileBytesRead() {
+      return scanStats.getOrDefault("accumulo.bytes.read.file", 0L);
+    }
+
+    long getBytesRead() {
+      return scanStats.getOrDefault("accumulo.bytes.read", 0L);
+    }
+
+    long getBytesReturned() {
+      return scanStats.getOrDefault("accumulo.bytes.returned", 0L);
+    }
+
+    long getDataCacheHits() {
+      return scanStats.getOrDefault("accumulo.cache.data.hits", 0L);
+    }
+
+    long getDataCacheMisses() {
+      return scanStats.getOrDefault("accumulo.cache.data.misses", 0L);
+    }
+
+    long getDataCacheBypasses() {
+      return scanStats.getOrDefault("accumulo.cache.data.bypasses", 0L);
+    }
+
+    long getIndexCacheHits() {
+      return scanStats.getOrDefault("accumulo.cache.index.hits", 0L);
+    }
+
+    long getIndexCacheMisses() {
+      return scanStats.getOrDefault("accumulo.cache.index.misses", 0L);
+    }
+
+    long getIndexCacheBypasses() {
+      return scanStats.getOrDefault("accumulo.cache.index.bypasses", 0L);
+    }
+
+    long getSeeks() {
+      return scanStats.getOrDefault("accumulo.seeks", 0L);
+    }
+
+    @Override
+    public String toString() {
+      return "ScanTraceStats{" + "isBatchScan=" + isBatchScan + ", scanStats=" + scanStats + '}';
+    }
   }
 }

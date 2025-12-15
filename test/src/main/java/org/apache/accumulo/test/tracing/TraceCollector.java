@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 
-import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -34,6 +33,10 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 
+/**
+ * Open telemetry tracing data sink for testing. Processes can send http/protobuf trace data to this
+ * sink over http, and it will add them to an in memory queue that tests can read from.
+ */
 public class TraceCollector {
   private final Server server;
 
@@ -42,7 +45,7 @@ public class TraceCollector {
   private class TraceHandler extends AbstractHandler {
     @Override
     public void handle(String target, Request baseRequest, HttpServletRequest request,
-        HttpServletResponse response) throws IOException, ServletException {
+        HttpServletResponse response) throws IOException {
 
       if (!target.equals("/v1/traces")) {
         System.err.println("unexpected target : " + target);
@@ -78,7 +81,6 @@ public class TraceCollector {
         });
 
       } catch (Throwable e) {
-        // TODO need to fail test
         e.printStackTrace();
         throw e;
       }
@@ -89,7 +91,7 @@ public class TraceCollector {
   };
 
   TraceCollector(String host, int port) throws Exception {
-    server = new Server(new InetSocketAddress("localhost", 12345));
+    server = new Server(new InetSocketAddress(host, port));
     server.setHandler(new TraceHandler());
     server.start();
   }
