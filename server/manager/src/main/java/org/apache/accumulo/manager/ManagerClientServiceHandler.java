@@ -19,6 +19,7 @@
 package org.apache.accumulo.manager;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.accumulo.core.iteratorsImpl.IteratorConfigUtil.checkIteratorPriorityConflicts;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.FLUSH_ID;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOCATION;
 import static org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType.LOGS;
@@ -62,7 +63,6 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.fate.Fate;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
-import org.apache.accumulo.core.iteratorsImpl.IteratorConfigUtil;
 import org.apache.accumulo.core.manager.thrift.ManagerClientService;
 import org.apache.accumulo.core.manager.thrift.ManagerGoalState;
 import org.apache.accumulo.core.manager.thrift.ManagerMonitorInfo;
@@ -86,10 +86,8 @@ import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.ByteBufferUtil;
 import org.apache.accumulo.manager.tableOps.TraceRepo;
 import org.apache.accumulo.manager.tserverOps.ShutdownTServer;
-import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.client.ClientServiceHandler;
 import org.apache.accumulo.server.conf.store.NamespacePropKey;
-import org.apache.accumulo.server.conf.store.PropStoreKey;
 import org.apache.accumulo.server.conf.store.TablePropKey;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
 import org.apache.accumulo.server.replication.proto.Replication.Status;
@@ -275,6 +273,9 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
     }
 
     try {
+      checkIteratorPriorityConflicts("table:" + tableName + " tableId:" + tableId,
+          properties.getProperties(), manager.getContext().getNamespaceConfiguration(namespaceId)
+              .getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX));
       PropUtil.replaceProperties(manager.getContext(),
           TablePropKey.of(manager.getContext(), tableId), properties.getVersion(),
           properties.getProperties());
@@ -507,6 +508,9 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
     }
 
     try {
+      checkIteratorPriorityConflicts("namespace:" + ns + " namespaceId:" + namespaceId,
+          properties.getProperties(), manager.getContext().getConfiguration()
+              .getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX));
       PropUtil.replaceProperties(manager.getContext(),
           NamespacePropKey.of(manager.getContext(), namespaceId), properties.getVersion(),
           properties.getProperties());
@@ -550,10 +554,11 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
             NamespacePropKey.of(manager.getContext(), namespaceId), List.of(property));
       } else {
         var context = manager.getContext();
-        var iterProps = context.getNamespaceConfiguration(namespaceId).getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX);
-        IteratorConfigUtil.checkIteratorConflicts("namespaceId:"+namespaceId, iterProps, property,
-                value);
-        PropUtil.setProperties(context, NamespacePropKey.of(manager.getContext(), namespaceId), Map.of(property, value));
+        checkIteratorPriorityConflicts("namespace:" + namespace + " namespaceId:" + namespaceId,
+            Map.of(property, value), context.getNamespaceConfiguration(namespaceId)
+                .getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX));
+        PropUtil.setProperties(context, NamespacePropKey.of(manager.getContext(), namespaceId),
+            Map.of(property, value));
       }
     } catch (IllegalStateException ex) {
       // race condition on delete... namespace no longer exists? An undelying ZooKeeper.NoNode
@@ -585,10 +590,11 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
           value = "";
         }
         var context = manager.getContext();
-        var iterProps = context.getTableConfiguration(tableId).getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX);
-        IteratorConfigUtil.checkIteratorConflicts("tableId:"+tableId, iterProps, property,
-                value);
-        PropUtil.setProperties(context, TablePropKey.of(manager.getContext(), tableId), Map.of(property, value));
+        checkIteratorPriorityConflicts("table:" + tableName + "tableId:" + tableId,
+            Map.of(property, value), context.getTableConfiguration(tableId)
+                .getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX));
+        PropUtil.setProperties(context, TablePropKey.of(manager.getContext(), tableId),
+            Map.of(property, value));
       } else {
         throw new UnsupportedOperationException("table operation:" + op.name());
       }

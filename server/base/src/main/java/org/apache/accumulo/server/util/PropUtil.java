@@ -24,7 +24,6 @@ import java.util.Map;
 
 import org.apache.accumulo.core.classloader.ClassLoaderUtil;
 import org.apache.accumulo.core.conf.Property;
-import org.apache.accumulo.core.iteratorsImpl.IteratorConfigUtil;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.conf.store.PropStoreKey;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
@@ -55,7 +54,6 @@ public final class PropUtil {
   public static void replaceProperties(final ServerContext context,
       final PropStoreKey<?> propStoreKey, final long version, final Map<String,String> properties)
       throws IllegalArgumentException {
-    IteratorConfigUtil.checkIteratorConflicts(propStoreKey.toString(), properties);
     PropUtil.validateProperties(context, propStoreKey, properties);
     context.getPropStore().replaceAll(propStoreKey, version, properties);
   }

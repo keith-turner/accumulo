@@ -94,6 +94,10 @@ public class IteratorProperty {
     return priority;
   }
 
+  public String getProperty() {
+    return property;
+  }
+
   public IteratorUtil.IteratorScope getScope() {
     return scope;
   }

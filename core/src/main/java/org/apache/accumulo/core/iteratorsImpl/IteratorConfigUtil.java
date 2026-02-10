@@ -272,71 +272,32 @@ public class IteratorConfigUtil {
   }
 
   /**
-   * Checks if any of the iterator properties conflict with each other.
+   * Checks if new properties being set have iterator priorities that conflict with each other or
+   * with existing properties. If any are found then logs a warning. Does not log warnings if
+   * existing properties conflict with existing properties.
    */
-  public static void checkIteratorConflicts(String logContext, Map<String,String> properties) {
-    // group iterator props by scope
-    Map<IteratorScope,List<IteratorProperty>> itersByScope =
-        properties.entrySet().stream().map(IteratorProperty::parse).filter(Objects::nonNull)
-            .collect(Collectors.groupingBy(IteratorProperty::getScope));
-    for (var entry : itersByScope.entrySet()) {
-      var scope = entry.getKey();
-      // Group iter props by priority. A map of iterator props can not conflict with itself on name
-      // because name is part of the key. They can conflict by priority.
-      Map<Integer,List<IteratorProperty>> itersByPrio =
-          entry.getValue().stream().filter(ip -> !ip.isOption())
-              .collect(Collectors.groupingBy(IteratorProperty::getPriority));
-      for (var iterList : itersByPrio.values()) {
-        if (iterList.size() > 1) {
-          IteratorSetting first = iterList.get(0).toSetting();
-          List<IteratorSetting> rest = iterList.stream().skip(1).map(IteratorProperty::toSetting)
-              .collect(Collectors.toList());
-          // call this method for consistent error messages
-          try {
-            checkIteratorConflicts(logContext, first, EnumSet.of(scope), Map.of(scope, rest),
-                false);
-          } catch (AccumuloException e) {
-            throw new IllegalStateException(e);
+  public static void checkIteratorPriorityConflicts(String errorContext,
+      Map<String,String> newProperties, Map<String,String> existingProperties) {
+    var merged = new HashMap<>(existingProperties);
+    merged.putAll(newProperties);
+    Map<IteratorScope,
+        Map<Integer,List<IteratorProperty>>> scopeGroups = merged.entrySet().stream()
+            .map(IteratorProperty::parse).filter(Objects::nonNull).filter(ip -> !ip.isOption())
+            .collect(Collectors.groupingBy(IteratorProperty::getScope,
+                Collectors.groupingBy(IteratorProperty::getPriority)));
+    scopeGroups.forEach((scope, prioGroups) -> {
+      prioGroups.forEach((priority, iterProps) -> {
+        if (iterProps.size() > 1) {
+          // Two iterator definitions with the same priority, check to see if these are from the new
+          // properties.
+          if (iterProps.stream()
+              .anyMatch(iterProp -> newProperties.containsKey(iterProp.getProperty()))) {
+            log.warn("For {}, newly set property introduced an iterator priority conflict : {}",
+                errorContext, iterProps);
           }
         }
-      }
-
-      // check for any iterator options that do not have a defined iterator
-      Set<String> definedNames = entry.getValue().stream().filter(ip -> !ip.isOption())
-          .map(IteratorProperty::getName).collect(Collectors.toSet());
-      Map<String,List<IteratorProperty>> optionNames =
-          entry.getValue().stream().filter(IteratorProperty::isOption)
-              .collect(Collectors.groupingBy(IteratorProperty::getName));
-      for (var optionEntry : optionNames.entrySet()) {
-        if (!definedNames.contains(optionEntry.getKey())) {
-          for (var iterProp : optionEntry.getValue()) {
-            String msg = String.format("%s iterator options missing definition for %s : %s",
-                logContext, optionEntry.getKey(), iterProp);
-            log.warn(msg + WARNING_MSG);
-          }
-        }
-      }
-    }
-  }
-
-  public static void checkIteratorConflicts(String logContext, Map<String,String> props,
-      String property, String value) {
-    if (Objects.equals(props.get(property), value)) {
-      // setting a property that already exists (i.e., no change)
-      return;
-    }
-
-    var iterProp = IteratorProperty.parse(property, value);
-    if (iterProp != null && !iterProp.isOption()) {
-      // given a single property, the only way for the property to be equivalent to an existing
-      // iterator is if the existing iterator has no options (opts are set as separate props)
-      try {
-        checkIteratorConflicts(logContext, props, iterProp.toSetting(),
-            EnumSet.of(iterProp.getScope()), false);
-      } catch (AccumuloException e) {
-        throw new IllegalStateException(e);
-      }
-    }
+      });
+    });
   }
 
   public static void checkIteratorConflicts(String logContext, IteratorSetting iterToCheck,
@@ -405,54 +366,13 @@ public class IteratorConfigUtil {
           && iterScopesToCheck.contains(iterProp.getScope())) {
         var iterSetting =
             iteratorSettings.getOrDefault(iterProp.getScope(), Map.of()).get(iterProp.getName());
-        if (iterSetting == null) {
-          String msg = String.format("iterator options missing definition for %s : %s=%s",
-              iterToCheck.getName(), prop.getKey(), prop.getValue());
-          if (shouldThrow) {
-            throw new AccumuloException(new IllegalArgumentException(msg));
-          } else {
-            log.warn(msg + WARNING_MSG);
-          }
-        } else {
+        if (iterSetting != null) {
           iterSetting.addOption(iterProp.getOptionKey(), iterProp.getOptionValue());
         }
       }
     }
 
-    // TODO pass logContext
     // check if the given iterator conflicts with any existing iterators
     checkIteratorConflicts(logContext, iterToCheck, iterScopesToCheck, existingIters, shouldThrow);
   }
-
-  /**
-   * Returns a new map of all the iterator props contained in the given map
-   */
-  public static Map<String,String> gatherIteratorProps(Map<String,String> props) {
-    Map<String,String> iterProps = new HashMap<>();
-    for (var e : props.entrySet()) {
-      var iterProp = IteratorProperty.parse(e.getKey(), e.getValue());
-      if (iterProp != null) {
-        iterProps.put(e.getKey(), e.getValue());
-      }
-    }
-    return iterProps;
-  }
-
-  /**
-   * returns a map of the options associated with the given iterator property key. Options of the
-   * iterator are obtained by searching the given map
-   */
-  public static Map<String,String> gatherIterOpts(IteratorProperty nameProp,
-      Map<String,String> map) {
-    Map<String,String> opts = new HashMap<>();
-    for (var e : map.entrySet()) {
-      var iterProp = IteratorProperty.parse(e.getKey(), e.getValue());
-      if (iterProp != null && iterProp.isOption() && nameProp.getName().equals(iterProp.getName())
-          && nameProp.getScope().equals(iterProp.getScope())) {
-        opts.put(iterProp.getOptionKey(), iterProp.getOptionValue());
-      }
-    }
-    return opts;
-  }
-
 }
