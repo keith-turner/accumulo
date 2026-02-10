@@ -36,13 +36,7 @@ import java.util.stream.Collectors;
 
 import org.apache.accumulo.core.classloader.ClassLoaderUtil;
 import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.IteratorSetting;
-import org.apache.accumulo.core.client.NamespaceNotFoundException;
-import org.apache.accumulo.core.client.TableNotFoundException;
-import org.apache.accumulo.core.client.admin.TableOperations;
-import org.apache.accumulo.core.clientImpl.Namespace;
-import org.apache.accumulo.core.clientImpl.NamespaceOperationsHelper;
 import org.apache.accumulo.core.conf.AccumuloConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
@@ -277,8 +271,56 @@ public class IteratorConfigUtil {
     return clazz;
   }
 
-  public static void checkIteratorConflicts(Map<String,String> props, String property, String value)
-      throws AccumuloException {
+  /**
+   * Checks if any of the iterator properties conflict with each other.
+   */
+  public static void checkIteratorConflicts(String logContext, Map<String,String> properties) {
+    // group iterator props by scope
+    Map<IteratorScope,List<IteratorProperty>> itersByScope =
+        properties.entrySet().stream().map(IteratorProperty::parse).filter(Objects::nonNull)
+            .collect(Collectors.groupingBy(IteratorProperty::getScope));
+    for (var entry : itersByScope.entrySet()) {
+      var scope = entry.getKey();
+      // Group iter props by priority. A map of iterator props can not conflict with itself on name
+      // because name is part of the key. They can conflict by priority.
+      Map<Integer,List<IteratorProperty>> itersByPrio =
+          entry.getValue().stream().filter(ip -> !ip.isOption())
+              .collect(Collectors.groupingBy(IteratorProperty::getPriority));
+      for (var iterList : itersByPrio.values()) {
+        if (iterList.size() > 1) {
+          IteratorSetting first = iterList.get(0).toSetting();
+          List<IteratorSetting> rest = iterList.stream().skip(1).map(IteratorProperty::toSetting)
+              .collect(Collectors.toList());
+          // call this method for consistent error messages
+          try {
+            checkIteratorConflicts(logContext, first, EnumSet.of(scope), Map.of(scope, rest),
+                false);
+          } catch (AccumuloException e) {
+            throw new IllegalStateException(e);
+          }
+        }
+      }
+
+      // check for any iterator options that do not have a defined iterator
+      Set<String> definedNames = entry.getValue().stream().filter(ip -> !ip.isOption())
+          .map(IteratorProperty::getName).collect(Collectors.toSet());
+      Map<String,List<IteratorProperty>> optionNames =
+          entry.getValue().stream().filter(IteratorProperty::isOption)
+              .collect(Collectors.groupingBy(IteratorProperty::getName));
+      for (var optionEntry : optionNames.entrySet()) {
+        if (!definedNames.contains(optionEntry.getKey())) {
+          for (var iterProp : optionEntry.getValue()) {
+            String msg = String.format("%s iterator options missing definition for %s : %s",
+                logContext, optionEntry.getKey(), iterProp);
+            log.warn(msg + WARNING_MSG);
+          }
+        }
+      }
+    }
+  }
+
+  public static void checkIteratorConflicts(String logContext, Map<String,String> props,
+      String property, String value) {
     if (Objects.equals(props.get(property), value)) {
       // setting a property that already exists (i.e., no change)
       return;
@@ -288,70 +330,16 @@ public class IteratorConfigUtil {
     if (iterProp != null && !iterProp.isOption()) {
       // given a single property, the only way for the property to be equivalent to an existing
       // iterator is if the existing iterator has no options (opts are set as separate props)
-      checkIteratorConflicts(props, iterProp.toSetting(), EnumSet.of(iterProp.getScope()), false);
-    }
-  }
-
-  public static void checkIteratorConflicts(TableOperations tableOps, NamespaceOperationsHelper noh,
-      String namespace, String property, String value)
-      throws AccumuloException, AccumuloSecurityException, NamespaceNotFoundException {
-    var props = noh.getNamespaceProperties(namespace);
-    if (Objects.equals(props.get(property), value)) {
-      // setting a property that already exists (i.e., no change)
-      return;
-    }
-
-    var iterProp = IteratorProperty.parse(property, value);
-    if (iterProp != null && !iterProp.isOption()) {
-      // given a single property, the only way for the property to be equivalent to an existing
-      // iterator is if the existing iterator has no options (opts are set as separate props)
-      checkIteratorConflicts(props, iterProp.toSetting(), EnumSet.of(iterProp.getScope()), false);
-    }
-
-    // checking for conflicts for the tables in the namespace
-    checkIteratorConflictsWithTablesInNamespace(tableOps, namespace, property, value);
-  }
-
-  public static void checkIteratorConflictsWithTablesInNamespace(TableOperations tableOps,
-      String namespace, IteratorSetting is, EnumSet<IteratorScope> scopes)
-      throws AccumuloException {
-    Set<String> tablesInNamespace;
-    if (namespace.equals(Namespace.DEFAULT.name())) {
-      tablesInNamespace = tableOps.list().stream().filter(t -> !t.contains(Namespace.SEPARATOR))
-          .collect(Collectors.toSet());
-    } else {
-      tablesInNamespace = tableOps.list().stream()
-          .filter(t -> t.startsWith(namespace + Namespace.SEPARATOR)).collect(Collectors.toSet());
-    }
-    try {
-      for (var table : tablesInNamespace) {
-        checkIteratorConflicts(tableOps.getTableProperties(table), is, scopes, false);
+      try {
+        checkIteratorConflicts(logContext, props, iterProp.toSetting(),
+            EnumSet.of(iterProp.getScope()), false);
+      } catch (AccumuloException e) {
+        throw new IllegalStateException(e);
       }
-    } catch (TableNotFoundException e) {
-      throw new AccumuloException(e);
     }
   }
 
-  public static void checkIteratorConflictsWithTablesInNamespace(TableOperations tableOps,
-      String namespace, String property, String value) throws AccumuloException {
-    Set<String> tablesInNamespace;
-    if (namespace.equals(Namespace.DEFAULT.name())) {
-      tablesInNamespace = tableOps.list().stream().filter(t -> !t.contains(Namespace.SEPARATOR))
-          .collect(Collectors.toSet());
-    } else {
-      tablesInNamespace = tableOps.list().stream()
-          .filter(t -> t.startsWith(namespace + Namespace.SEPARATOR)).collect(Collectors.toSet());
-    }
-    try {
-      for (var table : tablesInNamespace) {
-        checkIteratorConflicts(tableOps.getTableProperties(table), property, value);
-      }
-    } catch (TableNotFoundException e) {
-      throw new AccumuloException(e);
-    }
-  }
-
-  public static void checkIteratorConflicts(IteratorSetting iterToCheck,
+  public static void checkIteratorConflicts(String logContext, IteratorSetting iterToCheck,
       EnumSet<IteratorScope> iterScopesToCheck,
       Map<IteratorScope,List<IteratorSetting>> existingIters, boolean shouldThrow)
       throws AccumuloException {
@@ -369,8 +357,8 @@ public class IteratorConfigUtil {
         }
         if (iterToCheck.getName().equals(existingIter.getName())) {
           String msg =
-              String.format("iterator name conflict at %s scope. %s conflicts with existing %s",
-                  scope, iterToCheck, existingIter);
+              String.format("%s iterator name conflict at %s scope. %s conflicts with existing %s",
+                  logContext, scope, iterToCheck, existingIter);
           if (shouldThrow) {
             throw new AccumuloException(new IllegalArgumentException(msg));
           } else {
@@ -378,9 +366,9 @@ public class IteratorConfigUtil {
           }
         }
         if (iterToCheck.getPriority() == existingIter.getPriority()) {
-          String msg =
-              String.format("iterator priority conflict at %s scope. %s conflicts with existing %s",
-                  scope, iterToCheck, existingIter);
+          String msg = String.format(
+              "%s iterator priority conflict at %s scope. %s conflicts with existing %s",
+              logContext, scope, iterToCheck, existingIter);
           if (shouldThrow) {
             throw new AccumuloException(new IllegalArgumentException(msg));
           } else {
@@ -391,8 +379,9 @@ public class IteratorConfigUtil {
     }
   }
 
-  public static void checkIteratorConflicts(Map<String,String> props, IteratorSetting iterToCheck,
-      EnumSet<IteratorScope> iterScopesToCheck, boolean shouldThrow) throws AccumuloException {
+  public static void checkIteratorConflicts(String logContext, Map<String,String> props,
+      IteratorSetting iterToCheck, EnumSet<IteratorScope> iterScopesToCheck, boolean shouldThrow)
+      throws AccumuloException {
     // parse the props map
     Map<IteratorScope,Map<String,IteratorSetting>> iteratorSettings = new HashMap<>();
     Map<IteratorScope,List<IteratorSetting>> existingIters = new HashMap<>();
@@ -417,7 +406,7 @@ public class IteratorConfigUtil {
         var iterSetting =
             iteratorSettings.getOrDefault(iterProp.getScope(), Map.of()).get(iterProp.getName());
         if (iterSetting == null) {
-          String msg = String.format("iterator options conflict for %s : %s=%s",
+          String msg = String.format("iterator options missing definition for %s : %s=%s",
               iterToCheck.getName(), prop.getKey(), prop.getValue());
           if (shouldThrow) {
             throw new AccumuloException(new IllegalArgumentException(msg));
@@ -429,8 +418,10 @@ public class IteratorConfigUtil {
         }
       }
     }
+
+    // TODO pass logContext
     // check if the given iterator conflicts with any existing iterators
-    checkIteratorConflicts(iterToCheck, iterScopesToCheck, existingIters, shouldThrow);
+    checkIteratorConflicts(logContext, iterToCheck, iterScopesToCheck, existingIters, shouldThrow);
   }
 
   /**
@@ -463,4 +454,5 @@ public class IteratorConfigUtil {
     }
     return opts;
   }
+
 }

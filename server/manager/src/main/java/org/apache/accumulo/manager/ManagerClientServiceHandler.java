@@ -52,6 +52,7 @@ import org.apache.accumulo.core.clientImpl.thrift.ThriftConcurrentModificationEx
 import org.apache.accumulo.core.clientImpl.thrift.ThriftNotActiveServiceException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftSecurityException;
 import org.apache.accumulo.core.clientImpl.thrift.ThriftTableOperationException;
+import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.NamespaceId;
 import org.apache.accumulo.core.data.Range;
@@ -61,6 +62,7 @@ import org.apache.accumulo.core.dataImpl.KeyExtent;
 import org.apache.accumulo.core.dataImpl.thrift.TKeyExtent;
 import org.apache.accumulo.core.fate.Fate;
 import org.apache.accumulo.core.fate.zookeeper.ZooReaderWriter;
+import org.apache.accumulo.core.iteratorsImpl.IteratorConfigUtil;
 import org.apache.accumulo.core.manager.thrift.ManagerClientService;
 import org.apache.accumulo.core.manager.thrift.ManagerGoalState;
 import org.apache.accumulo.core.manager.thrift.ManagerMonitorInfo;
@@ -84,8 +86,10 @@ import org.apache.accumulo.core.trace.thrift.TInfo;
 import org.apache.accumulo.core.util.ByteBufferUtil;
 import org.apache.accumulo.manager.tableOps.TraceRepo;
 import org.apache.accumulo.manager.tserverOps.ShutdownTServer;
+import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.client.ClientServiceHandler;
 import org.apache.accumulo.server.conf.store.NamespacePropKey;
+import org.apache.accumulo.server.conf.store.PropStoreKey;
 import org.apache.accumulo.server.conf.store.TablePropKey;
 import org.apache.accumulo.server.manager.LiveTServerSet.TServerConnection;
 import org.apache.accumulo.server.replication.proto.Replication.Status;
@@ -545,8 +549,11 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
         PropUtil.removeProperties(manager.getContext(),
             NamespacePropKey.of(manager.getContext(), namespaceId), List.of(property));
       } else {
-        PropUtil.setProperties(manager.getContext(),
-            NamespacePropKey.of(manager.getContext(), namespaceId), Map.of(property, value));
+        var context = manager.getContext();
+        var iterProps = context.getNamespaceConfiguration(namespaceId).getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX);
+        IteratorConfigUtil.checkIteratorConflicts("namespaceId:"+namespaceId, iterProps, property,
+                value);
+        PropUtil.setProperties(context, NamespacePropKey.of(manager.getContext(), namespaceId), Map.of(property, value));
       }
     } catch (IllegalStateException ex) {
       // race condition on delete... namespace no longer exists? An undelying ZooKeeper.NoNode
@@ -577,8 +584,11 @@ public class ManagerClientServiceHandler implements ManagerClientService.Iface {
         if (value == null || value.isEmpty()) {
           value = "";
         }
-        PropUtil.setProperties(manager.getContext(), TablePropKey.of(manager.getContext(), tableId),
-            Map.of(property, value));
+        var context = manager.getContext();
+        var iterProps = context.getTableConfiguration(tableId).getAllPropertiesWithPrefix(Property.TABLE_ITERATOR_PREFIX);
+        IteratorConfigUtil.checkIteratorConflicts("tableId:"+tableId, iterProps, property,
+                value);
+        PropUtil.setProperties(context, TablePropKey.of(manager.getContext(), tableId), Map.of(property, value));
       } else {
         throw new UnsupportedOperationException("table operation:" + op.name());
       }

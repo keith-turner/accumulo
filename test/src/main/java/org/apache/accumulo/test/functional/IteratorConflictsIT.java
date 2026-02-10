@@ -316,6 +316,8 @@ public class IteratorConflictsIT extends SharedMiniClusterBase {
         () -> tops.setProperty(table2, iter1PrioConflictKey, iter1PrioConflictVal),
         () -> tops.setProperty(table2, iter1NameConflictKey, iter1NameConflictVal), false);
 
+    // TODO its ok to set a name that "conflicts" if it overrides in the merged view
+
     // testing TableOperations.modifyProperties
     String ns3 = names[4];
     nops.create(ns3);

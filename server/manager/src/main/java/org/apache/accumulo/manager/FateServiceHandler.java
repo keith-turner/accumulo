@@ -875,8 +875,8 @@ class FateServiceHandler implements FateService.Iface {
       try {
         var is = iterProp.toSetting();
         is.addOptions(opts);
-        IteratorConfigUtil.checkIteratorConflicts(config, is, EnumSet.of(iterProp.getScope()),
-            false);
+        IteratorConfigUtil.checkIteratorConflicts(tableOp + " " + tableName, config, is,
+            EnumSet.of(iterProp.getScope()), false);
       } catch (AccumuloException e) {
         throw new ThriftTableOperationException(null, tableName, tableOp,
             TableOperationExceptionType.OTHER, e.getMessage());
