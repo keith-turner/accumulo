@@ -233,8 +233,12 @@ function createDataTable(table, storageKey, visibleColumnFilter) {
         data: getStoredRows(storageKey)
       });
     },
-    "stateSave": false, // if set to true, then visible: false doesn't work
+    "stateSave": true,
     "columnDefs": [{
+        targets: '_all',
+        defaultContent: 'N/A'
+      },
+      {
         "targets": "big-num",
         "render": function (data, type) {
           if (type === 'display') {
