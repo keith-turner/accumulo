@@ -18,15 +18,21 @@
  */
 package org.apache.accumulo.monitor.next;
 
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toList;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -48,6 +54,7 @@ import org.apache.accumulo.core.client.admin.servers.ServerId;
 import org.apache.accumulo.core.data.TableId;
 import org.apache.accumulo.core.metrics.flatbuffers.FMetric;
 import org.apache.accumulo.core.process.thrift.MetricResponse;
+import org.apache.accumulo.core.rpc.clients.ManagerClient;
 import org.apache.accumulo.core.util.compaction.RunningCompactionInfo;
 import org.apache.accumulo.monitor.Monitor;
 import org.apache.accumulo.monitor.next.InformationFetcher.InstanceSummary;
@@ -58,6 +65,7 @@ import org.apache.accumulo.monitor.next.deployment.DeploymentOverview;
 import org.apache.accumulo.monitor.next.ec.CompactorsSummary;
 import org.apache.accumulo.monitor.next.ec.CoordinatorSummary;
 import org.apache.accumulo.monitor.next.views.ServersView;
+import org.apache.accumulo.server.manager.FateLocations;
 
 import io.micrometer.core.instrument.Meter.Id;
 import io.micrometer.core.instrument.cumulative.CumulativeDistributionSummary;
@@ -185,6 +193,37 @@ public class Endpoints {
       }
     }
     return results;
+  }
+
+  @GET
+  @Path("manager/responsibilities")
+  @Produces(MediaType.APPLICATION_JSON)
+  @Description("Returns each managers responsibilities")
+  public Map<String,List<String>> getManagerResponsibilities() {
+    var fateLocs = new FateLocations(monitor.getContext());
+    Map<String,List<String>> responsibilities = new HashMap<>();
+    fateLocs.getLocations().forEach((addr, partitions) -> {
+      partitions.forEach(partition -> {
+        responsibilities.computeIfAbsent(addr.toString(), a -> new ArrayList<>())
+            .add(partition.toString());
+      });
+    });
+
+    var primary = ManagerClient.getPrimaryManagerLocation(monitor.getContext());
+    if (primary != null) {
+      responsibilities.computeIfAbsent(primary, a -> new ArrayList<>())
+          .addAll(List.of("TABLET_MANAGEMENT", "BALANCING", "CLIENT_RPC", "TSERVER_MONITORING",
+              "CLUSTER_MAINTENANCE"));
+    }
+
+    monitor.getContext().getCoordinatorLocations(true).locations().entrySet().stream()
+        .collect(groupingBy(Entry::getValue, mapping(Entry::getKey, toList())))
+        .forEach((addr, groups) -> {
+          responsibilities.computeIfAbsent(addr.toString(), a -> new ArrayList<>())
+              .add("COMPACTOR_GROUPS:" + groups);
+        });
+
+    return responsibilities;
   }
 
   @GET
@@ -351,8 +390,7 @@ public class Endpoints {
     Map<String,TimeOrderedRunningCompactionSet> longRunning =
         monitor.getInformationFetcher().getSummaryForEndpoint().getTopRunningCompactions();
     return longRunning.values().stream().flatMap(TimeOrderedRunningCompactionSet::stream).distinct()
-        .sorted(TimeOrderedRunningCompactionSet.OLDEST_FIRST_COMPARATOR)
-        .collect(Collectors.toList());
+        .sorted(TimeOrderedRunningCompactionSet.OLDEST_FIRST_COMPARATOR).collect(toList());
   }
 
   @GET
@@ -367,7 +405,7 @@ public class Endpoints {
     if (longRunning == null) {
       return List.of();
     }
-    return longRunning.stream().collect(Collectors.toList());
+    return longRunning.stream().collect(toList());
   }
 
   @GET
