@@ -82,6 +82,7 @@ import org.apache.accumulo.core.metrics.Metric;
 import org.apache.accumulo.core.metrics.flatbuffers.FMetric;
 import org.apache.accumulo.core.metrics.flatbuffers.FTag;
 import org.apache.accumulo.core.process.thrift.MetricResponse;
+import org.apache.accumulo.core.process.thrift.MetricSource;
 import org.apache.accumulo.core.spi.balancer.TableLoadBalancer;
 import org.apache.accumulo.core.tabletscan.thrift.ActiveScan;
 import org.apache.accumulo.core.util.compaction.RunningCompactionInfo;
@@ -656,7 +657,6 @@ public class SystemInformation {
   protected final Map<String,LongAdder> runningCompactionsPerGroup = new ConcurrentHashMap<>();
 
   private final List<CompactionTableSummary> tableCompactions = new ArrayList<>();
-  private final List<CompactionGroupSummary> groupCompactions = new ArrayList<>();
 
   // Table Information
   private final Map<TableId,TableSummary> tables = new ConcurrentHashMap<>();
@@ -715,7 +715,6 @@ public class SystemInformation {
     runningCompactionsPerGroup.clear();
     runningCompactionsPerTable.clear();
     tableCompactions.clear();
-    groupCompactions.clear();
     configuredCompactionResourceGroups.clear();
     componentStatuses.clear();
     managerGoalState = null;
@@ -821,6 +820,10 @@ public class SystemInformation {
 
     final Column COMPACTION_QUEUE_COL =
         new Column(TableDataFactory.RG_COL_KEY, "Compaction Queue", "Compaction Queue", "");
+    final Column COMPACTIONS_RUNNING_COL =
+        new Column("compactions.running", "Compactions Running", "Compactions Running", "");
+    final Column COMPACTORS_RUNNING_COL =
+        new Column("compactors.running", "Compactor Processes", "Count of compactor processes", "");
 
     List<ColumnFactory> cols =
         TableDataFactory.columnsFor(TableDataFactory.TableName.COORDINATOR_QUEUES);
@@ -834,6 +837,8 @@ public class SystemInformation {
         break;
       }
     }
+
+    Set<String> queuesWithoutMetrics = new HashSet<>();
 
     if (rgIdx == -1) {
       LOG.warn("Did not find Resource Group column to replace column header");
@@ -852,6 +857,49 @@ public class SystemInformation {
           return sid.getResourceGroup().canonical();
         }
       });
+
+      // take a snapshot of the data to avoid race conditions w/ clear()
+      Map<String,Integer> compactorsCount = new HashMap<>();
+      compactors.forEach((rg, compatorSet) -> compactorsCount.put(rg, compatorSet.size()));
+
+      cols.add(rgIdx + 1, new ColumnFactory() {
+        @Override
+        public Column getColumn() {
+          return COMPACTORS_RUNNING_COL;
+        }
+
+        @Override
+        public Object getRowData(ServerId sid, MetricResponse mr,
+            Map<String,List<FMetric>> serverMetrics) {
+          return compactorsCount.getOrDefault(sid.getResourceGroup().canonical(), 0);
+        }
+      });
+
+      // take a snapshot of the data to avoid race conditions w/ clear()
+      Map<String,Long> rcpgSnapshot = new HashMap<>();
+      runningCompactionsPerGroup.forEach((rg, adder) -> rcpgSnapshot.put(rg, adder.sum()));
+
+      cols.add(rgIdx + 2, new ColumnFactory() {
+        @Override
+        public Column getColumn() {
+          return COMPACTIONS_RUNNING_COL;
+        }
+
+        @Override
+        public Object getRowData(ServerId sid, MetricResponse mr,
+            Map<String,List<FMetric>> serverMetrics) {
+          var rg = sid.getResourceGroup().canonical();
+          long compactors = compactorsCount.getOrDefault(rg, 0);
+          long running = rcpgSnapshot.getOrDefault(rg, 0L);
+          // May sample more running compactions that actual compactors because of race conditions,
+          // so limit by the number of actual compactors.
+          return Math.min(compactors, running);
+        }
+      });
+
+      queuesWithoutMetrics.addAll(compactorsCount.keySet());
+      queuesWithoutMetrics.addAll(rcpgSnapshot.keySet());
+      queuesWithoutMetrics.addAll(configuredCompactionResourceGroups);
     }
 
     // Construct a Map of MetricResponses by Queue. This method will take
@@ -872,6 +920,7 @@ public class SystemInformation {
             t = fm.tags(t, i);
             if (t.key().equals(QUEUE_TAG_KEY)) {
               String queueName = t.value();
+              queuesWithoutMetrics.remove(queueName);
               // For these MetricResponse objects we are going to put the queueId value
               // in the place of the resource group, we'll update the column information
               // for the resource group below.
@@ -886,6 +935,17 @@ public class SystemInformation {
         }
       }
     }
+
+    final String bogusServer = "bogusServer_da39a3ee5e6b4b0d3255bfef95601890afd80709";
+
+    // if there are no metrics but compactors are running or groups are configured, still want to
+    // display a row for the compaction queue
+    queuesWithoutMetrics.forEach(queue -> {
+      ServerId sid =
+          new ServerId(ServerId.Type.MANAGER, ResourceGroupId.of(queue), bogusServer, 9999);
+      qm.put(sid, new MetricResponse(MetricSource.MANAGER, bogusServer, queue,
+          System.currentTimeMillis(), new ArrayList<>()));
+    });
 
     if (!qm.isEmpty()) {
       // Create a ServersView object from the MetricResponse for each queue
@@ -1438,9 +1498,6 @@ public class SystemInformation {
       }
     }
 
-    runningCompactionsPerGroup
-        .forEach((k, v) -> groupCompactions.add(new CompactionGroupSummary(k, v.sum())));
-
     for (final ServerId.Type type : ServerId.Type.values()) {
       Set<ServerId> servers = getServers(type);
       switch (type) {
@@ -1455,7 +1512,8 @@ public class SystemInformation {
         case MANAGER:
           cacheServerProcessView(TableDataFactory.TableName.MANAGERS, servers);
           cacheServerProcessView(TableDataFactory.TableName.MANAGER_FATE, servers);
-          cacheServerProcessView(TableDataFactory.TableName.MANAGER_COMPACTIONS, servers);
+          cacheServerProcessView(TableDataFactory.TableName.MANAGER_COMPACTIONS,
+              getCoordinators(servers));
           TableData coordinatorQueues = createCompactionQueueSummary(getActiveServers(type));
           serverMetricsView.put(TableDataFactory.TableName.COORDINATOR_QUEUES,
               memoize(() -> coordinatorQueues));
@@ -1481,6 +1539,15 @@ public class SystemInformation {
     computeAlertCounts();
     long fetchCycleFinish = System.currentTimeMillis();
     timing = new FetchCycleTimes((fetchCycleFinish - fetchCycleStart), fetchCycleFinish);
+  }
+
+  // not all managers may be coordinators, so select the subset that are
+  private Set<ServerId> getCoordinators(Set<ServerId> servers) {
+    Map<HostAndPort,ServerId> serversByHostPort = new HashMap<>();
+    servers.forEach(
+        sid -> serversByHostPort.put(HostAndPort.fromParts(sid.getHost(), sid.getPort()), sid));
+    serversByHostPort.keySet().retainAll(ctx.getCoordinatorLocations().sortedUniqueHost());
+    return Set.copyOf(serversByHostPort.values());
   }
 
   public Set<Scan> getActiveScans() {
@@ -1575,10 +1642,6 @@ public class SystemInformation {
 
   public ServerId getGarbageCollector() {
     return this.gc.get();
-  }
-
-  public List<CompactionGroupSummary> getRunningCompactionsPerGroup() {
-    return this.groupCompactions;
   }
 
   public List<CompactionTableSummary> getRunningCompactionsPerTable() {

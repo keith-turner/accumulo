@@ -93,6 +93,7 @@ import org.apache.accumulo.core.metadata.schema.CompactionMetadata;
 import org.apache.accumulo.core.metadata.schema.ExternalCompactionId;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata;
 import org.apache.accumulo.core.metadata.schema.TabletMetadata.ColumnType;
+import org.apache.accumulo.core.metrics.Metric;
 import org.apache.accumulo.core.metrics.MetricsProducer;
 import org.apache.accumulo.core.securityImpl.thrift.TCredentials;
 import org.apache.accumulo.core.spi.compaction.CompactionJob;
@@ -116,6 +117,7 @@ import org.apache.accumulo.manager.upgrade.UpgradeCheck;
 import org.apache.accumulo.server.ServerContext;
 import org.apache.accumulo.server.compaction.CompactionConfigStorage;
 import org.apache.accumulo.server.compaction.CompactionPluginUtils;
+import org.apache.accumulo.server.metrics.NoopMetrics;
 import org.apache.accumulo.server.security.AuditedSecurityOperation;
 import org.apache.accumulo.server.tablets.TabletNameGenerator;
 import org.apache.accumulo.server.util.FindCompactionTmpFiles;
@@ -134,6 +136,7 @@ import com.google.common.base.Suppliers;
 import com.google.common.net.HostAndPort;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 
 /**
  * This class is the focal point in a distributed system for coordinating compactions. It has the
@@ -228,6 +231,7 @@ public class CompactionCoordinator
   private final Cache<Path,Integer> tabletDirCache;
 
   private final QueueMetrics queueMetrics;
+  private volatile Timer completionTimer = NoopMetrics.useNoopTimer();
   private final Manager manager;
 
   private final LoadingCache<ResourceGroupId,Set<HostAndPort>> compactorAddrs;
@@ -597,6 +601,8 @@ public class CompactionCoordinator
   @Override
   public void registerMetrics(MeterRegistry registry) {
     queueMetrics.registerMetrics(registry);
+    completionTimer = Timer.builder(Metric.COORDINATOR_COMPLETION_TIMER.getName())
+        .description(Metric.COORDINATOR_COMPLETION_TIMER.getDescription()).register(registry);
   }
 
   @Override
@@ -745,6 +751,12 @@ public class CompactionCoordinator
           SecurityErrorCode.PERMISSION_DENIED).asThriftException();
     }
 
+    completionTimer.record(() -> compactionCompletedInternal(externalCompactionId, textent, stats,
+        groupName, compactorAddress));
+  }
+
+  private void compactionCompletedInternal(String externalCompactionId, TKeyExtent textent,
+      TCompactionStats stats, String groupName, String compactorAddress) {
     // maybe fate has not started yet
     var extent = KeyExtent.fromThrift(textent);
     var fateType = FateInstanceType.fromTableId(extent.tableId());
